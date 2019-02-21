@@ -1,5 +1,6 @@
 numpy
 joblib
+mujoco_py
 gym==0.10.5
 scipy
 PyPrind

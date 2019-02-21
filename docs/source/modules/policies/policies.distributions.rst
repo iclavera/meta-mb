@@ -7,7 +7,7 @@ Submodules
 maml\_zoo.policies.distributions.base module
 --------------------------------------------
 
-.. automodule:: meta_policy_search.policies.distributions.base
+.. automodule:: maml_zoo.policies.distributions.base
     :members:
     :undoc-members:
     :show-inheritance:
@@ -15,7 +15,7 @@ maml\_zoo.policies.distributions.base module
 maml\_zoo.policies.distributions.diagonal\_gaussian module
 ----------------------------------------------------------
 
-.. automodule:: meta_policy_search.policies.distributions.diagonal_gaussian
+.. automodule:: maml_zoo.policies.distributions.diagonal_gaussian
     :members:
     :undoc-members:
     :show-inheritance:
@@ -24,7 +24,7 @@ maml\_zoo.policies.distributions.diagonal\_gaussian module
 Module contents
 ---------------
 
-.. automodule:: meta_policy_search.policies.distributions
+.. automodule:: maml_zoo.policies.distributions
     :members:
     :undoc-members:
     :show-inheritance:

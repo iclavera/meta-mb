@@ -1,7 +1,7 @@
 Environments
 ======================
 
-.. automodule:: meta_policy_search.envs.base
+.. automodule:: maml_zoo.envs.base
 
 MetaEnv (Interface)
 --------------------------

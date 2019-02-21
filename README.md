@@ -84,7 +84,40 @@ corresponding python wrapper are required.
 For setting up [Mujoco](http://www.mujoco.org/) and [mujoco-py](https://github.com/openai/mujoco-py), 
 please follow the instructions [here](https://github.com/openai/mujoco-py).
 
+### Setting up the doodad experiment launcher with EC2 support
 
+Install AWS commandline interface
+
+```
+sudo apt-get install awscli
+```
+
+and configure the asw cli
+
+```
+aws configure
+```
+
+Clone the doodad repository 
+
+```
+git clone https://github.com/jonasrothfuss/doodad.git
+```
+
+Install the extra package requirements for doodad
+```
+cd doodad && pip install -r requirements.txt
+```
+
+Configure doodad for your ec2 account. First you have to specify the following environment variables in your ~/.bashrc: 
+AWS_ACCESS_KEY, AWS_ACCESS_KEY, DOODAD_S3_BUCKET
+
+Then run
+```
+python scripts/setup_ec2.py
+```
+
+Set S3_BUCKET_NAME in experiment_utils/config.py to your bucket name
 
 ## Running ProMP
 In order to run the ProMP algorithm point environment (no Mujoco needed) with default configurations execute:
@@ -111,16 +144,6 @@ execute, respectively:
 ```
 python run_scripts/maml_run_mujoco.py 
 python run_scripts/e-maml_run_mujoco.py 
-```
-## Cite
-To cite ProMP please use
-```
-@article{rothfuss2018promp,
-  title={ProMP: Proximal Meta-Policy Search},
-  author={Rothfuss, Jonas and Lee, Dennis and Clavera, Ignasi and Asfour, Tamim and Abbeel, Pieter},
-  journal={arXiv preprint arXiv:1810.06784},
-  year={2018}
-}
 ```
 
 ## Acknowledgements

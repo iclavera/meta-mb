@@ -3,14 +3,14 @@ Policies
 
 Policy Interfaces
 --------------------------
-.. automodule:: meta_policy_search.policies
+.. automodule:: maml_zoo.policies
 
 .. autoclass:: Policy
     :members:
     :inherited-members:
     :show-inheritance:
 
-.. autoclass:: MetaPolicy
+.. autoclass:: Meta-Policy
     :members:
     :inherited-members:
     :show-inheritance:

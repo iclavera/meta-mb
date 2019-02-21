@@ -1,7 +1,7 @@
 Meta-Algorithms
 =============================
 
-.. automodule:: meta_policy_search.meta_algos
+.. automodule:: maml_zoo.meta_algos
 
 MAML-Algorithm (Interface)
 ------------------------------
@@ -11,26 +11,23 @@ MAML-Algorithm (Interface)
     :inherited-members:
     :show-inheritance:
 
-ProMP-Algorithm
+PPO-MAML-Algorithm
 ------------------------------
 
-.. autoclass:: ProMP
+.. autoclass:: MAMLPPO
     :members:
     :show-inheritance:
-    :inherited-members:
 
 TRPO-MAML-Algorithm
 ------------------------------
 
-.. autoclass:: TRPOMAML
+.. autoclass:: MAMLTRPO
     :members:
     :show-inheritance:
-    :inherited-members:
 
 VPG-MAML-Algorithm
 ------------------------------
 
-.. autoclass:: VPGMAML
+.. autoclass:: MAMLVPG
     :members:
     :show-inheritance:
-    :inherited-members:

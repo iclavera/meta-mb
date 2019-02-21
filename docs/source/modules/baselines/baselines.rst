@@ -1,12 +1,13 @@
 Baselines
 ===========================
 
-.. automodule:: meta_policy_search.baselines
+.. automodule:: maml_zoo.baselines
 
 Baseline (Interface)
 ---------------------------
 .. autoclass:: Baseline
     :members:
+    :inherited-members:
 
 Linear Feature Baseline
 ---------------------------
@@ -14,8 +15,5 @@ Linear Feature Baseline
     :members:
     :inherited-members:
 
-LinearTimeBaseline
----------------------------
-.. autoclass:: LinearTimeBaseline
-    :members:
-    :inherited-members:
+
+

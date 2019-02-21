@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from meta_policy_search.optimizers.maml_first_order_optimizer import MAMLFirstOrderOptimizer
+from maml_zoo.optimizers.maml_first_order_optimizer import MAMLFirstOrderOptimizer
 from collections import OrderedDict
 import tensorflow as tf
 
@@ -40,7 +40,6 @@ class CombinedMlp(object):
 class TestOptimizer(unittest.TestCase): #TODO add test for ConjugateGradientOptimizer
 
     def testSine(self):
-        np.random.seed(65)
         for optimizer in [MAMLFirstOrderOptimizer()]:
             tf.reset_default_graph()
             with tf.Session():
@@ -67,7 +66,6 @@ class TestOptimizer(unittest.TestCase): #TODO add test for ConjugateGradientOpti
                 self.assertLessEqual(np.mean((ys-y_pred)**2), 0.02)
 
     def testGauss(self):
-        np.random.seed(65)
         for optimizer in [MAMLFirstOrderOptimizer()]:
             tf.reset_default_graph()
             with tf.Session():

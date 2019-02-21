@@ -1,7 +1,7 @@
 Samplers
 ==========================
 
-.. automodule:: meta_policy_search.samplers
+.. automodule:: maml_zoo.samplers
     :members:
     :undoc-members:
     :show-inheritance:
@@ -14,7 +14,7 @@ Sampler
     :inherited-members:
     :show-inheritance:
 
-.. autoclass:: MetaSampler
+.. autoclass:: MAMLSampler
     :members:
     :inherited-members:
     :show-inheritance:
@@ -27,12 +27,7 @@ Sample Processor
     :inherited-members:
     :show-inheritance:
 
-.. autoclass:: DiceSampleProcessor
-    :members:
-    :inherited-members:
-    :show-inheritance:
-
-.. autoclass:: MetaSampleProcessor
+.. autoclass:: MAMLSampleProcessor
     :members:
     :inherited-members:
     :show-inheritance:
@@ -40,14 +35,14 @@ Sample Processor
 Vectorized Environment Executor
 -------------------------------
 
-.. automodule:: meta_policy_search.samplers.vectorized_env_executor
+.. automodule:: maml_zoo.samplers.vectorized_env_executor
 
-.. autoclass:: MetaIterativeEnvExecutor
+.. autoclass:: MAMLIterativeEnvExecutor
     :members:
     :inherited-members:
     :show-inheritance:
 
-.. autoclass:: MetaParallelEnvExecutor
+.. autoclass:: MAMLParallelEnvExecutor
     :members:
     :inherited-members:
     :show-inheritance:

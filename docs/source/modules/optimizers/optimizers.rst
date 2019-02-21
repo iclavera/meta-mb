@@ -1,7 +1,7 @@
 Optimizers
 ============================
 
-.. automodule:: meta_policy_search.optimizers
+.. automodule:: maml_zoo.optimizers
 
 Conjugate Gradient Optimizer
 -----------------------------
