@@ -2,6 +2,14 @@ import numpy as np
 import scipy
 import scipy.signal
 import json
+import tensorflow as tf
+
+def compile_function(inputs, outputs, log_name=None):
+    def run(*input_vals):
+        sess = tf.get_default_session()
+        return sess.run(outputs, feed_dict=dict(list(zip(inputs, input_vals))))
+
+    return run
 
 def get_original_tf_name(name):
     """

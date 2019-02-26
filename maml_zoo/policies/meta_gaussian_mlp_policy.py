@@ -2,7 +2,7 @@ from maml_zoo.policies.base import MetaPolicy
 from maml_zoo.policies.gaussian_mlp_policy import GaussianMLPPolicy
 import numpy as np
 import tensorflow as tf
-from maml_zoo.policies.networks.mlp import forward_mlp
+from maml_zoo.utils.networks.mlp import forward_mlp
 
 
 class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):

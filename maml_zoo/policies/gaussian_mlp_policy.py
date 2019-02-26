@@ -1,4 +1,4 @@
-from maml_zoo.policies.networks.mlp import create_mlp, forward_mlp
+from maml_zoo.utils.networks.mlp import create_mlp, forward_mlp
 from maml_zoo.policies.distributions.diagonal_gaussian import DiagonalGaussian
 from maml_zoo.policies.base import Policy
 from maml_zoo.utils import Serializable
