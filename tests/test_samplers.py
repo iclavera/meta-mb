@@ -1,13 +1,13 @@
 import unittest
 import numpy as np
-from maml_zoo.policies.base import Policy
-from maml_zoo.samplers import MAMLSampler
-from maml_zoo.samplers import MAMLSampleProcessor
-from maml_zoo.samplers import SampleProcessor
-from maml_zoo.samplers import DiceSampleProcessor
-from maml_zoo.samplers import DiceMAMLSampleProcessor
-from maml_zoo.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
-from maml_zoo.baselines.zero_baseline import ZeroBaseline
+from meta_mb.policies.base import Policy
+from meta_mb.samplers import MAMLSampler
+from meta_mb.samplers import MAMLSampleProcessor
+from meta_mb.samplers import SampleProcessor
+from meta_mb.samplers import DiceSampleProcessor
+from meta_mb.samplers import DiceMAMLSampleProcessor
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
+from meta_mb.baselines.zero_baseline import ZeroBaseline
 
 
 class TestEnv():

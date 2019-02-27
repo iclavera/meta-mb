@@ -1,10 +1,10 @@
 import unittest
 import numpy as np
 import pickle
-from maml_zoo.utils import utils
-from maml_zoo.policies.base import Policy
-from maml_zoo.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
-from maml_zoo.samplers.maml_sampler import MAMLSampler
+from meta_mb.utils import utils
+from meta_mb.policies.base import Policy
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
+from meta_mb.samplers.maml_sampler import MAMLSampler
 from gym import Env
 
 

@@ -1,7 +1,7 @@
 import joblib
 import tensorflow as tf
 import argparse
-from maml_zoo.samplers.utils import rollout
+from meta_mb.samplers.utils import rollout
 
 
 if __name__ == "__main__":

@@ -1,0 +1,243 @@
+import os
+import json
+import tensorflow as tf
+import numpy as np
+from experiment_utils.run_sweep import run_sweep
+from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
+from meta_mb.envs.mujoco_envs.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
+from meta_mb.envs.mujoco_envs.ant_rand_direc import AntRandDirecEnv
+from meta_mb.envs.mujoco_envs.ant_rand_direc_2d import AntRandDirec2DEnv
+from meta_mb.envs.mujoco_envs.ant_rand_goal import AntRandGoalEnv
+from meta_mb.envs.mujoco_envs.half_cheetah_rand_vel import HalfCheetahRandVelEnv
+from meta_mb.envs.mujoco_envs.swimmer_rand_vel import SwimmerRandVelEnv
+from meta_mb.envs.mujoco_envs.humanoid_rand_direc import HumanoidRandDirecEnv
+from meta_mb.envs.mujoco_envs.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
+from meta_mb.envs.mujoco_envs.walker2d_rand_direc import Walker2DRandDirecEnv
+from meta_mb.envs.mujoco_envs.walker2d_rand_vel import Walker2DRandVelEnv
+from meta_mb.envs.point_envs.point_env_2d_corner import MetaPointEnvCorner
+from meta_mb.envs.point_envs.point_env_2d_walls import MetaPointEnvWalls
+from meta_mb.envs.point_envs.point_env_2d_momentum import MetaPointEnvMomentum
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.meta_algos.trpo_maml import TRPOMAML
+from meta_mb.meta_trainer import Trainer
+from meta_mb.samplers.maml_sampler import MAMLSampler
+from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.logger import logger
+
+INSTANCE_TYPE = 'm4.4xlarge'
+EXP_NAME = 'def-def-maml-kate-deidre'
+
+def run_experiment(**kwargs):
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
+
+    # Instantiate classes
+    set_seed(kwargs['seed'])
+
+    baseline = kwargs['baseline']()
+
+    env = normalize(kwargs['env']()) # Wrappers?
+
+    policy = MetaGaussianMLPPolicy(
+        name="meta-policy",
+        obs_dim=np.prod(env.observation_space.shape),
+        action_dim=np.prod(env.action_space.shape),
+        meta_batch_size=kwargs['meta_batch_size'],
+        hidden_sizes=kwargs['hidden_sizes'],
+        learn_std=kwargs['learn_std'],
+        hidden_nonlinearity=kwargs['hidden_nonlinearity'],
+        output_nonlinearity=kwargs['output_nonlinearity'],
+    )
+
+    # Load policy here
+
+    sampler = MAMLSampler(
+        env=env,
+        policy=policy,
+        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+        meta_batch_size=kwargs['meta_batch_size'],
+        max_path_length=kwargs['max_path_length'],
+        parallel=kwargs['parallel'],
+    )
+
+    sample_processor = MAMLSampleProcessor(
+        baseline=baseline,
+        discount=kwargs['discount'],
+        gae_lambda=kwargs['gae_lambda'],
+        normalize_adv=kwargs['normalize_adv'],
+        positive_adv=kwargs['positive_adv'],
+    )
+
+    algo = TRPOMAML(
+        policy=policy,
+        step_size=kwargs['step_size'],
+        inner_type=kwargs['inner_type'],
+        inner_lr=kwargs['inner_lr'],
+        meta_batch_size=kwargs['meta_batch_size'],
+        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+        exploration=kwargs['exploration'],
+    )
+
+    trainer = Trainer(
+        algo=algo,
+        policy=policy,
+        env=env,
+        sampler=sampler,
+        sample_processor=sample_processor,
+        n_itr=kwargs['n_itr'],
+        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+    )
+
+    trainer.train()
+    # save_plots(policy, algo, sampler, sample_processor, dir=exp_dir)
+
+
+if __name__ == '__main__':    
+
+    sweep_params = {
+        'algo': ["MAML"],
+        'seed' : [1, 2, 3, 4, 5],
+
+        'baseline': [LinearFeatureBaseline],
+
+        'env': [HalfCheetahRandDirecEnv, HalfCheetahRandVelEnv, AntRandDirecEnv, AntRandGoalEnv],
+
+        'rollouts_per_meta_task': [20],
+        'max_path_length': [200],
+        'parallel': [True],
+
+        'discount': [0.99],
+        'gae_lambda': [1],
+        'normalize_adv': [True],
+        'positive_adv': [False],
+
+        'hidden_sizes': [(64, 64)],
+        'learn_std': [True],
+        'hidden_nonlinearity': [tf.tanh],
+        'output_nonlinearity': [None],
+
+        'inner_lr': [0.1],
+        'inner_type': ['likelihood_ratio'],
+        'step_size': [0.01],
+        'exploration': [False],
+
+        'n_itr': [501],
+        'meta_batch_size': [40],
+        'num_inner_grad_steps': [1],
+        'scope': [None],
+
+        'exp_tag': [''], # For changes besides hyperparams
+    }
+
+    run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
+
+
+# INSTANCE_TYPE = 'c4.4xlarge'
+# EXP_NAME = 'trpo-sawyer-4'
+
+# def run_experiment(**kwargs):
+#     exp_dir = os.getcwd() + '/data/' + EXP_NAME
+#     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+#     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
+
+#     # Instantiate classes
+#     set_seed(kwargs['seed'])
+
+#     baseline = kwargs['baseline']()
+
+#     env = normalize(kwargs['env']()) # Wrappers?
+
+#     policy = MetaGaussianMLPPolicy(
+#         name="meta-policy",
+#         obs_dim=np.prod(env.observation_space.shape), # Todo...?
+#         action_dim=np.prod(env.action_space.shape),
+#         meta_batch_size=kwargs['meta_batch_size'],
+#         hidden_sizes=kwargs['hidden_sizes'],
+#         learn_std=kwargs['learn_std'],
+#         hidden_nonlinearity=kwargs['hidden_nonlinearity'],
+#         output_nonlinearity=kwargs['output_nonlinearity'],
+#     )
+
+#     # Load policy here
+
+#     sampler = MAMLSampler(
+#         env=env,
+#         policy=policy,
+#         rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+#         meta_batch_size=kwargs['meta_batch_size'],
+#         max_path_length=kwargs['max_path_length'],
+#         parallel=kwargs['parallel'],
+#         envs_per_task=1,
+#     )
+
+#     sample_processor = MAMLSampleProcessor(
+#         baseline=baseline,
+#         discount=kwargs['discount'],
+#         gae_lambda=kwargs['gae_lambda'],
+#         normalize_adv=kwargs['normalize_adv'],
+#         positive_adv=kwargs['positive_adv'],
+#     )
+
+#     algo = TRPOMAML(
+#         policy=policy,
+#         step_size=kwargs['step_size'],
+#         inner_type=kwargs['inner_type'],
+#         inner_lr=kwargs['inner_lr'],
+#         meta_batch_size=kwargs['meta_batch_size'],
+#         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+#         exploration=kwargs['exploration'],
+#     )
+
+#     trainer = Trainer(
+#         algo=algo,
+#         policy=policy,
+#         env=env,
+#         sampler=sampler,
+#         sample_processor=sample_processor,
+#         n_itr=kwargs['n_itr'],
+#         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+#     )
+
+#     trainer.train()
+#     # save_plots(policy, algo, sampler, sample_processor, dir=exp_dir)
+
+# if __name__ == '__main__':    
+
+#     sweep_params = {    
+#         'seed' : [1, 2, 3],
+
+#         'baseline': [LinearFeatureBaseline],
+
+#         'env': [SawyerPushSimpleEnv],
+
+#         'rollouts_per_meta_task': [20, 40],
+#         'max_path_length': [150],
+#         'parallel': [True],
+
+#         'discount': [0.99],
+#         'gae_lambda': [1],
+#         'normalize_adv': [True],
+#         'positive_adv': [False],
+
+#         'hidden_sizes': [(128, 128)],
+#         'learn_std': [True],
+#         'hidden_nonlinearity': [tf.tanh],
+#         'output_nonlinearity': [None],
+
+#         'inner_lr': [0.05],
+#         'inner_type': ['likelihood_ratio'],
+#         'step_size': [0.01],
+#         'exploration': [False],
+
+#         'n_itr': [801],
+#         'meta_batch_size': [20],
+#         'num_inner_grad_steps': [1],
+#         'scope': [None],
+
+#         'exp_tag': ['1.0_Easy'], # For changes besides hyperparams
+#     }
+
+#     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

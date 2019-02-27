@@ -1,10 +1,10 @@
-from maml_zoo.baselines.linear_baseline import LinearFeatureBaseline
-from maml_zoo.meta_algos.ppo_maml import PPOMAML
-from maml_zoo.meta_trainer import Trainer
-from maml_zoo.samplers.maml_sampler import MAMLSampler
-from maml_zoo.samplers.maml_sample_processor import MAMLSampleProcessor
-from maml_zoo.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
-from maml_zoo.logger import logger
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.meta_algos.ppo_maml import PPOMAML
+from meta_mb.meta_trainer import Trainer
+from meta_mb.samplers.maml_sampler import MAMLSampler
+from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.logger import logger
 
 import tensorflow as tf
 import numpy as np

@@ -5,32 +5,32 @@ import sys
 import joblib
 import tensorflow as tf
 import time
-from maml_zoo.logger import logger
-from maml_zoo.envs.normalized_env import normalize
-from maml_zoo.envs.mujoco_envs.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
-from maml_zoo.envs.mujoco_envs.ant_rand_direc import AntRandDirecEnv
-from maml_zoo.envs.mujoco_envs.ant_rand_direc_2d import AntRandDirec2DEnv
-from maml_zoo.envs.mujoco_envs.ant_rand_goal import AntRandGoalEnv
-from maml_zoo.envs.mujoco_envs.half_cheetah_rand_vel import HalfCheetahRandVelEnv
-from maml_zoo.envs.mujoco_envs.swimmer_rand_vel import SwimmerRandVelEnv
-from maml_zoo.envs.mujoco_envs.humanoid_rand_direc import HumanoidRandDirecEnv
-from maml_zoo.envs.mujoco_envs.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
-from maml_zoo.envs.mujoco_envs.walker2d_rand_direc import Walker2DRandDirecEnv
-from maml_zoo.envs.mujoco_envs.walker2d_rand_vel import Walker2DRandVelEnv
-from maml_zoo.envs.point_envs.point_env_2d_corner import MetaPointEnvCorner
-from maml_zoo.envs.point_envs.point_env_2d_walls import MetaPointEnvWalls
-from maml_zoo.envs.point_envs.point_env_2d_momentum import MetaPointEnvMomentum
-from maml_zoo.envs.sawyer_envs.sawyer_pick_and_place import SawyerPickAndPlaceEnv
-from maml_zoo.envs.sawyer_envs.sawyer_push import SawyerPushEnv
-from maml_zoo.envs.sawyer_envs.sawyer_push_simple import SawyerPushSimpleEnv
+from meta_mb.logger import logger
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.envs.mujoco_envs.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
+from meta_mb.envs.mujoco_envs.ant_rand_direc import AntRandDirecEnv
+from meta_mb.envs.mujoco_envs.ant_rand_direc_2d import AntRandDirec2DEnv
+from meta_mb.envs.mujoco_envs.ant_rand_goal import AntRandGoalEnv
+from meta_mb.envs.mujoco_envs.half_cheetah_rand_vel import HalfCheetahRandVelEnv
+from meta_mb.envs.mujoco_envs.swimmer_rand_vel import SwimmerRandVelEnv
+from meta_mb.envs.mujoco_envs.humanoid_rand_direc import HumanoidRandDirecEnv
+from meta_mb.envs.mujoco_envs.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
+from meta_mb.envs.mujoco_envs.walker2d_rand_direc import Walker2DRandDirecEnv
+from meta_mb.envs.mujoco_envs.walker2d_rand_vel import Walker2DRandVelEnv
+from meta_mb.envs.point_envs.point_env_2d_corner import MetaPointEnvCorner
+from meta_mb.envs.point_envs.point_env_2d_walls import MetaPointEnvWalls
+from meta_mb.envs.point_envs.point_env_2d_momentum import MetaPointEnvMomentum
+from meta_mb.envs.sawyer_envs.sawyer_pick_and_place import SawyerPickAndPlaceEnv
+from meta_mb.envs.sawyer_envs.sawyer_push import SawyerPushEnv
+from meta_mb.envs.sawyer_envs.sawyer_push_simple import SawyerPushSimpleEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
-from maml_zoo.samplers.vectorized_env_executor import MAMLIterativeEnvExecutor
-from maml_zoo.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
-from maml_zoo.samplers.maml_sampler import MAMLSampler
-from maml_zoo.samplers.maml_sample_processor import MAMLSampleProcessor
-from maml_zoo.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
-from maml_zoo.meta_algos.vpg_maml import VPGMAML
+from meta_mb.samplers.vectorized_env_executor import MAMLIterativeEnvExecutor
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
+from meta_mb.samplers.maml_sampler import MAMLSampler
+from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.meta_algos.vpg_maml import VPGMAML
 
 BATCH_SIZE = 80
 META_BATCH_SIZE = 40
