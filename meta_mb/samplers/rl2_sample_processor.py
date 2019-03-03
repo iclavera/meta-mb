@@ -1,5 +1,6 @@
 from meta_mb.samplers.base import SampleProcessor
 import numpy as np
+import copy
 
 class RL2SampleProcessor(SampleProcessor):
 
@@ -29,15 +30,13 @@ class RL2SampleProcessor(SampleProcessor):
         for meta_task, paths in paths_meta_batch.items():
 
             # fits baseline, compute advantages and stack path data
-            samples_data, paths = self._compute_samples_data(paths)
-            # samples_data['extended_obs'] = np.concatenate([samples_data['observations'], samples_data['actions'],
-            #                                                samples_data['rewards'], samples_data['dones']], axis=-1)
+            samples_data, paths = self._compute_samples_data(paths) # TODO: Is RL^2 Optimizing for the N paths in a trial?
 
             samples_data_meta_batch.append(samples_data)
             all_paths.extend(paths)
 
         observations, actions, rewards, dones, returns, advantages, env_infos, agent_infos = \
-            self._stack_path_data(samples_data_meta_batch)
+            self._stack_path_data(copy.deepcopy(samples_data_meta_batch))
 
         overall_avg_reward = np.mean(np.concatenate([samples_data['rewards'] for samples_data in samples_data_meta_batch]))
         overall_avg_reward_std = np.std(np.concatenate([samples_data['rewards'] for samples_data in samples_data_meta_batch]))

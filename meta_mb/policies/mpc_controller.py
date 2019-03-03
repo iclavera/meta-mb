@@ -1,9 +1,8 @@
-from meta_mb.policies.base import Policy
 from meta_mb.utils.serializable import Serializable
 import numpy as np
 
 
-class MPCController(Policy, Serializable):
+class MPCController(Serializable):
     def __init__(
             self,
             name,
@@ -65,21 +64,21 @@ class MPCController(Policy, Serializable):
         return actions, dict()
 
     def get_random_action(self, n):
-        return np.random.uniform(low=self.action_space.low,
-                                 high=self.action_space.high, size=(n,) + self.action_space.low.shape)
+        return np.random.uniform(low=self.env.action_space.low,
+                                 high=self.env.action_space.high, size=(n,) + self.env.action_space.low.shape)
 
     def get_cem_action(self, observations):
 
         n = self.n_candidates
         m = len(observations)
         h = self.horizon
-        act_dim = self.action_space.shape[0]
+        act_dim = self.env.action_space.shape[0]
 
         num_elites = max(int(self.n_candidates * self.percent_elites), 1)
         mean = np.zeros((m, h * act_dim))
         std = np.ones((m, h * act_dim))
-        clip_low = np.concatenate([self.action_space.low] * h)
-        clip_high = np.concatenate([self.action_space.high] * h)
+        clip_low = np.concatenate([self.env.action_space.low] * h)
+        clip_high = np.concatenate([self.env.action_space.high] * h)
 
         for i in range(self.num_cem_iters):
             z = np.random.normal(size=(n, m,  h * act_dim))

@@ -38,8 +38,7 @@ class TRPO(Algo):
 
         self.optimizer = ConjugateGradientOptimizer()
 
-        with tf.variable_scope(self.name):
-            self.build_graph()
+        self.build_graph()
 
     def build_graph(self):
         """

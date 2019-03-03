@@ -1,9 +1,10 @@
 from meta_mb.utils import utils
 from meta_mb.logger import logger
 import numpy as np
+import copy
 
 
-class Sampler(object):
+class BaseSampler(object):
     """
     Sampler interface
 
@@ -112,7 +113,7 @@ class SampleProcessor(object):
         paths = self._compute_advantages(paths, all_path_baselines)
 
         # 4) stack path data
-        observations, actions, rewards, dones, returns, advantages, env_infos, agent_infos = self._concatenate_path_data(paths)
+        observations, actions, rewards, dones, returns, advantages, env_infos, agent_infos = self._concatenate_path_data(copy.deepcopy(paths))
 
         # 5) if desired normalize / shift advantages
         if self.normalize_adv:

@@ -4,7 +4,7 @@ from multiprocessing import Process, Pipe
 import copy
 
 
-class IterativeEnvExecutor(object):
+class MetaIterativeEnvExecutor(object):
     """
     Wraps multiple environments of the same kind and provides functionality to reset / step the environments
     in a vectorized manner. Internally, the environments are executed iteratively.
@@ -17,9 +17,8 @@ class IterativeEnvExecutor(object):
                                the respective environment is reset
     """
 
-    def __init__(self, env, num_rollouts, max_path_length):
-        self._num_envs = min(100, num_rollouts)
-        self.envs = np.asarray([copy.deepcopy(env) for _ in range(self._num_envs)])
+    def __init__(self, env, meta_batch_size, envs_per_task, max_path_length):
+        self.envs = np.asarray([copy.deepcopy(env) for _ in range(meta_batch_size * envs_per_task)])
         self.ts = np.zeros(len(self.envs), dtype='int')  # time steps
         self.max_path_length = max_path_length
 
@@ -52,6 +51,18 @@ class IterativeEnvExecutor(object):
 
         return obs, rewards, dones, env_infos
 
+    def set_tasks(self, tasks):
+        """
+        Sets a list of tasks to each environment
+
+        Args:
+            tasks (list): list of the tasks for each environment
+        """
+        envs_per_task = np.split(self.envs, len(tasks))
+        for task, envs in zip(tasks, envs_per_task):
+            for env in envs:
+                env.set_task(task)
+
     def reset(self):
         """
         Resets the environments
@@ -71,10 +82,10 @@ class IterativeEnvExecutor(object):
         Returns:
             (int): number of environments
         """
-        return self._num_envs
+        return len(self.envs)
 
 
-class ParallelEnvExecutor(object):
+class MetaParallelEnvExecutor(object):
     """
     Wraps multiple environments of the same kind and provides functionality to reset / step the environments
     in a vectorized manner. Thereby the environments are distributed among meta_batch_size processes and
@@ -88,15 +99,15 @@ class ParallelEnvExecutor(object):
                              the respective environment is reset
     """
 
-    def __init__(self, env, n_parallel, num_rollouts, max_path_length):
-        self.envs_per_proc = int(np.ceil(num_rollouts/n_parallel))
-        self._num_envs = n_parallel * self.envs_per_proc
-        self.n_parallel = n_parallel
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
-        seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
+    def __init__(self, env, meta_batch_size, envs_per_task, max_path_length):
+        self.n_envs = meta_batch_size * envs_per_task
+        self.meta_batch_size = meta_batch_size
+        self.envs_per_task = envs_per_task
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(meta_batch_size)])
+        seeds = np.random.choice(range(10**6), size=meta_batch_size, replace=False)
 
         self.ps = [
-            Process(target=worker, args=(work_remote, remote, pickle.dumps(env), self.envs_per_proc, max_path_length, seed))
+            Process(target=worker, args=(work_remote, remote, pickle.dumps(env), envs_per_task, max_path_length, seed))
             for (work_remote, remote, seed) in zip(self.work_remotes, self.remotes, seeds)]  # Why pass work remotes?
 
         for p in self.ps:
@@ -120,7 +131,7 @@ class ParallelEnvExecutor(object):
 
         # split list of actions in list of list of actions per meta tasks
         chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
-        actions_per_meta_task = chunks(actions, self.envs_per_proc)
+        actions_per_meta_task = chunks(actions, self.envs_per_task)
 
         # step remote environments
         for remote, action_list in zip(self.remotes, actions_per_meta_task):
@@ -163,7 +174,7 @@ class ParallelEnvExecutor(object):
         Returns:
             (int): number of environments
         """
-        return self._num_envs
+        return self.n_envs
 
 
 def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):

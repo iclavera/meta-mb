@@ -1,10 +1,9 @@
-from meta_mb.policies.base import Policy
 from meta_mb.utils.serializable import Serializable
 import numpy as np
 import tensorflow as tf
 
 
-class RNNMPCController(Policy, Serializable):
+class RNNMPCController(Serializable):
     def __init__(
             self,
             name,
@@ -40,7 +39,6 @@ class RNNMPCController(Policy, Serializable):
             assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         Serializable.quick_init(self, locals())
-        super(RNNMPCController, self).__init__(env=env)
 
     @property
     def vectorized(self):

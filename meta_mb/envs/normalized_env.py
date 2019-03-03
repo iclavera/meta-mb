@@ -41,7 +41,7 @@ class NormalizedEnv(Serializable):
                  normalize_reward=False,
                  obs_alpha=0.001,
                  reward_alpha=0.001,
-                 normalization_scale=10.,
+                 normalization_scale=1.,
                  ):
         Serializable.quick_init(self, locals())
 

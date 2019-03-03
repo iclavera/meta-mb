@@ -1,0 +1,169 @@
+import os
+import json
+import tensorflow as tf
+import numpy as np
+from experiment_utils.run_sweep import run_sweep
+from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.meta_algos.trpo_maml import TRPOMAML
+from meta_mb.trainers.mbmpo_trainer import Trainer
+from meta_mb.samplers.meta_samplers import MAMLSampler
+from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
+from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.logger import logger
+
+INSTANCE_TYPE = 'm4.4xlarge'
+EXP_NAME = 'mb-mpo'
+
+def run_experiment(**kwargs):
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
+
+    # Instantiate classes
+    set_seed(kwargs['seed'])
+
+    baseline = kwargs['baseline']()
+
+    env = normalize(kwargs['env']()) # Wrappers?
+
+    policy = MetaGaussianMLPPolicy(
+        name="meta-policy",
+        obs_dim=np.prod(env.observation_space.shape),
+        action_dim=np.prod(env.action_space.shape),
+        meta_batch_size=kwargs['meta_batch_size'],
+        hidden_sizes=kwargs['policy_hidden_sizes'],
+        learn_std=kwargs['policy_learn_std'],
+        hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+        output_nonlinearity=kwargs['policy_output_nonlinearity'],
+    )
+
+    dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                         env=env,
+                                         num_models=kwargs['num_models'],
+                                         hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                         hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                         output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                         learning_rate=kwargs['dynamics_learning_rate']
+
+                                         )
+    assert kwargs['real_env_rollouts'] % kwargs['meta_batch_size'] == 0
+    env_sampler = MAMLSampler(
+        env=env,
+        policy=policy,
+        rollouts_per_meta_task=int(kwargs['real_env_rollouts']/kwargs['meta_batch_size']),
+        meta_batch_size=kwargs['meta_batch_size'],
+        max_path_length=kwargs['max_path_length'],
+        parallel=kwargs['parallel'],
+    )
+
+    model_sampler = MBMPOSampler(
+        env=env,
+        policy=policy,
+        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+        meta_batch_size=kwargs['meta_batch_size'],
+        max_path_length=kwargs['max_path_length'],
+        dynamics_model=dynamics_model,
+    )
+
+    dynamics_sample_processor = ModelSampleProcessor(
+        baseline=baseline,
+        discount=kwargs['discount'],
+        gae_lambda=kwargs['gae_lambda'],
+        normalize_adv=kwargs['normalize_adv'],
+        positive_adv=kwargs['positive_adv'],
+    )
+
+    model_sample_processor = MAMLSampleProcessor(
+        baseline=baseline,
+        discount=kwargs['discount'],
+        gae_lambda=kwargs['gae_lambda'],
+        normalize_adv=kwargs['normalize_adv'],
+        positive_adv=kwargs['positive_adv'],
+    )
+
+    algo = kwargs['algo'](
+        policy=policy,
+        step_size=kwargs['step_size'],
+        inner_type=kwargs['inner_type'],
+        inner_lr=kwargs['inner_lr'],
+        meta_batch_size=kwargs['meta_batch_size'],
+        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+        exploration=kwargs['exploration'],
+    )
+
+    trainer = Trainer(
+        algo=algo,
+        policy=policy,
+        env=env,
+        model_sampler=model_sampler,
+        env_sampler=env_sampler,
+        model_sample_processor=model_sample_processor,
+        dynamics_sample_processor=dynamics_sample_processor,
+        dynamics_model=dynamics_model,
+        n_itr=kwargs['n_itr'],
+        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+        dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
+        log_real_performance=kwargs['log_real_performance'],
+    )
+
+    trainer.train()
+
+
+if __name__ == '__main__':
+
+    sweep_params = {
+        'seed': [1, 2, 3, 4, 5],
+
+        'algo': [TRPOMAML],
+        'baseline': [LinearFeatureBaseline],
+        'env': [HalfCheetahEnv],
+
+        # Problem Conf
+        'n_itr': [101],
+        'max_path_length': [20],
+        'discount': [0.99],
+        'gae_lambda': [1],
+        'normalize_adv': [True],
+        'positive_adv': [False],
+        'log_real_performance': [True],
+
+        # Real Env Sampling
+        'real_env_rollouts': [20], # Note: real_env_rollouts has to be a multiple of meta_batch_size
+        'parallel': [True],
+
+        # Dynamics Model
+        'num_models': [5],
+        'dynamics_hidden_sizes': [(256, 256)],
+        'dyanmics_hidden_nonlinearity': ['swish'],
+        'dyanmics_output_nonlinearity': [None],
+        'dynamics_max_epochs': [500],
+        'dynamics_learning_rate': [1e-3],
+
+
+        # Policy
+        'policy_hidden_sizes': [(64, 64)],
+        'policy_learn_std': [True],
+        'policy_hidden_nonlinearity': [tf.tanh],
+        'policy_output_nonlinearity': [None],
+
+        # Meta-Algo
+        'meta_batch_size': [20],
+        'rollouts_per_meta_task': [40],
+        'num_inner_grad_steps': [1],
+        'inner_lr': [0.1],
+        'inner_type': ['likelihood_ratio'],
+        'step_size': [0.01],
+        'exploration': [False],
+
+        'scope': [None],
+        'exp_tag': [''], # For changes besides hyperparams
+    }
+
+    run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
+

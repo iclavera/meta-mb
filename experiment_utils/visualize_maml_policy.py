@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import sys
 import joblib
@@ -7,29 +6,10 @@ import tensorflow as tf
 import time
 from meta_mb.logger import logger
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.envs.mujoco_envs.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
-from meta_mb.envs.mujoco_envs.ant_rand_direc import AntRandDirecEnv
-from meta_mb.envs.mujoco_envs.ant_rand_direc_2d import AntRandDirec2DEnv
-from meta_mb.envs.mujoco_envs.ant_rand_goal import AntRandGoalEnv
-from meta_mb.envs.mujoco_envs.half_cheetah_rand_vel import HalfCheetahRandVelEnv
-from meta_mb.envs.mujoco_envs.swimmer_rand_vel import SwimmerRandVelEnv
-from meta_mb.envs.mujoco_envs.humanoid_rand_direc import HumanoidRandDirecEnv
-from meta_mb.envs.mujoco_envs.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
-from meta_mb.envs.mujoco_envs.walker2d_rand_direc import Walker2DRandDirecEnv
-from meta_mb.envs.mujoco_envs.walker2d_rand_vel import Walker2DRandVelEnv
-from meta_mb.envs.point_envs.point_env_2d_corner import MetaPointEnvCorner
-from meta_mb.envs.point_envs.point_env_2d_walls import MetaPointEnvWalls
-from meta_mb.envs.point_envs.point_env_2d_momentum import MetaPointEnvMomentum
-from meta_mb.envs.sawyer_envs.sawyer_pick_and_place import SawyerPickAndPlaceEnv
-from meta_mb.envs.sawyer_envs.sawyer_push import SawyerPushEnv
-from meta_mb.envs.sawyer_envs.sawyer_push_simple import SawyerPushSimpleEnv
-from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
-from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
-from meta_mb.samplers.vectorized_env_executor import MAMLIterativeEnvExecutor
-from meta_mb.baselines.linear_baseline import LinearFeatureBaseline, LinearTimeBaseline
-from meta_mb.samplers.maml_sampler import MAMLSampler
+from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.samplers.meta_samplers import MAMLSampler
 from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.meta_algos.vpg_maml import VPGMAML
 
 BATCH_SIZE = 80

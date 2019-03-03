@@ -42,8 +42,7 @@ class PPO(Algo):
         self.name = name
         self._clip_eps = clip_eps
 
-        with tf.variable_scope(self.name):
-            self.build_graph()
+        self.build_graph()
 
     def build_graph(self):
         """
