@@ -16,7 +16,7 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'm4.4xlarge'
-EXP_NAME = 'promp-fix'
+EXP_NAME = 'promp'
 
 
 def run_experiment(**kwargs):
@@ -33,7 +33,7 @@ def run_experiment(**kwargs):
 
     policy = MetaGaussianMLPPolicy(
         name="meta-policy",
-        obs_dim=np.prod(env.observation_space.shape), # Todo...?
+        obs_dim=np.prod(env.observation_space.shape),
         action_dim=np.prod(env.action_space.shape),
         meta_batch_size=kwargs['meta_batch_size'],
         hidden_sizes=kwargs['hidden_sizes'],
@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [AntRandDirecEnv],
+        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         'anneal_factor': [1.0],
 
         'n_itr': [301],
-        'meta_batch_size': [20],
+        'meta_batch_size': [40],
         'num_inner_grad_steps': [1],
         'scope': [None],
 

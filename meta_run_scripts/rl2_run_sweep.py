@@ -16,7 +16,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 
 INSTANCE_TYPE = 'm4.4xlarge'
-EXP_NAME = 'rl2-fix'
+EXP_NAME = 'rl2'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -78,8 +78,8 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [AntRandDirecEnv],
-        'meta_batch_size': [100],
+        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv],
+        'meta_batch_size': [200],
         "hidden_sizes": [(64,)],
         "rollouts_per_meta_task": [2],
         "parallel": [True],

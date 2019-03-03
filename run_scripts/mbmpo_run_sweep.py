@@ -9,7 +9,7 @@ from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_samplers import MAMLSampler
+from meta_mb.samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
@@ -53,7 +53,7 @@ def run_experiment(**kwargs):
 
                                          )
     assert kwargs['real_env_rollouts'] % kwargs['meta_batch_size'] == 0
-    env_sampler = MAMLSampler(
+    env_sampler = MetaSampler(
         env=env,
         policy=policy,
         rollouts_per_meta_task=int(kwargs['real_env_rollouts']/kwargs['meta_batch_size']),
@@ -87,7 +87,7 @@ def run_experiment(**kwargs):
         positive_adv=kwargs['positive_adv'],
     )
 
-    algo = kwargs['algo'](
+    algo = TRPOMAML(
         policy=policy,
         step_size=kwargs['step_size'],
         inner_type=kwargs['inner_type'],
@@ -118,15 +118,15 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4, 5],
+        'seed': [1, 2, 3],
 
-        'algo': [TRPOMAML],
+        'algo': ['MBMPO'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Problem Conf
         'n_itr': [101],
-        'max_path_length': [20],
+        'max_path_length': [100, 200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         'log_real_performance': [True],
 
         # Real Env Sampling
-        'real_env_rollouts': [20], # Note: real_env_rollouts has to be a multiple of meta_batch_size
+        'real_env_rollouts': [10], # Note: real_env_rollouts has to be a multiple of meta_batch_size
         'parallel': [True],
 
         # Dynamics Model
@@ -142,7 +142,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(256, 256)],
         'dyanmics_hidden_nonlinearity': ['swish'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [500],
+        'dynamics_max_epochs': [200, 500],
         'dynamics_learning_rate': [1e-3],
 
 
@@ -153,8 +153,8 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [20],
-        'rollouts_per_meta_task': [40],
+        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [80],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.1],
         'inner_type': ['likelihood_ratio'],
