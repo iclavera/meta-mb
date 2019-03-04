@@ -1,6 +1,10 @@
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
+from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
+from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
+from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
+from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
@@ -15,8 +19,8 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 
-INSTANCE_TYPE = 'm4.4xlarge'
-EXP_NAME = 'rl2'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'rl2-kate'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -57,7 +61,8 @@ def run_experiment(**config):
     algo = PPO(
         policy=policy,
         learning_rate=config['learning_rate'],
-        max_epochs=config['max_epochs']
+        max_epochs=config['max_epochs'],
+        backprop_steps=config['backprop_steps'],
     )
 
     trainer = Trainer(
@@ -74,13 +79,15 @@ def run_experiment(**config):
 if __name__ == '__main__':
 
     sweep_params = {
-        'algo': ['RL2'],
+        'algo': ['rl2'],
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv],
-        'meta_batch_size': [200],
-        "hidden_sizes": [(64,)],
+        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv, HopperRandParamsEnv,
+                Walker2DRandParamsEnv, HalfCheetahRandVelEnv, HumanoidRandDirecEnv],
+        'meta_batch_size': [100],
+        "hidden_sizes": [(32,), (64,), (128,)],
+        'backprop_steps': [50, 100, 200],
         "rollouts_per_meta_task": [2],
         "parallel": [True],
         "max_path_length": [200],
@@ -88,11 +95,11 @@ if __name__ == '__main__':
         "gae_lambda": [1.0],
         "normalize_adv": [True],
         "positive_adv": [False],
-        "learning_rate": [1e-3],
+        "learning_rate": [1e-2, 1e-3],
         "max_epochs": [5],
         "cell_type": ["lstm"],
         "num_minibatches": [1],
-        "n_itr": [301],
+        "n_itr": [1001],
         'exp_tag': ['v0']
     }
 

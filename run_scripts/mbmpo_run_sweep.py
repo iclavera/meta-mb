@@ -17,8 +17,9 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'm4.4xlarge'
-EXP_NAME = 'mb-mpo'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'mb-mpo-2'
+
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -49,14 +50,14 @@ def run_experiment(**kwargs):
                                          hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
                                          hidden_sizes=kwargs['dynamics_hidden_sizes'],
                                          output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                         learning_rate=kwargs['dynamics_learning_rate']
+                                         learning_rate=kwargs['dynamics_learning_rate'],
+                                         batch_size=kwargs['dynamics_batch_size'],
 
                                          )
-    assert kwargs['real_env_rollouts'] % kwargs['meta_batch_size'] == 0
     env_sampler = MetaSampler(
         env=env,
         policy=policy,
-        rollouts_per_meta_task=int(kwargs['real_env_rollouts']/kwargs['meta_batch_size']),
+        rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
         meta_batch_size=kwargs['meta_batch_size'],
         max_path_length=kwargs['max_path_length'],
         parallel=kwargs['parallel'],
@@ -126,7 +127,7 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [101],
-        'max_path_length': [100, 200],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -134,30 +135,31 @@ if __name__ == '__main__':
         'log_real_performance': [True],
 
         # Real Env Sampling
-        'real_env_rollouts': [10], # Note: real_env_rollouts has to be a multiple of meta_batch_size
+        'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(256, 256)],
-        'dyanmics_hidden_nonlinearity': ['swish'],
+        'dynamics_hidden_sizes': [(256, 256), (512, 512)],
+        'dyanmics_hidden_nonlinearity': ['relu', 'swish'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [200, 500],
         'dynamics_learning_rate': [1e-3],
+        'dynamics_batch_size': [500],
 
 
         # Policy
-        'policy_hidden_sizes': [(64, 64)],
+        'policy_hidden_sizes': [(32, 32)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [80],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.1],
-        'inner_type': ['likelihood_ratio'],
+        'inner_lr': [0.001],
+        'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
 

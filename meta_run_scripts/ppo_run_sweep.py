@@ -7,6 +7,10 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
+from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
+from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
+from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
+from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.ppo_maml import PPOMAML
 from meta_mb.trainers.meta_trainer import Trainer
@@ -15,8 +19,8 @@ from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'm4.4xlarge'
-EXP_NAME = 'promp'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'promp-kate'
 
 
 def run_experiment(**kwargs):
@@ -95,12 +99,13 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'algo': ['ProMP'],
+        'algo': ['promp'],
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv],
+        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv, HopperRandParamsEnv,
+                Walker2DRandParamsEnv, HalfCheetahRandVelEnv, HumanoidRandDirecEnv],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],
@@ -130,8 +135,8 @@ if __name__ == '__main__':
         'adaptive_inner_kl_penalty': [False],
         'anneal_factor': [1.0],
 
-        'n_itr': [301],
-        'meta_batch_size': [40],
+        'n_itr': [1001],
+        'meta_batch_size': [20],
         'num_inner_grad_steps': [1],
         'scope': [None],
 
