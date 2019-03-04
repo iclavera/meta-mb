@@ -1,15 +1,7 @@
 [![Build Status](https://api.travis-ci.com/jonasrothfuss/ProMP.svg?branch=master)](https://travis-ci.com/jonasrothfuss/ProMP)
 [![Docs](https://readthedocs.org/projects/promp/badge/?version=latest)](https://promp.readthedocs.io)
 
-# ProMP: Proximal Meta-Policy Search
-Implementations corresponding to ProMP ([Rothfuss et al., 2018](https://arxiv.org/abs/1810.06784)). 
-Overall this repository consists of two branches:
-
-1) master: lightweight branch that provides the necessary code to run Meta-RL algorithms such as ProMP, E-MAML, MAML.
-            This branch is meant to provide an easy start with Meta-RL and can be integrated into other projects and setups.
-2) full-code: branch that provides the comprehensive code that was used to produce the experimental results in [Rothfuss et al. (2018)](https://arxiv.org/abs/1810.06784).
-              This includes experiment scripts and plotting scripts that can be used to reproduce the experimental results in the paper.
-              
+# meta-mb
 The code is written in Python 3 and builds on [Tensorflow](https://www.tensorflow.org/). 
 Many of the provided reinforcement learning environments require the [Mujoco](http://www.mujoco.org/) physics engine.
 Overall the code was developed under consideration of modularity and computational efficiency.
@@ -37,10 +29,10 @@ your local machine. The latter requires multiple installation steps in order to 
 
 ### A. Docker
 If not installed yet, [set up](https://docs.docker.com/install/) docker on your machine.
-Pull our docker container ``jonasrothfuss/promp`` from docker-hub:
+Pull our docker container ``iclavera/meta-mb`` from docker-hub:
 
 ```
-docker pull jonasrothfuss/promp
+docker pull iclavera/meta-mb
 ```
 
 All the necessary dependencies are already installed inside the docker container.
@@ -101,7 +93,7 @@ aws configure
 Clone the doodad repository 
 
 ```
-git clone https://github.com/jonasrothfuss/doodad.git
+git clone https://github.com/justinjfu/doodad.git
 ```
 
 Install the extra package requirements for doodad
@@ -119,33 +111,19 @@ python scripts/setup_ec2.py
 
 Set S3_BUCKET_NAME in experiment_utils/config.py to your bucket name
 
-## Running ProMP
-In order to run the ProMP algorithm point environment (no Mujoco needed) with default configurations execute:
-```
-python run_scripts/pro-mp_run_point_mass.py 
-```
-
-To run the ProMP algorithm in a Mujoco environment with default configurations:
-```
-python run_scripts/pro-mp_run_mujoco.py 
-```
-
-The run configuration can be change either in the run script directly or by providing a JSON configuration file with all
-the necessary hyperparameters. A JSON configuration file can be provided through the flag. Additionally the dump path 
-can be specified through the dump_path flag:
-
-```
-python run_scripts/pro-mp_run.py --config_file <config_file_path> --dump_path <dump_path>
-```
-
-Additionally, in order to run the the gradient-based meta-learning methods MAML and E-MAML ([Finn et. al., 2017](https://arxiv.org/abs/1703.03400) and
-[Stadie et. al., 2018](https://arxiv.org/abs/1803.01118)) in a Mujoco environment with the default configuration 
-execute, respectively:
-```
-python run_scripts/maml_run_mujoco.py 
-python run_scripts/e-maml_run_mujoco.py 
-```
+## TODO:
+Add all the existing algorithms and the run scripts
+* MB-MPC (CEM and RS)
+* MB-MPO
+* ME-TRPO
+* RL^2
+* MAML
+* ProMP
+* E-MAML
+* VPG
+* PPO
+* TRPO
 
 ## Acknowledgements
 This repository includes environments introduced in ([Duan et al., 2016](https://arxiv.org/abs/1611.02779), 
-[Finn et al., 2017](https://arxiv.org/abs/1703.03400)).
+[Finn et al., 2017](https://arxiv.org/abs/1703.03400)). This repository is based on ([Promp](https://github.com/jonasrothfuss/ProMP)).

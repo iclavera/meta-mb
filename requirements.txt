@@ -8,7 +8,7 @@ Pillow
 moviepy
 mpi4py
 click
-tensorflow>=1.4.0
+tensorflow==1.4.0
 cloudpickle
 matplotlib
 git+https://github.com/dennisl88/rand_param_envs.git
