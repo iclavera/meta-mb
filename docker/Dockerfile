@@ -9,7 +9,7 @@ RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh && \
     wget  --no-check-certificate --quiet https://repo.continuum.io/archive/Anaconda2-2.5.0-Linux-x86_64.sh && \
     /bin/bash /Anaconda2-2.5.0-Linux-x86_64.sh -b -p /opt/conda && \
     rm /Anaconda2-2.5.0-Linux-x86_64.sh
-
+RUN sed -i~orig -e 's/# deb-src/deb-src/' /etc/apt/sources.list && apt-get update --fix-missing
 RUN apt-get install -y curl grep sed dpkg && \
     TINI_VERSION=`curl https://github.com/krallin/tini/releases/latest | grep -o "/v.*\"" | sed 's:^..\(.*\).$:\1:'` && \
     curl -L "https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini_${TINI_VERSION}.deb" > tini.deb && \
@@ -66,10 +66,10 @@ CMD mkdir /root/code
 ADD environment.yml /root/code/environment.yml
 RUN conda env create -f /root/code/environment.yml
 
-ENV PYTHONPATH /root/code/maml_zoo:$PYTHONPATH
+ENV PYTHONPATH /root/code/meta_mb:$PYTHONPATH
 ENV LD_LIBRARY_PATH /root/.mujoco/mjpro150/bin:$LD_LIBRARY_PATH
-ENV PATH /opt/conda/envs/maml_zoo/bin:$PATH
-RUN echo "source activate maml_zoo" >> /root/.bashrc
+ENV PATH /opt/conda/envs/meta_mb/bin:$PATH
+RUN echo "source activate meta_mb" >> /root/.bashrc
 ENV BASH_ENV /root/.bashrc
 WORKDIR /root/code
 
