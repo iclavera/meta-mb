@@ -24,18 +24,20 @@ class PPO(Algo):
     """
     def __init__(
             self,
-            *args,
+            policy,
             name="ppo",
             learning_rate=1e-3,
             clip_eps=0.2,
             max_epochs=5,
             **kwargs
             ):
-        super(PPO, self).__init__(*args, **kwargs)
+        super(PPO, self).__init__(policy)
 
         self.recurrent = getattr(self.policy, 'recurrent', False)
         if self.recurrent:
-            self.optimizer = RL2FirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs)
+            backprop_steps = kwargs.get('backprop_steps', 32)
+            self.optimizer = RL2FirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs,
+                                                    backprop_steps=backprop_steps)
         else:
             self.optimizer = MAMLFirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs)
         self._optimization_keys = ['observations', 'actions', 'advantages', 'agent_infos']

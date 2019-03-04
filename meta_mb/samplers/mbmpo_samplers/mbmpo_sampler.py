@@ -15,8 +15,8 @@ class MBMPOSampler(BaseSampler):
     Sampler for Meta-RL
 
     Args:
-        env (maml_zoo.meta_envs.base.MetaEnv) : environment object
-        policy (maml_zoo.policies.base.Policy) : policy object
+        env (meta_mb.meta_envs.base.MetaEnv) : environment object
+        policy (meta_mb.policies.base.Policy) : policy object
         batch_size (int) : number of trajectories per task
         meta_batch_size (int) : number of meta tasks
         max_path_length (int) : max number of steps per trajectory

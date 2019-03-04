@@ -1,7 +1,6 @@
-import numpy as np
-from mb_vision.utils.serializable import Serializable
-from mb_vision.utils.utils import remove_scope_from_name
-from mb_vision.core_ignasi.utils import *
+from meta_mb.utils.serializable import Serializable
+from meta_mb.utils.utils import remove_scope_from_name
+from meta_mb.dynamics.utils import *
 import tensorflow as tf
 from collections import OrderedDict
 

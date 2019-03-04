@@ -1,31 +1,14 @@
 import numpy as np
-from meta_mb.meta_envs.base import MetaEnv
 from meta_mb.logger import logger
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
+from meta_mb.meta_envs.base import MetaEnv
 
 
 class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
         MujocoEnv.__init__(self, 'half_cheetah.xml', 5)
         gym.utils.EzPickle.__init__(self)
-
-    def sample_tasks(self, n_tasks):
-        return [None] * n_tasks
-
-    def set_task(self, task):
-        """
-        Args:
-            task: task of the meta-learning environment
-        """
-        pass
-
-    def get_task(self):
-        """
-        Returns:
-            task: task of the meta-learning environment
-        """
-        return None
 
     def step(self, action):
         xposbefore = self.sim.data.qpos[0]

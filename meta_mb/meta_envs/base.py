@@ -14,7 +14,8 @@ class MetaEnv(Env):
         Returns:
             tasks (list) : an (n_tasks) length list of tasks
         """
-        raise NotImplementedError
+        pass
+        # raise NotImplementedError
 
     def set_task(self, task):
         """
@@ -23,7 +24,8 @@ class MetaEnv(Env):
         Args:
             task: task of the meta-learning environment
         """
-        raise NotImplementedError
+        pass
+        # raise NotImplementedError
 
     def get_task(self):
         """
@@ -32,7 +34,8 @@ class MetaEnv(Env):
         Returns:
             task: task of the meta-learning environment
         """
-        raise NotImplementedError
+        pass
+        # raise NotImplementedError
 
     def log_diagnostics(self, paths, prefix):
         """

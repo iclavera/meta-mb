@@ -7,7 +7,7 @@ class MBMPOIterativeEnvExecutor(object):
     in a vectorized manner. Internally, the environments are executed iteratively.
 
     Args:
-        env (maml_zoo.meta_envs.base.MetaEnv): meta environment object
+        env (meta_mb.meta_envs.base.MetaEnv): meta environment object
         meta_batch_size (int): number of meta tasks
         envs_per_task (int): number of environments per meta task
         max_path_length (int): maximum length of sampled environment paths - if the max_path_length is reached,

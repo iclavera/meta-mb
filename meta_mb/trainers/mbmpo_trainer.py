@@ -111,7 +111,7 @@ class Trainer(object):
                 self.dynamics_model.fit(samples_data['observations'],
                                         samples_data['actions'],
                                         samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+                                        epochs=self.dynamics_model_max_epochs, verbose=True, log_tabular=True)
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 

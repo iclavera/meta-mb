@@ -1,4 +1,4 @@
-# from mb_vision.core import MLP
+# from meta_mb.core import MLP
 from meta_mb.dynamics.layers import MLP
 import tensorflow as tf
 import numpy as np

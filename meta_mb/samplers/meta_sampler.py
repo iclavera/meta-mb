@@ -15,7 +15,7 @@ class MetaSampler(BaseSampler):
     Sampler for Meta-RL
 
     Args:
-        env (maml_zoo.meta_envs.base.MetaEnv) : environment object
+        env (meta_mb.meta_envs.base.MetaEnv) : environment object
         policy (maml_zoo.policies.base.Policy) : policy object
         batch_size (int) : number of trajectories per task
         meta_batch_size (int) : number of meta tasks
