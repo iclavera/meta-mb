@@ -6,6 +6,6 @@ DOCKER_MOUNT_DIR = '/root/code/data'
 
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
-DOCKER_IMAGE = 'jonasrothfuss/promp'
+DOCKER_IMAGE = 'iclavera/meta-mb'
 
-S3_BUCKET_NAME = 'maml-zoo-experiments'
+S3_BUCKET_NAME = 'iclavera-doodad'
