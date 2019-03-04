@@ -1,16 +1,15 @@
-.. maml-zoo documentation master file, created by
-   sphinx-quickstart on Mon Aug 13 09:57:59 2018.
+.. meta-mb documentation master file, created by
+   sphinx-quickstart on Mon Mar  4 14:04:43 2019.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to maml-zoo's documentation!
-====================================
+Welcome to meta-mb's documentation!
+===================================
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
    :caption: Contents:
 
-   modules/maml_zoo.rst
 
 
 Indices and tables
@@ -18,3 +17,4 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`modindex`
+* :ref:`search`
