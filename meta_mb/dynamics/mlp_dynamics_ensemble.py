@@ -27,6 +27,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  optimizer=tf.train.AdamOptimizer,
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
+                 buffer_size=50000,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -38,6 +39,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         self.valid_split_ratio = valid_split_ratio
         self.rolling_average_persitency = rolling_average_persitency
 
+        self.buffer_size = buffer_size
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.num_models = num_models
@@ -190,15 +192,24 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
             self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
         else:
+            n_test_new_samples = len(obs_test_batches[0])
+            n_max_test = self.buffer_size - n_test_new_samples
+            n_train_new_samples = len(obs_train_batches[0])
+            n_max_train = self.buffer_size - n_train_new_samples
             for i in range(self.num_models):
-                self._dataset_test['obs'][i] = np.concatenate([self._dataset_test['obs'][i], obs_test_batches[i]])
-                self._dataset_test['act'][i] = np.concatenate([self._dataset_test['act'][i], act_test_batches[i]])
-                self._dataset_test['delta'][i] = np.concatenate([self._dataset_test['delta'][i], delta_test_batches[i]])
+                self._dataset_test['obs'][i] = np.concatenate([self._dataset_test['obs'][i][-n_max_test:],
+                                                               obs_test_batches[i]])
+                self._dataset_test['act'][i] = np.concatenate([self._dataset_test['act'][i][-n_max_test:],
+                                                               act_test_batches[i]])
+                self._dataset_test['delta'][i] = np.concatenate([self._dataset_test['delta'][i][-n_max_test:],
+                                                                 delta_test_batches[i]])
 
-                self._dataset_train['obs'][i] = np.concatenate([self._dataset_train['obs'][i], obs_train_batches[i]])
-                self._dataset_train['act'][i] = np.concatenate([self._dataset_train['act'][i], act_train_batches[i]])
+                self._dataset_train['obs'][i] = np.concatenate([self._dataset_train['obs'][i][-n_max_train:],
+                                                                obs_train_batches[i]])
+                self._dataset_train['act'][i] = np.concatenate([self._dataset_train['act'][i][-n_max_train:],
+                                                                act_train_batches[i]])
                 self._dataset_train['delta'][i] = np.concatenate(
-                    [self._dataset_train['delta'][i], delta_train_batches[i]])
+                    [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
         if self.next_batch is None:
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
@@ -328,6 +339,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         assert delta.ndim == 3
 
+        delta = np.clip(delta, -1e3, 1e3)
+
         pred_obs = obs_original[:, :, None] + delta
 
         batch_size = delta.shape[0]
@@ -366,6 +379,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         assert delta_batches.ndim == 2
 
+        delta_batches = np.clip(delta_batches, -1e2, 1e2)
+
         pred_obs_batches = obs_batches_original + delta_batches
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
@@ -390,7 +405,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=100000):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert len(obs_batches) == len(act_batches) == len(delta_batches)
