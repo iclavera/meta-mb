@@ -1,7 +1,9 @@
 from meta_mb.utils import utils
 from meta_mb.logger import logger
+import time
 import numpy as np
 import copy
+from pyprind import ProgBar
 
 
 class BaseSampler(object):
@@ -15,22 +17,101 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, batch_size, max_path_length):
+    def __init__(self, env, policy, num_rollouts, max_path_length):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
         self.policy = policy
-        self.batch_size = batch_size
         self.max_path_length = max_path_length
 
-    def obtain_samples(self):
-        """
-        Collect batch_size trajectories
+        self.total_samples = num_rollouts * max_path_length
+        self.total_timesteps_sampled = 0
 
-        Returns: 
-            (list) : A list of paths.
+    def obtain_samples(self, log=False, log_prefix='', random=False):
         """
-        raise NotImplementedError
+        Collect batch_size trajectories from each task
+
+        Args:
+            log (boolean): whether to log sampling times
+            log_prefix (str) : prefix for logger
+            random (boolean): whether the actions are random
+
+        Returns:
+            (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
+        """
+
+        # initial setup / preparation
+        paths = []
+
+        n_samples = 0
+        running_paths = _get_empty_running_paths_dict()
+
+        pbar = ProgBar(self.total_samples)
+        policy_time, env_time = 0, 0
+
+        policy = self.policy
+        policy.reset(dones=[True])
+
+        # initial reset of meta_envs
+        obs = np.asarray(self.env.reset())
+
+        while n_samples < self.total_samples:
+
+            # execute policy
+            t = time.time()
+            if random:
+                action = self.env.action_space.sample()
+                agent_info = {}
+            else:
+                action, agent_info = policy.get_action(obs)
+            import pdb; pdb.set_trace() # TODO: Make sure the action are the right shape!
+            policy_time += time.time() - t
+
+            # step environments
+            t = time.time()
+            next_obs, reward, done, env_info = self.env.step(action)
+            env_time += time.time() - t
+
+            new_samples = 0
+
+            # append new samples to running paths
+            if isinstance(reward, np.ndarray):
+                reward = reward[0]
+            running_paths["observations"].append(obs)
+            running_paths["actions"].append(action)
+            running_paths["rewards"].append(reward)
+            running_paths["dones"].append(done)
+            running_paths["env_infos"].append(env_info)
+            running_paths["agent_infos"].append(agent_info)
+
+            # if running path is done, add it to paths and empty the running path
+            if done:
+                paths.append(dict(
+                    observations=np.asarray(running_paths["observations"]),
+                    actions=np.asarray(running_paths["actions"]),
+                    rewards=np.asarray(running_paths["rewards"]),
+                    dones=np.asarray(running_paths["dones"]),
+                    env_infos=utils.stack_tensor_dict_list(running_paths["env_infos"]),
+                    agent_infos=utils.stack_tensor_dict_list(running_paths["agent_infos"]),
+                ))
+                new_samples += len(running_paths["rewards"])
+                running_paths = _get_empty_running_paths_dict()
+
+            pbar.update(self.vec_env.num_envs)
+            n_samples += new_samples
+            obs = next_obs
+        pbar.stop()
+
+        self.total_timesteps_sampled += self.total_samples
+        if log:
+            logger.logkv(log_prefix + "PolicyExecTime", policy_time)
+            logger.logkv(log_prefix + "EnvExecTime", env_time)
+
+        return paths
+
+
+def _get_empty_running_paths_dict():
+    return dict(observations=[], actions=[], rewards=[], dones=[], env_infos=[], agent_infos=[])
 
 
 class SampleProcessor(object):

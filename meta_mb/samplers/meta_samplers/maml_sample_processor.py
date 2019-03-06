@@ -1,6 +1,5 @@
 from meta_mb.samplers.base import SampleProcessor
-from meta_mb.samplers.dice_sample_processor import DiceSampleProcessor
-from meta_mb.utils import utils
+from meta_mb.samplers.meta_samplers.dice_sample_processor import DiceSampleProcessor
 import numpy as np
 
 class MAMLSampleProcessor(SampleProcessor):

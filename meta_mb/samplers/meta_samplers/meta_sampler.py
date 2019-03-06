@@ -1,5 +1,5 @@
 from meta_mb.samplers.base import BaseSampler
-from meta_mb.samplers.meta_vectorized_env_executor import MetaParallelEnvExecutor, MetaIterativeEnvExecutor
+from meta_mb.samplers.meta_samplers.meta_vectorized_env_executor import MetaParallelEnvExecutor, MetaIterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 from collections import OrderedDict

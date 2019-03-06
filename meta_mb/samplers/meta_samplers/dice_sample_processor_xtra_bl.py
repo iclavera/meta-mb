@@ -1,7 +1,7 @@
 from meta_mb.utils import utils
 from meta_mb.logger import logger
 from meta_mb.samplers.base import SampleProcessor
-from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 import numpy as np
 
 
