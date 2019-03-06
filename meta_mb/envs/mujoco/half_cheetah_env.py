@@ -60,7 +60,7 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
 
         logger.logkv(prefix + 'AvgForwardVel', np.mean(fwrd_vel))
         logger.logkv(prefix + 'AvgFinalForwardVel', np.mean(final_fwrd_vel))
-        logger.logkv(prefix + 'AvgCtrlCost', np.std(ctrl_cost))
+        logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
     def __str__(self):
         return 'HalfCheetahRandDirecEnv'

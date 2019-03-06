@@ -1,6 +1,10 @@
 <mujoco model="blue_descriptions_right">
     <compiler angle="radian" meshdir="blue_meshes/"/>/>
     <size njmax="500" nconmax="100" />
+        <default>
+        <joint limited="false"/>
+        <geom contype="0" conaffinity="0" friction="1 0.1 0.1" type="mesh"/>
+    </default>
     <asset>
         <mesh name="arm_base_link_v2" file="arm_base_link_v2.STL" />
         <mesh name="roll_link_v2" file="roll_link_v2.STL" />
@@ -85,6 +89,8 @@
                 </body>
             </body>
         </body>
+
+        <site name="tip" pos="-.3 -.3 1" size="0.01" rgba="1 0 0 1"/>
     </worldbody>
 
         <actuator>
