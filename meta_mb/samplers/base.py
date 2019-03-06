@@ -55,6 +55,8 @@ class BaseSampler(object):
         # initial reset of meta_envs
         obs = np.asarray(self.env.reset())
 
+        ts = 0
+
         while n_samples < self.total_samples:
 
             # execute policy
@@ -64,12 +66,20 @@ class BaseSampler(object):
                 agent_info = {}
             else:
                 action, agent_info = policy.get_action(obs)
-            import pdb; pdb.set_trace() # TODO: Make sure the action are the right shape!
+                if action.ndim == 2:
+                    action = action[0]
             policy_time += time.time() - t
 
             # step environments
             t = time.time()
             next_obs, reward, done, env_info = self.env.step(action)
+
+            ts += 1
+            done = done or ts >= self.max_path_length
+            if done:
+                next_obs = self.env.reset()
+                ts = 0
+                
             env_time += time.time() - t
 
             new_samples = 0
@@ -97,7 +107,7 @@ class BaseSampler(object):
                 new_samples += len(running_paths["rewards"])
                 running_paths = _get_empty_running_paths_dict()
 
-            pbar.update(self.vec_env.num_envs)
+            pbar.update(new_samples)
             n_samples += new_samples
             obs = next_obs
         pbar.stop()

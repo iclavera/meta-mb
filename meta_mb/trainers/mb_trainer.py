@@ -111,6 +111,7 @@ class Trainer(object):
 
                 logger.log("Saving snapshot...")
                 params = self.get_itr_snapshot(itr)
+                self.log_diagnostics(env_paths, '')
                 logger.save_itr_params(itr, params)
                 logger.log("Saved")
 

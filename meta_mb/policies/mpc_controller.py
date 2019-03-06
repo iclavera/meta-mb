@@ -131,3 +131,5 @@ class MPCController(Serializable):
     def reset(self, dones=None):
         pass
 
+    def log_diagnostics(*args):
+        pass
