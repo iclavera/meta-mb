@@ -4,7 +4,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos import VPGMAML
 from meta_mb.trainers.meta_trainer import Trainer
 from meta_mb.samplers.meta_samplers import MAMLSampler
-from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 import os
 from meta_mb.logger import logger

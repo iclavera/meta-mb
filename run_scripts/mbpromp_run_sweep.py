@@ -7,7 +7,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.meta_algos.trpo_maml import TRPOMAML
+from meta_mb.meta_algos.ppo_maml import PPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
@@ -18,7 +18,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'mb-mpo-swish'
+EXP_NAME = 'mb-promp'
 
 
 def run_experiment(**kwargs):
@@ -88,14 +88,18 @@ def run_experiment(**kwargs):
         positive_adv=kwargs['positive_adv'],
     )
 
-    algo = TRPOMAML(
+    algo = PPOMAML(
         policy=policy,
-        step_size=kwargs['step_size'],
-        inner_type=kwargs['inner_type'],
         inner_lr=kwargs['inner_lr'],
         meta_batch_size=kwargs['meta_batch_size'],
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        exploration=kwargs['exploration'],
+        learning_rate=kwargs['learning_rate'],
+        num_ppo_steps=kwargs['num_ppo_steps'],
+        num_minibatches=kwargs['num_minibatches'],
+        clip_eps=kwargs['clip_eps'],
+        clip_outer=kwargs['clip_outer'],
+        target_inner_step=kwargs['target_inner_step'],
+        init_inner_kl_penalty=kwargs['init_inner_kl_penalty'],
     )
 
     trainer = Trainer(
@@ -111,6 +115,8 @@ def run_experiment(**kwargs):
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
+        meta_steps_per_iter=kwargs['meta_steps_per_iter']
+
     )
 
     trainer.train()
@@ -121,7 +127,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [1, 2, 3],
 
-        'algo': ['MBMPO'],
+        'algo': ['MBProMP'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
@@ -133,6 +139,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
+        'meta_steps_per_iter': [30],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
@@ -159,9 +166,14 @@ if __name__ == '__main__':
         'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
-        'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
-        'exploration': [False],
+        'target_outer_step': [0],
+        'learning_rate': [1e-3],
+        'num_ppo_steps': [5],
+        'num_minibatches': [1],
+        'clip_eps': [0.3],
+        'clip_outer': [True],
+        'target_inner_step': [0.01],
+        'init_inner_kl_penalty': [5e-4],
 
         'scope': [None],
         'exp_tag': [''], # For changes besides hyperparams

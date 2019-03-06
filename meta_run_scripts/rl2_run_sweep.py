@@ -3,14 +3,15 @@ from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
+from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.mf_trainer import Trainer
-from meta_mb.samplers.meta_sampler import MetaSampler
-from meta_mb.samplers.rl2_sample_processor import RL2SampleProcessor
+from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+from meta_mb.samplers.meta_samplers.rl2_sample_processor import RL2SampleProcessor
 from meta_mb.policies.gaussian_rnn_policy import GaussianRNNPolicy
 import os
 from meta_mb.logger import logger
@@ -83,8 +84,7 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [AntRandDirecEnv, HalfCheetahRandDirecEnv, HopperRandParamsEnv,
-                Walker2DRandParamsEnv, HalfCheetahRandVelEnv, HumanoidRandDirecEnv],
+        'env': [AntRandGoalEnv],
         'meta_batch_size': [100],
         "hidden_sizes": [(32,), (64,), (128,)],
         'backprop_steps': [50, 100, 200],

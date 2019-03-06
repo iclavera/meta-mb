@@ -9,8 +9,8 @@ from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_sampler import MetaSampler
-from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
@@ -18,7 +18,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'mb-mpo-2'
+EXP_NAME = 'mb-mpo-swish-clip'
 
 
 def run_experiment(**kwargs):
@@ -52,6 +52,7 @@ def run_experiment(**kwargs):
                                          output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
                                          learning_rate=kwargs['dynamics_learning_rate'],
                                          batch_size=kwargs['dynamics_batch_size'],
+                                         buffer_size=kwargs['dynamics_buffer_size'],
 
                                          )
     env_sampler = MetaSampler(
@@ -111,6 +112,7 @@ def run_experiment(**kwargs):
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
+        meta_steps_per_iter=kwargs['meta_steps_per_iter'],
     )
 
     trainer.train()
@@ -133,6 +135,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
+        'meta_steps_per_iter': [30],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
@@ -140,12 +143,13 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(256, 256), (512, 512)],
-        'dyanmics_hidden_nonlinearity': ['relu', 'swish'],
+        'dynamics_hidden_sizes': [(256, 256)],
+        'dyanmics_hidden_nonlinearity': ['swish'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [200, 500],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [500],
+        'dynamics_batch_size': [512, 1024],
+        'dynamics_buffer_size': [100000],
 
 
         # Policy

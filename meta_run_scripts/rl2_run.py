@@ -4,7 +4,7 @@ from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.mf_trainer import Trainer
 from meta_mb.samplers.meta_samplers import MAMLSampler
-from meta_mb.samplers.rl2_sample_processor import RL2SampleProcessor
+from meta_mb.samplers.meta_samplers.rl2_sample_processor import RL2SampleProcessor
 from meta_mb.policies.gaussian_rnn_policy import GaussianRNNPolicy
 import os
 from meta_mb.logger import logger

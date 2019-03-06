@@ -9,6 +9,7 @@ from meta_mb.logger import logger
 from meta_mb.envs.normalized_env import normalize
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
+from meta_mb.envs.blue.blue_env import BlueReacherEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
@@ -106,7 +107,7 @@ if __name__ == '__main__':
                 'seed': [11, 22],
 
                 # Problem
-                'env': [HalfCheetahEnv],  # 'HalfCheetahEnv'
+                'env': [BlueReacherEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [50],
                 'normalize': [False],
                  'n_itr': [30],
@@ -114,7 +115,7 @@ if __name__ == '__main__':
 
                 # Policy
                 'n_candidates': [256],
-                'horizon': [10],
+                'horizon': [5],
                 'use_cem': [False],
                 'num_cem_iters': [4],
 
@@ -133,7 +134,7 @@ if __name__ == '__main__':
                 'dynamic_model_epochs': [200],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [512, 256],
+                'batch_size_model': [256],
                 'cell_type': ['lstm'],
 
                 #  Other
