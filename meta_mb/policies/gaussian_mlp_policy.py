@@ -92,7 +92,7 @@ class GaussianMLPPolicy(Policy):
         """
         observation = np.expand_dims(observation, axis=0)
         action, agent_infos = self.get_actions(observation)
-        action, agent_infos = action[0], dict(mean=agent_infos[0][0]['mean'], log_std=agent_infos[0][0]['log_std'])
+        action, agent_infos = action[0], dict(mean=agent_infos[0]['mean'], log_std=agent_infos[0]['log_std'])
         return action, agent_infos
 
     def get_actions(self, observations):
@@ -105,28 +105,50 @@ class GaussianMLPPolicy(Policy):
         Returns:
             (ndarray) : array of sampled actions - shape: (batch_size, action_dim)
         """
-        meta_batch_size = len(observations)
-        batch_size = observations[0].shape[0]
-        assert all([obs.shape[0] == batch_size for obs in observations])
-        observations = np.stack(observations)
+        observations = np.array(observations)
         assert observations.ndim == 2 and observations.shape[1] == self.obs_dim
 
         sess = tf.get_default_session()
         actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
                                              feed_dict={self.obs_var: observations})
 
-        assert actions.shape == (observations.shape[0], self.action_dim)
-        actions, means = np.split(actions, meta_batch_size, axis=0), np.split(means, meta_batch_size, axis=0)
-        agent_infos = [[dict(mean=mean, log_std=log_stds[0]) for mean in means[idx]] for idx in
-                       range(meta_batch_size)]
+        agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
         return actions, agent_infos
+
+    # def get_actions(self, observations):
+    #     """
+    #     Runs each set of observations through each task specific policy
+    #
+    #     Args:
+    #         observations (ndarray) : array of observations - shape: (batch_size, obs_dim)
+    #
+    #     Returns:
+    #         (ndarray) : array of sampled actions - shape: (batch_size, action_dim)
+    #     """
+    #     meta_batch_size = len(observations)
+    #     batch_size = observations[0].shape[0]
+    #     assert all([obs.shape[0] == batch_size for obs in observations])
+    #     observations = np.stack(observations)
+    #     assert observations.ndim == 2 and observations.shape[1] == self.obs_dim
+    #
+    #     sess = tf.get_default_session()
+    #     actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
+    #                                          feed_dict={self.obs_var: observations})
+    #
+    #     assert actions.shape == (observations.shape[0], self.action_dim)
+    #     actions, means = np.split(actions, meta_batch_size, axis=0), np.split(means, meta_batch_size, axis=0)
+    #     agent_infos = [[dict(mean=mean, log_std=log_stds[0]) for mean in means[idx]] for idx in
+    #                    range(meta_batch_size)]
+    #     return actions, agent_infos
 
     def log_diagnostics(self, paths, prefix=''):
         """
         Log extra information per iteration based on the collected paths
         """
         log_stds = np.vstack([path["agent_infos"]["log_std"] for path in paths])
+        means = np.vstack([path["agent_infos"]["mean"] for path in paths])
         logger.logkv(prefix+'AveragePolicyStd', np.mean(np.exp(log_stds)))
+        logger.logkv(prefix + 'AverageAbsPolicyMean', np.mean(np.abs(means)))
 
     def load_params(self, policy_params):
         """

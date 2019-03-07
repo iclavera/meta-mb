@@ -79,6 +79,11 @@ class Trainer(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
 
+            if type(self.meta_steps_per_iter) is tuple:
+                meta_steps_per_iter = np.linspace(self.meta_steps_per_iter[0]
+                                                  , self.meta_steps_per_iter[1], self.n_itr).astype(np.int)
+            else:
+                meta_steps_per_iter = [self.meta_steps_per_iter] * self.n_itr
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -139,9 +144,10 @@ class Trainer(object):
 
                 time_maml_steps_start = time.time()
 
-                for meta_itr in range(self.meta_steps_per_iter):
+                for meta_itr in range(meta_steps_per_iter[itr]):
 
-                    logger.log("\n ---------------- Meta-Step %d ----------------" % int(itr * self.meta_steps_per_iter + meta_itr))
+                    logger.log("\n ---------------- Meta-Step %d ----------------" % int(sum(meta_steps_per_iter[:itr])
+                                                                                         + meta_itr))
                     self.policy.switch_to_pre_update()  # Switch to pre-update policy
 
                     all_samples_data, all_paths = [], []
@@ -198,8 +204,10 @@ class Trainer(object):
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
-                logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
-
+                if self.log_real_performance:
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/3)
+                else:
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
                 logger.logkv('AvgTime-OuterStep', np.mean(times_outer_step))
                 logger.logkv('AvgTime-InnerStep', np.mean(times_inner_step))
                 logger.logkv('AvgTime-TotalInner', np.mean(times_total_inner_step))

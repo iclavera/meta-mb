@@ -44,6 +44,9 @@ class Sampler(BaseSampler):
         else:
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
 
+    def update_tasks(self):
+        pass
+
     def obtain_samples(self, log=False, log_prefix='', random=False):
         """
         Collect batch_size trajectories from each task

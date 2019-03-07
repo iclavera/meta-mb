@@ -29,8 +29,7 @@ if __name__ == "__main__":
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
-        policy._pre_update_mode = True
-        policy.meta_batch_size = 1
         env = data['env']
         path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                        video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done)
+        print(sum(path['rewards']))

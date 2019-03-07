@@ -84,7 +84,10 @@ class Trainer(object):
                 samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
                 proc_samples_time = time.time() - time_proc_samples_start
 
-                self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+                if type(paths) is list:
+                    self.log_diagnostics(paths, prefix='train-')
+                else:
+                    self.log_diagnostics(sum(paths.values(), []), prefix='train-')
 
                 """ ------------------ Policy Update ---------------------"""
 

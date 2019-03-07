@@ -3,7 +3,7 @@ import numpy as np
 
 class SingleSampleProcessor(SampleProcessor):
 
-    def process_samples(self, paths_meta_batch, log=False, log_prefix=''):
+    def process_samples(self, all_paths, log=False, log_prefix=''):
         """
         Processes sampled paths. This involves:
             - computing discounted rewards (returns)
@@ -20,10 +20,8 @@ class SingleSampleProcessor(SampleProcessor):
         Returns:
             (list of dicts) : Processed sample data among the meta-batch; size: [meta_batch_size] x [7] x (batch_size x max_path_length)
         """
-        assert isinstance(paths_meta_batch, dict), 'paths must be a dict'
         assert self.baseline, 'baseline must be specified'
 
-        all_paths = sum(paths_meta_batch.values(), [])
         samples_data, all_paths = self._compute_samples_data(all_paths)
 
         # 8) log statistics if desired

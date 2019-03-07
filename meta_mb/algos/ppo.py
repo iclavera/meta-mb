@@ -1,7 +1,7 @@
 from meta_mb.logger import logger
 from meta_mb.algos.base import Algo
 from meta_mb.optimizers.rl2_first_order_optimizer import RL2FirstOrderOptimizer
-from meta_mb.optimizers.maml_first_order_optimizer import MAMLFirstOrderOptimizer
+from meta_mb.optimizers.first_order_optimizer import FirstOrderOptimizer
 
 import tensorflow as tf
 from collections import OrderedDict
@@ -39,7 +39,7 @@ class PPO(Algo):
             self.optimizer = RL2FirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs,
                                                     backprop_steps=backprop_steps)
         else:
-            self.optimizer = MAMLFirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs)
+            self.optimizer = FirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs)
         self._optimization_keys = ['observations', 'actions', 'advantages', 'agent_infos']
         self.name = name
         self._clip_eps = clip_eps

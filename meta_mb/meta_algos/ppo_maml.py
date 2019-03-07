@@ -41,12 +41,12 @@ class PPOMAML(MAMLAlgo):
             num_minibatches=1,
             clip_eps=0.2,
             clip_outer=True,
-            target_outer_step=0.001,
+            target_outer_step=0.,
             target_inner_step=0.01,
-            init_outer_kl_penalty=1e-3,
-            init_inner_kl_penalty=1e-2,
-            adaptive_outer_kl_penalty=True,
-            adaptive_inner_kl_penalty=True,
+            init_outer_kl_penalty=0.,
+            init_inner_kl_penalty=5e-4,
+            adaptive_outer_kl_penalty=False,
+            adaptive_inner_kl_penalty=False,
             anneal_factor=1.0,
             **kwargs
             ):
