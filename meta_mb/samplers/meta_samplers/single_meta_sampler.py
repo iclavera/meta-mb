@@ -87,6 +87,9 @@ class SingleMetaSampler(BaseSampler):
         obses = [np.expand_dims(self.env.reset(), 0) for _ in range(self.meta_batch_size)]
 
         for idx in range(self.meta_batch_size):
+            ts = 0
+            n_samples = 0
+
             while n_samples < self.samples_per_task:
                 # execute policy
                 t = time.time()
@@ -105,6 +108,13 @@ class SingleMetaSampler(BaseSampler):
                 action, agent_info = actions[idx][0], agent_infos[idx][0]
                 observation = obses[idx][0]
                 next_obs, reward, done, env_info = self.env.step(action)
+
+                ts += 1
+                done = done or ts >= self.max_path_length
+                if done:
+                    next_obs = self.env.reset()
+                    ts = 0
+
                 env_time += time.time() - t
 
                 new_samples = 0
@@ -134,14 +144,15 @@ class SingleMetaSampler(BaseSampler):
                 pbar.update(new_samples)
                 n_samples += new_samples
                 obses[idx][0] = next_obs
-            pbar.stop()
 
-            self.total_timesteps_sampled += self.total_samples
-            if log:
-                logger.logkv(log_prefix + "PolicyExecTime", policy_time)
-                logger.logkv(log_prefix + "EnvExecTime", env_time)
+            self.total_timesteps_sampled += n_samples
 
-            return paths
+        pbar.stop()
+        if log:
+            logger.logkv(log_prefix + "PolicyExecTime", policy_time)
+            logger.logkv(log_prefix + "EnvExecTime", env_time)
+
+        return paths
 
 def _get_empty_running_paths_dict():
     return dict(observations=[], actions=[], rewards=[], dones=[], env_infos=[], agent_infos=[])
