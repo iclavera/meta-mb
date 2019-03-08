@@ -84,6 +84,7 @@ class SingleMetaSampler(BaseSampler):
 
         # initial reset of meta_envs
 
+        print("Reset has sleep 1")
         for idx in range(self.meta_batch_size):
             ts = 0
             n_samples = 0
@@ -91,7 +92,6 @@ class SingleMetaSampler(BaseSampler):
             obses = [np.expand_dims(self.env.reset(), 0) for _ in range(self.meta_batch_size)]
             time.sleep(1)
             policy.reset(dones=[True] * self.meta_batch_size)
-            print("Reset has sleep 1)
             while n_samples < self.samples_per_task:
                 # execute policy
                 t = time.time()
@@ -108,7 +108,8 @@ class SingleMetaSampler(BaseSampler):
                 # step environments
                 t = time.time()
                 action, agent_info = actions[idx][0], agent_infos[idx][0]
-                observation = obses[idx][0]
+                observation = obses[idx][0].copy()
+
                 next_obs, reward, done, env_info = self.env.step(action)
 
                 ts += 1
