@@ -10,7 +10,7 @@ from meta_mb.envs.blue.blue_env import BlueReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+from meta_mb.samplers.meta_samplers.single_meta_sampler import SingleMetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
@@ -56,7 +56,7 @@ def run_experiment(**kwargs):
                                          buffer_size=kwargs['dynamics_buffer_size'],
 
                                          )
-    env_sampler = MetaSampler(
+    env_sampler = SingleMetaSampler(
         env=env,
         policy=policy,
         rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],

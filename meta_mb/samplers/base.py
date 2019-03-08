@@ -182,7 +182,7 @@ class SampleProcessor(object):
         samples_data, paths = self._compute_samples_data(paths)
 
         # 7) log statistics if desired
-        self._log_path_stats(paths, log=log, log_prefix='')
+        self._log_path_stats(paths, log=log, log_prefix=log_prefix)
 
         assert samples_data.keys() >= {'observations', 'actions', 'rewards', 'advantages', 'returns'}
         return samples_data
