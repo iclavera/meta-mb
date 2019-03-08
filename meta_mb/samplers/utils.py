@@ -2,7 +2,8 @@ import numpy as np
 import time
 
 
-def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_video=True, video_filename='sim_out.mp4', ignore_done=False):
+def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_video=True,
+            video_filename='sim_out.mp4', ignore_done=False, stochastic=False):
     observations = []
     actions = []
     rewards = []
@@ -27,6 +28,8 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
 
     while path_length < max_path_length:
         a, agent_info = agent.get_action(o)
+        if not stochastic:
+            a = agent_info['mean']
         next_o, r, d, env_info = env.step(a)
         observations.append(o)
         rewards.append(r)
