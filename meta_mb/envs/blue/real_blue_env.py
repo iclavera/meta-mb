@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from meta_mb.logger import logger
 import gym
 from gym import error, spaces
@@ -8,7 +9,7 @@ import os
 
 
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
-    def __init__(self, side, ip, port=9090):
+    def __init__(self, side='left', ip='127.0.0.1', port=9090):
         self.goal = np.ones((3,))
         max_torques = np.array([15, 15, 15, 10, 10, 4, 4])
         self.frame_skip = 3
@@ -42,6 +43,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         assert frame_skip > 0
         for _ in range(frame_skip):
             self.set_joint_torques(action)
+            time.sleep(1/70)
 
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
