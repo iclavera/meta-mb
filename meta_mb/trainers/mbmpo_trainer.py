@@ -107,7 +107,7 @@ class Trainer(object):
                 samples_data = self.dynamics_sample_processor.process_samples(sum(env_paths.values(), []),
                                                                               log=True, log_prefix='EnvTrajs-')
 
-                self.env.log_diagnostics(sum(env_paths.values(), []), log_prefix='EnvTrajs-')
+                self.env.log_diagnostics(sum(env_paths.values(), []), prefix='EnvTrajs-')
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 

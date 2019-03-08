@@ -10,7 +10,7 @@ from blue_interface.blue_interface import BlueInterface
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='left', ip='127.0.0.1', port=9090):
         self.goal = np.ones((3,))
-        max_torques = np.array([15, 15, 15, 10, 10, 4, 4])
+        max_torques = np.array([15, 15, 15, 10, 10]) #, 4, 4])
         self.frame_skip = 3
         super(BlueReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
@@ -41,7 +41,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         action = np.clip(action, self._low, self._high)
         assert frame_skip > 0
         for _ in range(frame_skip):
-            self.set_joint_torques(action)
+            self.set_joint_torques(np.concatenate([action,np.zeros((2,))]))
             time.sleep(1/70)
 
     def reward(self, obs, act, obs_next):
@@ -83,8 +83,8 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         return pose['position']
 
     def log_diagnostics(self, paths, prefix=''):
-        dist = [path["env_infos"]['reward_dist'] for path in paths]
-        final_dist = [path["env_infos"]['reward_dist'][-1] for path in paths]
+        dist = [-path["env_infos"]['reward_dist'] for path in paths]
+        final_dist = [-path["env_infos"]['reward_dist'][-1] for path in paths]
         ctrl_cost = [-path["env_infos"]['reward_ctrl'] for path in paths]
 
         logger.logkv(prefix + 'AvgDistance', np.mean(dist))
