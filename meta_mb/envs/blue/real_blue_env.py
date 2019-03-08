@@ -1,7 +1,7 @@
 import numpy as np
 from meta_mb.logger import logger
 import gym
-from gym.envs.mujoco.mujoco_env import MujocoEnv
+from gym import error, spaces
 from meta_mb.meta_envs.base import MetaEnv
 from blue_interface.blue_interface import BlueInterface
 import os
@@ -10,7 +10,13 @@ import os
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side, ip, port=9090):
         self.goal = np.ones((3,))
-        super(BlueEnv, self).__init__(side, ip, port)
+        max_torques = np.array([15, 15, 15, 10, 10, 4, 4])
+        self.frame_skip = 3
+        super(BlueReacherEnv, self).__init__(side, ip, port)
+        self.init_qpos = self.get_joint_positions()
+        self.act_dim = len(self.get_joint_positions())
+        self.obs_dim = len(self._get_obs())
+        self._low, self._high = -max_torques, max_torques
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
@@ -24,14 +30,15 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         return ob, reward, done, dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
 
     def get_vec_gripper_to_goal(self):
-        gripper_pos = self.get_gripper_position()
+        gripper_pos = self.get_tip_position()
         vec_gripper_to_goal = self.goal - gripper_pos
         return vec_gripper_to_goal
 
     def viewer_setup(self):
         self.viewer.cam.trackbodyid = 0
 
-    def do_simulation(action, frame_skip):
+    def do_simulation(self, action, frame_skip):
+        action = np.clip(action, self._low, self._high)
         assert frame_skip > 0
         for _ in range(frame_skip):
             self.set_joint_torques(action)
@@ -66,9 +73,13 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         return np.concatenate([
             self.get_joint_positions(),
             self.get_joint_velocities(),
-            self.get_gripper_position(),
+            self.get_tip_position(),
             self.get_vec_gripper_to_goal(),
             ]).reshape(-1)
+
+    def get_tip_position(self):
+        pose = self.get_cartesian_pose()
+        return pose['position']
 
     def log_diagnostics(self, paths, prefix=''):
         dist = [path["env_infos"]['reward_dist'] for path in paths]
@@ -79,6 +90,15 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_dist))
         logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
+    @property
+    def action_space(self):
+        return spaces.Box(low=self._low, high=self._high, dtype=np.float32)
+
+    @property
+    def observation_space(self):
+        low = np.ones(self.obs_dim) * -1e6
+        high = np.ones(self.obs_dim) * 1e6
+        return spaces.Box(low=low, high=high, dtype=np.float32)
 
 if __name__ == "__main__":
     env = BlueReacherEnv()
