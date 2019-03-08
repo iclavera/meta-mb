@@ -5,7 +5,6 @@ import gym
 from gym import error, spaces
 from meta_mb.meta_envs.base import MetaEnv
 from blue_interface.blue_interface import BlueInterface
-import os
 
 
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
