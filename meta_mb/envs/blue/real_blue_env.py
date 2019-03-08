@@ -23,7 +23,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
         vec = self.get_vec_gripper_to_goal()
         reward_dist = -np.linalg.norm(vec)
-        reward_ctrl = -np.square(action).sum()
+        reward_ctrl = -np.square(action/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         ob = self._get_obs()
         done = False
@@ -48,13 +48,13 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
+            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act/(2 * self._high)), axis=1)
             reward_dist = -np.linalg.norm(obs_next[:,-3:], axis=1)
             reward = reward_dist + reward_ctrl
             return np.clip(reward, -1e3, 1e3)
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
+            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act/(2 * self._high)))
             reward_dist = -np.linalg.norm(obs_next[-3:])
             reward = reward_dist + reward_ctrl
             return np.clip(reward, -1e3, 1e3)
@@ -65,7 +65,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.set_joint_positions(self.init_qpos)
         while True:
             self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([-.3, -.3, 1]) # TODO: Remove this line
+            self.goal = np.array([-.3, .3, .5]) # TODO: Remove this line
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
