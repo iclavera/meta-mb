@@ -6,6 +6,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
+from meta_mb.envs.blue.blue_env import BlueReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
@@ -17,8 +18,8 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'mb-mpo-swish-clip'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'mbmpo-blue'
 
 
 def run_experiment(**kwargs):
@@ -123,19 +124,19 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [1, 2, 3],
 
-        'algo': ['MBMPO'],
+        'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [BlueReacherEnv],
 
         # Problem Conf
         'n_itr': [101],
-        'max_path_length': [200],
+        'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'meta_steps_per_iter': [30],
+        'meta_steps_per_iter': [(10, 100), (20, 60), (5, 200)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
@@ -146,10 +147,10 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(256, 256)],
         'dyanmics_hidden_nonlinearity': ['swish'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [200, 500],
+        'dynamics_max_epochs': [200],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [512, 1024],
-        'dynamics_buffer_size': [100000],
+        'dynamics_buffer_size': [10000, 25000],
 
 
         # Policy
