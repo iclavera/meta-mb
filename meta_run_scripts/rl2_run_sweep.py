@@ -3,6 +3,7 @@ from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
+from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
@@ -21,7 +22,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'rl2-kate'
+EXP_NAME = 'rl2-kate-def'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -84,9 +85,9 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [AntRandGoalEnv],
+        'env': [HumanoidRandDirec2DEnv],
         'meta_batch_size': [100],
-        "hidden_sizes": [(32,), (64,), (128,)],
+        "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [50, 100, 200],
         "rollouts_per_meta_task": [2],
         "parallel": [True],
@@ -95,7 +96,7 @@ if __name__ == '__main__':
         "gae_lambda": [1.0],
         "normalize_adv": [True],
         "positive_adv": [False],
-        "learning_rate": [1e-2, 1e-3],
+        "learning_rate": [1e-3],
         "max_epochs": [5],
         "cell_type": ["lstm"],
         "num_minibatches": [1],
