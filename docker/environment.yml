@@ -6,7 +6,6 @@ dependencies:
         - bleach==1.5.0
         - boto3==1.8.9
         - botocore==1.9
-        - certifi==2018.8.24
         - cffi==1.11.5
         - chardet==3.0.4
         - click==6.7
