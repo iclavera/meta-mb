@@ -4,36 +4,17 @@ from meta_mb.logger import logger
 from meta_mb.meta_envs.base import MetaEnv
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 
-class SwimmerRandVelEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
+class SwimmerEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
-        self.set_task(self.sample_tasks(1)[0])
         MujocoEnv.__init__(self, 'swimmer.xml', 4)
         gym.utils.EzPickle.__init__(self)
-
-    def sample_tasks(self, n_tasks):
-        # for fwd/bwd env, goal direc is backwards if - 1.0, forwards if + 1.0
-        return np.random.uniform(0.1, 0.2, (n_tasks, ))
-
-    def set_task(self, task):
-        """
-        Args:
-            task: task of the meta-learning environment
-        """
-        self.goal_vel = task
-
-    def get_task(self):
-        """
-        Returns:
-            task: task of the meta-learning environment
-        """
-        return self.goal_vel
 
     def step(self, a):
         ctrl_cost_coeff = 0.0001
         xposbefore = self.sim.data.qpos[0]
         self.do_simulation(a, self.frame_skip)
         xposafter = self.sim.data.qpos[0]
-        reward_fwd = np.abs((xposafter - xposbefore) / self.dt - self.goal_vel)
+        reward_fwd = np.abs((xposafter - xposbefore) / self.dt)
         reward_ctrl = - ctrl_cost_coeff * np.square(a).sum()
         reward = reward_fwd + reward_ctrl
         ob = self._get_obs()
@@ -50,6 +31,17 @@ class SwimmerRandVelEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
             self.init_qvel + self.np_random.uniform(low=-.1, high=.1, size=self.model.nv)
         )
         return self._get_obs()
+
+    def reward(self, obs, act, obs_next):
+        ctrl_cost_coeff = 0.0001
+        assert obs.ndim == act.ndim == obs_next.ndim
+        if obs.ndim == 2:
+            vel = obs_next[:, 3]
+            ctrl_cost = ctrl_cost_coeff * np.sum(np.square(act), axis=1)
+            reward = vel - ctrl_cost
+        else:
+            reward = self.reward(np.array([obs]), np.array([act]), np.array([obs_next]))[0]
+        return np.minimum(np.maximum(-1000.0, reward), 1000.0)
         
     def log_diagnostics(self, paths, prefix=''):
         progs = [

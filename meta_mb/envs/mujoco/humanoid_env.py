@@ -9,37 +9,18 @@ def mass_center(model, sim):
     xpos = sim.data.xipos
     return (np.sum(mass * xpos, 0) / np.sum(mass))
 
-class HumanoidRandDirecEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
+class HumanoidEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
     def __init__(self):
-        self.set_task(self.sample_tasks(1)[0])
         MujocoEnv.__init__(self, 'humanoid.xml', 5)
         gym.utils.EzPickle.__init__(self)
     
-    def sample_tasks(self, n_tasks):
-        return np.random.choice((-1.0, 1.0), (n_tasks, ))
-
-    def set_task(self, task):
-        """
-        Args:
-            task: task of the meta-learning environment
-        """
-        self.goal_direction = task
-
-    def get_task(self):
-        """
-        Returns:
-            task: task of the meta-learning environment
-        """
-        return self.goal_direction
-
     def _get_obs(self):
         data = self.sim.data
-        return np.concatenate([data.qpos.flat[2:],
-                               data.qvel.flat,
-                               data.cinert.flat,
-                               data.cvel.flat,
-                               data.qfrc_actuator.flat,
-                               data.cfrc_ext.flat])
+        return np.concatenate([
+            data.qpos.flat[2:],
+            data.qvel.flat,
+            data.cvel.flat,
+        ])
 
     def step(self, a):
         pos_before = mass_center(self.model, self.sim)[0]
@@ -47,14 +28,34 @@ class HumanoidRandDirecEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         pos_after = mass_center(self.model, self.sim)[0]
         alive_bonus = 5.0
         data = self.sim.data
-        lin_vel_cost = 0.25 * self.goal_direction * (pos_after - pos_before) / self.model.opt.timestep
+        lin_vel_cost = 0.25 * (pos_after - pos_before) / self.model.opt.timestep
         quad_ctrl_cost = 0.1 * np.square(data.ctrl).sum()
-        quad_impact_cost = .5e-6 * np.square(data.cfrc_ext).sum()
-        quad_impact_cost = min(quad_impact_cost, 10)
-        reward = lin_vel_cost - quad_ctrl_cost - quad_impact_cost + alive_bonus
+        reward = lin_vel_cost - quad_ctrl_cost + alive_bonus
         qpos = self.sim.data.qpos
         done = bool((qpos[2] < 1.0) or (qpos[2] > 2.0))
-        return self._get_obs(), reward, done, dict(reward_linvel=lin_vel_cost, reward_quadctrl=-quad_ctrl_cost, reward_alive=alive_bonus, reward_impact=-quad_impact_cost)
+        return self._get_obs(), reward, done, dict(reward_linvel=lin_vel_cost, reward_quadctrl=-quad_ctrl_cost,
+                                                   reward_alive=alive_bonus)
+
+    def reward(self, obs, act, obs_next):
+        assert obs.ndim == act.ndim == obs_next.ndim
+        if obs.ndim == 2:
+            assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
+            vel = obs_next[:, 22:25]
+            lin_vel_reward = 0.25 * vel[:, 0]
+            alive_bonus = 5.0
+            ctrl_cost = .1 * np.sum(np.square(act), axis=1)
+            reward = lin_vel_reward + alive_bonus - ctrl_cost
+            return reward
+        else:
+            return self.reward(np.array([obs]), np.array([act]), np.array([obs_next]))[0]
+
+    def done(self, obs):
+        if obs.ndim == 2:
+            notdone = np.all(np.isfinite(obs), axis=1) * (obs[:, 0] >= 0.2) * (obs[:, 0] <= 1)
+            return np.logical_not(notdone)
+        else:
+            notdone = np.isfinite(obs).all()  and obs[0] >= 0.2 and obs[0] <= 1
+            return not notdone
 
     def reset_model(self):
         c = 0.01
@@ -70,7 +71,7 @@ class HumanoidRandDirecEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         self.viewer.cam.elevation = -20
 
 if __name__ == "__main__":
-    env = HumanoidRandDirecEnv()
+    env = HumanoidEnv()
     import time
     while True:
         env.reset()

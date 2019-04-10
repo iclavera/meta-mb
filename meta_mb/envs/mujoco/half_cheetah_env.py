@@ -50,8 +50,8 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def viewer_setup(self):
-        self.viewer.cam.distance = self.model.stat.extent * 0.5
+    # def viewer_setup(self):
+    #     self.viewer.cam.distance = self.model.stat.extent * 1.5
 
     def log_diagnostics(self, paths, prefix=''):
         fwrd_vel = [path["env_infos"]['reward_run'] for path in paths]
@@ -62,5 +62,10 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         logger.logkv(prefix + 'AvgFinalForwardVel', np.mean(final_fwrd_vel))
         logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
-    def __str__(self):
-        return 'HalfCheetahRandDirecEnv'
+
+if __name__ == "__main__":
+    env = HalfCheetahEnv()
+    env.reset()
+    for _ in range(1000):
+        img = env.render('rgb_array')
+        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action

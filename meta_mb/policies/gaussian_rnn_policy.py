@@ -29,7 +29,7 @@ class GaussianRNNPolicy(Policy):
 
     """
 
-    def __init__(self, *args, init_std=1., min_std=1e-6, cell_type='gru', **kwargs):
+    def __init__(self, *args, init_std=1., min_std=1e-6, cell_type='lstm', **kwargs):
         # store the init args for serialization and call the super constructors
         Serializable.quick_init(self, locals())
         Policy.__init__(self, *args, **kwargs)
@@ -98,7 +98,7 @@ class GaussianRNNPolicy(Policy):
         """
         observation = np.expand_dims(observation, axis=0)
         action, agent_infos = self.get_actions(observation)
-        action, agent_infos = action[0], dict(mean=agent_infos['mean'][0], log_std=agent_infos['log_std'][0])
+        action, agent_infos = action[0], dict(mean=agent_infos[0][0]['mean'], log_std=agent_infos[0][0]['log_std'])
         return action, agent_infos
 
     def get_actions(self, observations):
@@ -114,7 +114,7 @@ class GaussianRNNPolicy(Policy):
         observations = np.array(observations)
         assert observations.shape[-1] == self.obs_dim
         if observations.ndim == 2:
-            observations = np.expand_dims(observations, 1),
+            observations = np.expand_dims(observations, 1)
         elif observations.ndim == 3:
             pass
         else:
@@ -199,6 +199,8 @@ class GaussianRNNPolicy(Policy):
 
     def reset(self, dones=None):
         sess = tf.get_default_session()
+        if dones is None:
+            dones = [True]
         _hidden_state = sess.run(self._zero_hidden)
         if self._hidden_state is None:
             self._hidden_state = sess.run(self.cell.zero_state(len(dones), tf.float32))

@@ -4,41 +4,41 @@ from meta_mb.logger import logger
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 
-class Walker2DRandDirecEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
+class Walker2DEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
     def __init__(self):
-        self.set_task(self.sample_tasks(1)[0])
         MujocoEnv.__init__(self, 'walker2d.xml', 8)
         gym.utils.EzPickle.__init__(self)
-    
-    def sample_tasks(self, n_tasks):
-        return np.random.choice((-1.0, 1.0), (n_tasks, ))
-
-    def set_task(self, task):
-        """
-        Args:
-            task: task of the meta-learning environment
-        """
-        self.goal_direction = task
-
-    def get_task(self):
-        """
-        Returns:
-            task: task of the meta-learning environment
-        """
-        return self.goal_direction
 
     def step(self, a):
         posbefore = self.sim.data.qpos[0]
         self.do_simulation(a, self.frame_skip)
         posafter, height, ang = self.sim.data.qpos[0:3]
         alive_bonus = 1.0
-        reward = (self.goal_direction * (posafter - posbefore) / self.dt)
+        reward = (posafter - posbefore) / self.dt
         reward += alive_bonus
         reward -= 1e-3 * np.square(a).sum()
-        done = not (height > 0.8 and height < 2.0 and
-                    ang > -1.0 and ang < 1.0)
+        done = not (height > 0.8 and height < 2.0 and ang > -1.0 and ang < 1.0)
         ob = self._get_obs()
         return ob, reward, done, {}
+
+    def reward(self, obs, act, obs_next):
+        assert obs.ndim == act.ndim == obs_next.ndim
+        if obs.ndim == 2:
+            vel = obs_next[:, 8]
+            alive_bonus = 1.0
+            ctrl_cost = 1e-3 * np.sum(np.square(act), axis=1)
+            reward = vel - ctrl_cost + alive_bonus
+
+        else:
+            reward = self.reward(np.array([obs]), np.array([act]), np.array([obs_next]))[0]
+        return reward
+
+    def done(self, obs):
+        if obs.ndim == 2:
+            notdone = (obs[:, 0] > 0.8) * (obs[:, 0] < 2.0) * (obs[:, 1] > -1.0) * (obs[:, 1] < 1.0)
+            return np.logical_not(notdone)
+        else:
+            return not (obs[0] > 0.8 and obs[0] < 2.0 and obs[1] > -1.0 and obs[1] < 1.0)
 
     def _get_obs(self):
         qpos = self.sim.data.qpos
@@ -57,8 +57,7 @@ class Walker2DRandDirecEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         self.viewer.cam.distance = self.model.stat.extent * 0.5
 
 if __name__ == "__main__":
-    env = Walker2DRandDirecEnv()
-    import time
+    env = Walker2DEnv()
     while True:
         env.reset()
         for _ in range(200):
