@@ -8,7 +8,7 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 
 
-class MLPDynamicsEnsemble(MLPDynamicsModel):
+class ProbMLPDynamicsEnsemble(MLPDynamicsModel):
     """
     Class for MLP continous dynamics model
     """
@@ -32,8 +32,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         Serializable.quick_init(self, locals())
 
-        max_logvar = 1
-        min_logvar = 0.1
+        max_logvar = .5
+        min_logvar = -10
 
         self.normalization = None
         self.normalize_input = normalize_input
@@ -59,6 +59,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name):
+            self.max_logvar = tf.Variable(np.ones([1, obs_space_dims]) * max_logvar, dtype=tf.float32,
+                                          name="max_logvar")
+            self.min_logvar = tf.Variable(np.ones([1, obs_space_dims]) * min_logvar, dtype=tf.float32,
+                                          name="min_logvar")
+
+
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
@@ -70,11 +76,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             # create MLP
             mlps = []
             delta_preds = []
+            var_preds = []
             self.obs_next_pred = []
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i)):
                     mlp = MLP(name,
-                              output_dim=obs_space_dims,
+                              output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -83,21 +90,30 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               )
                     mlps.append(mlp)
 
-                delta_preds.append(mlp.output_var)
+                mean, logvar = tf.split(mlp.output_var, 2,  axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                var = tf.exp(logvar)
+
+                delta_preds.append(mean)
+                var_preds.append(var)
 
             self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+            self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
 
             # define loss and train_op
-            self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+            self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2/self.var_pred + tf.log(self.var_pred))
+            self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
             self.optimizer = optimizer(learning_rate=self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
+            self.f_var_pred = compile_function([self.obs_ph, self.act_ph], self.var_pred)
 
         """ computation graph for inference where each of the models receives a different batch"""
-        with tf.variable_scope(name, reuse=True):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             # placeholders
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
@@ -110,6 +126,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             # reuse previously created MLP but each model receives its own batch
             delta_preds = []
+            var_preds = []
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
@@ -118,7 +135,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name,
-                              output_dim=obs_space_dims,
+                              output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -126,19 +143,32 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               input_dim=obs_space_dims+action_space_dims,
                               weight_normalization=weight_normalization)
 
-                delta_preds.append(mlp.output_var)
-                loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+                mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                var = tf.exp(logvar)
+
+                loss = tf.reduce_mean((self.delta_model_batches[i] - mean) ** 2/var + logvar)
+                loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
+
+                delta_preds.append(mean)
+                var_preds.append(var)
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
+
             self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
+            self.var_pred_model_batches_stack = tf.concat(var_preds, axis=0)
 
             # tensor_utils
             self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
                                                                 self.act_model_batches_stack_ph],
                                                                 self.delta_pred_model_batches_stack)
 
+            self.f_var_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
+                                                                self.act_model_batches_stack_ph],
+                                                                self.var_pred_model_batches_stack)
+
         self._networks = mlps
-        # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False):
@@ -214,8 +244,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                                                 act_train_batches[i]])
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
-
-            print("Size Data Set:  ", self._dataset_train['delta'][0].shape[0])
 
         if self.next_batch is None:
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
@@ -317,7 +345,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             logger.logkv('AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv('AvgFinalValidLoss', np.mean(valid_loss_rolling_average))
 
-    def predict(self, obs, act, pred_type='rand', **kwargs):
+    def predict(self, obs, act, pred_type='rand', deterministic=True):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -326,6 +354,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                    - rand: choose one of the models randomly
                    - mean: mean prediction of all models
                    - all: returns the prediction of all the models
+                   - (int): returns the prediction of the i-th model
         :return: pred_obs_next: predicted batch of next observations -
                                 shape:  (n_samples, ndim_obs) - in case of 'rand' and 'mean' mode
                                         (n_samples, ndim_obs, n_models) - in case of 'all' mode
@@ -339,9 +368,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         if self.normalize_input:
             obs, act = self._normalize_data(obs, act)
             delta = np.array(self.f_delta_pred(obs, act))
+            var = np.array(self.f_var_pred(obs, act))
+            if not deterministic:
+                delta = np.random.normal(delta, np.sqrt(var))
             delta = denormalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
         else:
             delta = np.array(self.f_delta_pred(obs, act))
+            var = np.array(self.f_var_pred(obs, act))
+            if not deterministic:
+                delta = np.random.normal(delta, np.sqrt(var))
 
         assert delta.ndim == 3
 
@@ -358,11 +393,14 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':
             pass
+        elif type(pred_type) is int:
+            assert 0 <= pred_type < self.num_models
+            pred_obs = pred_obs[:, :, pred_type]
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
         return pred_obs
 
-    def predict_batches(self, obs_batches, act_batches, *args, **kwargs):
+    def predict_batches(self, obs_batches, act_batches, deterministic=True):
         """
             Predict the batch of next observations for each model given the batch of current observations and actions for each model
             :param obs_batches: observation batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_obs)
@@ -379,9 +417,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         if self.normalize_input:
             obs_batches, act_batches = self._normalize_data(obs_batches, act_batches)
             delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
+            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
+            if not deterministic:
+                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
             delta_batches = denormalize(delta_batches, self.normalization['delta'][0], self.normalization['delta'][1])
         else:
             delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
+            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
+            if not deterministic:
+                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
 
         assert delta_batches.ndim == 2
 

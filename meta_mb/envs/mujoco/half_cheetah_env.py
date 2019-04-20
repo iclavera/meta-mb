@@ -34,13 +34,13 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
             reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
             reward_run = obs_next[:, 8]
             reward = reward_run + reward_ctrl
-            return np.clip(reward, -1e3, 1e3)
+            return np.clip(reward, -1e2, 1e2)
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
             reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
             reward_run = obs_next[8]
             reward = reward_run + reward_ctrl
-            return np.clip(reward, -1e3, 1e3)
+            return np.clip(reward, -1e2, 1e2)
         else:
             raise NotImplementedError
 
