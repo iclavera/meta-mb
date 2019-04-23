@@ -46,6 +46,7 @@ class IterativeEnvExecutor(object):
         dones = np.asarray(dones)
         self.ts += 1
         dones = np.logical_or(self.ts >= self.max_path_length, dones)
+
         for i in np.argwhere(dones).flatten():
             obs[i] = self.envs[i].reset()
             self.ts[i] = 0
@@ -89,7 +90,8 @@ class ParallelEnvExecutor(object):
     """
 
     def __init__(self, env, n_parallel, num_rollouts, max_path_length):
-        self.envs_per_proc = int(np.ceil(num_rollouts/n_parallel))
+        assert num_rollouts % n_parallel == 0
+        self.envs_per_proc = int(num_rollouts/n_parallel)
         self._num_envs = n_parallel * self.envs_per_proc
         self.n_parallel = n_parallel
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])

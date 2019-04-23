@@ -23,18 +23,19 @@ class ImgWrapperEnv(Serializable):
         self._obs[0] = obs
 
         if self._vae is not None:
-            obs = np.squeeze(self._vae.encode(obs), axis=0)
+            obs = self._vae.encode(self._obs).reshape((self._time_steps * self._latent_dim,))
 
         return obs, reward, done, info
 
     def reset(self):
         _ = self._wrapped_env.reset()
+
         self._obs = np.zeros((self._time_steps,) + self._img_size)
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
         self._obs[0] = obs
 
         if self._vae is not None:
-            obs = np.squeeze(self._vae.encode(obs), axis=0).reshape((self._time_steps * self._latent_dim))
+            obs = self._vae.encode(self._obs).reshape((self._time_steps * self._latent_dim,))
 
         return obs
 
@@ -42,7 +43,8 @@ class ImgWrapperEnv(Serializable):
     def observation_space(self):
         if self._latent_dim is not None:
             assert self._use_img
-            return Box(-1e6 * np.ones((self._latent_dim,)), 1e6 * np.ones((self._latent_dim,)), dtype=np.float32)
+            return Box(-1e6 * np.ones((self._latent_dim * self._time_steps,)),
+                       1e6 * np.ones((self._latent_dim * self._time_steps,)), dtype=np.float32)
 
         return Box(-1e6 * np.ones(self._img_size + (self._n_channels,)),
                    1e6 * np.ones(self._img_size + (self._n_channels,)),

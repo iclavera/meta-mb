@@ -72,15 +72,15 @@ class ARSSampler(BaseSampler):
         policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
-        obses = self.vec_env.reset()  # TODO: Change this line for reseting at different timesteps
+        obses = self.vec_env.reset()
         time_step = 0
         list_observations = []
         list_actions = []
         list_rewards = []
         list_dones = []
+        mask = np.ones((self.vec_env.num_envs,))
 
-        # TODO: This setup assumes you always go until the end of the episode
-        while time_step < self.max_path_length: # TODO: Change this if we have done function -- since we could have paths half way
+        while time_step < self.max_path_length:
             
             # Execute policy
             t = time.time()
@@ -94,6 +94,12 @@ class ARSSampler(BaseSampler):
             # Step environments
             t = time.time()
             next_obses, rewards, dones, _ = self.vec_env.step(actions)
+            next_obses, rewards, dones = np.array(next_obses), np.array(rewards), np.array(dones)
+
+            rewards *= mask
+            dones = dones * mask
+            mask *= (1 - dones)
+
             env_time += time.time() - t
 
             list_observations.append(obses)
@@ -105,7 +111,6 @@ class ARSSampler(BaseSampler):
             obses = next_obses
         pbar.stop()
         self.total_timesteps_sampled += self.total_samples
-
 
         if log:
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
