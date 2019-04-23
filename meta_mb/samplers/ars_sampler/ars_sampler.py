@@ -31,7 +31,8 @@ class ARSSampler(BaseSampler):
             num_deltas,
             max_path_length,
             dynamics_model=None,
-            n_parallel=1
+            n_parallel=1,
+            vae=None,
             ):
         super(ARSSampler, self).__init__(env, policy, rollouts_per_policy, max_path_length)
 
@@ -40,6 +41,7 @@ class ARSSampler(BaseSampler):
         self.total_samples = num_deltas * rollouts_per_policy * max_path_length * 2
         self.total_timesteps_sampled = 0
         self.dynamics_model = dynamics_model
+        self.vae = vae
 
         # setup vectorized environment
         # TODO: Create another vectorized env executor
@@ -84,6 +86,10 @@ class ARSSampler(BaseSampler):
             
             # Execute policy
             t = time.time()
+            if self.vae is not None:
+                obses = np.array(obses)
+                obses = self.vae.encode(obses)
+                obses = np.split(obses, self.vec_env.num_envs, axis=0)
             if self.dynamics_model is not None:
                 actions, agent_infos = policy.get_actions_batch(obses, update_filter=False)
             else:
@@ -109,6 +115,7 @@ class ARSSampler(BaseSampler):
 
             time_step += 1
             obses = next_obses
+            pbar.update(1)
         pbar.stop()
         self.total_timesteps_sampled += np.sum(1 - np.array(list_dones))
 

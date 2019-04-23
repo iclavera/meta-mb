@@ -28,7 +28,7 @@ from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'ars-no-images'
+EXP_NAME = 'ars-images'
 
 
 def run_experiment(**kwargs):
@@ -49,11 +49,11 @@ def run_experiment(**kwargs):
 
         if not kwargs['use_images']:
             env = normalize(kwargs['env']())
+            vae = None
 
         else:
-            vae = VAE(latent_dim=kwargs['latent_dim'])
+            vae = VAE(latent_dim=kwargs['latent_dim'], channels=3 * kwargs['time_steps'])
             env = image_wrapper(normalize(kwargs['env']()),
-                                vae=vae,
                                 latent_dim=kwargs['latent_dim'],
                                 time_steps=kwargs['time_steps'])
 
@@ -68,6 +68,7 @@ def run_experiment(**kwargs):
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
+            vae=vae,
         )
 
         model_sampler = ARSSampler(
@@ -76,7 +77,8 @@ def run_experiment(**kwargs):
             rollouts_per_policy=kwargs['rollouts_per_policy'],
             max_path_length=kwargs['max_path_length'],
             num_deltas=kwargs['num_deltas'],
-            n_parallel=kwargs['num_deltas'],
+            # n_parallel=kwargs['num_deltas'],
+            vae=vae,
         )
 
         dynamics_sample_processor = ModelSampleProcessor(
@@ -128,8 +130,8 @@ if __name__ == '__main__':
 
         'algo': ['ars'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, Walker2DEnv, HopperEnv, HumanoidEnv, AntEnv],
-        'use_images': [False],
+        'env': [HalfCheetahEnv],
+        'use_images': [True],
 
         # Problem Conf
         'n_itr': [200],
@@ -146,13 +148,13 @@ if __name__ == '__main__':
         'parallel': [True],
 
         # Meta-Algo
-        'learning_rate': [0.02, 0.01, 0.05, 0.005],
-        'num_deltas': [2, 4, 8, 16, 32, 64],
+        'learning_rate': [0.02],
+        'num_deltas': [16],
         'rollouts_per_policy': [1],
-        'percentile': [0., 0.25, 0.5],
-        'delta_std': [0.01, 0.03, 0.05],
-        'latent_dim': [4],
-        'hidden_sizes': [tuple(), (32, 32), (64, 64), (128, 128), (256, 256)],
+        'percentile': [0.],
+        'delta_std': [0.03],
+        'latent_dim': [16],
+        'hidden_sizes': [(64, 64)],
         'time_steps': [4],
 
         'scope': [None],

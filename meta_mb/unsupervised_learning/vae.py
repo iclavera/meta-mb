@@ -64,7 +64,7 @@ class VAE(Serializable):
         net = tf.layers.conv2d_transpose(net, filters=64, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
-        net = tf.layers.conv2d_transpose(net, filters=3, kernel_size=4, strides=2, padding='same')
+        net = tf.layers.conv2d_transpose(net, filters=self.n_channels, kernel_size=4, strides=2, padding='same')
         net = tf.contrib.layers.flatten(net)
         return tf.distributions.Bernoulli(logits=net)
 

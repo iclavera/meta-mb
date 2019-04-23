@@ -39,7 +39,7 @@ class Trainer(object):
             dynamics_model_max_epochs=200,
             log_real_performance=True,
             delta_std=0.03,
-            gpu_frac=0.95,
+            gpu_frac=0.5,
             ):
         self.algo = algo
         self.env = env
