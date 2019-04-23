@@ -9,33 +9,39 @@ class ImgWrapperEnv(Serializable):
                  latent_dim=None, time_steps=4):
 
         Serializable.quick_init(self, locals())
+        assert len(img_size) == 3
+
         self._wrapped_env = env
         self._vae = vae
         self._use_img = use_img
         self._img_size = img_size
+        self._num_chan = img_size[-1]
         self._latent_dim = latent_dim
         self._time_steps = time_steps
 
     def step(self, action):
         _, reward, done, info = self._wrapped_env.step(action)
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-        self._obs[:-1] = self._obs[1:]
-        self._obs[0] = obs
+        self._obs[:, :, self._num_chan:] = self._obs[:, :, :-self._num_chan]
+        self._obs[:, :, :self._num_chan] = obs
 
         if self._vae is not None:
-            obs = self._vae.encode(self._obs).reshape((self._time_steps * self._latent_dim,))
+            obs = self._vae.encode(self._obs).reshape((self._latent_dim,))
+        else:
+            obs = self._obs
 
         return obs, reward, done, info
 
     def reset(self):
         _ = self._wrapped_env.reset()
-
-        self._obs = np.zeros((self._time_steps,) + self._img_size)
+        self._obs = np.zeros(self._img_size[:-1] + (self._num_chan * self._time_steps,))
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-        self._obs[0] = obs
+        self._obs[:, :, :self._num_chan] = obs
 
         if self._vae is not None:
-            obs = self._vae.encode(self._obs).reshape((self._time_steps * self._latent_dim,))
+            obs = self._vae.encode(self._obs).reshape((self._latent_dim,))
+        else:
+            obs = self._obs
 
         return obs
 
@@ -43,8 +49,8 @@ class ImgWrapperEnv(Serializable):
     def observation_space(self):
         if self._latent_dim is not None:
             assert self._use_img
-            return Box(-1e6 * np.ones((self._latent_dim * self._time_steps,)),
-                       1e6 * np.ones((self._latent_dim * self._time_steps,)), dtype=np.float32)
+            return Box(-1e6 * np.ones((self._latent_dim,)),
+                       1e6 * np.ones((self._latent_dim,)), dtype=np.float32)
 
         return Box(-1e6 * np.ones(self._img_size + (self._n_channels,)),
                    1e6 * np.ones(self._img_size + (self._n_channels,)),
