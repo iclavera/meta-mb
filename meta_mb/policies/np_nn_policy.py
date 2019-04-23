@@ -63,10 +63,12 @@ class NNPolicy(NpPolicy, Serializable):
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)
+        x = observations
         for i, hidden_size in enumerate(self.hidden_sizes):
-            x = self.obs_filters[i](observations, update=update_filter)
+            x = self.obs_filters[i](x, update=update_filter)
             x = np.dot(self.policy_params['W_%d' % i], x.T).T + self.policy_params['b_%d' % i]
             x = self.hidden_nonlinearity(x)
+        x = self.obs_filters[-1](x, update=update_filter)
         actions = self.output_nonlinearity(np.dot(self.policy_params['W_out'], x.T).T + self.policy_params['b_out'])
         return actions, {}
 
@@ -94,6 +96,7 @@ class NNPolicy(NpPolicy, Serializable):
                                          x.transpose((0, 2, 1))).transpose((0, 2, 1))
                                          + np.expand_dims(self.policy_params_batch['b_%d' % i], axis=1))
 
+        x = self.obs_filters[-1](x, update=update_filter)
         actions = self.output_nonlinearity(np.matmul(self.policy_params_batch['W_out'],
                                                      x.transpose((0, 2, 1))).transpose((0, 2, 1))
                                                      + np.expand_dims(self.policy_params_batch['b_out'], axis=1))
