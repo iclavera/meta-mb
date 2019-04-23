@@ -97,7 +97,7 @@ class ARSSampler(BaseSampler):
             next_obses, rewards, dones = np.array(next_obses), np.array(rewards), np.array(dones)
 
             rewards *= mask
-            dones = dones * mask
+            dones = dones + (1 - mask)
             mask *= (1 - dones)
 
             env_time += time.time() - t
@@ -110,7 +110,7 @@ class ARSSampler(BaseSampler):
             time_step += 1
             obses = next_obses
         pbar.stop()
-        self.total_timesteps_sampled += self.total_samples
+        self.total_timesteps_sampled += np.sum(1 - np.array(list_dones))
 
         if log:
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)

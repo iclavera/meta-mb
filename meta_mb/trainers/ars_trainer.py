@@ -189,7 +189,10 @@ class Trainer(object):
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
-                logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
+                if self.dynamics_model is None:
+                    logger.logkv('n_timesteps', self.model_sampler.total_timesteps_sampled)
+                else:
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
 
                 logger.logkv('AvgTime-RS', np.mean(times_rs_steps))
                 logger.logkv('AvgTime-SampleProc', np.mean(times_dyn_sample_processing))
