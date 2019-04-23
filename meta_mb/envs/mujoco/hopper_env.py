@@ -57,7 +57,16 @@ class HopperEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         return self._get_obs()
 
     def viewer_setup(self):
-        self.viewer.cam.trackbodyid = 2
-        self.viewer.cam.distance = self.model.stat.extent * 0.75
-        self.viewer.cam.lookat[2] = 1.15
-        self.viewer.cam.elevation = -20
+        self.viewer.cam.distance = self.model.stat.extent * 0.6
+        self.viewer.cam.elevation = 3
+        self.viewer.cam.trackbodyid = 0
+        self.viewer.cam.type = 1
+
+
+if __name__ == "__main__":
+    env = HopperEnv()
+    while True:
+        env.reset()
+        for _ in range(200):
+            env.render()
+            _, reward, _, _ = env.step(env.action_space.sample())  # take a random action

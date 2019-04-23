@@ -66,13 +66,13 @@ class HumanoidEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         return self._get_obs()
 
     def viewer_setup(self):
-        self.viewer.cam.trackbodyid = 1
-        self.viewer.cam.distance = self.model.stat.extent * 1.0
-        self.viewer.cam.elevation = -20
+        self.viewer.cam.distance = self.model.stat.extent * 0.6
+        self.viewer.cam.elevation = 3
+        self.viewer.cam.trackbodyid = 0
+        self.viewer.cam.type = 1
 
 if __name__ == "__main__":
     env = HumanoidEnv()
-    import time
     while True:
         env.reset()
         for _ in range(200):

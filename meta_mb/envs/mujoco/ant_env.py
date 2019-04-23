@@ -33,16 +33,15 @@ class AntEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
             self.sim.data.qvel.flat,
         ])
 
-    def reward(self, obs, act, obs_next):
-        assert obs.ndim == act.ndim == obs_next.ndim
-        if obs.ndim == 2:
-            assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            forward_vel = obs_next[:, 13]
-            ctrl_cost = .5 * 0.1 * np.sum(np.square(act), axis=1)
-            survive_reward = 1.0
-            return forward_vel - ctrl_cost + survive_reward
+    def reward(self, obs, action, obs_next):
+        if obs_next.ndim == 2:
+            notdone = np.isfinite(obs_next).all() and (np.abs(obs_next[:, 1]) <= .2)
+            reward = notdone.astype(np.float32)
+            return reward
         else:
-            return self.reward(np.array([obs]), np.array([act]), np.array([obs_next]))[0]
+            notdone = np.isfinite(obs_next).all() and (np.abs(obs_next[1]) <= .2)
+            reward = float(notdone)
+            return reward
 
     def done(self, obs):
         if obs.ndim == 2:

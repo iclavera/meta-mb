@@ -50,8 +50,11 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    # def viewer_setup(self):
-    #     self.viewer.cam.distance = self.model.stat.extent * 1.5
+    def viewer_setup(self):
+        self.viewer.cam.distance = self.model.stat.extent * 0.3
+        self.viewer.cam.elevation = 3
+        self.viewer.cam.trackbodyid = 0
+        self.viewer.cam.type = 1
 
     def log_diagnostics(self, paths, prefix=''):
         fwrd_vel = [path["env_infos"]['reward_run'] for path in paths]
