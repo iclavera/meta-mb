@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
         'algo': ['ars'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HalfCheetahEnv, HopperEnv, Walker2DEnv],
         'use_images': [True],
 
         # Problem Conf
@@ -148,13 +148,13 @@ if __name__ == '__main__':
         'parallel': [True],
 
         # Meta-Algo
-        'learning_rate': [0.02],
-        'num_deltas': [16],
+        'learning_rate': [0.025, 0.05],
+        'num_deltas': [8, 16, 32],
         'rollouts_per_policy': [1],
-        'percentile': [0.],
-        'delta_std': [0.03],
-        'latent_dim': [16],
-        'hidden_sizes': [(64, 64)],
+        'percentile': [0., 0.25],
+        'delta_std': [0.03, 0.01, 0.05],
+        'latent_dim': [16, 32],
+        'hidden_sizes': [(64, 64), (128, 128), (256, 256)],
         'time_steps': [4],
 
         'scope': [None],
