@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import numpy as np
 
+
 class Filter(object):
     def __init__(self, shape):
         self.shape = shape

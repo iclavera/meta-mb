@@ -29,9 +29,9 @@ class Trainer(object):
             ars_sample_processor,
             dynamics_sample_processor,
             policy,
-            dynamics_model,
             n_itr,
             num_deltas,
+            dynamics_model=None,
             start_itr=0,
             steps_per_iter=30,
             initial_random_samples=True,
@@ -173,7 +173,7 @@ class Trainer(object):
                     if self.dynamics_model is not None:
                         samples_data = self.ars_sample_processor.process_samples(samples_data)
                     if self.dynamics_model is None:
-                        self.policy.obs_filter.stats_increment()
+                        self.policy.stats_increment()
 
                     """ ------------------ Outer Policy Update ---------------------"""
                     logger.log("Optimizing policy...")

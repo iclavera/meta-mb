@@ -39,7 +39,7 @@ class NpPolicy(Serializable):
         self.policy_params = None
         self.policy_params_batch = None
         self._num_deltas = None
-        self.obs_filter = Filter((self.obs_dim,))
+        self.obs_filters = [Filter((self.obs_dim,))]
 
     def get_action(self, observation):
         """
@@ -124,15 +124,22 @@ class NpPolicy(Serializable):
         for k, v in policy_params.items():
             self.policy_params[k] = v
 
+    def get_stats_filter(self):
+        return [obs_filter.get_params() for obs_filter in self.obs_filters]
+
+    def stats_increment(self):
+        for obs_filter in self.obs_filters:
+            obs_filter.stats_increment()
+
     def __getstate__(self):
         state = {
             'init_args': Serializable.__getstate__(self),
             'network_params': self.get_params(),
-            'filter': self.obs_filter.get_params(),
+            'filter': [obs_filter.get_params() for obs_filter in self.obs_filters],
         }
         return state
 
     def __setstate__(self, state):
         Serializable.__setstate__(self, state['init_args'])
         self.set_params(state['network_params'])
-        self.obs_filer.set_params(*state['filter'])
+        [obs_filter.set_params(*obs_filter) for obs_filter in state['filter']]

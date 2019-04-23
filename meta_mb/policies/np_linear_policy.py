@@ -17,12 +17,12 @@ class LinearPolicy(NpPolicy):
         NpPolicy.__init__(self, obs_dim, action_dim, name, **kwargs)
         self.policy_params = OrderedDict(W=np.zeros((action_dim, obs_dim), dtype=np.float64),
                                          b=np.zeros((action_dim,), dtype=np.float64))
-        self.obs_filter = MeanStdFilter(shape=(obs_dim,))
+        self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)
         assert observations.ndim == 2
-        obs = self.obs_filter(observations, update=update_filter)
+        obs = self.obs_filters[0](observations, update=update_filter)
         actions = np.dot(self.policy_params["W"], obs.T).T + self.policy_params["b"]
         return actions, {}
 
@@ -41,13 +41,13 @@ class LinearPolicy(NpPolicy):
         assert observations.shape[0] == self._num_deltas and observations.shape[-1] == self.obs_dim
         if observations.ndim == 3:
             obs = np.reshape(observations, (-1, self.obs_dim))
-            obs = self.obs_filter(obs, update=update_filter)
+            obs = self.obs_filters[0](obs, update=update_filter)
             obs = np.reshape(obs, (self._num_deltas, -1, self.obs_dim))
             actions = np.matmul(self.policy_params_batch["W"], obs.transpose((0, 2, 1))).transpose((0, 2, 1))\
                       + np.expand_dims(self.policy_params_batch["b"], axis=1)
             assert actions.shape == (self._num_deltas, observations.shape[1], self.action_dim)
         elif observations.ndim == 2:
-            obs = self.obs_filter(observations, update=update_filter)
+            obs = self.obs_filters[0](observations, update=update_filter)
             obs = np.expand_dims(obs, axis=1)
             actions = np.matmul(self.policy_params_batch["W"], obs.transpose((0, 2, 1))).transpose((0, 2, 1)) \
                     + np.expand_dims(self.policy_params_batch["b"], axis=1)
@@ -55,6 +55,3 @@ class LinearPolicy(NpPolicy):
         else:
             raise NotImplementedError
         return actions, {}
-
-    def get_stats_filter(self):
-        return self.obs_filter.get_params()
