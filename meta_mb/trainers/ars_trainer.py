@@ -39,6 +39,7 @@ class Trainer(object):
             dynamics_model_max_epochs=200,
             log_real_performance=True,
             delta_std=0.03,
+            gpu_frac=0.95,
             ):
         self.algo = algo
         self.env = env
@@ -63,7 +64,10 @@ class Trainer(object):
         self._last_returns = -1e8
 
         if sess is None:
-            sess = tf.Session()
+            config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
+            sess = tf.Session(config=config)
         self.sess = sess
 
     def train(self):

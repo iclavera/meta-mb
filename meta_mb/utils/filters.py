@@ -40,7 +40,6 @@ class MeanStdFilter(Filter):
         assert x.shape[-len(self.shape):] == self.shape
         if update:
             self._update(x)
-            # TODO: Do update
         x = x - self.mean
         x = x / (self.std + 1e-8)
         return x

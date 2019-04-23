@@ -1,7 +1,7 @@
 import numpy as np
 from meta_mb.utils.serializable import Serializable
 from gym.spaces import Box
-from rand_param_envs.gym.spaces import Box as OldBox
+# from rand_param_envs.gym.spaces import Box as OldBox
 
 """
 Normalizes the environment class.
@@ -124,14 +124,13 @@ class NormalizedEnv(Serializable):
         self._obs_var = d["_obs_var"]
 
     def step(self, action):
-        if isinstance(self._wrapped_env.action_space, Box) or isinstance(self._wrapped_env.action_space, OldBox):
+        if isinstance(self._wrapped_env.action_space, Box): # or isinstance(self._wrapped_env.action_space, OldBox):
             # rescale the action
             lb, ub = self._wrapped_env.action_space.low, self._wrapped_env.action_space.high
             scaled_action = lb + (action + self._normalization_scale) * (ub - lb) / (2 * self._normalization_scale)
             scaled_action = np.clip(scaled_action, lb, ub)
         else:
             scaled_action = action
-            print("here!!")
         wrapped_step = self._wrapped_env.step(scaled_action)
         next_obs, reward, done, info = wrapped_step
         if getattr(self, "_normalize_obs", False):

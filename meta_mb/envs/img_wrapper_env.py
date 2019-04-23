@@ -1,41 +1,40 @@
-from mb_vision.utils.serializable import Serializable
+from meta_mb.utils.serializable import Serializable
 import numpy as np
 from gym.spaces import Box
 
 
-class ImgEnvWrapper(Serializable):
-    def __init__(self, env, vae=None, use_img=True, img_size=(64, 64), latent_dim=None):
+class ImgWrapperEnv(Serializable):
+    def __init__(self, env, vae=None,
+                 use_img=True, img_size=(64, 64, 3),
+                 latent_dim=None, time_steps=4):
 
         Serializable.quick_init(self, locals())
         self._wrapped_env = env
         self._vae = vae
         self._use_img = use_img
         self._img_size = img_size
-        self._n_channels = 3
         self._latent_dim = latent_dim
+        self._time_steps = time_steps
 
     def step(self, action):
-        obs, reward, done, info = self._wrapped_env.step(action)
-        if self._use_img:
-            img = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-            obs = img
+        _, reward, done, info = self._wrapped_env.step(action)
+        obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
+        self._obs[:-1] = self._obs[1:]
+        self._obs[0] = obs
 
         if self._vae is not None:
-            assert self._use_img
-            obs = np.squeeze(self._vae.encode(img), axis=0)
+            obs = np.squeeze(self._vae.encode(obs), axis=0)
 
         return obs, reward, done, info
 
     def reset(self):
-        obs = self._wrapped_env.reset()
-
-        if self._use_img:
-            img = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-            obs = img
+        _ = self._wrapped_env.reset()
+        self._obs = np.zeros((self._time_steps,) + self._img_size)
+        obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
+        self._obs[0] = obs
 
         if self._vae is not None:
-            assert self._use_img
-            obs = np.squeeze(self._vae.encode(img), axis=0)
+            obs = np.squeeze(self._vae.encode(obs), axis=0).reshape((self._time_steps * self._latent_dim))
 
         return obs
 
@@ -75,4 +74,4 @@ class ImgEnvWrapper(Serializable):
             return orig_attr
 
 
-image_wrapper = ImgEnvWrapper
+image_wrapper = ImgWrapperEnv
