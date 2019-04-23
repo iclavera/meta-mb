@@ -29,6 +29,7 @@ class Sampler(BaseSampler):
             num_rollouts,
             max_path_length,
             n_parallel=1,
+            vae=None,
 
     ):
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
@@ -36,6 +37,7 @@ class Sampler(BaseSampler):
         self.total_samples = num_rollouts * max_path_length
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
+        self.vae = vae
 
         # setup vectorized environment
 
@@ -79,6 +81,9 @@ class Sampler(BaseSampler):
 
             # execute policy
             t = time.time()
+            if self.vae is not None:
+                obses = np.array(obses)
+                obses = self.vae.encode(obses)
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
                 agent_infos = {}
