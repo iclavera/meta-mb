@@ -19,7 +19,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'toronto-200'
+EXP_NAME = 'toronto-100'
 
 
 def run_experiment(**kwargs):
@@ -128,17 +128,17 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AcrobotEnv, PendulumEnv, CartPoleEnv, Continuous_MountainCarEnv],
+        'env': [HalfCheetahEnv],
 
         # Problem Conf
         'n_itr': [101],
-        'max_path_length': [200],
+        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'meta_steps_per_iter': [(50, 100), (30, 50)],
+        'meta_steps_per_iter': [(75, 100)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(500, 500), (1000, 1000)],
+        'dynamics_hidden_sizes': [(500, 500, 500)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],
@@ -164,11 +164,11 @@ if __name__ == '__main__':
 
         # Meta-Algo
         'meta_batch_size': [20],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [25],
+        'rollouts_per_meta_task': [20],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001, 0.005],
+        'inner_lr': [0.001, 0.0005],
         'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
+        'step_size': [0.01, 0.02],
         'exploration': [False],
         'sample_from_buffer': [True],
 
