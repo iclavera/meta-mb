@@ -37,7 +37,9 @@ class Trainer(object):
             initial_random_samples=True,
             sess=None,
             dynamics_model_max_epochs=200,
-            log_real_performance=True
+            log_real_performance=True,
+            sample_from_buffer=False,
+            fraction_meta_batch_size=1,
             ):
         self.algo = algo
         self.env = env
@@ -52,10 +54,12 @@ class Trainer(object):
         self.start_itr = start_itr
         self.num_inner_grad_steps = num_inner_grad_steps
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
+        self.fraction_meta_batch_size = fraction_meta_batch_size
 
         self.initial_random_samples = initial_random_samples
         self.meta_steps_per_iter = meta_steps_per_iter
         self.log_real_performance = log_real_performance
+        self.sample_from_buffer = sample_from_buffer
 
         if sess is None:
             sess = tf.Session()
@@ -104,10 +108,14 @@ class Trainer(object):
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
-                samples_data = self.dynamics_sample_processor.process_samples(sum(env_paths.values(), []),
-                                                                              log=True, log_prefix='EnvTrajs-')
+                env_paths = list(env_paths.values())
+                idxs = np.random.choice(range(len(env_paths)), size=int(len(env_paths) * self.fraction_meta_batch_size),
+                                        replace=False)
+                env_paths = sum([env_paths[idx] for idx in idxs], [])
+                samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
+                                                                              log_prefix='EnvTrajs-')
 
-                self.env.log_diagnostics(sum(env_paths.values(), []), prefix='EnvTrajs-')
+                self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
@@ -120,6 +128,8 @@ class Trainer(object):
                                         samples_data['actions'],
                                         samples_data['next_observations'],
                                         epochs=self.dynamics_model_max_epochs, verbose=True, log_tabular=True)
+
+                buffer = None if not self.sample_from_buffer else samples_data
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
@@ -145,7 +155,6 @@ class Trainer(object):
                 times_outer_step = []
                 times_maml_steps = []
 
-                time_maml_steps_start = time.time()
 
                 for meta_itr in range(meta_steps_per_iter[itr]):
 
@@ -155,6 +164,7 @@ class Trainer(object):
 
                     all_samples_data, all_paths = [], []
                     list_sampling_time, list_inner_step_time, list_outer_step_time, list_proc_samples_time = [], [], [], []
+                    time_maml_steps_start = time.time()
                     start_total_inner_time = time.time()
                     for step in range(self.num_inner_grad_steps+1):
                         logger.log("\n ** Adaptation-Step %d **" % step)
@@ -163,7 +173,9 @@ class Trainer(object):
 
                         logger.log("Obtaining samples...")
                         time_env_sampling_start = time.time()
-                        paths = self.model_sampler.obtain_samples(log=True, log_prefix='Step_%d-' % step)
+                        paths = self.model_sampler.obtain_samples(log=True,
+                                                                  log_prefix='Step_%d-' % step,
+                                                                  buffer=buffer)
                         list_sampling_time.append(time.time() - time_env_sampling_start)
                         all_paths.append(paths)
 
@@ -208,9 +220,9 @@ class Trainer(object):
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
                 if self.log_real_performance:
-                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/3)
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/3 * self.fraction_meta_batch_size)
                 else:
-                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled * self.fraction_meta_batch_size)
                 logger.logkv('AvgTime-OuterStep', np.mean(times_outer_step))
                 logger.logkv('AvgTime-InnerStep', np.mean(times_inner_step))
                 logger.logkv('AvgTime-TotalInner', np.mean(times_total_inner_step))

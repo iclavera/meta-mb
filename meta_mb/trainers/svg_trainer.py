@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 import time
 from meta_mb.logger import logger
 
@@ -22,25 +21,32 @@ class Trainer(object):
     """
     def __init__(
             self,
+            algo,
             env,
             sampler,
-            dynamics_sample_processor,
+            sample_processor,
             policy,
             dynamics_model,
+            value_function,
             n_itr,
             start_itr=0,
             initial_random_samples=True,
             sess=None,
             dynamics_model_max_epochs=200,
+            vfun_max_epochs=200,
+
             ):
+        self.algo = algo
         self.env = env
         self.sampler = sampler
-        self.dynamics_sample_processor = dynamics_sample_processor
+        self.sample_processor = sample_processor
         self.dynamics_model = dynamics_model
+        self.value_function = value_function
         self.policy = policy
         self.n_itr = n_itr
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
+        self.vfun_max_epochs = vfun_max_epochs
 
         self.initial_random_samples = initial_random_samples
 
@@ -73,32 +79,38 @@ class Trainer(object):
 
                 time_env_sampling_start = time.time()
 
-                if self.initial_random_samples and itr == 0:
-                    logger.log("Obtaining random samples from the environment...")
-                    env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-
-                else:
-                    logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+                logger.log("Obtaining samples from the environment using the policy...")
+                env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
-                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                              log=True, log_prefix='EnvTrajs-')
+                samples_data = self.sample_processor.process_samples(env_paths,
+                                                                     log=True,
+                                                                     log_prefix='EnvTrajs-')
+
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                 ''' --------------- fit dynamics model --------------- '''
 
                 time_fit_start = time.time()
 
-                logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
+                logger.log("Training dynamics model for %i epochs ..." % self.dynamics_model_max_epochs)
                 self.dynamics_model.fit(samples_data['observations'],
                                         samples_data['actions'],
                                         samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+                                        epochs=self.dynamics_model_max_epochs,
+                                        verbose=False, log_tabular=True, early_stopping=False)
+
+                logger.log("Training the value function for %i epochs ..." % self.vfun_max_epochs)
+                self.value_function.fit(samples_data['observations'],
+                                        samples_data['returns'],
+                                        epochs=self.vfun_max_epochs, verbose=False, log_tabular=True)
+
+                logger.log("Training the policy ...")
+                self.algo.optimize_policy(samples_data)
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
@@ -126,7 +138,8 @@ class Trainer(object):
         """
         Gets the current policy and env for storage
         """
-        return dict(itr=itr, policy=self.policy, env=self.env, dynamics_model=self.dynamics_model)
+        return dict(itr=itr, policy=self.policy, env=self.env,
+                    dynamics_model=self.dynamics_model, value_function=self.value_function)
 
     def log_diagnostics(self, paths, prefix):
         self.env.log_diagnostics(paths, prefix)

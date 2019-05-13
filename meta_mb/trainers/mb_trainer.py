@@ -126,7 +126,7 @@ class Trainer(object):
         """
         Gets the current policy and env for storage
         """
-        return dict(itr=itr, policy=self.policy, env=self.env)
+        return dict(itr=itr, policy=self.policy, env=self.env, dynamics_model=self.dynamics_model)
 
     def log_diagnostics(self, paths, prefix):
         self.env.log_diagnostics(paths, prefix)
