@@ -109,7 +109,7 @@ def explained_variance_1d(ypred, y):
     return 1 - np.var(y - ypred) / (vary + 1e-8)
 
 
-def concat_tensor_dict_list(tensor_dict_list):
+def concat_tensor_dict_list(tensor_dict_list, end=None):
     """
     Args:
         tensor_dict_list (list) : list of dicts of lists of tensors
@@ -124,7 +124,7 @@ def concat_tensor_dict_list(tensor_dict_list):
         if isinstance(example, dict):
             v = concat_tensor_dict_list([x[k] for x in tensor_dict_list])
         else:
-            v = np.concatenate([x[k] for x in tensor_dict_list])
+            v = np.concatenate([x[k][:end] for x in tensor_dict_list])
         ret[k] = v
     return ret
 
