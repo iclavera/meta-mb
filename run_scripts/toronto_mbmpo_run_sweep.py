@@ -18,8 +18,8 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mbmpo-toronto'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'toronto-200'
 
 
 def run_experiment(**kwargs):
@@ -41,7 +41,6 @@ def run_experiment(**kwargs):
         meta_batch_size=kwargs['meta_batch_size'],
         hidden_sizes=kwargs['policy_hidden_sizes'],
         learn_std=kwargs['policy_learn_std'],
-        hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
@@ -115,7 +114,8 @@ def run_experiment(**kwargs):
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
         meta_steps_per_iter=kwargs['meta_steps_per_iter'],
-        sample_from_buffer=True,
+        sample_from_buffer=kwargs['sample_from_buffer'],
+        fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
     )
 
     trainer.train()
@@ -128,48 +128,49 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv, HalfCheetahEnv, HopperEnv, SwimmerEnv, Walker2dEnv],
+        'env': [AcrobotEnv, PendulumEnv, CartPoleEnv, Continuous_MountainCarEnv],
 
         # Problem Conf
-        'n_itr': [50],
-        'max_path_length': [1000],
+        'n_itr': [101],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'meta_steps_per_iter': [(10, 50)],
+        'meta_steps_per_iter': [(50, 100), (30, 50)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
+        'fraction_meta_batch_size': [0.5],
 
         # Dynamics Model
-        'num_models': [5, 10],
-        'dynamics_hidden_sizes': [(500, 500, 500)],
+        'num_models': [5],
+        'dynamics_hidden_sizes': [(500, 500), (1000, 1000)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50, 200],
+        'dynamics_max_epochs': [50],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [100000],
+        'dynamics_batch_size': [128, 64],
+        'dynamics_buffer_size': [10000],
         'deterministic': [True],
 
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10, 20],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [50],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [25],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001, 0.0005],
+        'inner_lr': [0.001, 0.005],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
+        'sample_from_buffer': [True],
 
         'scope': [None],
         'exp_tag': [''], # For changes besides hyperparams
