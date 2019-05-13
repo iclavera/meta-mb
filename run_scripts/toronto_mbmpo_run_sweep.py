@@ -27,98 +27,106 @@ def run_experiment(**kwargs):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    # Instantiate classes
-    set_seed(kwargs['seed'])
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config)
 
-    baseline = kwargs['baseline']()
+    with sess.as_default() as sess:
 
-    env = normalize(kwargs['env']()) # Wrappers?
+        # Instantiate classes
+        set_seed(kwargs['seed'])
 
-    policy = MetaGaussianMLPPolicy(
-        name="meta-policy",
-        obs_dim=np.prod(env.observation_space.shape),
-        action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
-        hidden_sizes=kwargs['policy_hidden_sizes'],
-        learn_std=kwargs['policy_learn_std'],
-        output_nonlinearity=kwargs['policy_output_nonlinearity'],
-    )
+        baseline = kwargs['baseline']()
 
-    dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                         env=env,
-                                         num_models=kwargs['num_models'],
-                                         hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                         hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                         output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                         learning_rate=kwargs['dynamics_learning_rate'],
-                                         batch_size=kwargs['dynamics_batch_size'],
-                                         buffer_size=kwargs['dynamics_buffer_size'],
+        env = normalize(kwargs['env']()) # Wrappers?
 
-                                         )
-    env_sampler = MetaSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        max_path_length=kwargs['max_path_length'],
-        parallel=kwargs['parallel'],
-    )
+        policy = MetaGaussianMLPPolicy(
+            name="meta-policy",
+            obs_dim=np.prod(env.observation_space.shape),
+            action_dim=np.prod(env.action_space.shape),
+            meta_batch_size=kwargs['meta_batch_size'],
+            hidden_sizes=kwargs['policy_hidden_sizes'],
+            learn_std=kwargs['policy_learn_std'],
+            output_nonlinearity=kwargs['policy_output_nonlinearity'],
+        )
 
-    model_sampler = MBMPOSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        max_path_length=kwargs['max_path_length'],
-        dynamics_model=dynamics_model,
-        deterministic=kwargs['deterministic'],
-    )
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                             env=env,
+                                             num_models=kwargs['num_models'],
+                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                             learning_rate=kwargs['dynamics_learning_rate'],
+                                             batch_size=kwargs['dynamics_batch_size'],
+                                             buffer_size=kwargs['dynamics_buffer_size'],
 
-    dynamics_sample_processor = ModelSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+                                             )
+        env_sampler = MetaSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            max_path_length=kwargs['max_path_length'],
+            parallel=kwargs['parallel'],
+        )
 
-    model_sample_processor = MAMLSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+        model_sampler = MBMPOSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            max_path_length=kwargs['max_path_length'],
+            dynamics_model=dynamics_model,
+            deterministic=kwargs['deterministic'],
+        )
 
-    algo = TRPOMAML(
-        policy=policy,
-        step_size=kwargs['step_size'],
-        inner_type=kwargs['inner_type'],
-        inner_lr=kwargs['inner_lr'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        exploration=kwargs['exploration'],
-    )
+        dynamics_sample_processor = ModelSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    trainer = Trainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        model_sampler=model_sampler,
-        env_sampler=env_sampler,
-        model_sample_processor=model_sample_processor,
-        dynamics_sample_processor=dynamics_sample_processor,
-        dynamics_model=dynamics_model,
-        n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
-        log_real_performance=kwargs['log_real_performance'],
-        meta_steps_per_iter=kwargs['meta_steps_per_iter'],
-        sample_from_buffer=kwargs['sample_from_buffer'],
-        fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
-    )
+        model_sample_processor = MAMLSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    trainer.train()
+        algo = TRPOMAML(
+            policy=policy,
+            step_size=kwargs['step_size'],
+            inner_type=kwargs['inner_type'],
+            inner_lr=kwargs['inner_lr'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            exploration=kwargs['exploration'],
+        )
+
+        trainer = Trainer(
+            algo=algo,
+            policy=policy,
+            env=env,
+            model_sampler=model_sampler,
+            env_sampler=env_sampler,
+            model_sample_processor=model_sample_processor,
+            dynamics_sample_processor=dynamics_sample_processor,
+            dynamics_model=dynamics_model,
+            n_itr=kwargs['n_itr'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
+            log_real_performance=kwargs['log_real_performance'],
+            meta_steps_per_iter=kwargs['meta_steps_per_iter'],
+            sample_from_buffer=kwargs['sample_from_buffer'],
+            fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
+            sess=sess
+        )
+
+        trainer.train()
 
 
 if __name__ == '__main__':
