@@ -393,7 +393,6 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
         elif pred_type == 'mean':
             pred_obs = np.mean(pred_obs, axis=-1)
-            pred_rew = np.mean(pred_obs, axis=-1)
         elif pred_type == 'all':
             pass
         else:

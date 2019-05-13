@@ -1,5 +1,6 @@
 # from meta_mb.core import MLP
 from meta_mb.dynamics.layers import MLP
+from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 import tensorflow as tf
 import numpy as np
 from meta_mb.utils.serializable import Serializable
@@ -33,7 +34,8 @@ class MLPDynamicsModel(Serializable):
                  normalize_input=True,
                  optimizer=tf.train.AdamOptimizer,
                  valid_split_ratio=0.2,
-                 rolling_average_persitency=0.99
+                 rolling_average_persitency=0.99,
+                 buffer_size=100000,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -41,6 +43,8 @@ class MLPDynamicsModel(Serializable):
         self.normalization = None
         self.normalize_input = normalize_input
         self.use_reward_model = False
+        self.buffer_size = buffer_size
+        self.name = name
 
         self._dataset_train = None
         self._dataset_test = None
@@ -67,14 +71,15 @@ class MLPDynamicsModel(Serializable):
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
 
             # create MLP
-            mlp = MLP(name,
-                      output_dim=self.obs_space_dims,
-                      hidden_sizes=hidden_sizes,
-                      hidden_nonlinearity=hidden_nonlinearity,
-                      output_nonlinearity=output_nonlinearity,
-                      input_var=self.nn_input,
-                      input_dim=self.obs_space_dims + self.action_space_dims,
-                      weight_normalization=weight_normalization)
+            with tf.variable_scope('dynamics_model'):
+                mlp = MLP(name,
+                          output_dim=self.obs_space_dims,
+                          hidden_sizes=hidden_sizes,
+                          hidden_nonlinearity=hidden_nonlinearity,
+                          output_nonlinearity=output_nonlinearity,
+                          input_var=self.nn_input,
+                          input_dim=self.obs_space_dims + self.action_space_dims,
+                          weight_normalization=weight_normalization)
 
             self.delta_pred = mlp.output_var
 
@@ -89,7 +94,9 @@ class MLPDynamicsModel(Serializable):
         self._networks = [mlp]
         # LayersPowered.__init__(self, [mlp.output_layer])
 
-    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True, verbose=False, valid_split_ratio=None, rolling_average_persitency=None):
+    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
+            verbose=False, valid_split_ratio=None,
+            rolling_average_persitency=None, log_tabular=False, early_stopping=True):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -111,43 +118,65 @@ class MLPDynamicsModel(Serializable):
 
         sess = tf.get_default_session()
 
-        if (self.normalization is None or compute_normalization) and self.normalize_input:
-            self.compute_normalization(obs, act, obs_next)
-
-        if self.normalize_input:
-            # normalize data
-            obs, act, delta = self._normalize_data(obs, act, obs_next)
-            assert obs.ndim == act.ndim == obs_next.ndim == 2
-        else:
-            delta = obs_next - obs
-
         # split into valid and test set
-
+        delta = obs_next - obs
         obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                              test_split_ratio=valid_split_ratio)
 
         if self._dataset_test is None:
             self._dataset_test = dict(obs=obs_test, act=act_test, delta=delta_test)
+            self._dataset_train = dict(obs=obs_train, act=act_train, delta=delta_train)
         else:
-            self._dataset_test['obs'] = np.concatenate([self._dataset_test['obs'], obs_test])
-            self._dataset_test['act'] = np.concatenate([self._dataset_test['act'], act_test])
-            self._dataset_test['delta'] = np.concatenate([self._dataset_test['delta'], delta_test])
+            n_test_new_samples = len(obs_test)
+            n_max_test = self.buffer_size - n_test_new_samples
+            n_train_new_samples = len(obs_train)
+            n_max_train = self.buffer_size - n_train_new_samples
+            self._dataset_test['obs'] = np.concatenate([self._dataset_test['obs'][-n_max_test:], obs_test])
+            self._dataset_test['act'] = np.concatenate([self._dataset_test['act'][-n_max_test:], act_test])
+            self._dataset_test['delta'] = np.concatenate([self._dataset_test['delta'][-n_max_test:], delta_test])
+
+            self._dataset_train['obs'] = np.concatenate([self._dataset_train['obs'][-n_max_train:], obs_train])
+            self._dataset_train['act'] = np.concatenate([self._dataset_train['act'][-n_max_train:], act_train])
+            self._dataset_train['delta'] = np.concatenate([self._dataset_train['delta'][-n_max_train:], delta_train])
+
         # create data queue
-        next_batch, iterator = self._data_input_fn(obs_train, act_train, delta_train, batch_size=self.batch_size)
+        if self.next_batch is None:
+            self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
+                                                                 self._dataset_train['act'],
+                                                                 self._dataset_train['delta'],
+                                                                 batch_size=self.batch_size,
+                                                                 buffer_size=self.buffer_size)
 
         valid_loss_rolling_average = None
+
+        if (self.normalization is None or compute_normalization) and self.normalize_input:
+            self.compute_normalization(self._dataset_train['obs'], self._dataset_train['act'],
+                                       self._dataset_train['delta'])
+
+        if self.normalize_input:
+            # normalize data
+            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+                                                                     self._dataset_train['act'],
+                                                                     self._dataset_train['delta'])
+            assert obs_train.ndim == act_train.ndim == delta_train.ndim == 2
+        else:
+            obs_train = self._dataset_train['obs']
+            act_train = self._dataset_train['act']
+            delta_train = self._dataset_train['delta']
 
         # Training loop
         for epoch in range(epochs):
 
             # initialize data queue
-            sess.run(iterator.initializer,
-                     feed_dict={self.obs_dataset_ph: obs_train, self.act_dataset_ph: act_train, self.delta_dataset_ph: delta_train})
+            sess.run(self.iterator.initializer,
+                     feed_dict={self.obs_dataset_ph: obs_train,
+                                self.act_dataset_ph: act_train,
+                                self.delta_dataset_ph: delta_train})
 
             batch_losses = []
             while True:
                 try:
-                    obs_batch, act_batch, delta_batch = sess.run(next_batch)
+                    obs_batch, act_batch, delta_batch = sess.run(self.next_batch)
 
                     # run train op
                     batch_loss, _ = sess.run([self.loss, self.train_op], feed_dict={self.obs_ph: obs_batch,
@@ -157,8 +186,18 @@ class MLPDynamicsModel(Serializable):
                     batch_losses.append(batch_loss)
 
                 except tf.errors.OutOfRangeError:
-
                     # compute validation loss
+                    if self.normalize_input:
+                        # normalize data
+                        obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
+                                                                              self._dataset_test['act'],
+                                                                              self._dataset_test['delta'])
+                        assert obs_test.ndim == act_test.ndim == delta_test.ndim == 2
+                    else:
+                        obs_test = self._dataset_test['obs']
+                        act_test = self._dataset_test['act']
+                        delta_test = self._dataset_test['delta']
+
                     valid_loss = sess.run(self.loss, feed_dict={self.obs_ph: obs_test,
                                                                 self.act_ph: act_test,
                                                                 self.delta_ph: delta_test})
@@ -172,7 +211,7 @@ class MLPDynamicsModel(Serializable):
                         logger.log("Training NNDynamicsModel - finished epoch %i -- train loss: %.4f  valid loss: %.4f  valid_loss_mov_avg: %.4f"%(epoch, float(np.mean(batch_losses)), valid_loss, valid_loss_rolling_average))
                     break
 
-            if valid_loss_rolling_average_prev < valid_loss_rolling_average:
+            if early_stopping and valid_loss_rolling_average_prev < valid_loss_rolling_average:
                 logger.log('Stopping DynamicsEnsemble Training since valid_loss_rolling_average decreased')
                 break
             valid_loss_rolling_average_prev = valid_loss_rolling_average
@@ -219,25 +258,23 @@ class MLPDynamicsModel(Serializable):
         self.normalization['delta'] = (np.mean(delta, axis=0), np.std(delta, axis=0))
         self.normalization['act'] = (np.mean(act, axis=0), np.std(act, axis=0))
 
-    def _data_input_fn(self, obs, act, delta, batch_size=500, buffer_size=100000):
+    def _data_input_fn(self, obs, act, delta, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
         assert obs.shape[1] == delta.shape[1], "obs and obs_next must have same length along axis 1 "
 
-        self.obs_dataset_ph = tf.placeholder(tf.float32, obs.shape)
-        self.act_dataset_ph = tf.placeholder(tf.float32, act.shape)
-        self.delta_dataset_ph = tf.placeholder(tf.float32, delta.shape)
+        self.obs_dataset_ph = tf.placeholder(tf.float32, (None, obs.shape[1]))
+        self.act_dataset_ph = tf.placeholder(tf.float32, (None, act.shape[1]))
+        self.delta_dataset_ph = tf.placeholder(tf.float32, (None, delta.shape[1]))
 
-        dataset = tf.data.Dataset.from_tensor_slices((self.obs_dataset_ph, self.act_dataset_ph, self.delta_dataset_ph))
-        if self._dataset_train is None:
-            self._dataset_train = dataset
-        else:
-            dataset = dataset.concatenate(self._dataset_train)
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (self.obs_dataset_ph, self.act_dataset_ph, self.delta_dataset_ph)
+        )
         dataset = dataset.batch(batch_size)
-        self._dataset_train = dataset.shuffle(buffer_size=buffer_size)
-        iterator = self._dataset_train.make_initializable_iterator()
+        dataset = dataset.shuffle(buffer_size=buffer_size)
+        iterator = dataset.make_initializable_iterator()
         next_batch = iterator.get_next()
 
         return next_batch, iterator
@@ -264,6 +301,13 @@ class MLPDynamicsModel(Serializable):
 
         sess.run(tf.variables_initializer(uninit_variables))
 
+    def reinit_model(self):
+        sess = tf.get_default_session()
+        if '_reinit_model_op' not in dir(self):
+            self._reinit_model_op = [tf.variables_initializer(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                    scope=self.name + '/dynamics_model'))]
+        sess.run(self._reinit_model_op)
+
     def __getstate__(self):
         # state = LayersPowered.__getstate__(self)
         state = dict()
@@ -279,26 +323,5 @@ class MLPDynamicsModel(Serializable):
         for i in range(len(self._networks)):
             self._networks[i].__setstate__(state['networks'][i])
 
-
-
-def normalize(data_array, mean, std):
-    return (data_array - mean) / (std + 1e-10)
-
-def denormalize(data_array, mean, std):
-    return data_array * (std + 1e-10) + mean
-
-def train_test_split(obs, act, delta, test_split_ratio=0.2):
-    assert obs.shape[0] == act.shape[0] == delta.shape[0]
-    dataset_size = obs.shape[0]
-    indices = np.arange(dataset_size)
-    np.random.shuffle(indices)
-    split_idx = int(dataset_size * (1-test_split_ratio))
-
-    idx_train = indices[:split_idx]
-    idx_test = indices[split_idx:]
-    assert len(idx_train) + len(idx_test) == dataset_size
-
-    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
-           obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
 
 

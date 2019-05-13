@@ -4,11 +4,11 @@ import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
-from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 import time
 
 
-class ProbMLPDynamicsEnsemble(MLPDynamicsModel):
+class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
     """
     Class for MLP continous dynamics model
     """
@@ -170,181 +170,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsModel):
 
         self._networks = mlps
 
-    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
-            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False):
-        """
-        Fits the NN dynamics model
-        :param obs: observations - numpy array of shape (n_samples, ndim_obs)
-        :param act: actions - numpy array of shape (n_samples, ndim_act)
-        :param obs_next: observations after taking action - numpy array of shape (n_samples, ndim_obs)
-        :param epochs: number of training epochs
-        :param compute_normalization: boolean indicating whether normalization shall be (re-)computed given the data
-        :param valid_split_ratio: relative size of validation split (float between 0.0 and 1.0)
-        :param (boolean) whether to log training stats in tabular format
-        :param verbose: logging verbosity
-        """
-
-        assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
-        assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
-        assert act.ndim == 2 and act.shape[1] == self.action_space_dims
-
-        if valid_split_ratio is None: valid_split_ratio = self.valid_split_ratio
-        if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
-
-        assert 1 > valid_split_ratio >= 0
-
-        sess = tf.get_default_session()
-
-        if (self.normalization is None or compute_normalization) and self.normalize_input:
-            self.compute_normalization(obs, act, obs_next)
-
-        if self.normalize_input:
-            # normalize data
-            obs, act, delta = self._normalize_data(obs, act, obs_next)
-            assert obs.ndim == act.ndim == obs_next.ndim == 2
-        else:
-            delta = obs_next - obs
-
-        # split into valid and test set
-        obs_train_batches = []
-        act_train_batches = []
-        delta_train_batches = []
-        obs_test_batches = []
-        act_test_batches = []
-        delta_test_batches = []
-        for i in range(self.num_models):
-            obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
-                                                                                             test_split_ratio=valid_split_ratio)
-            obs_train_batches.append(obs_train)
-            act_train_batches.append(act_train)
-            delta_train_batches.append(delta_train)
-            obs_test_batches.append(obs_test)
-            act_test_batches.append(act_test)
-            delta_test_batches.append(delta_test)
-            # create data queue
-        if self._dataset_test is None:
-            self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
-            self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
-        else:
-            n_test_new_samples = len(obs_test_batches[0])
-            n_max_test = self.buffer_size - n_test_new_samples
-            n_train_new_samples = len(obs_train_batches[0])
-            n_max_train = self.buffer_size - n_train_new_samples
-            for i in range(self.num_models):
-                self._dataset_test['obs'][i] = np.concatenate([self._dataset_test['obs'][i][-n_max_test:],
-                                                               obs_test_batches[i]])
-                self._dataset_test['act'][i] = np.concatenate([self._dataset_test['act'][i][-n_max_test:],
-                                                               act_test_batches[i]])
-                self._dataset_test['delta'][i] = np.concatenate([self._dataset_test['delta'][i][-n_max_test:],
-                                                                 delta_test_batches[i]])
-
-                self._dataset_train['obs'][i] = np.concatenate([self._dataset_train['obs'][i][-n_max_train:],
-                                                                obs_train_batches[i]])
-                self._dataset_train['act'][i] = np.concatenate([self._dataset_train['act'][i][-n_max_train:],
-                                                                act_train_batches[i]])
-                self._dataset_train['delta'][i] = np.concatenate(
-                    [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
-
-        if self.next_batch is None:
-            self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
-                                                                 self._dataset_train['act'],
-                                                                 self._dataset_train['delta'],
-                                                                 batch_size=self.batch_size)
-
-        valid_loss_rolling_average = None
-        train_op_to_do = self.train_op_model_batches
-        idx_to_remove = []
-        epoch_times = []
-        epochs_per_model = []
-
-        """ ------- Looping over training epochs ------- """
-        for epoch in range(epochs):
-
-            # initialize data queue
-            feed_dict = dict(
-                list(zip(self.obs_batches_dataset_ph, self._dataset_train['obs'])) +
-                list(zip(self.act_batches_dataset_ph, self._dataset_train['act'])) +
-                list(zip(self.delta_batches_dataset_ph, self._dataset_train['delta']))
-            )
-            sess.run(self.iterator.initializer, feed_dict=feed_dict)
-
-            # preparations for recording training stats
-            epoch_start_time = time.time()
-            batch_losses = []
-
-            """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
-            while True:
-                try:
-                    obs_act_delta = sess.run(self.next_batch)
-                    obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
-                    act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
-                    delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
-
-                    # run train op
-                    batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
-                                                   feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
-                                                              self.act_model_batches_stack_ph: act_batch_stack,
-                                                              self.delta_model_batches_stack_ph: delta_batch_stack})
-
-                    batch_loss = np.array(batch_loss_train_ops[:self.num_models])
-                    batch_losses.append(batch_loss)
-
-                except tf.errors.OutOfRangeError:
-                    obs_test_stack = np.concatenate(self._dataset_test['obs'], axis=0)
-                    act_test_stack = np.concatenate(self._dataset_test['act'], axis=0)
-                    delta_test_stack = np.concatenate(self._dataset_test['delta'], axis=0)
-                    # compute validation loss
-                    valid_loss = sess.run(self.loss_model_batches,
-                                          feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
-                                                     self.act_model_batches_stack_ph: act_test_stack,
-                                                     self.delta_model_batches_stack_ph: delta_test_stack})
-                    valid_loss = np.array(valid_loss)
-                    if valid_loss_rolling_average is None:
-                        valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
-                        valid_loss_rolling_average_prev = 2.0 * valid_loss
-                        for i in range(len(valid_loss)):
-                            if valid_loss[i] < 0:
-                                valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
-                                valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
-
-                    valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
-                                                 + (1.0-rolling_average_persitency)*valid_loss
-
-                    if verbose:
-                        str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
-                        str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
-                        str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-                        logger.log("Training NNDynamicsModel - finished epoch %i --"
-                                   "train loss: %s  valid loss: %s  valid_loss_mov_avg: %s"
-                                   %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge))
-                    break
-
-            for i in range(self.num_models):
-                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
-                    idx_to_remove.append(i)
-                    epochs_per_model.append(epoch)
-                    if verbose:
-                        logger.log('Stopping Training of Model %i since its valid_loss_rolling_average decreased'%i)
-
-            train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
-
-            if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
-
-            if not train_op_to_do:
-                logger.log('Stopping DynamicsEnsemble Training since valid_loss_rolling_average decreased')
-                break
-            valid_loss_rolling_average_prev = valid_loss_rolling_average
-
-        """ ------- Tabular Logging ------- """
-        if log_tabular:
-            logger.logkv('AvgModelEpochTime', np.mean(epoch_times))
-            assert len(epochs_per_model) == self.num_models
-            logger.logkv('AvgEpochs', np.mean(epochs_per_model))
-            logger.logkv('StdEpochsl', np.std(epochs_per_model))
-            logger.logkv('AvgFinalTrainLoss', np.mean(batch_losses))
-            logger.logkv('AvgFinalValidLoss', np.mean(valid_loss))
-            logger.logkv('AvgFinalValidLoss', np.mean(valid_loss_rolling_average))
-
     def predict(self, obs, act, pred_type='rand', deterministic=True):
         """
         Predict the batch of next observations given the batch of current observations and actions
@@ -435,67 +260,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsModel):
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 
-    def predict_std(self, obs, act):
-        """
-        Calculates the std of predicted next observations among the models
-        given the batch of current observations and actions
-        :param obs: observations - numpy array of shape (n_samples, ndim_obs)
-        :param act: actions - numpy array of shape (n_samples, ndim_act)
-        :return: std_pred_obs: std of predicted next observatations - (n_samples, ndim_obs)
-        """
-        assert self.num_models > 1, "calculating the std requires at "
-        pred_obs = self.predict(obs, act, pred_type='all')
-        assert pred_obs.ndim == 3
-        return np.std(pred_obs, axis=2)
-
-    def reinit_model(self):
-        sess = tf.get_default_session()
-        if '_reinit_model_op' not in dir(self):
-            self._reinit_model_op = [tf.variables_initializer(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                    scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
-        sess.run(self._reinit_model_op)
-
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
-        """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
-
-        assert len(obs_batches) == len(act_batches) == len(delta_batches)
-        obs, act, delta = obs_batches[0], act_batches[0], delta_batches[0]
-        assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
-        assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
-        assert obs.shape[1] == delta.shape[1], "obs and obs_next must have same length along axis 1 "
-
-        self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
-        self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
-        self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in range(self.num_models)]
-
-        dataset = tf.data.Dataset.from_tensor_slices(
-            tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
-        )
-        dataset = dataset.batch(batch_size)
-        dataset = dataset.shuffle(buffer_size=buffer_size)
-        iterator = dataset.make_initializable_iterator()
-        next_batch = iterator.get_next()
-
-        return next_batch, iterator
-
 
 def denormalize(data_array, mean, std):
     if data_array.ndim == 3: # assumed shape (batch_size, ndim_obs, n_models)
         return data_array * (std[None, :, None] + 1e-10) + mean[None, :, None]
     elif data_array.ndim == 2:
         return data_array * (std[None, :] + 1e-10) + mean[None, :]
-
-
-def train_test_split(obs, act, delta, test_split_ratio=0.2):
-    assert obs.shape[0] == act.shape[0] == delta.shape[0]
-    dataset_size = obs.shape[0]
-    indices = np.arange(dataset_size)
-    np.random.shuffle(indices)
-    split_idx = int(dataset_size * (1-test_split_ratio))
-
-    idx_train = indices[:split_idx]
-    idx_test = indices[split_idx:]
-    assert len(idx_train) + len(idx_test) == dataset_size
-
-    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
-           obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
