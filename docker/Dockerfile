@@ -6,9 +6,9 @@ RUN apt-get update --fix-missing && apt-get install -y wget bzip2 ca-certificate
     libglib2.0-0 libxext6 libsm6 libxrender1 \
     git mercurial subversion
 RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh && \
-    wget  --no-check-certificate --quiet https://repo.continuum.io/archive/Anaconda2-2.5.0-Linux-x86_64.sh && \
-    /bin/bash /Anaconda2-2.5.0-Linux-x86_64.sh -b -p /opt/conda && \
-    rm /Anaconda2-2.5.0-Linux-x86_64.sh
+    wget  --no-check-certificate --quiet https://repo.anaconda.com/archive/Anaconda2-2019.03-Linux-x86_64.sh && \
+    /bin/bash Anaconda2-2019.03-Linux-x86_64.sh -b -p /opt/conda && \
+    rm Anaconda2-2019.03-Linux-x86_64.sh
 RUN sed -i~orig -e 's/# deb-src/deb-src/' /etc/apt/sources.list && apt-get update --fix-missing
 RUN apt-get install -y curl grep sed dpkg && \
     TINI_VERSION=`curl https://github.com/krallin/tini/releases/latest | grep -o "/v.*\"" | sed 's:^..\(.*\).$:\1:'` && \
@@ -26,7 +26,7 @@ ENTRYPOINT [ "/usr/bin/tini", "--" ]
 # ========== Special Deps ==========
 RUN apt-get update
 RUN apt-get -y install git make cmake unzip
-RUN pip install awscli
+# RUN pip install awscli
 # ALE requires zlib
 RUN apt-get -y install zlib1g-dev
 # MUJOCO requires graphics stuff (Why?)
@@ -64,10 +64,10 @@ RUN apt-get install -y clang-5.0
 # ========== Add codebase stub ==========
 CMD mkdir /root/code
 ADD environment.yml /root/code/environment.yml
+ENV LD_LIBRARY_PATH /root/.mujoco/mjpro150/bin:$LD_LIBRARY_PATH
 RUN conda env create -f /root/code/environment.yml
 
 ENV PYTHONPATH /root/code/meta_mb:$PYTHONPATH
-ENV LD_LIBRARY_PATH /root/.mujoco/mjpro150/bin:$LD_LIBRARY_PATH
 ENV PATH /opt/conda/envs/meta_mb/bin:$PATH
 RUN echo "source activate meta_mb" >> /root/.bashrc
 ENV BASH_ENV /root/.bashrc
