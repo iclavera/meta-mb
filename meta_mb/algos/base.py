@@ -60,7 +60,7 @@ class Algo(object):
         """
         raise NotImplementedError
 
-    def _make_input_placeholders(self, prefix='', recurrent=False):
+    def _make_input_placeholders(self, prefix='', recurrent=False, next_obs=False):
         """
         Args:
             prefix (str) : a string to prepend to the name of each variable
@@ -96,7 +96,15 @@ class Algo(object):
             all_phs_dict['%s_agent_infos/%s' % (prefix, info_key)] = ph
             dist_info_ph_dict[info_key] = ph
 
-        return obs_ph, action_ph, adv_ph, dist_info_ph_dict, all_phs_dict
+        if not next_obs:
+            return obs_ph, action_ph, adv_ph, dist_info_ph_dict, all_phs_dict
+
+        else:
+            obs_shape = [None, self.policy.obs_dim] if not recurrent else [None, None, self.policy.obs_dim]
+            next_obs_ph = tf.placeholder(dtype=tf.float32, shape=obs_shape, name=prefix + '_obs')
+            all_phs_dict['%s_%s' % (prefix, 'next_observations')] = next_obs_ph
+
+        return obs_ph, action_ph, next_obs_ph, adv_ph, dist_info_ph_dict, all_phs_dict
 
     def _extract_input_dict(self, samples_data, keys, prefix=''):
         """
