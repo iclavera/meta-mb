@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HalfCheetahEnv, AntEnv],
 
         # Problem Conf
         'n_itr': [101],
