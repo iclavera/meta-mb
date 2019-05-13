@@ -33,6 +33,7 @@ class MBMPOSampler(BaseSampler):
             max_path_length,
             envs_per_task=None,
             parallel=False,
+            deterministic=True,
             ):
         super(MBMPOSampler, self).__init__(env, policy, rollouts_per_meta_task, max_path_length)
         assert not parallel
@@ -45,9 +46,9 @@ class MBMPOSampler(BaseSampler):
 
         # setup vectorized environment
         self.vec_env = MBMPOIterativeEnvExecutor(env, dynamics_model, self.meta_batch_size, self.envs_per_task,
-                                                 max_path_length)
+                                                 max_path_length, deterministic=deterministic)
 
-    def obtain_samples(self, log=False, log_prefix=''):
+    def obtain_samples(self, log=False, log_prefix='', buffer=None):
         """
         Collect batch_size trajectories from each task
 
@@ -74,7 +75,7 @@ class MBMPOSampler(BaseSampler):
         policy.reset(dones=[True] * self.meta_batch_size)
 
         # initial reset of meta_envs
-        obses = self.vec_env.reset()
+        obses = self.vec_env.reset(buffer)
         
         while n_samples < self.total_samples:
             

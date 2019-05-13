@@ -14,7 +14,7 @@ class MBMPOIterativeEnvExecutor(object):
                                the respective environment is reset
     """
 
-    def __init__(self, env, dynamics_model, meta_batch_size, envs_per_task, max_path_length):
+    def __init__(self, env, dynamics_model, meta_batch_size, envs_per_task, max_path_length, deterministic=True):
         self.env = env
         self.dynamics_model = dynamics_model
         self._num_envs = meta_batch_size * envs_per_task
@@ -32,6 +32,7 @@ class MBMPOIterativeEnvExecutor(object):
         self.ts = np.zeros(meta_batch_size * envs_per_task, dtype='int')  # time steps
         self.max_path_length = max_path_length
         self.current_obs = None
+        self._buffer = None
 
     def step(self, actions):
         """
@@ -63,8 +64,7 @@ class MBMPOIterativeEnvExecutor(object):
         self.ts += 1
         dones = np.logical_or(self.ts >= self.max_path_length, dones)
         for i in np.argwhere(dones).flatten():
-            next_obs[i] = self.env.reset()
-            self.ts[i] = 0
+            next_obs[i], self.ts[i] = self._reset()
 
         self.current_obs = next_obs
 
@@ -79,17 +79,32 @@ class MBMPOIterativeEnvExecutor(object):
         """
         pass
 
-    def reset(self):
+    def _reset(self):
+        if self._buffer is None:
+            return self.env.reset(), 0
+
+        else:
+            idx = np.random.randint(len(self._buffer['observations']))
+            return self._buffer['observations'][idx], self._buffer['time_steps'][idx]
+
+    def reset(self, buffer=None):
         """
         Resets the environments
 
         Returns:
             (list): list of (np.ndarray) with the new initial observations.
         """
-        results = [self.env.reset() for _ in range(self.num_envs)]  # get initial observation from environment
-        self.current_obs = np.stack(results, axis=0)
-        assert self.current_obs.ndim == 2
-        self.ts[:] = 0
+        self._buffer = buffer
+        if buffer is None:
+            results = [self.env.reset() for _ in range(self.num_envs)]  # get initial observation from environment
+            self.current_obs = np.stack(results, axis=0)
+            assert self.current_obs.ndim == 2
+            self.ts[:] = 0
+        else:
+            idx = np.random.randint(0, len(self._buffer['observations']), size=self.num_envs)
+            self.current_obs = self._buffer['observations'][idx]
+            self.ts = self._buffer['time_steps'][idx]
+            results = list(self.current_obs)
         return results
 
     @property
