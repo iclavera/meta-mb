@@ -57,7 +57,7 @@ class PendulumEnv(MetaEnv):
         self.state = np.array([newth, newthdot])
         return self._get_obs(), reward, False, {}
 
-    def _reset(self):
+    def reset(self):
         high = np.array([np.pi, 1])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None
