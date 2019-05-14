@@ -93,7 +93,7 @@ aws configure
 Clone the doodad repository 
 
 ```
-git clone https://github.com/justinjfu/doodad.git
+git clone git@github.com:jonasrothfuss/doodad.git
 ```
 
 Install the extra package requirements for doodad
@@ -110,6 +110,9 @@ python scripts/setup_ec2.py
 ```
 
 Set S3_BUCKET_NAME in experiment_utils/config.py to your bucket name
+
+
+Finally add doodad and the meta-mb repositories to your PYHTONPATH.
 
 ## TODO:
 Add all the existing algorithms and the run scripts
