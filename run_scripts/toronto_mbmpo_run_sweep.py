@@ -19,7 +19,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'toronto-100'
+EXP_NAME = 'toronto-50'
 
 
 def run_experiment(**kwargs):
@@ -136,26 +136,26 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv],
+        'env': [ReacherEnv],
 
         # Problem Conf
-        'n_itr': [101],
-        'max_path_length': [1000],
+        'n_itr': [401],
+        'max_path_length': [50],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'meta_steps_per_iter': [(75, 100)],
+        'meta_steps_per_iter': [(50, 100), (30, 50)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
-        'fraction_meta_batch_size': [0.5],
+        'fraction_meta_batch_size': [.5],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(500, 500, 500)],
+        'dynamics_hidden_sizes': [(500, 500)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],
@@ -176,7 +176,7 @@ if __name__ == '__main__':
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001, 0.0005],
         'inner_type': ['log_likelihood'],
-        'step_size': [0.01, 0.02],
+        'step_size': [0.01],
         'exploration': [False],
         'sample_from_buffer': [True],
 

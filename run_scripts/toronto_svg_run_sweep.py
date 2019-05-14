@@ -39,7 +39,7 @@ def run_experiment(**kwargs):
                           )
 
     policy = GaussianMLPPolicy(
-        name="meta-policy",
+        name="policy",
         obs_dim=np.prod(env.observation_space.shape),
         action_dim=np.prod(env.action_space.shape),
         hidden_sizes=kwargs['policy_hidden_sizes'],
@@ -112,8 +112,8 @@ if __name__ == '__main__':
         'env': [SwimmerEnv],
 
         # Problem Conf
-        'n_itr': [22],
-        'max_path_length': [100],
+        'n_itr': [100],
+        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
@@ -137,8 +137,8 @@ if __name__ == '__main__':
         'vfun_hidden_nonlinearity': ['relu'],
         'vfun_output_nonlinearity': [None],
         'vfun_max_epochs': [50],
-        'vfun_learning_rate': [1e-3],
-        'vfun_batch_size': [128],
+        'vfun_learning_rate': [5e-4],
+        'vfun_batch_size': [32],
         'vfun_buffer_size': [10000],
 
 
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
         # Algo
         'svg_learning_rate': [1e-4],
-        'svg_batch_size': [32],
+        'svg_batch_size': [64],
         'svg_max_buffer_size': [10000],
         'kl_penalty': [1e-3],
 
