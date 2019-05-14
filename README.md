@@ -61,13 +61,7 @@ source <venv-name>/bin/activate
 If not done yet, install [anaconda](https://www.anaconda.com/) by following the instructions [here](https://www.anaconda.com/download/#linux).
 Then reate a anaconda environment, activate it and install the requirements in [`requirements.txt`](requirements.txt).
 ```
-conda create -n <env-name> python=3.6
-source activate <env-name>
-```
-
-##### B.3. Install the required python dependencies
-```
-pip install -r requirements.txt
+conda env create -f docker/environment.yml
 ```
 
 ##### B.4. Set up the Mujoco physics engine and mujoco-py
@@ -113,6 +107,21 @@ Set S3_BUCKET_NAME in experiment_utils/config.py to your bucket name
 
 
 Finally add doodad and the meta-mb repositories to your PYHTONPATH.
+
+## Run Benchmark
+To run svg run:
+
+```
+python run_script_bm/svg_run.py
+```
+
+To run mbmpo run:
+
+```
+python run_script_bm/mbmpo_run.py
+```
+
+The hyperparameters for each algoritm are the run file as a dict. 
 
 ## TODO:
 Add all the existing algorithms and the run scripts

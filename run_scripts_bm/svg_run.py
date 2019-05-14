@@ -20,7 +20,7 @@ EXP_NAME = 'svg'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -106,57 +106,59 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
 
-    sweep_params = {
-        'seed': [1, 2],
+    params = {
+        'seed': 1,
 
-        'algo': ['svg'],
-        'env': [SwimmerEnv],
+        'algo': 'svg',
+        'env': SwimmerEnv,
 
         # Problem Conf
-        'n_itr': [100],
-        'max_path_length': [1000],
-        'discount': [0.99],
-        'gae_lambda': [1.],
-        'normalize_adv': [True],
-        'positive_adv': [False],
+        'n_itr': 100,
+        'max_path_length': 1000,
+        'discount': 0.99,
+        'gae_lambda': 1.,
+        'normalize_adv': True,
+        'positive_adv': False,
 
         # Env Sampling
-        'num_rollouts': [4],
-        'n_parallel': [4],
+        'num_rollouts': 4,
+        'n_parallel': 2, # Parallelized across 2 cores
 
         # Dynamics Model
-        'dynamics_hidden_sizes': [(500, 500)],
-        'dyanmics_hidden_nonlinearity': ['relu'],
-        'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],
-        'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [128],
-        'dynamics_buffer_size': [10000],
+        'dynamics_hidden_sizes': (500, 500),
+        'dyanmics_hidden_nonlinearity': 'relu',
+        'dyanmics_output_nonlinearity': None,
+        'dynamics_max_epochs': 50,
+        'dynamics_learning_rate': 1e-3,
+        'dynamics_batch_size': 128,
+        'dynamics_buffer_size': 25000,
 
         # Value Function
-        'vfun_hidden_sizes': [(400, 200)],
-        'vfun_hidden_nonlinearity': ['relu'],
-        'vfun_output_nonlinearity': [None],
-        'vfun_max_epochs': [50],
-        'vfun_learning_rate': [5e-4],
-        'vfun_batch_size': [32],
-        'vfun_buffer_size': [10000],
+        'vfun_hidden_sizes': (400, 200),
+        'vfun_hidden_nonlinearity': 'relu',
+        'vfun_output_nonlinearity': None,
+        'vfun_max_epochs': 50,
+        'vfun_learning_rate': 5e-4,
+        'vfun_batch_size': 32,
+        'vfun_buffer_size': 10000,
 
 
         # Policy
-        'policy_hidden_sizes': [(100, 100)],
-        'policy_learn_std': [True],
-        'policy_output_nonlinearity': [None],
+        'policy_hidden_sizes': (100, 100),
+        'policy_learn_std': True,
+        'policy_output_nonlinearity': None,
 
         # Algo
-        'svg_learning_rate': [1e-4],
-        'svg_batch_size': [64],
-        'svg_max_buffer_size': [10000],
-        'kl_penalty': [1e-3],
+        'svg_learning_rate': 1e-4, # play with this
+        'svg_batch_size': 64,
+        'svg_max_buffer_size': 25000, # play with this
+        'kl_penalty': 1e-3, # play with this
 
-        'scope': [None],
-        'exp_tag': [''], # For changes besides hyperparams
+        # Misc
+        'scope': None,
+        'exp_tag': '', # For changes besides hyperparams
+        'exp_name': '', # Add time-stamp here to not overwrite the logging
     }
 
-    run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
+    run_experiment(params)
 

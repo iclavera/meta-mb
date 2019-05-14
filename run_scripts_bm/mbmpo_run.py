@@ -19,11 +19,11 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'toronto-50'
+EXP_NAME = 'mbmpo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -132,56 +132,57 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2],
+        'seed': 1,
 
-        'algo': ['mbmpo'],
-        'baseline': [LinearFeatureBaseline],
-        'env': [ReacherEnv],
+        'algo': 'mbmpo',
+        'baseline': LinearFeatureBaseline,
+        'env': HalfCheetahEnv,
 
         # Problem Conf
-        'n_itr': [401],
-        'max_path_length': [50],
-        'discount': [0.99],
-        'gae_lambda': [1.],
-        'normalize_adv': [True],
-        'positive_adv': [False],
-        'log_real_performance': [True],
-        'meta_steps_per_iter': [(50, 100), (30, 50)],
+        'n_itr': 401,
+        'max_path_length': 50,
+        'discount': 0.99,
+        'gae_lambda': 1.,
+        'normalize_adv': True,
+        'positive_adv': False,
+        'log_real_performance': True,
+        'meta_steps_per_iter': (50, 100),
 
         # Real Env Sampling
-        'real_env_rollouts_per_meta_task': [1],
-        'parallel': [True],
-        'fraction_meta_batch_size': [.5],
+        'real_env_rollouts_per_meta_task': 1,
+        'parallel': True,
+        'fraction_meta_batch_size': .5,
 
         # Dynamics Model
-        'num_models': [5],
-        'dynamics_hidden_sizes': [(500, 500)],
-        'dyanmics_hidden_nonlinearity': ['relu'],
-        'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],
-        'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [128, 64],
-        'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'num_models': 5,
+        'dynamics_hidden_sizes': (500, 500),
+        'dyanmics_hidden_nonlinearity': 'relu',
+        'dyanmics_output_nonlinearity': None,
+        'dynamics_max_epochs': 50,
+        'dynamics_learning_rate': 1e-3,
+        'dynamics_batch_size': 128,
+        'dynamics_buffer_size': 10000,
+        'deterministic': True,
 
 
         # Policy
-        'policy_hidden_sizes': [(64, 64)],
-        'policy_learn_std': [True],
-        'policy_output_nonlinearity': [None],
+        'policy_hidden_sizes': (64, 64),
+        'policy_learn_std': True,
+        'policy_output_nonlinearity': None,
 
         # Meta-Algo
-        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
-        'num_inner_grad_steps': [1],
-        'inner_lr': [0.001, 0.0005],
-        'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
-        'exploration': [False],
-        'sample_from_buffer': [True],
+        'meta_batch_size': 20,  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': 20,
+        'num_inner_grad_steps': 1,
+        'inner_lr': 0.001,
+        'inner_type': 'log_likelihood',
+        'step_size': 0.01,
+        'exploration': False,
+        'sample_from_buffer': True,
 
-        'scope': [None],
-        'exp_tag': [''], # For changes besides hyperparams
+        'scope': None,
+        'exp_tag': '', # For changes besides hyperparams
+        'exp_name': '',  # Add time-stamp here to not overwrite the logging
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
