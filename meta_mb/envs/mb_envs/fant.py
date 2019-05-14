@@ -6,7 +6,7 @@ from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
 
 
-class AntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
+class FAntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def __init__(self, frame_skip=5):
         self.prev_qpos = None
@@ -24,11 +24,17 @@ class AntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             action = np.clip(action, self.action_space.low,
                              self.action_space.high)
         ob = self._get_obs()
+
         reward_ctrl = -0.1 * np.square(action).sum()
         reward_run = old_ob[13]
         reward_height = -3.0 * np.square(old_ob[0] - 0.57)
-        reward = reward_run + reward_ctrl + reward_height
-        done = False
+
+        # the alive bonus
+        height = ob[0]
+        done = (height > 1.0) or (height < 0.2)
+        alive_reward = float(not done)
+
+        reward = reward_run + reward_ctrl + reward_height + alive_reward
         return ob, reward, done, {}
 
     def _get_obs(self):
@@ -56,19 +62,30 @@ class AntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
         reward_run = obs[:, 13]
         reward_height = -3.0 * np.square(obs[:, 0] - 0.57)
-        reward = reward_run + reward_ctrl + reward_height
+
+        height = next_obs[:, 0]
+        done = np.logical_or((height > 1.0), (height < 0.2))
+        alive_reward = 1.0 - np.array(done, dtype=np.float)
+
+        reward = reward_run + reward_ctrl + reward_height + alive_reward
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
         reward_run = next_obs[:, 0]
-        # reward_height = -3.0 * tf.square(next_obs[:, 0] - 0.57)
-        reward = reward_run + reward_ctrl # + reward_height
+        reward_height = -3.0 * tf.square(next_obs[:, 0] - 0.57)
+
+        height = next_obs[:, 0]
+        done = tf.math.logical_or(tf.math.greater(height, 1.0),
+                                  tf.math.greater(0.2, height)
+                                  )
+        alive_reward = 1.0 - tf.cast(done, dtype=tf.float32)
+        reward = reward_run + reward_ctrl + reward_height + alive_reward
         return reward
 
 
 if __name__ == "__main__":
-    env = AntEnv()
+    env = FAntEnv()
     env.reset()
     for _ in range(1000):
         _ = env.render()

@@ -11,39 +11,41 @@ from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
 
 
-class SwimmerEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
+class FSwimmerEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def __init__(self, frame_skip=4):
         self.prev_qpos = None
         dir_path = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(
-            self, '%s/assets/swimmer.xml' % dir_path, frame_skip=frame_skip
+            self, '%s/assets/fixed_swimmer.xml' % dir_path, frame_skip=frame_skip
         )
         utils.EzPickle.__init__(self)
 
     def step(self, action):
-        old_ob = self._get_obs()
+        ctrl_cost_coeff = 0.0001
+
+        """
+        xposbefore = self.model.data.qpos[0, 0]
+        self.do_simulation(a, self.frame_skip)
+        xposafter = self.model.data.qpos[0, 0]
+        """
+
+        self.xposbefore = self.sim.data.site_xpos[0][0] / self.dt
         self.do_simulation(action, self.frame_skip)
+        self.xposafter = self.sim.data.site_xpos[0][0] / self.dt
+        self.pos_diff = self.xposafter - self.xposbefore
 
-        if getattr(self, 'action_space', None):
-            action = np.clip(action, self.action_space.low,
-                             self.action_space.high)
+        reward_fwd = self.xposafter - self.xposbefore
+        reward_ctrl = - ctrl_cost_coeff * np.square(action).sum()
+        reward = reward_fwd + reward_ctrl
         ob = self._get_obs()
-
-        reward_ctrl = -0.0001 * np.square(action).sum()
-        reward_run = old_ob[3]
-        reward = reward_run + reward_ctrl
-
-        done = False
-        return ob, reward, done, {}
+        return ob, reward, False, dict(reward_fwd=reward_fwd,
+                                       reward_ctrl=reward_ctrl)
 
     def _get_obs(self):
-        return np.concatenate([
-            # (self.model.data.qpos.flat[:1] - self.prev_qpos[:1]) / self.dt,
-            # self.get_body_comvel("torso")[:1],
-            self.sim.data.qpos.flat[2:],
-            self.sim.data.qvel.flat,
-        ])
+        qpos = self.sim.data.qpos
+        qvel = self.sim.data.qvel
+        return np.concatenate([qpos.flat[2:], qvel.flat, self.pos_diff.flat])
 
     def reset_model(self):
         self.set_state(
@@ -58,18 +60,19 @@ class SwimmerEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         assert obs.shape == next_obs.shape
         assert obs.shape[0] == acts.shape[0]
         reward_ctrl = -0.0001 * np.sum(np.square(acts), axis=1)
-        reward_run = obs[:, 3]
+        reward_run = obs[:, -1]
         reward = reward_run + reward_ctrl
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.0001 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = obs[:, 3]
+        reward_run = next_obs[:, -1]
         reward = reward_run + reward_ctrl
         return reward
 
+
 if __name__ == "__main__":
-    env = SwimmerEnv()
+    env = FSwimmerEnv()
     env.reset()
     for _ in range(1000):
         _ = env.render()

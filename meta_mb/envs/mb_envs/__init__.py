@@ -9,6 +9,20 @@ from .pendulum import PendulumEnv
 from .reacher import ReacherEnv
 from .swimmer import SwimmerEnv
 from .walker2d import Walker2dEnv
+from .slimhumanoid import SlimHumanoidEnv
+from .nostopslimhumanoid import NoStopSlimHumanoidEnv
+from .pendulumO01 import PendulumO01Env
+from .pendulumO001 import PendulumO001Env
+from .half_cheetahA01 import HalfCheetahA01Env
+from .half_cheetahA003 import HalfCheetahA003Env
+from .half_cheetahO01 import HalfCheetahO01Env
+from .half_cheetahO001 import HalfCheetahO001Env
+from .fwalker2d import FWalker2dEnv
+from .fswimmer import FSwimmerEnv
+from .fhopper import FHopperEnv
+from .fant import FAntEnv
+from .cartpoleO01 import CartPole01Env
+from .cartpoleO001 import CartPoleO001Env
 
 
 from gym.envs.registration import register
