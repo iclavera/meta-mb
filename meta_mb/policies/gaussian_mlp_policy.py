@@ -80,6 +80,11 @@ class GaussianMLPPolicy(Policy):
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
 
+            self.policy_params_ph = self._create_placeholders_for_vars(scope=self.name + "/mean_network")
+            log_std_network_phs = self._create_placeholders_for_vars(scope=self.name + "/log_std_network")
+            self.policy_params_ph.update(log_std_network_phs)
+            self.policy_params_keys = self.policy_params_ph.keys()
+
     def get_action(self, observation):
         """
         Runs a single observation through the specified policy and samples an action

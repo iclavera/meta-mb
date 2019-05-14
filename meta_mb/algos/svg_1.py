@@ -104,9 +104,9 @@ class SVG1(Algo):
 
         surr_obj = - tf.reduce_mean(tf.stop_gradient(likelihood_ratio) * (self.tf_reward(obs_ph, act_ev, next_obs_ph)
                                     + self.discount * value_fun_dist_info_vars['mean']))
-        current_dist_info_vars = dict(mean=tf.stop_gradient(distribution_info_vars['mean']),
-                                      log_std=tf.stop_gradient(distribution_info_vars['log_std']))
-        surr_obj += self.kl_penalty * self.policy.distribution.kl_sym(distribution_info_vars, current_dist_info_vars)
+
+        last_policy_info_vars = self.policy.distribution_info_sym(obs_ph, params=self.policy.policy_params_ph)
+        surr_obj += self.kl_penalty * self.policy.distribution.kl_sym(distribution_info_vars, last_policy_info_vars)
 
         optimizer = tf.train.AdamOptimizer(self.learning_rate)
         gradients, variables = zip(*optimizer.compute_gradients(surr_obj, var_list=self.policy.get_params()))
@@ -127,12 +127,13 @@ class SVG1(Algo):
                 self._dataset[k] = np.concatenate([self._dataset[k][-n_max:], v], axis=0)
 
         num_elements = len(list(self._dataset.values())[0])
+        policy_params_dict = self.policy.policy_params_feed_dict
         for _ in range(self.num_grad_steps):
             idxs = np.random.randint(0, num_elements, size=self.batch_size)
-
             batch_dict = self._get_indices_from_dict(self._dataset, idxs)
 
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch_dict)
+            feed_dict.update(policy_params_dict)
 
             _ = sess.run(self._train_op, feed_dict=feed_dict)
 

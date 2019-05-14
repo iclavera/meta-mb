@@ -25,6 +25,7 @@ class NNValueFun(Serializable):
     def __init__(self,
                  name,
                  env,
+                 # policy,
                  hidden_sizes=(500, 500),
                  hidden_nonlinearity="tanh",
                  output_nonlinearity=None,
@@ -40,6 +41,7 @@ class NNValueFun(Serializable):
 
         Serializable.quick_init(self, locals())
 
+        # self.policy = policy
         self.normalization = None
         self.normalize_input = normalize_input
         self.buffer_size = buffer_size
@@ -133,15 +135,19 @@ class NNValueFun(Serializable):
             self._dataset_train = dict(obs=obs_train, ret=ret_train)
 
         else:
-            n_test_new_samples = len(obs_test)
-            n_max_test = self.buffer_size - n_test_new_samples
-            n_train_new_samples = len(obs_train)
-            n_max_train = self.buffer_size - n_train_new_samples
-            self._dataset_test['obs'] = np.concatenate([self._dataset_test['obs'][-n_max_test:], obs_test])
-            self._dataset_test['ret'] = np.concatenate([self._dataset_test['ret'][-n_max_test:], ret_test])
+            # n_test_new_samples = len(obs_test)
+            # n_max_test = self.buffer_size - n_test_new_samples
+            # n_train_new_samples = len(obs_train)
+            # n_max_train = self.buffer_size - n_train_new_samples
+            # self._dataset_test['obs'] = np.concatenate([self._dataset_test['obs'][-n_max_test:], obs_test])
+            # self._dataset_test['ret'] = np.concatenate([self._dataset_test['ret'][-n_max_test:], ret_test])
+            #
+            # self._dataset_train['obs'] = np.concatenate([self._dataset_train['obs'][-n_max_train:], obs_train])
+            # self._dataset_train['ret'] = np.concatenate([self._dataset_train['ret'][-n_max_train:], ret_train])
+            # FIXME: Hack so it always has on-policy samples
 
-            self._dataset_train['obs'] = np.concatenate([self._dataset_train['obs'][-n_max_train:], obs_train])
-            self._dataset_train['ret'] = np.concatenate([self._dataset_train['ret'][-n_max_train:], ret_train])
+            self._dataset_test = dict(obs=obs_test, ret=ret_test)
+            self._dataset_train = dict(obs=obs_train, ret=ret_train)
 
         # Create data queue
         if self.next_batch is None:

@@ -47,6 +47,8 @@ class Policy(Serializable):
         self.policy_params = None
         self._assign_ops = None
         self._assign_phs = None
+        self.policy_params_keys = None
+        self.policy_params_ph = None
 
     def build_graph(self):
         """
@@ -202,6 +204,23 @@ class Policy(Serializable):
         feed_dict = dict(zip(self._assign_phs, policy_params.values()))
         tf.get_default_session().run(self._assign_ops, feed_dict=feed_dict)
 
+    def _create_placeholders_for_vars(self, scope, graph_keys=tf.GraphKeys.TRAINABLE_VARIABLES):
+        var_list = tf.get_collection(graph_keys, scope=scope)
+        placeholders = []
+        for var in var_list:
+            var_name = remove_scope_from_name(var.name, scope.split('/')[0])
+            placeholders.append((var_name, tf.placeholder(tf.float32, shape=var.shape, name="%s_ph" % var_name)))
+        return OrderedDict(placeholders)
+
+    @property
+    def policy_params_feed_dict(self):
+        """
+            returns fully prepared feed dict for feeding the currently saved policy parameter values
+            into the lightweight policy graph
+        """
+        policy_param_values = self.get_param_values()
+        return dict(list((self.policy_params_ph[key], policy_param_values[key]) for key in self.policy_params_keys))
+
     def __getstate__(self):
         state = {
             'init_args': Serializable.__getstate__(self),
@@ -268,13 +287,6 @@ class MetaPolicy(Policy):
         self.policies_params_vals = updated_policies_parameters
         self._pre_update_mode = False
 
-    def _create_placeholders_for_vars(self, scope, graph_keys=tf.GraphKeys.TRAINABLE_VARIABLES):
-        var_list = tf.get_collection(graph_keys, scope=scope)
-        placeholders = []
-        for var in var_list:
-            var_name = remove_scope_from_name(var.name, scope.split('/')[0])
-            placeholders.append((var_name, tf.placeholder(tf.float32, shape=var.shape, name="%s_ph" % var_name)))
-        return OrderedDict(placeholders)
 
     @property
     def policies_params_feed_dict(self):
