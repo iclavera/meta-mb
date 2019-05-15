@@ -16,7 +16,7 @@ class HumanoidEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(self)
 
     def _get_obs(self):
-        data = self.model.data
+        data = self.sim.data
         return np.concatenate([data.qpos.flat[2:],
                                data.qvel.flat,
                                data.cinert.flat,
@@ -25,7 +25,7 @@ class HumanoidEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
                                data.cfrc_ext.flat])
 
     def step(self, a):
-        data = self.model.data
+        data = self.sim.data
         action = a
         if getattr(self, 'action_space', None):
             action = np.clip(a, self.action_space.low,
@@ -40,7 +40,7 @@ class HumanoidEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
         self.do_simulation(action, self.frame_skip)
         reward = lin_vel_cost - quad_ctrl_cost - quad_impact_cost + alive_bonus
-        qpos = self.model.data.qpos
+        qpos = self.sim.data.qpos
         done = bool((qpos[2] < 1.0) or (qpos[2] > 2.0))
         return self._get_obs(), reward, done, dict(reward_linvel=lin_vel_cost, reward_quadctrl=-quad_ctrl_cost, reward_alive=alive_bonus, reward_impact=-quad_impact_cost)
 

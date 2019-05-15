@@ -23,6 +23,7 @@ from .fhopper import FHopperEnv
 from .fant import FAntEnv
 from .cartpoleO01 import CartPole01Env
 from .cartpoleO001 import CartPoleO001Env
+from .humanoid import HumanoidEnv
 
 
 from gym.envs.registration import register
