@@ -19,7 +19,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 EXP_NAME = 'svg'
 
 
-def run_experiment(**kwargs):
+def run_experiment(kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -195,12 +195,18 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='svg_mb_bm.')
     parser.add_argument('--env_name', type=str, required=True)
-    parser.add_argument('--exp_name', type=str, default='mb_bm_')
+    parser.add_argument('--exp_name_prefix', type=str, default='')
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--num_iteration', type=int, default=100)
+    parser.add_argument('--num_iteration', type=int, default=50)
+    parser.add_argument('--svg_learning_rate', type=float, default=1e-4)
+    parser.add_argument('--kl_penalty', type=float, default=1e-3)
+    parser.add_argument('--svg_max_buffer_size', type=int, default=25000)
     args = parser.parse_args()
 
     env, env_length = parse_env(args.env_name)
+
+    num_rollouts = int(4 * (1000 / env_length))  # fix 4000 timesteps
+    assert 1000 % env_length == 0
 
     params = {
         'seed': args.seed,
@@ -217,7 +223,7 @@ if __name__ == '__main__':
         'positive_adv': False,
 
         # Env Sampling
-        'num_rollouts': 4 * (1000 / env_length),  # fix 4000 timesteps
+        'num_rollouts': num_rollouts,
         'n_parallel': 4,  # Parallelized across 4 cores (4 cores? 2 cores?)
 
         # Dynamics Model
@@ -244,15 +250,17 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': None,
 
         # Algo
-        'svg_learning_rate': 1e-4,  # play with this
+        'svg_learning_rate': args.svg_learning_rate,
         'svg_batch_size': 64,
-        'svg_max_buffer_size': 25000,  # play with this
-        'kl_penalty': 1e-3,  # play with this
+        'svg_max_buffer_size': args.svg_max_buffer_size,
+        'kl_penalty': args.kl_penalty,
 
         # Misc
         'scope': None,
         'exp_tag': '',  # For changes besides hyperparams
-        'exp_name': args.exp_name,  # Add time-stamp here to not overwrite the logging
+        # Add time-stamp here to not overwrite the logging
+        'exp_name': args.exp_name_prefix + args.env_name + \
+                '_seed_' + str(args.seed)
     }
 
     run_experiment(params)

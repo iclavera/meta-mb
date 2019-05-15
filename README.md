@@ -112,13 +112,18 @@ Finally add doodad and the meta-mb repositories to your PYHTONPATH.
 To run svg run:
 
 ```
-python run_script_bm/svg_run.py
+python run_scripts_bm/svg_run.py
+```
+
+The bash script can be run with
+```
+bash run_scripts_bm/svg_search.sh gym_cheetah
 ```
 
 To run mbmpo run:
 
 ```
-python run_script_bm/mbmpo_run.py
+python run_scripts_bm/mbmpo_run.py
 ```
 
 The hyperparameters for each algoritm are the run file as a dict. 
