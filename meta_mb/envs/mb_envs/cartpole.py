@@ -163,7 +163,7 @@ class CartPoleEnv(MetaEnv):
         assert obs.shape[0] == acts.shape[0]
         x = obs[:, 0]
         theta = obs[:, 2]
-        return (np.cos(theta) - 0.01 * (x ** 2))
+        return np.cos(theta) - 0.01 * (x ** 2)
 
     def tf_reward(self, obs, acts, next_obs):
         x = obs[:, 0]

@@ -102,12 +102,14 @@ class Trainer(object):
                                         samples_data['actions'],
                                         samples_data['next_observations'],
                                         epochs=self.dynamics_model_max_epochs,
-                                        verbose=False, log_tabular=True, early_stopping=False)
+                                        verbose=False, log_tabular=True,
+                                        early_stopping=True, compute_normalization=False)
 
                 logger.log("Training the value function for %i epochs ..." % self.vfun_max_epochs)
                 self.value_function.fit(samples_data['observations'],
                                         samples_data['returns'],
-                                        epochs=self.vfun_max_epochs, verbose=False, log_tabular=True)
+                                        epochs=self.vfun_max_epochs,
+                                        verbose=False, log_tabular=True, compute_normalization=False)
 
                 logger.log("Training the policy ...")
                 self.algo.optimize_policy(samples_data)

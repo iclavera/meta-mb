@@ -30,7 +30,7 @@ class ProbMLPDynamics(MLPDynamicsModel):
 
         Serializable.quick_init(self, locals())
 
-        max_logvar = .5
+        max_logvar = .0
         min_logvar = -10
 
         self.normalization = None
@@ -67,6 +67,8 @@ class ProbMLPDynamics(MLPDynamicsModel):
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+
+            self._create_stats_vars()
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
@@ -136,7 +138,9 @@ class ProbMLPDynamics(MLPDynamicsModel):
 
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
-            input_var = tf.concat([obs_var, act_var], axis=1)
+            in_obs_var = (obs_var - self._mean_obs_var) / (self._std_obs_var + 1e-8)
+            in_act_var = (act_var - self._mean_act_var) / (self._std_act_var + 1e-8)
+            input_var = tf.concat([in_obs_var, in_act_var], axis=1)
             mlp = MLP(self.name,
                       output_dim=2 * self.obs_space_dims,
                       hidden_sizes=self.hidden_sizes,
@@ -146,6 +150,8 @@ class ProbMLPDynamics(MLPDynamicsModel):
                       input_dim=self.obs_space_dims + self.action_space_dims,
                       )
         mean, log_std = tf.split(mlp.output_var, 2, axis=-1)
+        mean = mean * self._std_delta_var + self._mean_delta_var + obs_var
+        log_std = log_std + tf.log(self._std_delta_var)
         return dict(mean=mean, log_std=log_std)
 
 

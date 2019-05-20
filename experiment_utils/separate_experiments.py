@@ -8,7 +8,7 @@ import shutil
 """
 
 
-def valid_experiment(params):
+def valid_experiment(params, lr, rl, env):
     #           'dyanmics_hidden_nonlinearity': ['relu'],
     #           'dynamics_buffer_size': [10000],
     #           'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]}
@@ -17,11 +17,17 @@ def valid_experiment(params):
     # 'env': [{'$class': 'meta_mb.envs.mujoco.ant_env.AntEnv'}]}
     # 'env': [{'$class': 'meta_mb.envs.mujoco.hopper_env.HopperEnv'}]}
     # #
-    values = {'svg_learning_rate': [0.001],
-              'kl_penalty': [1],
-              'env': [{'$class': 'meta_mb.envs.mb_envs.acrobot.AcrobotEnv'}]
+    values = {
+             'env': [{'$class': 'meta_mb.envs.mb_envs.pendulumO001.PendulumO001Env'},
+             {'$class': 'meta_mb.envs.mb_envs.pendulumO01.PendulumO01Env'}
+             ]
+              # 'env': [{'$class': 'meta_mb.envs.mb_envs.' + env}],
+              # 'inner_lr': [lr],
+              # 'rollouts_per_meta_task': [rl],
+              #  'sample_from_buffer': [False],
+              #  'meta_steps_per_iter': [[50, 50]],
+              #  'n_itr': [101],
               }
-
 
     for k, v in values.items():
         if params[k] not in v:
@@ -32,19 +38,23 @@ def valid_experiment(params):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("data", type=str)
-    parser.add_argument("store", type=str, default=os.path.expanduser('~'))
+    parser.add_argument("--store", type=str,
+            default=os.path.join(os.path.expanduser('~'), 'bench_data'))
+    parser.add_argument('--lr', type=float)
+    parser.add_argument('--rl', type=float)
+    parser.add_argument('--env', type=str)
     args = parser.parse_args()
 
     experimet_paths = load_exps_data(args.data, gap=0.)
     counter = 0
     for exp_path in experimet_paths:
         json_file = exp_path['json']
-        if valid_experiment(json_file):
-            env_name = json_file['env'].split('.')[-2]
+        if valid_experiment(json_file, args.lr, args.rl, args.env):
+            env_name = json_file['env']['$class'].split('.')[-2]
             dir_name = os.path.join(args.store, json_file['algo'], env_name, env_name + str(counter))
             os.makedirs(dir_name)
-            shutil.copy2(os.path.join(exp_path, "params.json"), dir_name)
-            shutil.copy2(os.path.join(exp_path, "progress.csv"), dir_name)
+            shutil.copy2(os.path.join(exp_path['exp_name'], "params.json"), dir_name)
+            shutil.copy2(os.path.join(exp_path['exp_name'], "progress.csv"), dir_name)
             counter += 1
 
 

@@ -63,9 +63,20 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = next_obs[:, 0]
+        reward_run = next_obs[:, 8]
         reward = reward_run + reward_ctrl
         return reward
+
+    def reset_from_obs(self, obs):
+        nq, nv = self.model.nq, self.model.nv
+        self.sim.reset()
+        qpos = self.init_qpos + \
+            self.np_random.uniform(low=-.1, high=.1, size=nq)
+        qpos[1:] = obs[:nq-1]
+        qvel = obs[nq-1:]
+        self.set_state(qpos, qvel)
+        return self._get_obs()
+
 
 
 if __name__ == "__main__":

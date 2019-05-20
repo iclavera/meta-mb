@@ -370,8 +370,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         assert delta.ndim == 3
 
-        delta = np.clip(delta, -1e3, 1e3)
-
         pred_obs = obs_original[:, :, None] + delta
 
         batch_size = delta.shape[0]
@@ -385,6 +383,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             pass
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
+
+        pred_obs = np.clip(pred_obs, -1e2, 1e2)
         return pred_obs
 
     def predict_batches(self, obs_batches, act_batches, *args, **kwargs):

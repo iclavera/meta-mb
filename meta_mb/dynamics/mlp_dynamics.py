@@ -29,7 +29,7 @@ class MLPDynamicsModel(Serializable):
                  hidden_nonlinearity="tanh",
                  output_nonlinearity=None,
                  batch_size=500,
-                 step_size=0.001,
+                 learning_rate=0.001,
                  weight_normalization=True,
                  normalize_input=True,
                  optimizer=tf.train.AdamOptimizer,
@@ -45,18 +45,20 @@ class MLPDynamicsModel(Serializable):
         self.use_reward_model = False
         self.buffer_size = buffer_size
         self.name = name
+        self.hidden_sizes = hidden_sizes
 
         self._dataset_train = None
         self._dataset_test = None
+        self.next_batch = None
 
         self.valid_split_ratio = valid_split_ratio
         self.rolling_average_persitency = rolling_average_persitency
-        hidden_nonlinearity = self._activations[hidden_nonlinearity]
-        output_nonlinearity = self._activations[output_nonlinearity]
+        self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
+        self.output_nonlinearity = output_nonlinearity =self._activations[output_nonlinearity]
 
         with tf.variable_scope(name):
             self.batch_size = batch_size
-            self.step_size = step_size
+            self.learning_rate = learning_rate
 
             # determine dimensionality of state and action space
             self.obs_space_dims = env.observation_space.shape[0]
@@ -66,6 +68,8 @@ class MLPDynamicsModel(Serializable):
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, self.action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
+
+            self._create_stats_vars()
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
@@ -85,7 +89,7 @@ class MLPDynamicsModel(Serializable):
 
             # define loss and train_op
             self.loss = tf.reduce_mean((self.delta_ph - self.delta_pred)**2)
-            self.optimizer = optimizer(self.step_size)
+            self.optimizer = optimizer(self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
@@ -239,6 +243,23 @@ class MLPDynamicsModel(Serializable):
         pred_obs = obs_original + delta
         return pred_obs
 
+    def distribution_info_sym(self, obs_var, act_var):
+        with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
+            in_obs_var = (obs_var - self._mean_obs_var)/(self._std_obs_var + 1e-8)
+            in_act_var = (act_var - self._mean_act_var) / (self._std_act_var + 1e-8)
+            input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+            mlp = MLP(self.name,
+                      output_dim=self.obs_space_dims,
+                      hidden_sizes=self.hidden_sizes,
+                      hidden_nonlinearity=self.hidden_nonlinearity,
+                      output_nonlinearity=self.output_nonlinearity,
+                      input_var=input_var,
+                      input_dim=self.obs_space_dims + self.action_space_dims,
+                      )
+            mean = mlp.output_var * self._std_delta_var + self._mean_delta_var + obs_var
+            log_std = tf.log(self._std_delta_var)
+        return dict(mean=mean, log_std=log_std)
+
     def compute_normalization(self, obs, act, obs_next):
         """
         Computes the mean and std of the data and saves it in a instance variable
@@ -257,6 +278,44 @@ class MLPDynamicsModel(Serializable):
         self.normalization['obs'] = (np.mean(obs, axis=0), np.std(obs, axis=0))
         self.normalization['delta'] = (np.mean(delta, axis=0), np.std(delta, axis=0))
         self.normalization['act'] = (np.mean(act, axis=0), np.std(act, axis=0))
+
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict={self._mean_obs_ph: self.normalization['obs'][0],
+                                                self._std_obs_ph: self.normalization['obs'][1],
+                                                self._mean_act_ph: self.normalization['act'][0],
+                                                self._std_act_ph: self.normalization['act'][1],
+                                                self._mean_delta_ph: self.normalization['delta'][0],
+                                                self._std_delta_ph: self.normalization['delta'][1],
+                                                })
+
+    def _create_stats_vars(self):
+        self._mean_obs_var = tf.get_variable('mean_obs', shape=(self.obs_space_dims,),
+                                             dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
+        self._std_obs_var = tf.get_variable('std_obs', shape=(self.obs_space_dims,),
+                                              dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
+        self._mean_act_var = tf.get_variable('mean_act', shape=(self.action_space_dims,),
+                                               dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
+        self._std_act_var = tf.get_variable('std_act', shape=(self.action_space_dims,),
+                                              dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
+        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims,),
+                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
+        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims,),
+                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
+
+        self._mean_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+        self._std_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+        self._mean_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
+        self._std_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
+        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+
+        self._assignations = [tf.assign(self._mean_obs_var, self._mean_obs_ph),
+                              tf.assign(self._std_obs_var, self._std_obs_ph),
+                              tf.assign(self._mean_act_var, self._mean_act_ph),
+                              tf.assign(self._std_act_var, self._std_act_ph),
+                              tf.assign(self._mean_delta_var, self._mean_delta_ph),
+                              tf.assign(self._std_delta_var, self._std_delta_ph),
+                              ]
 
     def _data_input_fn(self, obs, act, delta, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """

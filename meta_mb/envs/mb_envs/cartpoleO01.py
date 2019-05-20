@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 from meta_mb.meta_envs.base import MetaEnv
 
 
-class CartPole01Env(MetaEnv):
+class CartPoleO01Env(MetaEnv):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 50

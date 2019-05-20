@@ -32,7 +32,7 @@ class NNValueFun(Serializable):
                  batch_size=500,
                  learning_rate=0.001,
                  weight_normalization=True,
-                 normalize_input=True,
+                 normalize_input=False,
                  optimizer=tf.train.AdamOptimizer,
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
@@ -68,6 +68,10 @@ class NNValueFun(Serializable):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
             self.ret_ph = tf.placeholder(tf.float32, shape=(None,))
+
+            self._create_stats_vars()
+
+
 
             # concatenate action and observation --> NN input
             # create MLP
@@ -244,6 +248,12 @@ class NNValueFun(Serializable):
         self.normalization = OrderedDict()
         self.normalization['obs'] = (np.mean(obs, axis=0), np.std(obs, axis=0))
         self.normalization['ret'] = (np.mean(ret, axis=0), np.std(ret, axis=0))
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict={self._mean_input_ph: self.normalization['obs'][0],
+                                                self._std_input_ph: self.normalization['obs'][1],
+                                                self._mean_output_ph: self.normalization['ret'][0],
+                                                self._std_output_ph: self.normalization['ret'][1]})
+
 
     def _data_input_fn(self, obs, ret, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
@@ -267,6 +277,7 @@ class NNValueFun(Serializable):
     def _normalize_data(self, obs, ret):
         obs_normalized = normalize(obs, self.normalization['obs'][0], self.normalization['obs'][1])
         ret_normalized = normalize(ret, self.normalization['ret'][0], self.normalization['ret'][1])
+
         return obs_normalized, ret_normalized
 
     def initialize_unitialized_variables(self, sess):
@@ -289,14 +300,38 @@ class NNValueFun(Serializable):
 
     def distribution_info_sym(self, obs_var):
         with tf.variable_scope(self.name + '/value_function', reuse=True):
+            input_var = (obs_var - self._mean_input_var)/(self._std_input_var + 1e-8)
             mlp = MLP(self.name,
                       output_dim=1,
                       hidden_sizes=self.hidden_sizes,
                       hidden_nonlinearity=self.hidden_nonlinearity,
                       output_nonlinearity=self.output_nonlinearity,
-                      input_var=obs_var,
+                      input_var=input_var,
                       input_dim=self.obs_space_dims)
-        return dict(mean=tf.reshape(mlp.output_var, shape=(-1,)))
+            output_var = tf.reshape(mlp.output_var, shape=(-1,))
+            output_var = output_var * self._std_output_var + self._mean_output_var
+        return dict(mean=output_var)
+
+    def _create_stats_vars(self):
+        self._mean_input_var = tf.get_variable('mean_input', shape=(self.obs_space_dims,),
+                                               dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
+        self._mean_output_var = tf.get_variable('mean_ouput', shape=tuple(),
+                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
+        self._std_input_var = tf.get_variable('std_input', shape=(self.obs_space_dims,),
+                                              dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
+        self._std_output_var = tf.get_variable('std_output', shape=tuple(),
+                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
+
+        self._mean_input_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+        self._std_input_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
+        self._mean_output_ph = tf.placeholder(tf.float32, shape=tuple())
+        self._std_output_ph = tf.placeholder(tf.float32, shape=tuple())
+
+        self._assignations = [tf.assign(self._mean_input_var, self._mean_input_ph),
+                              tf.assign(self._std_input_var, self._std_input_ph),
+                              tf.assign(self._mean_output_var, self._mean_output_ph),
+                              tf.assign(self._std_output_var, self._std_output_ph)]
+
 
     def __getstate__(self):
         # state = LayersPowered.__getstate__(self)
