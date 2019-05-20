@@ -136,10 +136,10 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HumanoidEnv, NoStopSlimHumanoidEnv, SlimHumanoidEnv],
+        'env': [SwimmerEnv],
 
         # Problem Conf
-        'n_itr': [101],
+        'n_itr': [201],
         'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
-        'fraction_meta_batch_size': [1.],
+        'fraction_meta_batch_size': [1., .5],
 
         # Dynamics Model
         'num_models': [5],
@@ -173,11 +173,11 @@ if __name__ == '__main__':
         'meta_batch_size': [10],  # Note: It has to be multiple of num_models
         'rollouts_per_meta_task': [20],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001, 0.0005],
+        'inner_lr': [0.0005, 0.001],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
-        'sample_from_buffer': [True, False],
+        'sample_from_buffer': [False, True],
 
         'scope': [None],
         'exp_tag': [''], # For changes besides hyperparams
