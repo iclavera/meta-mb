@@ -151,7 +151,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
-        'fraction_meta_batch_size': [1., .5],
+        'fraction_meta_batch_size': [.5],
 
         # Dynamics Model
         'num_models': [5],
