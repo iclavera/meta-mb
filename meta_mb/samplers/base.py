@@ -262,6 +262,7 @@ class SampleProcessor(object):
         dones = np.concatenate([path["dones"] for path in paths])
         returns = np.concatenate([path["returns"] for path in paths])
         advantages = np.concatenate([path["advantages"] for path in paths])
+        # should pass in list of dictionary of lists, rn it is list of list of dictionaries
         env_infos = utils.concat_tensor_dict_list([path["env_infos"] for path in paths])
         agent_infos = utils.concat_tensor_dict_list([path["agent_infos"] for path in paths])
         return observations, actions, rewards, dones, returns, advantages, env_infos, agent_infos

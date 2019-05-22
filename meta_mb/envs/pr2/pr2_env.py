@@ -4,13 +4,17 @@ import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
 import os
+from meta_mb.meta_envs.base import RandomEnv
 
 
-class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
+class PR2ReacherEnv(RandomEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
         self.goal = np.ones((3,))
-        MujocoEnv.__init__(self, os.path.join(os.path.dirname(__file__), "assets", "pr2.xml"), 2)
+        model_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "assets", "pr2-sarah.xml")
+        frame_skip = 2        
+        MujocoEnv.__init__(self, model_path, frame_skip)
         gym.utils.EzPickle.__init__(self)
+        RandomEnv.__init__(self, model_path=model_path, frame_skip=frame_skip)
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -18,6 +22,7 @@ class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(action).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
+        reward = reward_dist + 0.5 * 0.5 * reward_ctrl
         ob = self._get_obs()
         done = False
         return ob, reward, done, dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
@@ -46,21 +51,31 @@ class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         qpos = self.init_qpos # + self.np_random.uniform(low=-0.1, high=0.1, size=self.model.nq)
         while True:
             self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([-.3, -.3, 1])
+            # self.goal = np.array([-.3, -.3, 1])
+            self.goal = np.array([.73,  .6, 1.2]) # 4/23 seond exp, 
+            self.goal = np.array([0.5, 0.1, 0.55])
+            # self.angle = np.array([0, 0, 1])
+            
+            
             if np.linalg.norm(self.goal) < 2:
                 break
         qvel = self.init_qvel # + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
+        qpos[-3:] = self.goal
+        # qpos[-6:-3] = self.angle
         self.set_state(qpos, qvel)
         return self._get_obs()
 
     def _get_obs(self):
-        theta = self.sim.data.qpos.flat
+        theta = self.sim.data.qpos.flat[:7]
         return np.concatenate([
-            np.cos(theta),
-            np.sin(theta),
-            self.sim.data.qpos.flat,
-            self.sim.data.qvel.flat,
-            self.get_body_com("right_l_finger_tip_link") - self.goal
+            np.cos(theta), #10
+            np.sin(theta),  #10
+            self.sim.data.qpos.flat[:7], #10
+            self.sim.data.qvel.flat[:7], #10
+            # self.get_body_com("") - self.angle,
+            # self.get_body_com("right_l_finger_tip_link") - self.goal
+            self.get_body_com("r_gripper_l_finger_tip_link") - self.goal #3
+
         ])
 
     def log_diagnostics(self, paths, prefix=''):
@@ -74,9 +89,9 @@ class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
 
 
 if __name__ == "__main__":
-    env = BlueReacherEnv()
+    env = PR2ReacherEnv()
     while True:
         env.reset()
-        for _ in range(1000):
-            env.step(env.action_space.sample())
+        for _ in range(100):
+            env.step(env.action_space.sample()) 
             env.render()

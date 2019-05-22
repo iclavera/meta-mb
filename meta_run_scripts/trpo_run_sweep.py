@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.utils.utils import set_seed, ClassEncoder, datetimestamp
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
 from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
@@ -11,6 +11,10 @@ from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
+from rand_param_envs.pr2_env_reach import PR2Env
+from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
+from meta_mb.envs.blue.blue_env import BlueReacherEnv
+
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.meta_trainer import Trainer
@@ -19,8 +23,13 @@ from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProce
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'maml-kate-def'
+INSTANCE_TYPE = 'c4.4xlarge'
+# EXP_NAME = 'maml-kate-def'
+exp_type = '0520maml-pr2'
+datetime_prefix = datetimestamp()
+EXP_NAME = '-'.join((datetime_prefix, exp_type))
+# EXP_NAME = exp_type
+
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -91,12 +100,11 @@ if __name__ == '__main__':
 
     sweep_params = {
         'algo': ["MAML"],
-        'seed' : [1, 2, 3],
+        'seed' : [1, 2],
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [HumanoidRandDirec2DEnv, AntRandGoalEnv, Walker2DRandParamsEnv,
-                HalfCheetahRandVelEnv, HalfCheetahRandDirecEnv, AntRandDirecEnv],
+        'env': [PR2ReacherEnv],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],
@@ -112,13 +120,13 @@ if __name__ == '__main__':
         'hidden_nonlinearity': [tf.tanh],
         'output_nonlinearity': [None],
 
-        'inner_lr': [0.1],
+        'inner_lr': [0.001, 0.005],
         'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
+        'step_size': [0.01], #0.01
         'exploration': [False],
 
         'n_itr': [1001],
-        'meta_batch_size': [40],
+        'meta_batch_size': [20],
         'num_inner_grad_steps': [1],
         'scope': [None],
 

@@ -91,6 +91,9 @@
         </body>
 
         <site name="tip" pos="-.3 -.3 1" size="0.01" rgba="1 0 0 1"/>
+
+ <geom name="test" type="sphere" size=".04" pos=".73  .6 1.2"/>
+        
     </worldbody>
 
         <actuator>

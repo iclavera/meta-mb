@@ -56,9 +56,10 @@ class RandomEnv(MetaEnv, MujocoEnv):
         - damping coeff at the joints
     """
     RAND_PARAMS = ['body_mass', 'dof_damping', 'body_inertia', 'geom_friction']
+
     RAND_PARAMS_EXTENDED = RAND_PARAMS + ['geom_size']
 
-    def __init__(self, log_scale_limit, *args, rand_params=RAND_PARAMS, **kwargs):
+    def __init__(self, log_scale_limit=1, *args, rand_params=RAND_PARAMS, **kwargs):
         super(RandomEnv, self).__init__(*args, **kwargs)
         assert set(rand_params) <= set(self.RAND_PARAMS_EXTENDED), \
             "rand_params must be a subset of " + str(self.RAND_PARAMS_EXTENDED)
@@ -82,7 +83,7 @@ class RandomEnv(MetaEnv, MujocoEnv):
             # body mass -> one multiplier for all body parts
 
             new_params = {}
-
+                   
             if 'body_mass' in self.rand_params:
                 body_mass_multiplyers = np.array(1.5) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit,  size=self.model.body_mass.shape)
                 new_params['body_mass'] = self.init_params['body_mass'] * body_mass_multiplyers
@@ -110,7 +111,20 @@ class RandomEnv(MetaEnv, MujocoEnv):
         for param, param_val in task.items():
             param_variable = getattr(self.model, param)
             assert param_variable.shape == param_val.shape, 'shapes of new parameter value and old one must match'
-            setattr(self.model, param, param_val)
+
+            for i in range(param_variable.shape[0]):
+                if param == 'body_mass':
+                    self.model.body_mass[i] = param_val[i]
+                elif param == 'body_inertia':
+                    self.model.body_inertia[i] = param_val[i]
+                elif param == 'dof_damping':
+                    self.model.dof_damping[i] = param_val[i]
+                elif param == 'geom_friction':
+                    self.model.geom_friction[i] = param_val[i]
+                elif param == 'geom_size':
+                    self.model.geom_size[i] = param_val[i]
+                else:
+                    setattr(self.model, param, param_val)
         self.cur_params = task
 
     def get_task(self):
@@ -132,4 +146,5 @@ class RandomEnv(MetaEnv, MujocoEnv):
         # friction at the body components
         if 'geom_friction' in self.rand_params:
             self.init_params['geom_friction'] = self.model.geom_friction
-        self.cur_params = self.init_params
+        self.cur_params = self.init_params   
+

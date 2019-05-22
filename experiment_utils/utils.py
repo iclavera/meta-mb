@@ -34,3 +34,16 @@ def query_yes_no(question, default="no", allow_skip=False):
         else:
             sys.stdout.write("Please respond with 'yes' or 'no' "
                              "(or 'y' or 'n').\n")
+
+
+
+
+
+
+def get_class_name(d, type):
+    names = d.pop(type).split('.')
+
+    baseline = __import__(names[0])
+    for i in names[1:]:
+        baseline = getattr(baseline, i)
+    return baseline

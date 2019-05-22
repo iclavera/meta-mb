@@ -7,8 +7,8 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
     observations = []
     actions = []
     rewards = []
-    agent_infos = []
-    env_infos = []
+    agent_infos = {}
+    env_infos = {}
     images = []
 
     ''' get wrapped env '''
@@ -30,12 +30,20 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
         a, agent_info = agent.get_action(o)
         if not stochastic:
             a = agent_info['mean']
-        next_o, r, d, env_info = env.step(a)
+        next_o, r, d, env_info = env.step(a[0])
         observations.append(o)
         rewards.append(r)
         actions.append(a)
-        agent_infos.append(agent_info)
-        env_infos.append(env_info)
+
+        for k in agent_info.keys():
+            if k not in agent_infos:
+                agent_infos[k] = []
+            agent_infos[k].append(agent_info[k])
+
+        for k in env_info.keys():
+            if k not in env_infos:
+                env_infos[k] = []
+            env_infos[k].append(env_info[k])
         path_length += 1
         if d and not ignore_done: # and not animated:
             break
@@ -62,7 +70,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
 
     return dict(
         observations=observations,
-        actons=actions,
+        actions=actions,
         rewards=rewards,
         agent_infos=agent_infos,
         env_infos=env_infos

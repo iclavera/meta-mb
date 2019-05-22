@@ -13,12 +13,16 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         self.pre_update_action_var = None
         self.pre_update_mean_var = None
         self.pre_update_log_std_var = None
+        # self.policies_params_vals = None
+        # self._pre_update_mode = True
 
         self.post_update_action_var = None
         self.post_update_mean_var = None
         self.post_update_log_std_var = None
+        # super(MetaPolicy, self).__init__(*args, **kwargs)
 
         super(MetaGaussianMLPPolicy, self).__init__(*args, **kwargs)
+
 
     def build_graph(self):
         """

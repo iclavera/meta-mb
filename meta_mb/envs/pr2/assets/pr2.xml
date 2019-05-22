@@ -221,6 +221,13 @@
 
             </body>
         </body>
+    <geom name="test" type="sphere" size=".04" pos=".73  .6 1.2"/>
+    <geom name="stick" type="cylinder" size="0.02 0.1" pos="0.9 0. 0.5"/>
+    <geom name="idk" type="cylinder" size="0.08 0.01 " pos="0.9 0. 0.4"/>
+    <geom name="idk1" type="cylinder" size="0.05 0.01 " pos="0.9 0. 0.6"/>
+
+
+
     </worldbody>
 
 <actuator>

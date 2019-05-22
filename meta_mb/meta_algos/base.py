@@ -206,6 +206,7 @@ class MAMLAlgo(MetaAlgo):
 
         grads = tf.gradients(surr_obj, [params_var[key] for key in update_param_keys])
         gradients = dict(zip(update_param_keys, grads))
+        self.gradients = gradients
 
         # gradient descent
         adapted_policy_params = [params_var[key] - tf.multiply(self.step_sizes[key], gradients[key])
@@ -238,6 +239,11 @@ class MAMLAlgo(MetaAlgo):
 
         # compute the post-update / adapted policy parameters
         adapted_policies_params_vals = sess.run(self.adapted_policies_params, feed_dict=feed_dict)
+        # self.policy._create_placeholders_for_vars(tf.variable_scope)
+        grads = sess.run(self.gradients, feed_dict=feed_dict)
+        # self.gradients['trpo_maml/advantage_step0_0'] = None
+
+        print("hello", np.linalg.norm(grads))
 
         # store the new parameter values in the policy
         self.policy.update_task_parameters(adapted_policies_params_vals)

@@ -12,7 +12,7 @@ if __name__ == "__main__":
                         help='Max length of rollout')
     parser.add_argument('--num_rollouts', '-n', type=int, default=10,
                         help='Max length of rollout')
-    parser.add_argument('--speedup', type=float, default=1,
+    parser.add_argument('--speedup', type=float, default=10,
                         help='Speedup')
     parser.add_argument('--video_filename', type=str,
                         help='path to the out video file')

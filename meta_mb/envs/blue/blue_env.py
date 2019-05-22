@@ -3,14 +3,22 @@ from meta_mb.logger import logger
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
+from meta_mb.meta_envs.base import RandomEnv
+
 import os
 
 
-class BlueReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
+class BlueReacherEnv(RandomEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
         self.goal = np.ones((3,))
-        MujocoEnv.__init__(self, os.path.join(os.path.dirname(__file__), "assets", "blue_right_v2.xml"), 2)
         gym.utils.EzPickle.__init__(self)
+        model_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),  "assets", "blue_right_v2.xml")
+        gym.utils.EzPickle.__init__(self)
+        MujocoEnv.__init__(self, model_path, 2)
+
+        frame_skip = 2    
+        RandomEnv.__init__(self, model_path=model_path, frame_skip=frame_skip)
+
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -47,6 +55,8 @@ class BlueReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         while True:
             self.goal = np.random.uniform(low=-.2, high=.2, size=3)
             self.goal = np.array([-.3, -.3, 1])
+            # self.goal = np.array([.73,  .6, 1.2]) # 4/23 seond exp, 
+
             if np.linalg.norm(self.goal) < 2:
                 break
         qvel = self.init_qvel # + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)

@@ -6,6 +6,9 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
+from rand_param_envs.pr2_env_reach import PR2Env
+from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
+
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
@@ -19,10 +22,14 @@ from meta_mb.logger import logger
 import json
 import numpy as np
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.utils.utils import set_seed, ClassEncoder, datetimestamp
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'rl2-kate-def'
+# EXP_NAME = 'rl2-kate-def'
+exp_type = 'rl2-pr2_next'
+datetime_prefix = datetimestamp()
+EXP_NAME = '-'.join((datetime_prefix, exp_type))
+
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -85,7 +92,7 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [HumanoidRandDirec2DEnv],
+        'env': [PR2ReacherEnv],
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [50, 100, 200],

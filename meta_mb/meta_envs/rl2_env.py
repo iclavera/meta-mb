@@ -44,7 +44,6 @@ class RL2Env(Serializable):
                  normalization_scale=10.,
                  ):
         Serializable.quick_init(self, locals())
-
         self._wrapped_env = env
 
     def __getattr__(self, attr):

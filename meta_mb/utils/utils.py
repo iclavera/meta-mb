@@ -3,6 +3,13 @@ import scipy
 import scipy.signal
 import json
 import tensorflow as tf
+import datetime
+
+def datetimestamp(divider='-', datetime_divider='T'):
+    now = datetime.datetime.now()
+    return now.strftime(
+        '%Y{d}%m{d}%dT%H{d}%M{d}%S'
+''.format(d=divider, dtd=datetime_divider))
 
 def compile_function(inputs, outputs, log_name=None):
     def run(*input_vals):
