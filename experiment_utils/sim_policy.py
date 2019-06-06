@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("param", type=str)
-    parser.add_argument('--max_path_length', type=int, default=1000,
+    parser.add_argument('--max_path_length', '-l', type=int, default=1000,
                         help='Max length of rollout')
     parser.add_argument('--num_rollouts', '-n', type=int, default=10,
                         help='Max length of rollout')
@@ -37,4 +37,3 @@ if __name__ == "__main__":
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            print(len(path['rewards']))

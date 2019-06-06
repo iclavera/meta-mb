@@ -32,6 +32,7 @@ if __name__ == "__main__":
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
+        policy.switch_to_pre_update()
         env = data['env']
         for _ in range(args.num_rollouts):
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
