@@ -32,7 +32,7 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_ctrl = -0.1 * np.square(action).sum()
         reward_run = old_ob[5]
         reward_height = -3.0 * np.square(old_ob[0] - 1.3)
-        reward = reward_run + reward_ctrl + reward_height
+        reward = reward_run + reward_ctrl + reward_height + 1.0
 
         done = False
         return ob, reward, done, {}
@@ -64,14 +64,14 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
         reward_run = obs[:, 5]
         reward_height = -3.0 * np.square(obs[:, 0] - 1.3)
-        reward = reward_run + reward_ctrl + reward_height
+        reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
         reward_run = next_obs[:, 0]
-        # reward_height = -3.0 * tf.square(next_obs[:, 1] - 1.3)
-        reward = reward_run + reward_ctrl
+        reward_height = -3.0 * tf.square(next_obs[:, 1] - 1.3)
+        reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
 
 

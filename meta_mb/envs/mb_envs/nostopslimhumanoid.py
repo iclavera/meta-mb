@@ -10,6 +10,7 @@ import os
 
 
 class NoStopSlimHumanoidEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
+
     def __init__(self):
         dir_path = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, '%s/assets/humanoid.xml' % dir_path, frame_skip=5)
@@ -23,12 +24,15 @@ class NoStopSlimHumanoidEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def step(self, a):
         data = self.sim.data
         action = a
+        qpos = self.sim.data.qpos
+        done = bool((qpos[2] < 1.0) or (qpos[2] > 2.0))
+
         if getattr(self, 'action_space', None):
             action = np.clip(a, self.action_space.low,
                              self.action_space.high)
 
         # reward
-        alive_bonus = 5.0
+        alive_bonus = 5 * (1 - float(done))
         lin_vel_cost = 0.25 / 0.015 * data.qvel.flat[0]
         quad_ctrl_cost = 0.1 * np.square(action).sum()
         quad_impact_cost = 0.0

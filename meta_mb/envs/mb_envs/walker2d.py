@@ -33,7 +33,7 @@ class Walker2dEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_ctrl = -0.1 * np.square(action).sum()
         reward_run = old_ob[8]
         reward_height = -3.0 * np.square(old_ob[0] - 1.3)
-        reward = reward_run + reward_ctrl + reward_height
+        reward = reward_run + reward_ctrl + reward_height + 1.0
 
         done = False
         return ob, reward, done, {}
@@ -66,19 +66,19 @@ class Walker2dEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
             reward_run = obs[:, 8]
             reward_height = -3.0 * np.square(next_obs[:, 0] - 1.3)
-            reward = reward_run + reward_ctrl + reward_height
+            reward = reward_run + reward_ctrl + reward_height + 1.0
             return reward
         elif obs.ndim == 1:
             obs = np.expand_dims(obs, 0)
             acts = np.expand_dims(acts, 0)
             next_obs = np.expand_dims(next_obs, 0)
             return self.reward(obs, acts, next_obs)[0]
-        
+
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(np.square(acts), axis=1)
         reward_run = obs[:, 8]
         reward_height = -3.0 * tf.square(next_obs[:, 0] - 1.3)
-        reward = reward_run + reward_ctrl + reward_height
+        reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
 
 
