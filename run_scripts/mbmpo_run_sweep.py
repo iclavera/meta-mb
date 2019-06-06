@@ -6,12 +6,12 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-# from meta_mb.envs.blue.blue_env import BlueReacherEnv
-from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.blue.blue_env import BlueReacherEnv
+# from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_samplers.single_meta_sampler import SingleMetaSampler
+from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
@@ -20,7 +20,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mbmpo-blue'
+EXP_NAME = 'mbmpo-blue-sim'
 
 
 def run_experiment(**kwargs):
@@ -57,7 +57,7 @@ def run_experiment(**kwargs):
                                          buffer_size=kwargs['dynamics_buffer_size'],
 
                                          )
-    env_sampler = SingleMetaSampler(
+    env_sampler = MetaSampler(
         env=env,
         policy=policy,
         rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
@@ -131,13 +131,13 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [101],
-        'max_path_length': [100],
+        'max_path_length': [50],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [False],
-        'meta_steps_per_iter': [(20, 100)],
+        'meta_steps_per_iter': [(5, 30)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
@@ -145,12 +145,12 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(256, 256)],
+        'dynamics_hidden_sizes': [(128, 128)],
         'dyanmics_hidden_nonlinearity': ['swish'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [200],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [512, 1024],
+        'dynamics_batch_size': [512],
         'dynamics_buffer_size': [10000],
 
 
@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
         # Meta-Algo
         'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [100],
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],

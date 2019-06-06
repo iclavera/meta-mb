@@ -34,7 +34,7 @@ class Trainer(object):
             start_itr=0,
             num_inner_grad_steps=1,
             meta_steps_per_iter=30,
-            initial_random_samples=True,
+            initial_random_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
             log_real_performance=True
@@ -96,6 +96,8 @@ class Trainer(object):
                     env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='EnvSampler-')
 
                 else:
+                    if itr == 0:
+                        self.policy.switch_to_pre_update()
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
 

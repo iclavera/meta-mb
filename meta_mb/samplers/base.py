@@ -53,7 +53,7 @@ class BaseSampler(object):
         policy.reset(dones=[True])
 
         # initial reset of meta_envs
-        obs = np.asarray(self.env.reset())
+        obs = np.asarray(self.env.reset(slow=True))
 
         ts = 0
 
@@ -77,7 +77,7 @@ class BaseSampler(object):
             ts += 1
             done = done or ts >= self.max_path_length
             if done:
-                next_obs = self.env.reset()
+                next_obs = self.env.reset(slow=True)
                 ts = 0
                 
             env_time += time.time() - t
