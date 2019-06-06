@@ -39,7 +39,7 @@ class PendulumEnv(MetaEnv):
         # for the reward
         y, x, thetadot = np.cos(th), np.sin(th), thdot
         u = np.clip(u, -self.max_torque, self.max_torque)[0]
-        costs = y + .1 * x + .1 * (thetadot ** 2) + .001 * (u ** 2)
+        costs = y + .1 * np.abs(x) + .1 * (thetadot ** 2) + .001 * (u ** 2)
         reward = -costs
 
         g = 10.
@@ -121,13 +121,13 @@ class PendulumEnv(MetaEnv):
         """
         y, x, thetadot = obs[:, 0], obs[:, 1], obs[:, 2]
         u = np.clip(acts[:, 0], -self.max_torque, self.max_torque)
-        costs = y + .1 * x + .1 * (thetadot ** 2) + .001 * (u ** 2)
+        costs = y + .1 * np.abs(x) + .1 * (thetadot ** 2) + .001 * (u ** 2)
         return -costs
 
     def tf_reward(self, obs, acts, next_obs):
         y, x, thetadot = obs[:, 0], obs[:, 1], obs[:, 2]
         u = tf.clip_by_value(acts[:, 0], -self.max_torque, self.max_torque)
-        costs = y + .1 * x + .1 * tf.square(thetadot) + .001 * tf.square(u)
+        costs = y + .1 * tf.abs(x) + .1 * tf.square(thetadot) + .001 * tf.square(u)
         return -costs
 
 
