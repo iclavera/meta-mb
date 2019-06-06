@@ -1,4 +1,5 @@
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import MLPDynamicsEnsemble as ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.policies.mpc_controller import MPCController
@@ -9,22 +10,22 @@ from meta_mb.logger import logger
 from meta_mb.envs.normalized_env import normalize
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-from meta_mb.envs.blue.blue_env import BlueReacherEnv
+from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
 
-EXP_NAME = 'mb-mpc'
+EXP_NAME = 'mb-mpc-pets-reward'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = normalize(config['env']())
+    env = config['env']()
 
 
     if config['recurrent']:
@@ -74,7 +75,7 @@ def run_experiment(**config):
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
             use_cem=config['use_cem'],
-            num_cem_iters=config['num_cem_iters']
+            num_cem_iters=config['num_cem_iters'],
         )
 
     sampler = Sampler(
@@ -104,23 +105,23 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-                'seed': [11, 22],
+                'seed': [5],
 
                 # Problem
-                'env': [BlueReacherEnv],  # 'HalfCheetahEnv'
-                'max_path_length': [50],
+                'env': [HalfCheetahEnv],  # 'HalfCheetahEnv'
+                'max_path_length': [100],
                 'normalize': [False],
-                 'n_itr': [30],
-                'discount': [0.99],
+                 'n_itr': [50],
+                'discount': [1.],
 
                 # Policy
-                'n_candidates': [256],
-                'horizon': [5],
+                'n_candidates': [2000],
+                'horizon': [30],
                 'use_cem': [False],
-                'num_cem_iters': [4],
+                'num_cem_iters': [5],
 
                 # Training
-                'num_rollouts': [20],
+                'num_rollouts': [5],
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
                 'rolling_average_persitency': [0.99],
@@ -129,16 +130,16 @@ if __name__ == '__main__':
                 # Dynamics Model
                 'recurrent': [False],
                 'num_models': [5],
-                'hidden_nonlinearity_model': ['swish'],
-                'hidden_sizes_model': [(256, 256)],
-                'dynamic_model_epochs': [200],
+                'hidden_nonlinearity_model': ['relu'],
+                'hidden_sizes_model': [(500, 500,)],
+                'dynamic_model_epochs': [15],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [256],
+                'batch_size_model': [64],
                 'cell_type': ['lstm'],
 
                 #  Other
-                'n_parallel': [5],
+                'n_parallel': [1],
 
     }
 

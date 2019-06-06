@@ -60,7 +60,7 @@ class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
             np.sin(theta),
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat,
-            self.get_body_com("right_l_finger_tip_link") - self.goal
+            # self.get_body_com("right_l_finger_tip_link") - self.goal
         ])
 
     def log_diagnostics(self, paths, prefix=''):
@@ -74,7 +74,7 @@ class PR2ReacherEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
 
 
 if __name__ == "__main__":
-    env = BlueReacherEnv()
+    env = PR2ReacherEnv()
     while True:
         env.reset()
         for _ in range(1000):

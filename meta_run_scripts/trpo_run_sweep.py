@@ -95,8 +95,7 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [HumanoidRandDirec2DEnv, AntRandGoalEnv, Walker2DRandParamsEnv,
-                HalfCheetahRandVelEnv, HalfCheetahRandDirecEnv, AntRandDirecEnv],
+        'env': [HumanoidRandDirec2DEnv],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],
@@ -107,7 +106,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
 
-        'hidden_sizes': [(64, 64)],
+        'hidden_sizes': [(128, 128)],
         'learn_std': [True],
         'hidden_nonlinearity': [tf.tanh],
         'output_nonlinearity': [None],

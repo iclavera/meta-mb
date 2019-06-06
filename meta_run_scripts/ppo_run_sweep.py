@@ -12,6 +12,7 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
+from rand_param_envs.pr2_env_reach import PR2Env
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.ppo_maml import PPOMAML
@@ -21,8 +22,8 @@ from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProce
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'promp-kate-def'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'promp-kate-fin'
 
 
 def run_experiment(**kwargs):
@@ -106,8 +107,7 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [HumanoidRandDirec2DEnv, AntRandGoalEnv, Walker2DRandParamsEnv,
-                HalfCheetahRandVelEnv, HalfCheetahRandDirecEnv, AntRandDirecEnv],
+        'env': [Walker2DRandParamsEnv, AntRandDirecEnv],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],
@@ -130,14 +130,14 @@ if __name__ == '__main__':
         'clip_eps': [0.3],
         'clip_outer': [True],
         'target_outer_step': [0],
-        'target_inner_step': [0.01],
+        'target_inner_step': [0.0],
         'init_outer_kl_penalty': [0],
-        'init_inner_kl_penalty': [5e-4],
+        'init_inner_kl_penalty': [0, 5e-4],
         'adaptive_outer_kl_penalty': [False],
         'adaptive_inner_kl_penalty': [False],
         'anneal_factor': [1.0],
 
-        'n_itr': [1001],
+        'n_itr': [500],
         'meta_batch_size': [40],
         'num_inner_grad_steps': [1],
         'scope': [None],

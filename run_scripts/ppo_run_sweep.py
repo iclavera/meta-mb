@@ -5,29 +5,23 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
-from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
-from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
-from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
-from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
-from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
-from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
-from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
+from meta_mb.envs.cassie.cassie_env import CassieEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.meta_algos.ppo_maml import PPOMAML
-from meta_mb.trainers.meta_trainer import Trainer
-from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
-from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.algos.ppo import PPO
+from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.trainers.mf_trainer import Trainer
+from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.single_sample_processor import SingleSampleProcessor
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'promp-kate-def'
+EXP_NAME = 'cassie-running'
 
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     # Instantiate classes
@@ -35,31 +29,30 @@ def run_experiment(**kwargs):
 
     baseline = kwargs['baseline']()
 
-    env = normalize(kwargs['env']()) # Wrappers?
+    env = normalize(kwargs['env']())
 
-    policy = MetaGaussianMLPPolicy(
-        name="meta-policy",
+    policy = GaussianMLPPolicy(
+        name="policy",
         obs_dim=np.prod(env.observation_space.shape),
         action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
         hidden_sizes=kwargs['hidden_sizes'],
         learn_std=kwargs['learn_std'],
         hidden_nonlinearity=kwargs['hidden_nonlinearity'],
         output_nonlinearity=kwargs['output_nonlinearity'],
+        init_std=kwargs['init_std'],
     )
 
     # Load policy here
 
-    sampler = MetaSampler(
+    sampler = Sampler(
         env=env,
         policy=policy,
-        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
+        num_rollouts=kwargs['num_rollouts'],
         max_path_length=kwargs['max_path_length'],
-        parallel=kwargs['parallel'],
+        n_parallel=kwargs['n_parallel'],
     )
 
-    sample_processor = MAMLSampleProcessor(
+    sample_processor = SingleSampleProcessor(
         baseline=baseline,
         discount=kwargs['discount'],
         gae_lambda=kwargs['gae_lambda'],
@@ -67,23 +60,11 @@ def run_experiment(**kwargs):
         positive_adv=kwargs['positive_adv'],
     )
 
-    algo = PPOMAML(
+    algo = PPO(
         policy=policy,
-        inner_lr=kwargs['inner_lr'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         learning_rate=kwargs['learning_rate'],
-        num_ppo_steps=kwargs['num_ppo_steps'],
-        num_minibatches=kwargs['num_minibatches'],
-        clip_eps=kwargs['clip_eps'], 
-        clip_outer=kwargs['clip_outer'],
-        target_outer_step=kwargs['target_outer_step'],
-        target_inner_step=kwargs['target_inner_step'],
-        init_outer_kl_penalty=kwargs['init_outer_kl_penalty'],
-        init_inner_kl_penalty=kwargs['init_inner_kl_penalty'],
-        adaptive_outer_kl_penalty=kwargs['adaptive_outer_kl_penalty'],
-        adaptive_inner_kl_penalty=kwargs['adaptive_inner_kl_penalty'],
-        anneal_factor=kwargs['anneal_factor'],
+        clip_eps=kwargs['clip_eps'],
+        max_epochs=kwargs['num_ppo_steps'],
     )
 
     trainer = Trainer(
@@ -93,53 +74,40 @@ def run_experiment(**kwargs):
         sampler=sampler,
         sample_processor=sample_processor,
         n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
     )
 
     trainer.train()
 
 if __name__ == '__main__':
-
     sweep_params = {
-        'algo': ['promp'],
-        'seed': [1, 2, 3],
+        'algo': ['ppo'],
+        'seed': [1, 2],
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [HumanoidRandDirec2DEnv, AntRandGoalEnv, Walker2DRandParamsEnv,
-                HalfCheetahRandVelEnv, HalfCheetahRandDirecEnv, AntRandDirecEnv],
+        'env': [CassieEnv],
 
-        'rollouts_per_meta_task': [20],
-        'max_path_length': [200],
-        'parallel': [True],
+        'num_rollouts': [20],
+        'max_path_length': [500],
+        'n_parallel': [10],
 
         'discount': [0.99],
-        'gae_lambda': [1],
+        'gae_lambda': [.975],
         'normalize_adv': [True],
         'positive_adv': [False],
 
-        'hidden_sizes': [(64, 64)],
+        'hidden_sizes': [(256, 256, 256)],
         'learn_std': [True],
-        'hidden_nonlinearity': [tf.tanh],
+        'hidden_nonlinearity': [tf.nn.tanh],
         'output_nonlinearity': [None],
+        'init_std': [1.],
 
-        'inner_lr': [0.1],
-        'learning_rate': [1e-3],
+        'learning_rate': [1e-3, 1e-2],
         'num_ppo_steps': [5],
         'num_minibatches': [1],
-        'clip_eps': [0.3],
-        'clip_outer': [True],
-        'target_outer_step': [0],
-        'target_inner_step': [0.01],
-        'init_outer_kl_penalty': [0],
-        'init_inner_kl_penalty': [5e-4],
-        'adaptive_outer_kl_penalty': [False],
-        'adaptive_inner_kl_penalty': [False],
-        'anneal_factor': [1.0],
+        'clip_eps': [.3],
 
-        'n_itr': [1001],
-        'meta_batch_size': [40],
-        'num_inner_grad_steps': [1],
+        'n_itr': [5000],
         'scope': [None],
 
         'exp_tag': ['v0']

@@ -11,7 +11,7 @@ from meta_mb.envs.mujoco.humanoid_env import HumanoidEnv
 from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
 from meta_mb.envs.mujoco.hopper_env import HopperEnv
 from meta_mb.envs.mujoco.swimmer_env import SwimmerEnv
-from meta_mb.envs.blue.blue_env import BlueReacherEnv
+from meta_mb.envs.cassie.cassie_env import CassieEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.envs.img_wrapper_env import image_wrapper
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
@@ -28,7 +28,7 @@ from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'ars-images'
+EXP_NAME = 'cassie-running-2'
 
 
 def run_experiment(**kwargs):
@@ -48,7 +48,7 @@ def run_experiment(**kwargs):
         baseline = kwargs['baseline']()
 
         if not kwargs['use_images']:
-            env = normalize(kwargs['env']())
+            env = normalize(kwargs['env'](policytask=kwargs['task']))
             vae = None
 
         else:
@@ -60,7 +60,8 @@ def run_experiment(**kwargs):
         policy = NNPolicy(name="policy",
                           obs_dim=np.prod(env.observation_space.shape),
                           action_dim=np.prod(env.action_space.shape),
-                          hidden_sizes=kwargs['hidden_sizes']
+                          hidden_sizes=kwargs['hidden_sizes'],
+                          normalization=kwargs['normalization'],
                           )
 
         env_sampler = Sampler(
@@ -77,7 +78,7 @@ def run_experiment(**kwargs):
             rollouts_per_policy=kwargs['rollouts_per_policy'],
             max_path_length=kwargs['max_path_length'],
             num_deltas=kwargs['num_deltas'],
-            # n_parallel=kwargs['num_deltas'],
+            n_parallel=kwargs['num_deltas'],
             vae=vae,
         )
 
@@ -130,12 +131,12 @@ if __name__ == '__main__':
 
         'algo': ['ars'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, HopperEnv, Walker2DEnv],
-        'use_images': [True],
+        'env': [CassieEnv],
+        'use_images': [False],
 
         # Problem Conf
-        'n_itr': [200],
-        'max_path_length': [200],
+        'n_itr': [40],
+        'max_path_length': [500],
         'discount': [1.],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -148,14 +149,16 @@ if __name__ == '__main__':
         'parallel': [True],
 
         # Meta-Algo
-        'learning_rate': [0.025, 0.05],
-        'num_deltas': [8, 16, 32],
+        'learning_rate': [0.02, 0.01, 0.005],
+        'num_deltas': [16],
         'rollouts_per_policy': [1],
-        'percentile': [0., 0.25],
-        'delta_std': [0.03, 0.01, 0.05],
-        'latent_dim': [16, 32],
-        'hidden_sizes': [(64, 64), (128, 128), (256, 256)],
-        'time_steps': [4],
+        'percentile': [0.],
+        'delta_std': [0.005, 0.002],
+        'latent_dim': [32],
+        'hidden_sizes': [(256, 256, 256)],
+        'time_steps': [1],
+        'normalization': [None],
+        'task': ['balancing'],
 
         'scope': [None],
         'exp_tag': [''], # For changes besides hyperparams

@@ -5,17 +5,8 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-from meta_mb.envs.mujoco.ant_env import AntEnv
-from meta_mb.envs.mujoco.humanoid_env import HumanoidEnv
-from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
-from meta_mb.envs.mujoco.hopper_env import HopperEnv
-from meta_mb.envs.mujoco.swimmer_env import SwimmerEnv
-from meta_mb.envs.blue.blue_env import BlueReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.envs.img_wrapper_env import image_wrapper
-# from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.optimizers.random_search_optimizer import RandomSearchOptimizer
 from meta_mb.trainers.ars_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
@@ -28,9 +19,9 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE
-
+from meta_mb.envs.mb_envs import *
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'ars-32'
+EXP_NAME = 'ars-mod-buff-2'
 
 
 def run_experiment(**kwargs):
@@ -59,42 +50,30 @@ def run_experiment(**kwargs):
         policy = NNPolicy(name="policy",
                           obs_dim=np.prod(env.observation_space.shape),
                           action_dim=np.prod(env.action_space.shape),
-                          hidden_sizes=kwargs['hidden_sizes']
+                          hidden_sizes=kwargs['hidden_sizes'],
+                          normalization=None,
                           )
 
-        if kwargs['deterministic']:
-            dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                                 env=env,
-                                                 num_models=kwargs['num_models'],
-                                                 hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                                 output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                                 learning_rate=kwargs['dynamics_learning_rate'],
-                                                 batch_size=kwargs['dynamics_batch_size'],
-                                                 buffer_size=kwargs['dynamics_buffer_size'],
-                                                 )
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                             env=env,
+                                             num_models=kwargs['num_models'],
+                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                             learning_rate=kwargs['dynamics_learning_rate'],
+                                             batch_size=kwargs['dynamics_batch_size'],
+                                             buffer_size=kwargs['dynamics_buffer_size'],
+                                             )
 
-        else:
-            dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
-                                                 env=env,
-                                                 num_models=kwargs['num_models'],
-                                                 hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                                 output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                                 learning_rate=kwargs['dynamics_learning_rate'],
-                                                 batch_size=kwargs['dynamics_batch_size'],
-                                                 buffer_size=kwargs['dynamics_buffer_size'],
-                                                 )
-
-        dynamics_model = None
-        # assert kwargs['rollouts_per_policy'] % kwargs['num_models'] == 0
+        # dynamics_model = None
+        assert kwargs['rollouts_per_policy'] % kwargs['num_models'] == 0
 
         env_sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
-            # n_parallel=kwargs['n_parallel'],
+            n_parallel=kwargs['num_rollouts'],
         )
 
         # TODO: I'm not sure if it works with more than one rollout per model
@@ -104,9 +83,9 @@ def run_experiment(**kwargs):
             policy=policy,
             dynamics_model=dynamics_model,
             rollouts_per_policy=kwargs['rollouts_per_policy'],
-            max_path_length=kwargs['max_path_length'],
+            max_path_length=kwargs['horizon'],
             num_deltas=kwargs['num_deltas'],
-            n_parallel=2,
+            n_parallel=1,
         )
 
         dynamics_sample_processor = ModelSampleProcessor(
@@ -123,6 +102,7 @@ def run_experiment(**kwargs):
             gae_lambda=kwargs['gae_lambda'],
             normalize_adv=kwargs['normalize_adv'],
             positive_adv=kwargs['positive_adv'],
+            uncertainty_coeff=kwargs['uncertainty_coeff']
         )
 
         algo = RandomSearchOptimizer(
@@ -147,7 +127,9 @@ def run_experiment(**kwargs):
             log_real_performance=kwargs['log_real_performance'],
             steps_per_iter=kwargs['steps_per_iter'],
             delta_std=kwargs['delta_std'],
-            sess=sess
+            sess=sess,
+            initial_random_samples=True,
+            sample_from_buffer=kwargs['sample_from_buffer']
         )
 
         trainer.train()
@@ -160,7 +142,7 @@ if __name__ == '__main__':
 
         'algo': ['ars'],
         'baseline': [LinearFeatureBaseline],
-        'env': [InvertedPendulumEnv, HalfCheetahEnv, Walker2DEnv, HopperEnv, HumanoidEnv],
+        'env': [HalfCheetahEnv],
         'use_images': [False],
 
         # Problem Conf
@@ -171,33 +153,35 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(10, 10)],
+        'steps_per_iter': [(20, 20)],
 
         # Real Env Sampling
-        'num_rollouts': [2],
+        'num_rollouts': [5],
         'parallel': [True],
 
         # Dynamics Model
-        'num_models': [1],
-        'dynamics_hidden_sizes': [(500, 500)],
+        'num_models': [5],
+        'dynamics_hidden_sizes': [(500, 500, 500)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [25],
+        'dynamics_max_epochs': [50],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [64],
-        'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'dynamics_batch_size': [128],
+        'dynamics_buffer_size': [25000],
 
         # Meta-Algo
-        'learning_rate': [0.02, 0.01, 0.05, 0.005],
-        'num_deltas': [4, 16, 32],
-        'rollouts_per_policy': [1],
-        'percentile': [0.5],
-        'delta_std': [0.01, 0.03, 0.05],
-        'hidden_sizes': [(128, 128)],
+        'learning_rate': [0.001],
+        'horizon': [200],
+        'num_deltas': [4],
+        'rollouts_per_policy': [5],
+        'percentile': [.0],
+        'delta_std': [0.03],
+        'hidden_sizes': [(64, 64)],
+        'sample_from_buffer': [False],
+        'uncertainty_coeff': [.1],
 
         'scope': [None],
-        'exp_tag': [''], # For changes besides hyperparams
+        'exp_tag': [''],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

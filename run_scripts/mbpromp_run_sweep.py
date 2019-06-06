@@ -147,16 +147,16 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(256, 256)],
-        'dyanmics_hidden_nonlinearity': ['swish'],
+        'dynamics_hidden_sizes': [(500, 500)],
+        'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [200, 500],
-        'dynamics_learning_rate': [1e-3, 5e-4],
-        'dynamics_batch_size': [512, 1024],
+        'dynamics_max_epochs': [200],
+        'dynamics_learning_rate': [1e-3],
+        'dynamics_batch_size': [256],
 
 
         # Policy
-        'policy_hidden_sizes': [(32, 32)],
+        'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
