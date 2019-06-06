@@ -74,7 +74,6 @@ class SingleMetaSampler(BaseSampler):
         for i in range(self.meta_batch_size):
             paths[i] = []
 
-        n_samples = 0
         running_paths = _get_empty_running_paths_dict()
 
         pbar = ProgBar(self.total_samples)
@@ -82,15 +81,12 @@ class SingleMetaSampler(BaseSampler):
 
         policy = self.policy
 
-        # initial reset of meta_envs
-
-        print("Reset has sleep 1")
         for idx in range(self.meta_batch_size):
             ts = 0
             n_samples = 0
 
-            obses = [np.expand_dims(self.env.reset(), 0) for _ in range(self.meta_batch_size)]
-            # time.sleep(1)
+            init_obs = np.expand_dims(self.env.reset(), 0).copy()
+            obses = [init_obs for _ in range(self.meta_batch_size)]
             policy.reset(dones=[True] * self.meta_batch_size)
             while n_samples < self.samples_per_task:
                 # execute policy
@@ -157,6 +153,7 @@ class SingleMetaSampler(BaseSampler):
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 
         return paths
+
 
 def _get_empty_running_paths_dict():
     return dict(observations=[], actions=[], rewards=[], dones=[], env_infos=[], agent_infos=[])

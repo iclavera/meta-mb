@@ -101,9 +101,10 @@ class MBMPOIterativeEnvExecutor(object):
             assert self.current_obs.ndim == 2
             self.ts[:] = 0
         else:
-            idx = np.random.randint(0, len(self._buffer['observations']), size=self.num_envs)
-            self.current_obs = self._buffer['observations'][idx]
-            self.ts = self._buffer['time_steps'][idx]
+            initial_idxs = self._buffer['time_steps'] == 0
+            self.current_obs = np.random.choice(self._buffer['observations'][initial_idxs], size=self.num_envs,
+                                                replace=True)
+            self.ts[:] = 0
             results = list(self.current_obs)
         return results
 

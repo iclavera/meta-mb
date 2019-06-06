@@ -10,29 +10,27 @@ from blue_interface.blue_interface import BlueInterface
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='left', ip='127.0.0.1', port=9090):
         self.goal = np.ones((3,))
-        max_torques = np.array([15, 15, 15, 10, 10]) #, 4, 4])
-        self.frame_skip = 3
+        max_torques = np.array([10, 10, 8, 6, 6]) #, 4, 4]) # Note: Just using the first 5 joints
+        self.frame_skip = 1
+        self.dt = 0.2
         super(BlueReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
-        self.act_dim = len(self.get_joint_positions())
+        self._prev_qpos = self.init_qpos.copy()
+        self.act_dim = len(max_torques)
         self.obs_dim = len(self._get_obs())
         self._low, self._high = -max_torques, max_torques
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
+        self._prev_qpos = self.get_joint_positions()
         self.do_simulation(action, self.frame_skip)
-        vec = self.get_vec_gripper_to_goal()
+        vec = self.vec_gripper_to_goal
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(action/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         ob = self._get_obs()
         done = False
         return ob, reward, done, dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
-
-    def get_vec_gripper_to_goal(self):
-        gripper_pos = self.get_tip_position()
-        vec_gripper_to_goal = self.goal - gripper_pos
-        return vec_gripper_to_goal
 
     def viewer_setup(self):
         self.viewer.cam.trackbodyid = 0
@@ -41,31 +39,30 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         action = np.clip(action, self._low, self._high)
         assert frame_skip > 0
         for _ in range(frame_skip):
+            time.sleep(self.dt)
             self.set_joint_torques(np.concatenate([action,np.zeros((2,))]))
-            time.sleep(1/70)
 
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
             reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act/(2 * self._high)), axis=1)
-            reward_dist = -np.linalg.norm(obs_next[:,-3:], axis=1)
+            reward_dist = -np.linalg.norm(obs_next[:, -3:], axis=1)
             reward = reward_dist + reward_ctrl
-            return np.clip(reward, -1e3, 1e3)
+            return np.clip(reward, -1e2, 1e2)
+
         elif obs.ndim == 1:
-            assert obs.shape == obs_next.shape
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act/(2 * self._high)))
-            reward_dist = -np.linalg.norm(obs_next[-3:])
-            reward = reward_dist + reward_ctrl
-            return np.clip(reward, -1e3, 1e3)
+            return self.reward(obs[None], act[None], obs_next[None])[0]
+
         else:
             raise NotImplementedError
 
     def reset(self):
-        self.set_joint_positions(self.init_qpos)
+        self.set_joint_positions(self.init_qpos + np.random.uniform(low=-0.05, high=0.05, size=self.init_qpos.shape),
+                                 duration=5.)
         while True:
-            self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([-.3, .3, .5]) # TODO: Remove this line
+            # self.goal = np.random.uniform(low=-.2, high=.2, size=3)
+            self.goal = np.array([-.3, .3, .5]) # Note: this is with fixed goal
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
@@ -74,13 +71,20 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         return np.concatenate([
             self.get_joint_positions(),
             self.get_joint_velocities(),
-            self.get_tip_position(),
-            self.get_vec_gripper_to_goal(),
+            self.tip_position,
+            self.vec_gripper_to_goal,
             ]).reshape(-1)
 
-    def get_tip_position(self):
+    @property
+    def tip_position(self):
         pose = self.get_cartesian_pose()
         return pose['position']
+
+    @property
+    def vec_gripper_to_goal(self):
+        gripper_pos = self.tip_position
+        vec_gripper_to_goal = self.goal - gripper_pos
+        return vec_gripper_to_goal
 
     def log_diagnostics(self, paths, prefix=''):
         dist = [-path["env_infos"]['reward_dist'] for path in paths]
@@ -100,6 +104,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         low = np.ones(self.obs_dim) * -1e6
         high = np.ones(self.obs_dim) * 1e6
         return spaces.Box(low=low, high=high, dtype=np.float32)
+
 
 if __name__ == "__main__":
     env = BlueReacherEnv()
