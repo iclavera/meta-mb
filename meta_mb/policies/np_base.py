@@ -142,4 +142,4 @@ class NpPolicy(Serializable):
     def __setstate__(self, state):
         Serializable.__setstate__(self, state['init_args'])
         self.set_params(state['network_params'])
-        [obs_filter.set_params(*obs_filter) for obs_filter in state['filter']]
+        [obs_filter.set_params(params) for obs_filter, params in zip(self.obs_filters, state['filter'])]

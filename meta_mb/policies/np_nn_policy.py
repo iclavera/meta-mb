@@ -74,7 +74,7 @@ class NNPolicy(NpPolicy, Serializable):
 
     def get_action(self, observation, update_filter=False):
         actions, _ = self.get_actions(np.expand_dims(observation, axis=0), update_filter=update_filter)
-        return actions[0], {}
+        return actions[0], {'mean': actions[0], 'log_std': -1e8}
 
     def get_actions_batch(self, observations, update_filter=True):
         """

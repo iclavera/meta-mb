@@ -68,5 +68,4 @@ class AntEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         logger.logkv(prefix+'MaxForwardReturn', np.max(progs))
         logger.logkv(prefix+'MinForwardReturn', np.min(progs))
         logger.logkv(prefix+'StdForwardReturn', np.std(progs))
-
         logger.logkv(prefix+'AverageCtrlCost', np.mean(ctrl_cost))

@@ -11,13 +11,12 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         MujocoEnv.__init__(self, 'inverted_pendulum.xml', 2)
 
     def step(self, a):
-        # reward = 1.0
+        reward = 1.0
         self.do_simulation(a, self.frame_skip)
         ob = self._get_obs()
         notdone = np.isfinite(ob).all() and (np.abs(ob[1]) <= .2)
-        reward = float(notdone)
-        # done = not notdone
-        done = False
+        done = not notdone
+        # done = False
         return ob, reward, done, {}
 
     def reset_model(self):

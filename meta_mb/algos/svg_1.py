@@ -102,16 +102,16 @@ class SVG1(Algo):
         obs_ev = model_distribution_info_vars['mean'] + obs_noise * tf.stop_gradient(model_distribution_info_vars['log_std'])
         value_fun_dist_info_vars = self.value_function.distribution_info_sym(obs_ev)
 
-        surr_obj = - tf.reduce_mean(tf.stop_gradient(likelihood_ratio) * (self.tf_reward(obs_ph, act_ev, next_obs_ph)
-                                    + self.discount * value_fun_dist_info_vars['mean']))
+        surr_obj = tf.reduce_mean(tf.stop_gradient(likelihood_ratio) * (self.tf_reward(obs_ph, act_ev, next_obs_ph)
+                                  + self.discount * value_fun_dist_info_vars['mean']))
+
+        surr_obj = (surr_obj - self.value_function._mean_output_var)/(self.value_function._std_output_var + 1e-8)
 
         last_policy_info_vars = self.policy.distribution_info_sym(obs_ph, params=self.policy.policy_params_ph)
-        surr_obj += self.kl_penalty * self.policy.distribution.kl_sym(distribution_info_vars, last_policy_info_vars)
+        surr_obj -= self.kl_penalty * self.policy.distribution.kl_sym(distribution_info_vars, last_policy_info_vars)
 
-        optimizer = tf.train.AdamOptimizer(self.learning_rate)
-        gradients, variables = zip(*optimizer.compute_gradients(surr_obj, var_list=self.policy.get_params()))
-        gradients, _ = tf.clip_by_global_norm(gradients, self.max_grad_norm)
-        self._train_op = optimizer.apply_gradients(zip(gradients, variables))
+        self._train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(-surr_obj,
+                                                                             var_list=self.policy.get_params())
         self._loss = surr_obj
 
     def optimize_policy(self, samples_data, log=True):
