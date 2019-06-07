@@ -11,7 +11,7 @@ from meta_mb.meta_algos.ppo_maml import PPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble

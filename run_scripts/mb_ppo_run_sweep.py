@@ -5,24 +5,25 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.mb_envs import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.meta_algos.trpo_maml import TRPOMAML
-from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_samplers.single_meta_sampler import SingleMetaSampler
-from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
-from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.algos.ppo import PPO
+from meta_mb.trainers.metrpo_trainer import Trainer
+from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.base import SampleProcessor
+from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
-EXP_NAME = 'mbmpo-blue'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'mb-ppo'
 
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     # Instantiate classes
@@ -32,11 +33,10 @@ def run_experiment(**kwargs):
 
     env = normalize(kwargs['env']()) # Wrappers?
 
-    policy = MetaGaussianMLPPolicy(
+    policy = GaussianMLPPolicy(
         name="meta-policy",
         obs_dim=np.prod(env.observation_space.shape),
         action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
         hidden_sizes=kwargs['policy_hidden_sizes'],
         learn_std=kwargs['policy_learn_std'],
         hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
@@ -52,24 +52,23 @@ def run_experiment(**kwargs):
                                          learning_rate=kwargs['dynamics_learning_rate'],
                                          batch_size=kwargs['dynamics_batch_size'],
                                          buffer_size=kwargs['dynamics_buffer_size'],
-
                                          )
-    env_sampler = SingleMetaSampler(
+
+    env_sampler = Sampler(
         env=env,
         policy=policy,
-        rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
+        num_rollouts=kwargs['num_rollouts'],
         max_path_length=kwargs['max_path_length'],
-        parallel=kwargs['parallel'],
+        n_parallel=kwargs['n_parallel'],
     )
 
-    model_sampler = MBMPOSampler(
+    model_sampler = METRPOSampler(
         env=env,
         policy=policy,
-        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
+        num_rollouts=kwargs['imagined_num_rollouts'],
         max_path_length=kwargs['max_path_length'],
         dynamics_model=dynamics_model,
+        deterministic=kwargs['deterministic'],
     )
 
     dynamics_sample_processor = ModelSampleProcessor(
@@ -80,7 +79,7 @@ def run_experiment(**kwargs):
         positive_adv=kwargs['positive_adv'],
     )
 
-    model_sample_processor = MAMLSampleProcessor(
+    model_sample_processor = SampleProcessor(
         baseline=baseline,
         discount=kwargs['discount'],
         gae_lambda=kwargs['gae_lambda'],
@@ -88,14 +87,11 @@ def run_experiment(**kwargs):
         positive_adv=kwargs['positive_adv'],
     )
 
-    algo = TRPOMAML(
+    algo = PPO(
         policy=policy,
-        step_size=kwargs['step_size'],
-        inner_type=kwargs['inner_type'],
-        inner_lr=kwargs['inner_lr'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        exploration=kwargs['exploration'],
+        learning_rate=kwargs['learning_rate'],
+        clip_eps=kwargs['clip_eps'],
+        max_epochs=kwargs['num_ppo_steps'],
     )
 
     trainer = Trainer(
@@ -108,11 +104,9 @@ def run_experiment(**kwargs):
         dynamics_sample_processor=dynamics_sample_processor,
         dynamics_model=dynamics_model,
         n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
-        meta_steps_per_iter=kwargs['meta_steps_per_iter'],
-        initial_random_samples=True,
+        steps_per_iter=kwargs['steps_per_iter'],
         sample_from_buffer=True,
     )
 
@@ -122,36 +116,36 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3],
+        'seed': [1, 2],
 
-        'algo': ['mbmpo'],
+        'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [BlueReacherEnv],
+        'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [101],
-        'max_path_length': [10],
+        'n_itr': [51],
+        'max_path_length': [50,],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [False],
-        'meta_steps_per_iter': [(30, 100)],
+        'log_real_performance': [True],
+        'steps_per_iter': [(10, 10), (50, 50)],
 
         # Real Env Sampling
-        'real_env_rollouts_per_meta_task': [1],
-        'parallel': [True],
+        'num_rollouts': [5],
+        'n_parallel': [5],
 
         # Dynamics Model
-        'num_models': [10],
+        'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [128],
-        'dynamics_buffer_size': [5000],
-
+        'dynamics_batch_size': [256],
+        'dynamics_buffer_size': [10000],
+        'deterministic': [True],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -159,17 +153,14 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
 
-        # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [50],
-        'num_inner_grad_steps': [1],
-        'inner_lr': [0.001],
-        'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
-        'exploration': [False],
-
+        # Algo
+        'clip_eps': [0.2, 0.3, 0.1],
+        'learning_rate': [1e-3, 5e-4],
+        'num_ppo_steps': [5],
+        'imagined_num_rollouts': [20, 50],
         'scope': [None],
-        'exp_tag': [''], # For changes besides hyperparams
+        'exp_tag': [''],  # For changes besides hyperparams
     }
 
-    run_sweep(run_experiment, sweep_params, EXP_NAME)
+    run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
+

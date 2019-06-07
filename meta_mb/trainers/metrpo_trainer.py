@@ -26,50 +26,39 @@ class Trainer(object):
             env,
             model_sampler,
             env_sampler,
-            ars_sample_processor,
+            model_sample_processor,
             dynamics_sample_processor,
             policy,
+            dynamics_model,
             n_itr,
-            num_deltas,
-            dynamics_model=None,
             start_itr=0,
             steps_per_iter=30,
-            initial_random_samples=False,
+            initial_random_samples=True,
             sess=None,
             dynamics_model_max_epochs=200,
             log_real_performance=True,
-            delta_std=0.03,
-            gpu_frac=0.5,
             sample_from_buffer=False,
             ):
         self.algo = algo
         self.env = env
         self.model_sampler = model_sampler
-        self.ars_sample_processor = ars_sample_processor
+        self.model_sample_processor = model_sample_processor
         self.env_sampler = env_sampler
         self.dynamics_sample_processor = dynamics_sample_processor
         self.dynamics_model = dynamics_model
-        self.baseline = ars_sample_processor.baseline
+        self.baseline = model_sample_processor.baseline
         self.policy = policy
         self.n_itr = n_itr
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
-        self.num_deltas = num_deltas
-        self.delta_std = delta_std
-        self.sample_from_buffer = sample_from_buffer
 
         self.initial_random_samples = initial_random_samples
         self.steps_per_iter = steps_per_iter
         self.log_real_performance = log_real_performance
-
-        self._prev_policy = None
-        self._last_returns = -1e8
+        self.sample_from_buffer = sample_from_buffer
 
         if sess is None:
-            config = tf.ConfigProto()
-            config.gpu_options.allow_growth = True
-            config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
-            sess = tf.Session(config=config)
+            sess = tf.Session()
         self.sess = sess
 
     def train(self):
@@ -91,7 +80,8 @@ class Trainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
 
             if type(self.steps_per_iter) is tuple:
-                steps_per_iter = np.linspace(self.steps_per_iter[0], self.steps_per_iter[1], self.n_itr).astype(np.int)
+                steps_per_iter = np.linspace(self.steps_per_iter[0],
+                                             self.steps_per_iter[1], self.n_itr).astype(np.int)
             else:
                 steps_per_iter = [self.steps_per_iter] * self.n_itr
 
@@ -109,15 +99,14 @@ class Trainer(object):
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
-                    self.policy.obs_filter.stats_increment()
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
-                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                              log=True,
+
+                samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
                                                                               log_prefix='EnvTrajs-')
 
                 self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
@@ -128,87 +117,68 @@ class Trainer(object):
 
                 time_fit_start = time.time()
 
-                logger.log("Training dynamics model for %i epochs ..." % self.dynamics_model_max_epochs)
-                if self.dynamics_model is not None:
-                    self.dynamics_model.fit(samples_data['observations'],
-                                            samples_data['actions'],
-                                            samples_data['next_observations'],
-                                            epochs=self.dynamics_model_max_epochs,
-                                            verbose=False,
-                                            log_tabular=True,
-                                            compute_normalization=True)
+                logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
+                self.dynamics_model.fit(samples_data['observations'],
+                                        samples_data['actions'],
+                                        samples_data['next_observations'],
+                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
                 buffer = None if not self.sample_from_buffer else samples_data
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
-                # returns = np.mean(samples_data['returns'])
-                # if returns < self._last_returns:
-                #     self.policy.set_params(self._prev_policy)
-                #     self._last_returns = returns
-                # self._prev_policy = self.policy.get_params()
 
-                ''' ------------ log real performance --------------- '''
-
-                # if self.log_real_performance:
-                #     logger.log("Evaluating the performance of the real policy")
-                #     env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='RealPolicy-')
-                #     _ = self.model_sample_processor.process_samples(env_paths, log='all', log_prefix='PrePolicy-')
-
-                ''' --------------- RS steps --------------- '''
-
+                ''' --------------- MAML steps --------------- '''
                 times_dyn_sampling = []
                 times_dyn_sample_processing = []
-                times_itr = []
-                times_rs_steps = []
-                list_sampling_time = []
-                list_proc_samples_time = []
-                for rs_itr in range(steps_per_iter[itr]):
-                    time_itr_start = time.time()
-                    logger.log("\n -------------- RS-Step %d --------------" % int(sum(steps_per_iter[:itr]) + rs_itr))
-                    deltas = self.policy.get_deltas(self.num_deltas)
-                    self.policy.set_deltas(deltas, delta_std=self.delta_std, symmetrical=True)
+                times_optimization = []
+                times_step = []
+
+                for step in range(steps_per_iter[itr]):
+
+                    logger.log("\n ---------------- Grad-Step %d ----------------" % int(sum(steps_per_iter[:itr])
+                                                                                         + step))
+                    itr_start_time = time.time()
 
                     """ -------------------- Sampling --------------------------"""
-                    logger.log("Obtaining samples...")
+
+                    logger.log("Obtaining samples from the model...")
                     time_env_sampling_start = time.time()
-                    samples_data = self.model_sampler.obtain_samples(log=True,
-                                                                     log_prefix='Models-',
-                                                                     buffer=buffer)
-                    list_sampling_time.append(time.time() - time_env_sampling_start)
+                    paths = self.model_sampler.obtain_samples(log=True, log_prefix='train-')
+                    sampling_time = time.time() - time_env_sampling_start
 
-                    """ ---------------------- Processing --------------------- """
-                    # TODO: Add preprocessing of the state to see what sort of update rule between the models we want
-                    samples_data = self.ars_sample_processor.process_samples(samples_data,
-                                                                                 log=True,
-                                                                                 log_prefix='step%d-' % rs_itr)
+                    """ ----------------- Processing Samples ---------------------"""
 
-                    if self.dynamics_model is None:
-                        self.policy.stats_increment()
+                    logger.log("Processing samples from the model...")
+                    time_proc_samples_start = time.time()
+                    samples_data = self.model_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                    proc_samples_time = time.time() - time_proc_samples_start
 
-                    """ ------------------ Outer Policy Update ---------------------"""
+                    if type(paths) is list:
+                        self.log_diagnostics(paths, prefix='train-')
+                    else:
+                        self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+
+                    """ ------------------ Policy Update ---------------------"""
+
                     logger.log("Optimizing policy...")
                     # This needs to take all samples_data so that it can construct graph for meta-optimization.
-                    time_rs_start = time.time()
-                    self.algo.optimize_policy(samples_data['returns'], deltas)
+                    time_optimization_step_start = time.time()
+                    self.algo.optimize_policy(samples_data)
+                    optimization_time = time.time() - time_optimization_step_start
 
-                    times_dyn_sampling.append(list_sampling_time)
-                    times_dyn_sample_processing.append(list_proc_samples_time)
-                    times_rs_steps.append(time.time() - time_rs_start)
-                    times_itr.append(time.time() - time_itr_start)
-
+                    times_dyn_sampling.append(sampling_time)
+                    times_dyn_sample_processing.append(proc_samples_time)
+                    times_optimization.append(optimization_time)
+                    times_step.append(time.time() - itr_start_time)
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
-                if self.dynamics_model is None:
-                    logger.logkv('n_timesteps', self.model_sampler.total_timesteps_sampled)
-                else:
-                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
-
-                logger.logkv('AvgTime-RS', np.mean(times_rs_steps))
+                logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
                 logger.logkv('AvgTime-SampleProc', np.mean(times_dyn_sample_processing))
                 logger.logkv('AvgTime-Sampling', np.mean(times_dyn_sampling))
-                logger.logkv('AvgTime-ModelItr', np.mean(times_itr))
+                logger.logkv('AvgTime-Optmization', np.mean(times_optimization))
+                logger.logkv('AvgTime-Steps', np.mean(times_step))
 
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
@@ -232,5 +202,6 @@ class Trainer(object):
         return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline)
 
     def log_diagnostics(self, paths, prefix):
+        # self.env.log_diagnostics(paths, prefix) # FIXME: Currently this doesn't work with the model
         self.policy.log_diagnostics(paths, prefix)
         self.baseline.log_diagnostics(paths, prefix)

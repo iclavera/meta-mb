@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class MBMPOIterativeEnvExecutor(object):
+class METRPOIterativeEnvExecutor(object):
     """
     Wraps multiple environments of the same kind and provides functionality to reset / step the environments
     in a vectorized manner. Internally, the environments are executed iteratively.
@@ -14,10 +14,10 @@ class MBMPOIterativeEnvExecutor(object):
                                the respective environment is reset
     """
 
-    def __init__(self, env, dynamics_model, meta_batch_size, envs_per_task, max_path_length, deterministic=True):
+    def __init__(self, env, dynamics_model, num_rollouts, max_path_length, deterministic=True):
         self.env = env
         self.dynamics_model = dynamics_model
-        self._num_envs = meta_batch_size * envs_per_task
+        self._num_envs = num_rollouts
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -29,7 +29,7 @@ class MBMPOIterativeEnvExecutor(object):
         # check whether env has done function
         self.has_done_fn = hasattr(self.unwrapped_env, 'done')
 
-        self.ts = np.zeros(meta_batch_size * envs_per_task, dtype='int')  # time steps
+        self.ts = np.zeros(num_rollouts, dtype='int')  # time steps
         self.max_path_length = max_path_length
         self.current_obs = None
         self._buffer = None
@@ -48,8 +48,8 @@ class MBMPOIterativeEnvExecutor(object):
         """
         assert len(actions) == self.num_envs
         prev_obs = self.current_obs
-        next_obs = self.dynamics_model.predict_batches(prev_obs, actions)
-
+        # TODO: Include different types of prediction
+        next_obs = self.dynamics_model.predict(prev_obs, actions)
         rewards = self.unwrapped_env.reward(prev_obs, actions, next_obs)
 
         if self.has_done_fn:
@@ -69,15 +69,6 @@ class MBMPOIterativeEnvExecutor(object):
         self.current_obs = next_obs
 
         return next_obs, rewards, dones, env_infos
-
-    def set_tasks(self, tasks):
-        """
-        Sets a list of tasks to each environment
-
-        Args:
-            tasks (list): list of the tasks for each environment
-        """
-        pass
 
     def _reset(self):
         if self._buffer is None:

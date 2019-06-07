@@ -4,7 +4,7 @@ from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.samplers.base import BaseSampler
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from meta_mb.envs.normalized_env import normalize
 from experiment_utils.run_sweep import run_sweep

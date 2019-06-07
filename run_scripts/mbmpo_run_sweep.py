@@ -5,22 +5,14 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-from meta_mb.envs.mujoco.ant_env import AntEnv
-from meta_mb.envs.mujoco.humanoid_env import HumanoidEnv
 from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
 from meta_mb.envs.mujoco.hopper_env import HopperEnv
-from meta_mb.envs.mujoco.swimmer_env import SwimmerEnv
-from meta_mb.envs.blue.blue_env import BlueReacherEnv
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
-from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.meta_samplers.single_meta_sampler import SingleMetaSampler
 from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble

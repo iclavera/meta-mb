@@ -1,5 +1,5 @@
 from meta_mb.samplers.base import BaseSampler
-from meta_mb.samplers.ars_sampler.ars_env_executor import ARSEnvExecutor
+from meta_mb.samplers.ars_sampler.ars_env_executor import ModelARSEnvExecutor, IterativeARSEnvExecutor
 from meta_mb.samplers.vectorized_env_executor import IterativeEnvExecutor, ParallelEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
@@ -46,15 +46,15 @@ class ARSSampler(BaseSampler):
         # setup vectorized environment
         # TODO: Create another vectorized env executor
         if dynamics_model is not None:
-            self.vec_env = ARSEnvExecutor(env, dynamics_model, num_deltas, rollouts_per_policy,
+            self.vec_env = ModelARSEnvExecutor(env, dynamics_model, num_deltas, rollouts_per_policy,
                                           max_path_length)
         else:
             if n_parallel > 1:
                 self.vec_env = ParallelEnvExecutor(env, n_parallel, 2 * rollouts_per_policy * num_deltas, max_path_length)
             else:
-                self.vec_env = IterativeEnvExecutor(env, 2 * rollouts_per_policy * num_deltas, max_path_length)
+                self.vec_env = IterativeARSEnvExecutor(env, num_deltas, rollouts_per_policy, max_path_length)
 
-    def obtain_samples(self, log=False, log_prefix=''):
+    def obtain_samples(self, log=False, log_prefix='', buffer=None):
         """
         Collect batch_size trajectories from each task
 
@@ -74,7 +74,7 @@ class ARSSampler(BaseSampler):
         policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
-        obses = self.vec_env.reset()
+        obses = self.vec_env.reset(buffer)
         time_step = 0
         list_observations = []
         list_actions = []

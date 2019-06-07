@@ -22,6 +22,7 @@ class IterativeEnvExecutor(object):
         self.envs = np.asarray([copy.deepcopy(env) for _ in range(self._num_envs)])
         self.ts = np.zeros(len(self.envs), dtype='int')  # time steps
         self.max_path_length = max_path_length
+        self._buffer = None
 
     def step(self, actions):
         """
@@ -53,14 +54,27 @@ class IterativeEnvExecutor(object):
 
         return obs, rewards, dones, env_infos
 
-    def reset(self):
+    def _reset(self, i):
+        if self._buffer is None:
+            return self.envs[i].reset()
+
+        else:
+            idx = np.random.randint(len(self._buffer['observations']))
+            return self.envs[i].reset_from_obs(self._buffer['observations'][idx])
+
+    def reset(self, buffer=None):
         """
         Resets the environments
 
         Returns:
             (list): list of (np.ndarray) with the new initial observations.
         """
-        obses = [env.reset() for env in self.envs]
+        self._buffer = buffer
+        if self._buffer is None:
+            obses = [env.reset() for env in self.envs]
+        else:
+            idxs = np.random.randint(0, len(self._buffer['observations']), size=self.num_envs)
+            obses = [env.reset_from_obs(self._buffer['observations'][idx]) for idx, env in zip(idxs, self.envs)]
         self.ts[:] = 0
         return obses
 
@@ -134,13 +148,15 @@ class ParallelEnvExecutor(object):
 
         return obs, rewards, dones, env_infos
 
-    def reset(self):
+    def reset(self, buffer=None):
         """
         Resets the environments of each worker
 
         Returns:
             (list): list of (np.ndarray) with the new initial observations.
         """
+        if buffer is not None:
+            raise NotImplementedError
         for remote in self.remotes:
             remote.send(('reset', None))
         return sum([remote.recv() for remote in self.remotes], [])

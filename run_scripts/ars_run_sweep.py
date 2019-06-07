@@ -5,24 +5,16 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-from meta_mb.envs.mujoco.ant_env import AntEnv
-from meta_mb.envs.mujoco.humanoid_env import HumanoidEnv
-from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
-from meta_mb.envs.mujoco.hopper_env import HopperEnv
-from meta_mb.envs.mujoco.swimmer_env import SwimmerEnv
 from meta_mb.envs.cassie.cassie_env import CassieEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.envs.img_wrapper_env import image_wrapper
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.optimizers.random_search_optimizer import RandomSearchOptimizer
 from meta_mb.trainers.ars_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.ars_sampler.ars_sample_processor import ARSSamplerProcessor
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.ars_sampler.ars_sampler import ARSSampler
-from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.policies.np_nn_policy import NNPolicy
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE

@@ -11,12 +11,10 @@ from meta_mb.optimizers.random_search_optimizer import RandomSearchOptimizer
 from meta_mb.trainers.ars_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.ars_sampler.ars_sample_processor import ARSSamplerProcessor
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.ars_sampler.ars_sampler import ARSSampler
-from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.policies.np_nn_policy import NNPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE
 from meta_mb.envs.mb_envs import *
