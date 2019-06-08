@@ -20,6 +20,7 @@ import json
 import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
+import tensorflow as tf
 
 INSTANCE_TYPE = 'c4.2xlarge'
 EXP_NAME = 'rl2-kate-def'
@@ -29,53 +30,59 @@ def run_experiment(**config):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     set_seed(config['seed'])
+    config_sess = tf.ConfigProto()
+    config_sess.gpu_options.allow_growth = True
+    config_sess.gpu_options.per_process_gpu_memory_fraction = config.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config_sess)
+    with sess.as_default() as sess:
 
-    baseline = config['baseline']()
-    env = rl2env(normalize(config['env']()))
-    obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
-    policy = GaussianRNNPolicy(
-            name="meta-policy",
-            obs_dim=obs_dim,
-            action_dim=np.prod(env.action_space.shape),
+        baseline = config['baseline']()
+        env = rl2env(normalize(config['env']()))
+        obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
+        policy = GaussianRNNPolicy(
+                name="meta-policy",
+                obs_dim=obs_dim,
+                action_dim=np.prod(env.action_space.shape),
+                meta_batch_size=config['meta_batch_size'],
+                hidden_sizes=config['hidden_sizes'],
+                cell_type=config['cell_type']
+            )
+
+        sampler = MetaSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=config['rollouts_per_meta_task'],
             meta_batch_size=config['meta_batch_size'],
-            hidden_sizes=config['hidden_sizes'],
-            cell_type=config['cell_type']
+            max_path_length=config['max_path_length'],
+            parallel=config['parallel'],
+            envs_per_task=1,
         )
 
-    sampler = MetaSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=config['rollouts_per_meta_task'],
-        meta_batch_size=config['meta_batch_size'],
-        max_path_length=config['max_path_length'],
-        parallel=config['parallel'],
-        envs_per_task=1,
-    )
+        sample_processor = RL2SampleProcessor(
+            baseline=baseline,
+            discount=config['discount'],
+            gae_lambda=config['gae_lambda'],
+            normalize_adv=config['normalize_adv'],
+            positive_adv=config['positive_adv'],
+        )
 
-    sample_processor = RL2SampleProcessor(
-        baseline=baseline,
-        discount=config['discount'],
-        gae_lambda=config['gae_lambda'],
-        normalize_adv=config['normalize_adv'],
-        positive_adv=config['positive_adv'],
-    )
+        algo = PPO(
+            policy=policy,
+            learning_rate=config['learning_rate'],
+            max_epochs=config['max_epochs'],
+            backprop_steps=config['backprop_steps'],
+        )
 
-    algo = PPO(
-        policy=policy,
-        learning_rate=config['learning_rate'],
-        max_epochs=config['max_epochs'],
-        backprop_steps=config['backprop_steps'],
-    )
-
-    trainer = Trainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        sampler=sampler,
-        sample_processor=sample_processor,
-        n_itr=config['n_itr'],
-    )
-    trainer.train()
+        trainer = Trainer(
+            algo=algo,
+            policy=policy,
+            env=env,
+            sampler=sampler,
+            sample_processor=sample_processor,
+            n_itr=config['n_itr'],
+            sess=sess,
+        )
+        trainer.train()
 
 
 if __name__ == '__main__':

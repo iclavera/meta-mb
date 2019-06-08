@@ -23,60 +23,66 @@ def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config)
+    with sess.as_default() as sess:
 
-    # Instantiate classes
-    set_seed(kwargs['seed'])
+        # Instantiate classes
+        set_seed(kwargs['seed'])
 
-    baseline = kwargs['baseline']()
+        baseline = kwargs['baseline']()
 
-    env = normalize(kwargs['env']())
+        env = normalize(kwargs['env']())
 
-    policy = GaussianMLPPolicy(
-        name="policy",
-        obs_dim=np.prod(env.observation_space.shape),
-        action_dim=np.prod(env.action_space.shape),
-        hidden_sizes=kwargs['hidden_sizes'],
-        learn_std=kwargs['learn_std'],
-        hidden_nonlinearity=kwargs['hidden_nonlinearity'],
-        output_nonlinearity=kwargs['output_nonlinearity'],
-        init_std=kwargs['init_std'],
-    )
+        policy = GaussianMLPPolicy(
+            name="policy",
+            obs_dim=np.prod(env.observation_space.shape),
+            action_dim=np.prod(env.action_space.shape),
+            hidden_sizes=kwargs['hidden_sizes'],
+            learn_std=kwargs['learn_std'],
+            hidden_nonlinearity=kwargs['hidden_nonlinearity'],
+            output_nonlinearity=kwargs['output_nonlinearity'],
+            init_std=kwargs['init_std'],
+        )
 
-    # Load policy here
+        # Load policy here
 
-    sampler = Sampler(
-        env=env,
-        policy=policy,
-        num_rollouts=kwargs['num_rollouts'],
-        max_path_length=kwargs['max_path_length'],
-        n_parallel=kwargs['n_parallel'],
-    )
+        sampler = Sampler(
+            env=env,
+            policy=policy,
+            num_rollouts=kwargs['num_rollouts'],
+            max_path_length=kwargs['max_path_length'],
+            n_parallel=kwargs['n_parallel'],
+        )
 
-    sample_processor = SingleSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+        sample_processor = SingleSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    algo = PPO(
-        policy=policy,
-        learning_rate=kwargs['learning_rate'],
-        clip_eps=kwargs['clip_eps'],
-        max_epochs=kwargs['num_ppo_steps'],
-    )
+        algo = PPO(
+            policy=policy,
+            learning_rate=kwargs['learning_rate'],
+            clip_eps=kwargs['clip_eps'],
+            max_epochs=kwargs['num_ppo_steps'],
+        )
 
-    trainer = Trainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        sampler=sampler,
-        sample_processor=sample_processor,
-        n_itr=kwargs['n_itr'],
-    )
+        trainer = Trainer(
+            algo=algo,
+            policy=policy,
+            env=env,
+            sampler=sampler,
+            sample_processor=sample_processor,
+            n_itr=kwargs['n_itr'],
+            sess=sess,
+        )
 
-    trainer.train()
+        trainer.train()
 
 if __name__ == '__main__':
     sweep_params = {
