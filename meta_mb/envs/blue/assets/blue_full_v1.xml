@@ -2,18 +2,26 @@
     <compiler angle="radian" />
     <size njmax="500" nconmax="100" />
     <asset>
-        <mesh name="arm_base_link_v1" file="arm_base_link_v1.STL" />
-        <mesh name="roll_link_v1" file="roll_link_v1.STL" />
-        <mesh name="lift_link_v1" file="lift_link_v1.STL" />
-        <mesh name="hand_base_link" file="hand_base_link.STL" />
-        <mesh name="finger_limb_link" file="finger_limb_link.STL" />
-        <mesh name="finger_tip_link" file="finger_tip_link.STL" />
-        <mesh name="camera_link" file="camera_link.STL" />
+        <mesh name="robot_base_link" file="./meshes/robot_base_link.STL" />
+        <mesh name="arm_base_link_v1" file="./meshes/arm_base_link_v1.STL" />
+        <mesh name="roll_link_v1" file="./meshes/roll_link_v1.STL" />
+        <mesh name="lift_link_v1" file="./meshes/lift_link_v1.STL" />
+        <mesh name="hand_base_link" file="./meshes/hand_base_link.STL" />
+        <mesh name="finger_limb_link" file="./meshes/finger_limb_link.STL" />
+        <mesh name="finger_tip_link" file="./meshes/finger_tip_link.STL" />
+        <mesh name="camera_link" file="./meshes/camera_link.STL" />
+
+        <texture name="skybox" type="skybox" builtin="gradient" rgb1=".4 .6 .8" rgb2="0 0 0" width="1024" height="1024" mark="random" markrgb="1 1 1"/>
+        <texture name="texplane" type="2d" builtin="checker" rgb1="0.5961 0.5647 0.4784" rgb2="0.3843 0.32941 0.19215" width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
+        <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true"/>
     </asset>
     <worldbody>
+        <light directional="true" diffuse=".8 .8 .8" specular="0.1 0.1 0.1" pos="0 0 2.5" dir="0 0 -1" castshadow="false"/>
+        <geom name="ground" type="plane" size="6 6 1" pos="0 0 -1." quat="1 0 0 0" material="matplane" condim="1"/>
         <body name="base_link" pos="0 0 0">
             <inertial pos="-0.0340721 -5.82248e-06 -0.701353" quat="0.999916 3.15548e-05 -0.0129229 -1.90294e-05" mass="16.2842" diaginertia="2.15017 1.86083 0.792594" />
-            <geom size="0.5 0.375 0.0005" pos="0 0 -0.965" type="box" rgba="0.792157 0.819608 0.933333 1" />
+            <!--geom size="0.5 0.375 0.0005" pos="0 0 -0.965" type="box" rgba="0.792157 0.819608 0.933333 1" /-->
+            <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="robot_base_link" />
             <body name="left_base_link" pos="-0.01409 0.11289 0" quat="-0.0778325 0.246839 0.290463 0.921219">
                 <inertial pos="0.0560024 0.000189446 0.0201836" quat="-0.000530006 0.707989 0.00204572 0.70622" mass="0.284612" diaginertia="0.00239707 0.00197713 0.000716923" />
                 <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="arm_base_link_v1" />
@@ -173,4 +181,22 @@
             </body>
         </body>
     </worldbody>
+
+    <actuator>
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_base_roll_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_shoulder_lift_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_shoulder_roll_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_elbow_lift_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_elbow_roll_joint" />
+        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_lift_joint" />
+        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_roll_joint" />
+
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_base_roll_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_shoulder_lift_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_shoulder_roll_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_elbow_lift_joint" />
+        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_elbow_roll_joint" />
+        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="left_wrist_lift_joint" />
+        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="left_wrist_roll_joint" />
+  </actuator>
 </mujoco>
