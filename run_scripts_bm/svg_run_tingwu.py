@@ -7,7 +7,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.svg_1 import SVG1
 from meta_mb.trainers.svg_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
-from meta_mb.samplers.mbmpo_samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.metrpo_samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.probabilistic_mlp_dynamics import ProbMLPDynamics
 from meta_mb.baselines.nn_basline import NNValueFun
