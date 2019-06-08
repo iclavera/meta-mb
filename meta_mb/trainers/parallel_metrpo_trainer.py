@@ -39,42 +39,35 @@ class ParallelTrainer(object):
             log_real_performance=True,
             sample_from_buffer=False,
             ):
-#        self.algo = algo
-#        self.env = env
-#        self.model_sampler = model_sampler
-#        self.model_sample_processor = model_sample_processor
-#        self.baseline = model_sample_processor.baseline
-#        self.policy = policy
         self.n_itr = n_itr
         self.start_itr = start_itr
-#
         self.steps_per_iter = steps_per_iter
-#        self.log_real_performance = log_real_performance
+        self.log_real_performance = log_real_performance
 
         if sess is None:
             sess = tf.Session()
         self.sess = sess
+        
+        receivers, senders = zip(*[Pipe() for _ in range(3)])
 
         self.worker_instances = [
-                WorkerData(initial_random_samples, env_sampler, dynamics_sample_processor), 
+                WorkerData(env, initial_random_samples, env_sampler, dynamics_sample_processor), 
                 WorkerModel(sample_from_buffer, dynamics_model_max_epochs, dynamics_model), 
-                WorkerPolicy(),
+                WorkerPolicy(policy, model_sample_processor.baseline, 
+                    model_sampler, model_sample_processor, algo),
                 ]
-
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(3)])
-        seeds = np.random.choice(range(10**6), size=3, replace=False)
-
+        
         self.ps = [
-                Process(target=worker_instance, args=(remote, seed))
-                for (worker_instance, remote, seed) in zip(
-                    self.worker_instances, self.remotes, seeds)]
+                Process(target=worker_instance, args=(remote, synch_notifier))
+                for (worker_instances, remote, synch_notifier) in zip(
+                    self.worker_instances, receivers, [senders[1], None, None])]
 
         for p in self.ps:
             p.daemon = True
             p.start()
-        for remote in self.work_remotes:
-            remote.close()
 
+        # TODO: close?
+        
     def train(self):
         """
         Trains policy on env using algo
@@ -101,26 +94,17 @@ class ParallelTrainer(object):
             else:
                 steps_per_iter = [self.steps_per_iter] * self.n_itr
 
-            start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
-                itr_start_time = time.time()
-                logger.log("\n ---------------- Iteration %d ----------------" % itr)
 
-                self.worker_data.send(('step', None)) 
+                worker_data.send(('step', None)) 
 
-                self.worker_model.send(('step', None))
+                worker_model.send(('step', None))
 
                 ''' --------------- MAML steps --------------- '''
-                times_dyn_sampling = []
-                times_dyn_sample_processing = []
-                times_optimization = []
-                times_step = []
 
                 for step in range(steps_per_iter[itr]):
 
-                    logger.log("\n ---------------- Grad-Step %d ----------------" % int(sum(steps_per_iter[:itr]) + step))
+                    worker_policy.send(('step', None))
 
-                    self.worker_model.send(('step', None))
-
-
-
+        logger.log("Training finished")
+        self.sess.close()
