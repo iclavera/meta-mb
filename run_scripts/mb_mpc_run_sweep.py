@@ -12,6 +12,7 @@ from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
+import tensorflow as tf
 
 EXP_NAME = 'mb-mpc-pets-reward'
 
@@ -23,80 +24,87 @@ def run_experiment(**config):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = config['env']()
+    config_sess = tf.ConfigProto()
+    config_sess.gpu_options.allow_growth = True
+    config_sess.gpu_options.per_process_gpu_memory_fraction = config.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config_sess)
+    with sess.as_default() as sess:
+
+        env = config['env']()
 
 
-    if config['recurrent']:
-        dynamics_model = RNNDynamicsEnsemble(
-            name="dyn_model",
+        if config['recurrent']:
+            dynamics_model = RNNDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                hidden_sizes=config['hidden_sizes_model'],
+                learning_rate=config['learning_rate'],
+                backprop_steps=config['backprop_steps'],
+                cell_type=config['cell_type'],
+                num_models=config['num_models'],
+                batch_size=config['batch_size_model'],
+                normalize_input=True,
+            )
+
+            policy = RNNMPCController(
+                name="policy",
+                env=env,
+                dynamics_model=dynamics_model,
+                discount=config['discount'],
+                n_candidates=config['n_candidates'],
+                horizon=config['horizon'],
+                use_cem=config['use_cem'],
+                num_cem_iters=config['num_cem_iters'],
+                use_reward_model=config['use_reward_model']
+            )
+
+        else:
+            dynamics_model = MLPDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                num_models=config['num_models'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
+
+            policy = MPCController(
+                name="policy",
+                env=env,
+                dynamics_model=dynamics_model,
+                discount=config['discount'],
+                n_candidates=config['n_candidates'],
+                horizon=config['horizon'],
+                use_cem=config['use_cem'],
+                num_cem_iters=config['num_cem_iters'],
+            )
+
+        sampler = Sampler(
             env=env,
-            hidden_sizes=config['hidden_sizes_model'],
-            learning_rate=config['learning_rate'],
-            backprop_steps=config['backprop_steps'],
-            cell_type=config['cell_type'],
-            num_models=config['num_models'],
-            batch_size=config['batch_size_model'],
-            normalize_input=True,
+            policy=policy,
+            num_rollouts=config['num_rollouts'],
+            max_path_length=config['max_path_length'],
+            n_parallel=config['n_parallel'],
         )
 
-        policy = RNNMPCController(
-            name="policy",
+        sample_processor = ModelSampleProcessor()
+
+        algo = Trainer(
             env=env,
+            policy=policy,
             dynamics_model=dynamics_model,
-            discount=config['discount'],
-            n_candidates=config['n_candidates'],
-            horizon=config['horizon'],
-            use_cem=config['use_cem'],
-            num_cem_iters=config['num_cem_iters'],
-            use_reward_model=config['use_reward_model']
+            sampler=sampler,
+            dynamics_sample_processor=sample_processor,
+            n_itr=config['n_itr'],
+            initial_random_samples=config['initial_random_samples'],
+            dynamics_model_max_epochs=config['dynamic_model_epochs'],
+            sess=sess,
         )
-
-    else:
-        dynamics_model = MLPDynamicsEnsemble(
-            name="dyn_model",
-            env=env,
-            learning_rate=config['learning_rate'],
-            hidden_sizes=config['hidden_sizes_model'],
-            weight_normalization=config['weight_normalization_model'],
-            num_models=config['num_models'],
-            valid_split_ratio=config['valid_split_ratio'],
-            rolling_average_persitency=config['rolling_average_persitency'],
-            hidden_nonlinearity=config['hidden_nonlinearity_model'],
-            batch_size=config['batch_size_model'],
-        )
-
-        policy = MPCController(
-            name="policy",
-            env=env,
-            dynamics_model=dynamics_model,
-            discount=config['discount'],
-            n_candidates=config['n_candidates'],
-            horizon=config['horizon'],
-            use_cem=config['use_cem'],
-            num_cem_iters=config['num_cem_iters'],
-        )
-
-    sampler = Sampler(
-        env=env,
-        policy=policy,
-        num_rollouts=config['num_rollouts'],
-        max_path_length=config['max_path_length'],
-        n_parallel=config['n_parallel'],
-    )
-
-    sample_processor = ModelSampleProcessor()
-
-    algo = Trainer(
-        env=env,
-        policy=policy,
-        dynamics_model=dynamics_model,
-        sampler=sampler,
-        dynamics_sample_processor=sample_processor,
-        n_itr=config['n_itr'],
-        initial_random_samples=config['initial_random_samples'],
-        dynamics_model_max_epochs=config['dynamic_model_epochs'],
-    )
-    algo.train()
+        algo.train()
 
 
 if __name__ == '__main__':

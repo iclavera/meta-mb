@@ -27,64 +27,71 @@ def run_experiment(**kwargs):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    # Instantiate classes
-    set_seed(kwargs['seed'])
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config)
+    with sess.as_default() as sess:
 
-    baseline = kwargs['baseline']()
+        # Instantiate classes
+        set_seed(kwargs['seed'])
 
-    env = normalize(kwargs['env']()) # Wrappers?
+        baseline = kwargs['baseline']()
 
-    policy = MetaGaussianMLPPolicy(
-        name="meta-policy",
-        obs_dim=np.prod(env.observation_space.shape),
-        action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
-        hidden_sizes=kwargs['hidden_sizes'],
-        learn_std=kwargs['learn_std'],
-        hidden_nonlinearity=kwargs['hidden_nonlinearity'],
-        output_nonlinearity=kwargs['output_nonlinearity'],
-    )
+        env = normalize(kwargs['env']()) # Wrappers?
 
-    # Load policy here
+        policy = MetaGaussianMLPPolicy(
+            name="meta-policy",
+            obs_dim=np.prod(env.observation_space.shape),
+            action_dim=np.prod(env.action_space.shape),
+            meta_batch_size=kwargs['meta_batch_size'],
+            hidden_sizes=kwargs['hidden_sizes'],
+            learn_std=kwargs['learn_std'],
+            hidden_nonlinearity=kwargs['hidden_nonlinearity'],
+            output_nonlinearity=kwargs['output_nonlinearity'],
+        )
 
-    sampler = MetaSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        max_path_length=kwargs['max_path_length'],
-        parallel=kwargs['parallel'],
-    )
+        # Load policy here
 
-    sample_processor = MAMLSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+        sampler = MetaSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            max_path_length=kwargs['max_path_length'],
+            parallel=kwargs['parallel'],
+        )
 
-    algo = TRPOMAML(
-        policy=policy,
-        step_size=kwargs['step_size'],
-        inner_type=kwargs['inner_type'],
-        inner_lr=kwargs['inner_lr'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        exploration=kwargs['exploration'],
-    )
+        sample_processor = MAMLSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    trainer = Trainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        sampler=sampler,
-        sample_processor=sample_processor,
-        n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-    )
+        algo = TRPOMAML(
+            policy=policy,
+            step_size=kwargs['step_size'],
+            inner_type=kwargs['inner_type'],
+            inner_lr=kwargs['inner_lr'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            exploration=kwargs['exploration'],
+        )
 
-    trainer.train()
+        trainer = Trainer(
+            algo=algo,
+            policy=policy,
+            env=env,
+            sampler=sampler,
+            sample_processor=sample_processor,
+            n_itr=kwargs['n_itr'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            sess=sess,
+        )
+
+        trainer.train()
 
 
 if __name__ == '__main__':    

@@ -26,99 +26,105 @@ def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+    sess = tf.Session(config=config)
+    with sess.as_default() as sess:
 
-    # Instantiate classes
-    set_seed(kwargs['seed'])
+        # Instantiate classes
+        set_seed(kwargs['seed'])
 
-    baseline = kwargs['baseline']()
+        baseline = kwargs['baseline']()
 
-    env = kwargs['env']() # Wrappers?
+        env = kwargs['env']() # Wrappers?
 
-    policy = MetaGaussianMLPPolicy(
-        name="meta-policy",
-        obs_dim=np.prod(env.observation_space.shape),
-        action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
-        hidden_sizes=kwargs['policy_hidden_sizes'],
-        learn_std=kwargs['policy_learn_std'],
-        hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-        output_nonlinearity=kwargs['policy_output_nonlinearity'],
-    )
+        policy = MetaGaussianMLPPolicy(
+            name="meta-policy",
+            obs_dim=np.prod(env.observation_space.shape),
+            action_dim=np.prod(env.action_space.shape),
+            meta_batch_size=kwargs['meta_batch_size'],
+            hidden_sizes=kwargs['policy_hidden_sizes'],
+            learn_std=kwargs['policy_learn_std'],
+            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+            output_nonlinearity=kwargs['policy_output_nonlinearity'],
+        )
 
-    dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                         env=env,
-                                         num_models=kwargs['num_models'],
-                                         hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                         hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                         output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                         learning_rate=kwargs['dynamics_learning_rate'],
-                                         batch_size=kwargs['dynamics_batch_size'],
-                                         buffer_size=kwargs['dynamics_buffer_size'],
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                             env=env,
+                                             num_models=kwargs['num_models'],
+                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                             learning_rate=kwargs['dynamics_learning_rate'],
+                                             batch_size=kwargs['dynamics_batch_size'],
+                                             buffer_size=kwargs['dynamics_buffer_size'],
 
-                                         )
-    env_sampler = MetaSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        max_path_length=kwargs['max_path_length'],
-        parallel=kwargs['parallel'],
-    )
+                                             )
+        env_sampler = MetaSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            max_path_length=kwargs['max_path_length'],
+            parallel=kwargs['parallel'],
+        )
 
-    model_sampler = MBMPOSampler(
-        env=env,
-        policy=policy,
-        rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        max_path_length=kwargs['max_path_length'],
-        dynamics_model=dynamics_model,
-        deterministic=kwargs['deterministic'],
-    )
+        model_sampler = MBMPOSampler(
+            env=env,
+            policy=policy,
+            rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            max_path_length=kwargs['max_path_length'],
+            dynamics_model=dynamics_model,
+            deterministic=kwargs['deterministic'],
+        )
 
-    dynamics_sample_processor = ModelSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+        dynamics_sample_processor = ModelSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    model_sample_processor = MAMLSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
+        model_sample_processor = MAMLSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
 
-    algo = TRPOMAML(
-        policy=policy,
-        step_size=kwargs['step_size'],
-        inner_type=kwargs['inner_type'],
-        inner_lr=kwargs['inner_lr'],
-        meta_batch_size=kwargs['meta_batch_size'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        exploration=kwargs['exploration'],
-    )
+        algo = TRPOMAML(
+            policy=policy,
+            step_size=kwargs['step_size'],
+            inner_type=kwargs['inner_type'],
+            inner_lr=kwargs['inner_lr'],
+            meta_batch_size=kwargs['meta_batch_size'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            exploration=kwargs['exploration'],
+        )
 
-    trainer = Trainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        model_sampler=model_sampler,
-        env_sampler=env_sampler,
-        model_sample_processor=model_sample_processor,
-        dynamics_sample_processor=dynamics_sample_processor,
-        dynamics_model=dynamics_model,
-        n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
-        log_real_performance=kwargs['log_real_performance'],
-        meta_steps_per_iter=kwargs['meta_steps_per_iter'],
-        sample_from_buffer=True,
-    )
+        trainer = Trainer(
+            algo=algo,
+            policy=policy,
+            env=env,
+            model_sampler=model_sampler,
+            env_sampler=env_sampler,
+            model_sample_processor=model_sample_processor,
+            dynamics_sample_processor=dynamics_sample_processor,
+            dynamics_model=dynamics_model,
+            n_itr=kwargs['n_itr'],
+            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
+            dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
+            log_real_performance=kwargs['log_real_performance'],
+            meta_steps_per_iter=kwargs['meta_steps_per_iter'],
+            sample_from_buffer=True,
+            sess=sess,
+        )
 
-    trainer.train()
+        trainer.train()
 
 
 if __name__ == '__main__':
