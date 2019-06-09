@@ -8,7 +8,7 @@ class FullBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self):
         utils.EzPickle.__init__(**locals())
 
-        xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v2.xml')
+        xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
         self.goal_left = np.zeros((3,))
         self.goal_right = np.zeros((3,))
 
