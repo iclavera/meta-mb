@@ -39,7 +39,6 @@ def run_experiment(**kwargs):
 
         env = normalize(kwargs['env']()) # Wrappers?
 
-        print("\n----------------------------init policy")
         policy = GaussianMLPPolicy(
             name="meta-policy",
             obs_dim=np.prod(env.observation_space.shape),
@@ -50,7 +49,6 @@ def run_experiment(**kwargs):
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
         )
 
-        print("\n----------------------------init dynamics_model")
         dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
                                              env=env,
                                              num_models=kwargs['num_models'],

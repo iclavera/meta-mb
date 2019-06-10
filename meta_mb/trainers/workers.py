@@ -1,5 +1,6 @@
-import time
+import time, sys
 from meta_mb.logger import logger
+import multiprocessing
 
 class Worker(object):
     """
@@ -18,23 +19,27 @@ class Worker(object):
         while True:
             # receive command and data from the remote
             cmd, data = remote.recv()
+            print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
 
             if cmd == 'step':
                 result = self.step()
-                return
-                if synch_notifier is not None:
-                    synch_notifier.send(('synch', result))
+                #if synch_notifier is not None:
+                #    synch_notifier.send(('synch', result))
 
             elif cmd == 'synch':
-                # worker notified by central scheduler to do periodic synchronization
                 self.synch(data)
 
             elif cmd == 'close':
                 remote.close()
                 # TODO: close synch_notifier in trainer
+                break
 
             else:
                 raise NotImplementedError
+
+            print("\n-----------------" + multiprocessing.current_process().name + " finishing command " + cmd)
+
+            sys.stdout.flush()
 
     def step(self):
         raise NotImplementedError
@@ -46,12 +51,24 @@ class Worker(object):
 class WorkerData(Worker):
     def __init__(self, env, initial_random_samples, env_sampler, dynamics_sample_processor):
         super().__init__()
-        self.name = "worker_data"
-        self.initialized = False
         self.env = env
         self.initial_random_samples = initial_random_samples
         self.env_sampler = env_sampler
         self.dynamics_sample_processor = dynamics_sample_processor
+
+    def init_step(self):
+        if self.initial_random_samples:
+            logger.log("Obtaining random samples from the environment...")
+            env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='EnvSampler-')
+
+            logger.log("Processing environment samples...")
+            samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True, log_prefix='EnvTrajs-')
+
+            self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
+        else:
+            samples_data = self.step()
+        return samples_data
+
 
     def step(self):
         """
@@ -59,17 +76,10 @@ class WorkerData(Worker):
         Outcome: generate samples_data.
         """
 
-        print("\nworker_data is taking a step")
-
         time_env_sampling_start = time.time()
 
-        if not self.initialized and self.initial_random_samples:
-            logger.log("Obtaining random samples from the environment...")
-            env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='EnvSampler-')
-            self.initialized = True
-        else:
-            logger.log("Obtaining samples from the environment using the policy...")
-            env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
+        logger.log("Obtaining samples from the environment using the policy...")
+        env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
 
 #        logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
         logger.log("Processing environment samples...")
@@ -87,7 +97,6 @@ class WorkerData(Worker):
 class WorkerModel(Worker):
     def __init__(self, sample_from_buffer, dynamics_model_max_epochs,  dynamics_model):
         super().__init__()
-        self.name = "worker_model"
         self.sample_from_buffer = sample_from_buffer
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.dynamics_model = dynamics_model
@@ -99,11 +108,7 @@ class WorkerModel(Worker):
         Outcome: dynamics model is updated with self.samples_data.?
         '''
 
-        print("\nworker_model is taking a step")
-
-        if self.samples_data is None:
-            # sleep? 
-            return None
+        assert self.samples_data is not None
 
         time_fit_start = time.time()
 
@@ -122,13 +127,12 @@ class WorkerModel(Worker):
         return None
 
     def synch(self, data):
-        print("\nworker_model is synching")
+
         self.samples_data = data
 
 class WorkerPolicy(Worker):
     def __init__(self, policy, baseline, model_sampler, model_sample_processor, algo):
         super().__init__()
-        self.name = "worker_policy"
         self.policy = policy
         self.baseline = baseline
         self.model_sampler = model_sampler
@@ -140,7 +144,6 @@ class WorkerPolicy(Worker):
         Uses self.model_sampler which is asynchrounously updated by worker_model.
         Outcome: policy is updated by PPO on one fictitious trajectory. 
         """
-        print("\nworker_policy is taking a step")
 
         itr_start_time = time.time()
 

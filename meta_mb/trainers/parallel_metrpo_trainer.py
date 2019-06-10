@@ -69,26 +69,19 @@ class ParallelTrainer(object):
                 sampler.update_goals()
         """
         
+        names = ["worker_data", "worker_model", "worker_policy"]
         receivers, senders = zip(*[Pipe() for _ in range(3)])
         worker_data_sender, worker_model_sender, worker_policy_sender = senders
+        worker_data, worker_model, worker_policy = self.worker_instances
 
-        print(self.worker_instances)
-
-        
         self.ps = [
-                Process(target=worker_instance, args=(remote, synch_notifier))
-                for (worker_instance, remote, synch_notifier) in zip(
-                    self.worker_instances, receivers, [worker_model_sender, None, None])]
+                Process(target=worker_instance, name=name, args=(remote, synch_notifier))
+                for (worker_instance, name, remote, synch_notifier) in zip(
+                    self.worker_instances, names, receivers, [worker_model_sender, None, None])]
 
         # TODO: close?
         
         print("\ntrainer start training...")
-
-        '''
-        for p in self.ps:
-            p.daemon = True
-            p.start()
-        '''
 
         with self.sess.as_default() as sess:
 
@@ -102,23 +95,41 @@ class ParallelTrainer(object):
             else:
                 steps_per_iter = [self.steps_per_iter] * self.n_itr
 
+    
+            # initialize worker_model.samples_data
+            samples_data = worker_data.init_step()
+            worker_model.synch(samples_data)
+
+            self.ps[0].start()
+
             for itr in range(5): #range(self.start_itr, self.n_itr):
 
                 print("\n--------------------starting iteration %s-----------------" % itr)
 
-                # worker_data_sender.send(('step', None)) 
-                samples_data = self.worker_instances[0].step()
+                # Folloing two lines are doing the same thing;
+                # first line is using remote and a child process, while second line is doing the work in parent process
+                # first line gets stuck in policy.take_actions line 118, while the second line works fine
+        #        worker_data_sender.send(('step', None)) 
+                worker_data.step()
 
                 # worker_model_sender.send(('step', None))
-                self.worker_instances[1].synch(samples_data)
-                self.worker_instances[1].step()
 
                 ''' --------------- MAML steps --------------- '''
 
 #                for step in range(steps_per_iter[itr]):
 
-#                   worker_policy_sender.send(('step', None))
-                self.worker_instances[2].step()
+                # worker_policy_sender.send(('step', None))
+
+                #for p in self.ps:
+                #    p.join()
+
+        for sender in senders:
+            sender.close()
+
+        self.ps[0].join()
+        # for p in self.ps:
+        #    p.terminate()
+        #    p.join()
 
         logger.log("Training finished")
         self.sess.close()
