@@ -84,8 +84,9 @@ class MBMPOIterativeEnvExecutor(object):
             return self.env.reset(), 0
 
         else:
-            initial_idxs = self._buffer['time_steps'] == 0
-            obs = np.random.choice(self._buffer['observations'][initial_idxs])
+            initial_idxs = np.arange(len(self._buffer['time_steps']))[self._buffer['time_steps'] == 0]
+            idx = np.random.choice(initial_idxs)
+            obs = self._buffer['observations'][idx]
             return obs, 0
 
     def reset(self, buffer=None):
@@ -102,9 +103,9 @@ class MBMPOIterativeEnvExecutor(object):
             assert self.current_obs.ndim == 2
             self.ts[:] = 0
         else:
-            initial_idxs = self._buffer['time_steps'] == 0
-            self.current_obs = np.random.choice(self._buffer['observations'][initial_idxs], size=self.num_envs,
-                                                replace=True)
+            initial_idxs = np.arange(len(self._buffer['time_steps']))[self._buffer['time_steps'] == 0]
+            idxs = np.random.choice(initial_idxs, size=self.num_envs, replace=True)
+            self.current_obs = self._buffer['observations'][idxs]
             self.ts[:] = 0
             results = list(self.current_obs)
         return results
