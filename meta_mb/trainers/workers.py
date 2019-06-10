@@ -1,3 +1,6 @@
+import time
+from meta_mb.logger import logger
+
 class Worker(object):
     """
     Abstract class for worker instantiations. 
@@ -14,16 +17,21 @@ class Worker(object):
         # TODO: close?
         while True:
             # receive command and data from the remote
-            cmd, data = self.remote.recv()
+            cmd, data = remote.recv()
 
             if cmd == 'step':
                 result = self.step()
+                return
                 if synch_notifier is not None:
-                    self.synch_notifier.send(('synch', result))
+                    synch_notifier.send(('synch', result))
 
-            if cmd == 'synch':
+            elif cmd == 'synch':
                 # worker notified by central scheduler to do periodic synchronization
                 self.synch(data)
+
+            elif cmd == 'close':
+                remote.close()
+                # TODO: close synch_notifier in trainer
 
             else:
                 raise NotImplementedError
@@ -38,8 +46,10 @@ class Worker(object):
 class WorkerData(Worker):
     def __init__(self, env, initial_random_samples, env_sampler, dynamics_sample_processor):
         super().__init__()
+        self.name = "worker_data"
+        self.initialized = False
         self.env = env
-        self.initial_random_samples = init_random_samples
+        self.initial_random_samples = initial_random_samples
         self.env_sampler = env_sampler
         self.dynamics_sample_processor = dynamics_sample_processor
 
@@ -48,6 +58,9 @@ class WorkerData(Worker):
         Uses self.env_sampler which samples data under policy.
         Outcome: generate samples_data.
         """
+
+        print("\nworker_data is taking a step")
+
         time_env_sampling_start = time.time()
 
         if not self.initialized and self.initial_random_samples:
@@ -56,7 +69,7 @@ class WorkerData(Worker):
             self.initialized = True
         else:
             logger.log("Obtaining samples from the environment using the policy...")
-            env_paths = self.env_sampler.obtain_samples(log=True, log_prefiex='EnvSampler-')
+            env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
 
 #        logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
         logger.log("Processing environment samples...")
@@ -72,8 +85,9 @@ class WorkerData(Worker):
             
 
 class WorkerModel(Worker):
-    def __init__(sample_from_buffer, dynamics_model_max_epochs,  dynamics_model):
+    def __init__(self, sample_from_buffer, dynamics_model_max_epochs,  dynamics_model):
         super().__init__()
+        self.name = "worker_model"
         self.sample_from_buffer = sample_from_buffer
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.dynamics_model = dynamics_model
@@ -84,32 +98,37 @@ class WorkerModel(Worker):
         In sequential order, is "samples_data" accumulated???
         Outcome: dynamics model is updated with self.samples_data.?
         '''
+
+        print("\nworker_model is taking a step")
+
         if self.samples_data is None:
             # sleep? 
             return None
 
-        time_fit_start() = time.time()
+        time_fit_start = time.time()
 
         ''' --------------- fit dynamics model --------------- '''
 
         logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
-        self.dynamics_model.fit(samples_data['observations'],
-                                samples_data['actions'],
-                                samples_data['next_observations'],
+        self.dynamics_model.fit(self.samples_data['observations'],
+                                self.samples_data['actions'],
+                                self.samples_data['next_observations'],
                                 epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
-        buffer = None if not self.sample_from_buffer else samples_data
+        # buffer = None if not self.sample_from_buffer else samples_data
 
 #        logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
         return None
 
     def synch(self, data):
+        print("\nworker_model is synching")
         self.samples_data = data
 
 class WorkerPolicy(Worker):
     def __init__(self, policy, baseline, model_sampler, model_sample_processor, algo):
         super().__init__()
+        self.name = "worker_policy"
         self.policy = policy
         self.baseline = baseline
         self.model_sampler = model_sampler
@@ -121,6 +140,8 @@ class WorkerPolicy(Worker):
         Uses self.model_sampler which is asynchrounously updated by worker_model.
         Outcome: policy is updated by PPO on one fictitious trajectory. 
         """
+        print("\nworker_policy is taking a step")
+
         itr_start_time = time.time()
 
         """ -------------------- Sampling --------------------------"""
@@ -159,4 +180,4 @@ class WorkerPolicy(Worker):
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
-        self.baseline.log_dianostics(paths, prefix)
+        self.baseline.log_diagnostics(paths, prefix)

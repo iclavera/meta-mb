@@ -3,6 +3,7 @@ import numpy as np
 import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe
+from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
 
 class ParallelTrainer(object):
     """
@@ -47,8 +48,6 @@ class ParallelTrainer(object):
         if sess is None:
             sess = tf.Session()
         self.sess = sess
-        
-        receivers, senders = zip(*[Pipe() for _ in range(3)])
 
         self.worker_instances = [
                 WorkerData(env, initial_random_samples, env_sampler, dynamics_sample_processor), 
@@ -56,18 +55,7 @@ class ParallelTrainer(object):
                 WorkerPolicy(policy, model_sample_processor.baseline, 
                     model_sampler, model_sample_processor, algo),
                 ]
-        
-        self.ps = [
-                Process(target=worker_instance, args=(remote, synch_notifier))
-                for (worker_instances, remote, synch_notifier) in zip(
-                    self.worker_instances, receivers, [senders[1], None, None])]
 
-        for p in self.ps:
-            p.daemon = True
-            p.start()
-
-        # TODO: close?
-        
     def train(self):
         """
         Trains policy on env using algo
@@ -80,7 +68,27 @@ class ParallelTrainer(object):
                 algo.optimize_policy()
                 sampler.update_goals()
         """
-        worker_data, worker_model, worker_policy = self.worker_instances
+        
+        receivers, senders = zip(*[Pipe() for _ in range(3)])
+        worker_data_sender, worker_model_sender, worker_policy_sender = senders
+
+        print(self.worker_instances)
+
+        
+        self.ps = [
+                Process(target=worker_instance, args=(remote, synch_notifier))
+                for (worker_instance, remote, synch_notifier) in zip(
+                    self.worker_instances, receivers, [worker_model_sender, None, None])]
+
+        # TODO: close?
+        
+        print("\ntrainer start training...")
+
+        '''
+        for p in self.ps:
+            p.daemon = True
+            p.start()
+        '''
 
         with self.sess.as_default() as sess:
 
@@ -94,17 +102,23 @@ class ParallelTrainer(object):
             else:
                 steps_per_iter = [self.steps_per_iter] * self.n_itr
 
-            for itr in range(self.start_itr, self.n_itr):
+            for itr in range(5): #range(self.start_itr, self.n_itr):
 
-                worker_data.send(('step', None)) 
+                print("\n--------------------starting iteration %s-----------------" % itr)
 
-                worker_model.send(('step', None))
+                # worker_data_sender.send(('step', None)) 
+                samples_data = self.worker_instances[0].step()
+
+                # worker_model_sender.send(('step', None))
+                self.worker_instances[1].synch(samples_data)
+                self.worker_instances[1].step()
 
                 ''' --------------- MAML steps --------------- '''
 
-                for step in range(steps_per_iter[itr]):
+#                for step in range(steps_per_iter[itr]):
 
-                    worker_policy.send(('step', None))
+#                   worker_policy_sender.send(('step', None))
+                self.worker_instances[2].step()
 
         logger.log("Training finished")
         self.sess.close()
