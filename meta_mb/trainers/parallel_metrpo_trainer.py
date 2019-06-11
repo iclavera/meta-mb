@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-import time
+import time, pickle
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe
 from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
@@ -49,11 +49,34 @@ class ParallelTrainer(object):
             sess = tf.Session()
         self.sess = sess
 
+        with self.sess.as_default() as sess:
+
+            # initialize uninitialized vars  (only initialize vars that were not loaded)
+            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            sess.run(tf.variables_initializer(uninit_vars))
+
+        print("\n--------------------------------dump test starts")
+        pickle.dumps(env_sampler)
+        print("\n--------------------------------dump test passed")
+
         self.worker_instances = [
-                WorkerData(env, initial_random_samples, env_sampler, dynamics_sample_processor), 
-                WorkerModel(sample_from_buffer, dynamics_model_max_epochs, dynamics_model), 
-                WorkerPolicy(policy, model_sample_processor.baseline, 
-                    model_sampler, model_sample_processor, algo),
+                WorkerData(
+                    initial_random_samples, 
+                    pickle.dumps(env), 
+                    pickle.dumps(env_sampler), 
+                    pickle.dumps(dynamics_sample_processor), 
+                    ), 
+                WorkerModel(
+                    sample_from_buffer, 
+                    dynamics_model_max_epochs, 
+                    pickle.dumps(dynamics_model), 
+                    ), 
+                WorkerPolicy(
+                    pickle.dumps(policy), 
+                    pickle.dumps(model_sample_processor.baseline), 
+                    pickle.dumps(model_sampler), 
+                    pickle.dumps(model_sample_processor), 
+                    pickle.dumps(algo)),
                 ]
 
     def train(self):
@@ -77,17 +100,14 @@ class ParallelTrainer(object):
         self.ps = [
                 Process(target=worker_instance, name=name, args=(remote, synch_notifier))
                 for (worker_instance, name, remote, synch_notifier) in zip(
-                    self.worker_instances, names, receivers, [worker_model_sender, None, None])]
+                    self.worker_instances, names, receivers, 
+                    [worker_model_sender, worker_policy_sender, worker_data_sender])]
 
         # TODO: close?
         
         print("\ntrainer start training...")
 
         with self.sess.as_default() as sess:
-
-            # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
 
             if type(self.steps_per_iter) is tuple:
                 steps_per_iter = np.linspace(self.steps_per_iter[0],
@@ -98,19 +118,16 @@ class ParallelTrainer(object):
     
             # initialize worker_model.samples_data
             samples_data = worker_data.init_step()
-            worker_model.synch(samples_data)
+            worker_model.synch(pickle.dumps(samples_data))
 
             self.ps[0].start()
 
             for itr in range(5): #range(self.start_itr, self.n_itr):
 
                 print("\n--------------------starting iteration %s-----------------" % itr)
-
-                # Folloing two lines are doing the same thing;
-                # first line is using remote and a child process, while second line is doing the work in parent process
-                # first line gets stuck in policy.take_actions line 118, while the second line works fine
-        #        worker_data_sender.send(('step', None)) 
-                worker_data.step()
+                
+                worker_data_sender.send(('step', None)) 
+#                worker_data.step()
 
                 # worker_model_sender.send(('step', None))
 
