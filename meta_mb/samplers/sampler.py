@@ -1,4 +1,5 @@
 from meta_mb.samplers.base import BaseSampler
+from meta_mb.utils.serializable import Serializable
 from meta_mb.samplers.vectorized_env_executor import ParallelEnvExecutor, IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
@@ -9,7 +10,7 @@ import time
 import itertools
 
 
-class Sampler(BaseSampler):
+class Sampler(BaseSampler, Serializable):
     """
     Sampler for Meta-RL
 
@@ -148,6 +149,17 @@ class Sampler(BaseSampler):
         if not agent_infos:
             agent_infos = [dict() for _ in range(self.vec_env.num_envs)]
         return agent_infos, env_infos
+
+    def __getstate__(self):
+        state = dict()
+        state['init_args'] = Serializable.__getstate__(self)
+        # dumps policy
+        state['policy'] = self.policy.__getstate__()
+        return state
+
+    def __setstate__(self):
+        Serializable.__setstate__(self, state['init_args'])
+        self.policy = state['policy']
 
 
 def _get_empty_running_paths_dict():

@@ -1,4 +1,4 @@
-import time, sys
+import time, sys, pickle
 from meta_mb.logger import logger
 import multiprocessing
 
@@ -22,9 +22,8 @@ class Worker(object):
             print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
 
             if cmd == 'step':
-                result = self.step()
-                #if synch_notifier is not None:
-                #    synch_notifier.send(('synch', result))
+                result_pickle = self.step()
+                synch_notifier.send(('synch', result_pickle))
 
             elif cmd == 'synch':
                 self.synch(data)
@@ -49,12 +48,18 @@ class Worker(object):
         pass
 
 class WorkerData(Worker):
-    def __init__(self, env, initial_random_samples, env_sampler, dynamics_sample_processor):
+    def __init__(
+            self, 
+            initial_random_samples, 
+            env, 
+            env_sampler, 
+            dynamics_sample_processor, 
+            ):
         super().__init__()
-        self.env = env
         self.initial_random_samples = initial_random_samples
-        self.env_sampler = env_sampler
-        self.dynamics_sample_processor = dynamics_sample_processor
+        self.env = pickle.loads(env)
+        self.env_sampler = pickle.loads(env_sampler)
+        self.dynamics_sample_processor = pickle.loads(dynamics_sample_processor)
 
     def init_step(self):
         if self.initial_random_samples:
@@ -91,15 +96,23 @@ class WorkerData(Worker):
         self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
 #        logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
         
-        return samples_data
+        return pickle.dumps(samples_data)
+
+    def synch(self, policy_pickle):
+        self.env_sampler.policy = pickle.loads(policy_pickle)
             
 
 class WorkerModel(Worker):
-    def __init__(self, sample_from_buffer, dynamics_model_max_epochs,  dynamics_model):
+    def __init__(
+            self, 
+            sample_from_buffer, 
+            dynamics_model_max_epochs, 
+            dynamics_model, 
+            ):
         super().__init__()
         self.sample_from_buffer = sample_from_buffer
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
-        self.dynamics_model = dynamics_model
+        self.dynamics_model = pickle.loads(dynamics_model)
         self.samples_data = None
 
     def step(self):
@@ -124,20 +137,26 @@ class WorkerModel(Worker):
 
 #        logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
-        return None
+        return pickle.dumps(self.dynamics_model)
 
-    def synch(self, data):
-
-        self.samples_data = data
+    def synch(self, samples_data_pickle):
+        self.samples_data = pickle.loads(samples_data_pickle)
 
 class WorkerPolicy(Worker):
-    def __init__(self, policy, baseline, model_sampler, model_sample_processor, algo):
+    def __init__(
+            self, 
+            policy, 
+            baseline, 
+            model_sampler, 
+            model_sample_processor, 
+            algo, 
+            ):
         super().__init__()
-        self.policy = policy
-        self.baseline = baseline
-        self.model_sampler = model_sampler
-        self.model_sample_processor = model_sample_processor
-        self.algo = algo
+        self.policy = pickle.loads(policy)
+        self.baseline = pickle.loads(baseline)
+        self.model_sampler = pickle.loads(model_sampler)
+        self.model_sample_processor = pickle.loads(model_sample_processor)
+        self.algo = pickle.loads(algo)
 
     def step(self):
         """
@@ -179,7 +198,10 @@ class WorkerPolicy(Worker):
 #        times_optimization.append(optimization_time)
 #        times_step.append(time.time() - itr_start_time)
 
-        return None
+        return pickle.dumps(model_sampler.policy)
+
+    def synch(self, dynamics_model_pickle):
+        self.model_sampler.dynamics_model = pickle.loads(dynamics_model_pickle)
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
