@@ -1,5 +1,6 @@
 from meta_mb.utils import utils
 from meta_mb.logger import logger
+from meta_mb.utils.serializable import Serializable
 import time
 import numpy as np
 import copy

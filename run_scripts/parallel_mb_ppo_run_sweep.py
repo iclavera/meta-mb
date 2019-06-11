@@ -8,7 +8,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
-from meta_mb.trainers.parallel_metrpo_trainer import ParalleTrainer
+from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
@@ -22,6 +22,8 @@ EXP_NAME = 'mb-ppo'
 
 
 def run_experiment(**kwargs):
+
+    print("\n----------running experiment")
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -121,7 +123,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2],
+        'seed': [1],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
@@ -129,7 +131,7 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [51],
-        'max_path_length': [50,],
+        'max_path_length': [10,], # CHANGED
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -146,7 +148,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],
+        'dynamics_max_epochs': [5], # CHANGED
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
