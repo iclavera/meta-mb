@@ -247,7 +247,9 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 list(zip(self.act_batches_dataset_ph, act_train)) +
                 list(zip(self.delta_batches_dataset_ph, delta_train))
             )
+            print("\n------------before session runs in mlp_dynamics_ensemble.py")
             sess.run(self.iterator.initializer, feed_dict=feed_dict)
+            print("\n------------after session runs in mlp_dynamics_ensemble.py, model.fit")
 
             # preparations for recording training stats
             epoch_start_time = time.time()

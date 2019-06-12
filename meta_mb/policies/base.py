@@ -170,8 +170,6 @@ class Policy(Serializable):
         Returns:
             (dict) : a dict of all trainable Variables
         """
-        print("\n-------------------calling policy.get_params()")
-        print(self.policy_params)
         return self.policy_params
 
     def get_param_values(self):

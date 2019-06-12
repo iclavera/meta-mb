@@ -32,122 +32,114 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
+
+    # Instantiate classes
+    set_seed(kwargs['seed'])
+
+    baseline = kwargs['baseline']()
+
+    env = normalize(kwargs['env']()) # Wrappers?
+
+    policy = GaussianMLPPolicy(
+        name="meta-policy",
+        obs_dim=np.prod(env.observation_space.shape),
+        action_dim=np.prod(env.action_space.shape),
+        hidden_sizes=kwargs['policy_hidden_sizes'],
+        learn_std=kwargs['policy_learn_std'],
+        hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+        output_nonlinearity=kwargs['policy_output_nonlinearity'],
+    )
+
+    dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                            env=env,
+                                            num_models=kwargs['num_models'],
+                                            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                            learning_rate=kwargs['dynamics_learning_rate'],
+                                            batch_size=kwargs['dynamics_batch_size'],
+                                            buffer_size=kwargs['dynamics_buffer_size'],
+                                            )
+
+    baseline = pickle.dumps(baseline)
+    baseline = pickle.loads(baseline)
+
+    env = pickle.dumps(env)
+    env = pickle.loads(env)
+
     with sess.as_default() as sess:
-        # Instantiate classes
-        set_seed(kwargs['seed'])
+        # initialize uninitialized vars  (only initialize vars that were not loaded)
+        uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
 
-        baseline = kwargs['baseline']()
+        sess.run(tf.variables_initializer(uninit_vars))
 
-        env = normalize(kwargs['env']()) # Wrappers?
+        policy = pickle.dumps(policy)
+        policy = pickle.loads(policy)
 
-        policy = GaussianMLPPolicy(
-            name="meta-policy",
-            obs_dim=np.prod(env.observation_space.shape),
-            action_dim=np.prod(env.action_space.shape),
-            hidden_sizes=kwargs['policy_hidden_sizes'],
-            learn_std=kwargs['policy_learn_std'],
-            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-            output_nonlinearity=kwargs['policy_output_nonlinearity'],
-        )
+        dynamics_model = pickle.dumps(dynamics_model)
+        dynamics_model = pickle.loads(dynamics_model)
 
-        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                             env=env,
-                                             num_models=kwargs['num_models'],
-                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                             learning_rate=kwargs['dynamics_learning_rate'],
-                                             batch_size=kwargs['dynamics_batch_size'],
-                                             buffer_size=kwargs['dynamics_buffer_size'],
-                                             )
+    '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
 
-        baseline = pickle.dumps(baseline)
-        baseline = pickle.loads(baseline)
+    env_sampler = Sampler(
+        env=env,
+        policy=policy,
+        num_rollouts=kwargs['num_rollouts'],
+        max_path_length=kwargs['max_path_length'],
+        n_parallel=kwargs['n_parallel'],
+    )
 
-        env = pickle.dumps(env)
-        env = pickle.loads(env)
+    model_sampler = METRPOSampler(
+        env=env,
+        policy=policy,
+        num_rollouts=kwargs['imagined_num_rollouts'],
+        max_path_length=kwargs['max_path_length'],
+        dynamics_model=dynamics_model,
+        deterministic=kwargs['deterministic'],
+    )
 
-        
+    dynamics_sample_processor = ModelSampleProcessor(
+        baseline=baseline,
+        discount=kwargs['discount'],
+        gae_lambda=kwargs['gae_lambda'],
+        normalize_adv=kwargs['normalize_adv'],
+        positive_adv=kwargs['positive_adv'],
+    )
 
-        with tf.Session().as_default() as sess:
-            # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            print('\n---------printing unint varaibles')
-            print([var.name for var in uninit_vars])
-            sess.run(tf.variables_initializer(uninit_vars))
+    model_sample_processor = SampleProcessor(
+        baseline=baseline,
+        discount=kwargs['discount'],
+        gae_lambda=kwargs['gae_lambda'],
+        normalize_adv=kwargs['normalize_adv'],
+        positive_adv=kwargs['positive_adv'],
+    )
 
-            policy.get_params()
-            policy = pickle.dumps(policy)
-            policy = pickle.loads(policy)
-            policy.get_params()
+    algo = PPO(
+        policy=policy, 
+        learning_rate=kwargs['learning_rate'],
+        clip_eps=kwargs['clip_eps'],
+        max_epochs=kwargs['num_ppo_steps'],
+    )
 
-            print("\n------------------starts pickling dynamics model...")
+    trainer = ParallelTrainer(
+        algo=algo,
+        policy=policy,
+        env=env,
+        model_sampler=model_sampler,
+        env_sampler=env_sampler,
+        model_sample_processor=model_sample_processor,
+        dynamics_sample_processor=dynamics_sample_processor,
+        dynamics_model=dynamics_model,
+        n_itr=kwargs['n_itr'],
+        dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
+        log_real_performance=kwargs['log_real_performance'],
+        steps_per_iter=kwargs['steps_per_iter'],
+        sample_from_buffer=True,
+        config=config,
+    )
 
-            dynamics_model = pickle.dumps(dynamics_model)
-            dynamics_model = pickle.loads(dynamics_model)
-
-            print("finish pickling")
-
-        '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
-
-        env_sampler = Sampler(
-            env=env,
-            policy=policy,
-            num_rollouts=kwargs['num_rollouts'],
-            max_path_length=kwargs['max_path_length'],
-            n_parallel=kwargs['n_parallel'],
-        )
-
-        model_sampler = METRPOSampler(
-            env=env,
-            policy=policy,
-            num_rollouts=kwargs['imagined_num_rollouts'],
-            max_path_length=kwargs['max_path_length'],
-            dynamics_model=dynamics_model,
-            deterministic=kwargs['deterministic'],
-        )
-
-        dynamics_sample_processor = ModelSampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
-
-        model_sample_processor = SampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
-
-        algo = PPO(
-            policy=policy, 
-            learning_rate=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
-        )
-
-        trainer = ParallelTrainer(
-            algo=algo,
-            policy=policy,
-            env=env,
-            model_sampler=model_sampler,
-            env_sampler=env_sampler,
-            model_sample_processor=model_sample_processor,
-            dynamics_sample_processor=dynamics_sample_processor,
-            dynamics_model=dynamics_model,
-            n_itr=kwargs['n_itr'],
-            dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
-            log_real_performance=kwargs['log_real_performance'],
-            steps_per_iter=kwargs['steps_per_iter'],
-            sample_from_buffer=True,
-            sess=sess,
-        )
-
-        trainer.train()
+    trainer.train()
+        # TODO: close default session? 
 
 
 if __name__ == '__main__':

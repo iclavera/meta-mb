@@ -79,9 +79,6 @@ class GaussianMLPPolicy(Policy):
             # current_scope = tf.get_default_graph().get_name_scope()
             current_scope = self.name
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
-            print("\n-------------policy is building graph")
-            print("printint trainable_policy_vars: ")
-            print(trainable_policy_vars)
             self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
 
             self.policy_params_ph = self._create_placeholders_for_vars(scope=self.name + "/mean_network")
@@ -118,10 +115,10 @@ class GaussianMLPPolicy(Policy):
         assert observations.ndim == 2 and observations.shape[1] == self.obs_dim
 
         sess = tf.get_default_session()
-        print(observations)
+        print("\n---------before running session in policy.get_actions (called by sampler.obtain_samples)")
         actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
                                              feed_dict={self.obs_var: observations})
-        print("after runing for actions, menas and log_Stds")
+        print("after running session")
 
         agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
         return actions, agent_infos

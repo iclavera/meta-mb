@@ -2,62 +2,59 @@ import time, sys, pickle
 from meta_mb.logger import logger
 import multiprocessing
 
+
 class Worker(object):
     """
     Abstract class for worker instantiations. 
     """
-
     def __init__(self):
         pass
 
-    def __call__(self, remote, synch_notifier=None):
+    def __call__(self, remote, synch_notifier=None, config=None):
         """
         Args:
             remote (multiprocessing.Connection):
+            synch_notifier (multiprocessing.Connection):
         """
-        # TODO: close?
-        while True:
-            # receive command and data from the remote
-            cmd, data = remote.recv()
-            print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
+        import tensorflow as tf
+        with tf.Session(config=config).as_default() as sess:
+            while True:
+                cmd, args = remote.recv()
+                print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
 
-            if cmd == 'step':
-                result_pickle = self.step()
-                synch_notifier.send(('synch', result_pickle))
+                if cmd == 'step':
+                    result_pickle = self.step(args)
+                    synch_notifier.send(('synch', result_pickle))
 
-            elif cmd == 'synch':
-                self.synch(data)
+                elif cmd == 'synch':
+                    self.synch(args)
 
-            elif cmd == 'close':
-                remote.close()
-                # TODO: close synch_notifier in trainer
-                break
+                elif cmd == 'close':
+                    break
 
-            else:
-                raise NotImplementedError
+                else:
+                    raise NotImplementedError
 
-            print("\n-----------------" + multiprocessing.current_process().name + " finishing command " + cmd)
+                print("\n-----------------" + multiprocessing.current_process().name + " finishing command " + cmd)
+                sys.stdout.flush()
+        sess.close()
 
-            sys.stdout.flush()
-
-    def step(self):
+    def step(self, args=None):
         raise NotImplementedError
 
-    def synch(self, data):
-        # default is to do nothing
-        pass
+    def synch(self, args):
+        raise NotImplementedError
+
 
 class WorkerData(Worker):
     def __init__(
-            self, 
-            initial_random_samples, 
-            env, 
+            self,
+            env,
             env_sampler, 
             dynamics_sample_processor, 
-            pickled=True, 
+            pickled=True,
             ):
         super().__init__()
-        self.initial_random_samples = initial_random_samples
         if pickled:
             self.env = pickle.loads(env)
             self.env_sampler = pickle.loads(env_sampler)
@@ -65,32 +62,20 @@ class WorkerData(Worker):
         else:
             self.env = env
             self.env_sampler = env_sampler
-            self.dynamics_sample_processor = dynamics_sample_processor  
+            self.dynamics_sample_processor = dynamics_sample_processor
 
-    def init_step(self):
-        if self.initial_random_samples:
-            logger.log("Obtaining random samples from the environment...")
-            env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='EnvSampler-')
-
-            logger.log("Processing environment samples...")
-            samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True, log_prefix='EnvTrajs-')
-
-            self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
-        else:
-            samples_data = self.step()
-        return samples_data
-
-
-    def step(self):
+    def step(self, args=None):
         """
         Uses self.env_sampler which samples data under policy.
         Outcome: generate samples_data.
+        When args is not None, args = initial_random_samples (bool)
         """
 
         time_env_sampling_start = time.time()
 
         logger.log("Obtaining samples from the environment using the policy...")
-        env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
+        random = args if args is not None else False
+        env_paths = self.env_sampler.obtain_samples(log=True, random=random, log_prefix='EnvSampler-')
 
 #        logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
         logger.log("Processing environment samples...")
@@ -114,7 +99,7 @@ class WorkerModel(Worker):
             sample_from_buffer, 
             dynamics_model_max_epochs, 
             dynamics_model, 
-            pickled=True, 
+            pickled=True,
             ):
         super().__init__()
         self.sample_from_buffer = sample_from_buffer
@@ -125,7 +110,7 @@ class WorkerModel(Worker):
             self.dynamics_model = dynamics_model
         self.samples_data = None
 
-    def step(self):
+    def step(self, args=None):
         '''
         Outcome: dynamics model is updated with self.samples_data.?
         '''
@@ -151,6 +136,7 @@ class WorkerModel(Worker):
     def synch(self, samples_data_pickle):
         self.samples_data = pickle.loads(samples_data_pickle)
 
+
 class WorkerPolicy(Worker):
     def __init__(
             self, 
@@ -159,7 +145,7 @@ class WorkerPolicy(Worker):
             model_sampler, 
             model_sample_processor, 
             algo, 
-            pickled=True
+            pickled=True,
             ):
         super().__init__()
         if pickled:
@@ -175,7 +161,7 @@ class WorkerPolicy(Worker):
             self.model_sample_processor = model_sample_processor
             self.algo = algo
 
-    def step(self):
+    def step(self, args=None):
         """
         Uses self.model_sampler which is asynchrounously updated by worker_model.
         Outcome: policy is updated by PPO on one fictitious trajectory. 
@@ -215,7 +201,7 @@ class WorkerPolicy(Worker):
 #        times_optimization.append(optimization_time)
 #        times_step.append(time.time() - itr_start_time)
 
-        return pickle.dumps(model_sampler.policy)
+        return pickle.dumps(self.model_sampler.policy)
 
     def synch(self, dynamics_model_pickle):
         self.model_sampler.dynamics_model = pickle.loads(dynamics_model_pickle)
