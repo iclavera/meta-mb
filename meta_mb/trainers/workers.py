@@ -127,7 +127,6 @@ class WorkerModel(Worker):
 
     def step(self):
         '''
-        In sequential order, is "samples_data" accumulated???
         Outcome: dynamics model is updated with self.samples_data.?
         '''
 

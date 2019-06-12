@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 import tensorflow as tf
 import numpy as np
 from experiment_utils.run_sweep import run_sweep
@@ -18,7 +19,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mb-ppo'
+EXP_NAME = 'parallel-mb-ppo'
 
 
 def run_experiment(**kwargs):
@@ -60,6 +61,35 @@ def run_experiment(**kwargs):
                                              buffer_size=kwargs['dynamics_buffer_size'],
                                              )
 
+        baseline = pickle.dumps(baseline)
+        baseline = pickle.loads(baseline)
+
+        env = pickle.dumps(env)
+        env = pickle.loads(env)
+
+        
+
+        with tf.Session().as_default() as sess:
+            # initialize uninitialized vars  (only initialize vars that were not loaded)
+            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            print('\n---------printing unint varaibles')
+            print([var.name for var in uninit_vars])
+            sess.run(tf.variables_initializer(uninit_vars))
+
+            policy.get_params()
+            policy = pickle.dumps(policy)
+            policy = pickle.loads(policy)
+            policy.get_params()
+
+        print("\n------------------starts pickling dynamics model...")
+
+        dynamics_model = pickle.dumps(dynamics_model)
+        dynamics_model = pickle.loads(dynamics_model)
+
+        print("finish pickling")
+
+        '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
+
         env_sampler = Sampler(
             env=env,
             policy=policy,
@@ -94,7 +124,7 @@ def run_experiment(**kwargs):
         )
 
         algo = PPO(
-            policy=policy,
+            policy=policy, 
             learning_rate=kwargs['learning_rate'],
             clip_eps=kwargs['clip_eps'],
             max_epochs=kwargs['num_ppo_steps'],

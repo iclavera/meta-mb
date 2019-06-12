@@ -60,6 +60,7 @@ class ParallelTrainer(object):
         #pickle.dumps(algo_pkl)
         print("\n--------------------------------dump test passed")
 
+        '''
         self.worker_instances = [
                 WorkerData(
                     initial_random_samples, 
@@ -85,23 +86,25 @@ class ParallelTrainer(object):
                 WorkerData(
                     initial_random_samples, 
                     env, 
-                    env_sampler.deepcopy(), 
+                    env_sampler,
                     dynamics_sample_processor,
+                    pickled=False,
                     ), 
                 WorkerModel(
                     sample_from_buffer, 
                     dynamics_model_max_epochs, 
                     dynamics_model.deepcopy(),
+                    pickled=False,
                     ), 
                 WorkerPolicy(
-                    pickle.dumps(policy), 
-                    pickle.dumps(model_sample_processor.baseline), 
-                    pickle.dumps(model_sampler), 
-                    pickle.dumps(model_sample_processor), 
-                    pickle.dumps(algo),
+                    policy, 
+                    model_sample_processor.baseline, 
+                    model_sampler, 
+                    model_sample_processor, 
+                    algo,
+                    pickled=False
                     ),
                 ]
-        '''
 
 
     def train(self):

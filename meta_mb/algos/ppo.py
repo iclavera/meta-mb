@@ -8,7 +8,7 @@ import tensorflow as tf
 from collections import OrderedDict
 
 
-class PPO(Algo):
+class PPO(Algo, Serializable):
     """
     Algorithm for PPO MAML
 

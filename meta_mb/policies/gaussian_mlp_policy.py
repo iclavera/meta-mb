@@ -78,6 +78,9 @@ class GaussianMLPPolicy(Policy):
             # save the policy's trainable variables in dicts
             current_scope = tf.get_default_graph().get_name_scope()
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+            print("\n-------------policy is building graph")
+            print("printint trainable_policy_vars: ")
+            print(trainable_policy_vars)
             self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
 
             self.policy_params_ph = self._create_placeholders_for_vars(scope=self.name + "/mean_network")
@@ -234,12 +237,12 @@ class GaussianMLPPolicy(Policy):
         # state = LayersPowered.__getstate__(self)
         state = dict()
         state['init_args'] = Serializable.__getstate__(self)
-        # state['networks'] = [nn.__getstate__() for nn in self._networks]
+        state['policy_params'] = self.get_param_values()
         return state
 
     def __setstate__(self, state):
         # LayersPowered.__setstate__(self, state)
         Serializable.__setstate__(self, state['init_args'])
-        #for i in range(len(self._networks)):
-        #    self._networks[i].__setstate__(state['networks'][i])
+        tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
+        self.set_params(state['policy_params'])
 
