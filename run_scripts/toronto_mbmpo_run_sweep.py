@@ -131,26 +131,26 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2],
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [SwimmerEnv],
+        'env': [HalfCheetahEnv],
 
         # Problem Conf
         'n_itr': [201],
-        'max_path_length': [1000],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'meta_steps_per_iter': [(50, 50)],
+        'meta_steps_per_iter': [(30, 30)],
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [True],
-        'fraction_meta_batch_size': [.5],
+        'fraction_meta_batch_size': [1.],
 
         # Dynamics Model
         'num_models': [5],
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         'dynamics_max_epochs': [50],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [128],
-        'dynamics_buffer_size': [25000],
+        'dynamics_buffer_size': [5000],
         'deterministic': [True],
 
         # Policy
@@ -172,11 +172,11 @@ if __name__ == '__main__':
         'meta_batch_size': [10],  # Note: It has to be multiple of num_models
         'rollouts_per_meta_task': [20],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.0005, 0.001],
+        'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
-        'sample_from_buffer': [False, True],
+        'sample_from_buffer': [False],
 
         'scope': [None],
         'exp_tag': [''], # For changes besides hyperparams
