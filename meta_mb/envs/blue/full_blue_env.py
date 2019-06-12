@@ -1,10 +1,11 @@
 import numpy as np
 from gym.envs.mujoco import mujoco_env
 from gym import utils
+from meta_mb.meta_envs.base import RandomEnv
 import os
 
 
-class FullBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
+class FullBlueEnv(RandomEnv, utils.EzPickle):
     def __init__(self):
         utils.EzPickle.__init__(**locals())
 
@@ -12,7 +13,7 @@ class FullBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.goal_left = np.zeros((3,))
         self.goal_right = np.zeros((3,))
 
-        mujoco_env.MujocoEnv.__init__(self, xml_file, 2)
+        RandomEnv.__init__(self, 5, xml_file, 2)
 
     def _get_obs(self):
         return np.concatenate([
@@ -50,6 +51,24 @@ class FullBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     def ee_position(self, arm):
         return (self.get_body_com(arm + '_r_finger_tip_link')
                 + self.get_body_com(arm + '_l_finger_tip_link'))/2
+
+    def reward(self, obs, act, obs_next):
+        assert obs.ndim == act.ndim == obs_next.ndim
+        print(obs.ndim)
+        if obs.ndim == 2:
+            assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
+            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
+            reward_run = obs_next[:, 8]
+            reward = reward_run + reward_ctrl
+            return np.clip(reward, -1e2, 1e2)
+        elif obs.ndim == 1:
+            assert obs.shape == obs_next.shape
+            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
+            reward_run = obs_next[8]
+            reward = reward_run + reward_ctrl
+            return np.clip(reward, -1e2, 1e2)
+        else:
+            raise NotImplementedError
 
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 2

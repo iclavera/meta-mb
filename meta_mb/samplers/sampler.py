@@ -51,7 +51,8 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='', random=False):
+    def obtain_samples(self, log=False, log_prefix='',
+                       random=False, deterministic=False):
         """
         Collect batch_size trajectories from each task
 
@@ -89,6 +90,9 @@ class Sampler(BaseSampler):
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
                 agent_infos = {}
+            elif deterministic:
+                actions, agent_infos = policy.get_actions(obses)
+                actions = [a_i['mean'] for a_i in agent_infos]
             else:
                 actions, agent_infos = policy.get_actions(obses)
             policy_time += time.time() - t
