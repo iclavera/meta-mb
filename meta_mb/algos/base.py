@@ -1,5 +1,6 @@
 from meta_mb import utils
 from meta_mb.policies.base import Policy
+from meta_mb.utils import Serializable
 
 from collections import OrderedDict
 import tensorflow as tf

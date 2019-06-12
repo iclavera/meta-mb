@@ -10,7 +10,7 @@ import time
 import itertools
 
 
-class Sampler(BaseSampler, Serializable):
+class Sampler(BaseSampler):
     """
     Sampler for Meta-RL
 
@@ -33,6 +33,7 @@ class Sampler(BaseSampler, Serializable):
             vae=None,
 
     ):
+        Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
 
         self.total_samples = num_rollouts * max_path_length
@@ -153,7 +154,7 @@ class Sampler(BaseSampler, Serializable):
         state['policy'] = self.policy.__getstate__()
         return state
 
-    def __setstate__(self):
+    def __setstate__(self, state):
         Serializable.__setstate__(self, state['init_args'])
         self.policy = state['policy']
 

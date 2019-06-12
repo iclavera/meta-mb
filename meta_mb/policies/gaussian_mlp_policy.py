@@ -51,14 +51,14 @@ class GaussianMLPPolicy(Policy):
         """
         Builds computational graph for policy
         """
-        with tf.variable_scope(self.name):
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             # build the actual policy network
             self.obs_var, self.mean_var = create_mlp(name='mean_network',
                                                      output_dim=self.action_dim,
                                                      hidden_sizes=self.hidden_sizes,
                                                      hidden_nonlinearity=self.hidden_nonlinearity,
                                                      output_nonlinearity=self.output_nonlinearity,
-                                                     input_dim=(None, self.obs_dim,)
+                                                     input_dim=(None, self.obs_dim,),
                                                      )
 
             with tf.variable_scope("log_std_network"):
@@ -66,7 +66,7 @@ class GaussianMLPPolicy(Policy):
                                               shape=(1, self.action_dim,),
                                               dtype=tf.float32,
                                               initializer=tf.constant_initializer(self.init_log_std),
-                                              trainable=self.learn_std
+                                              trainable=self.learn_std,
                                               )
 
                 self.log_std_var = tf.maximum(log_std_var, self.min_log_std, name='log_std')
@@ -229,4 +229,17 @@ class GaussianMLPPolicy(Policy):
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
         raise ["mean", "log_std"]
+
+    def __getstate__(self):
+        # state = LayersPowered.__getstate__(self)
+        state = dict()
+        state['init_args'] = Serializable.__getstate__(self)
+        # state['networks'] = [nn.__getstate__() for nn in self._networks]
+        return state
+
+    def __setstate__(self, state):
+        # LayersPowered.__setstate__(self, state)
+        Serializable.__setstate__(self, state['init_args'])
+        #for i in range(len(self._networks)):
+        #    self._networks[i].__setstate__(state['networks'][i])
 

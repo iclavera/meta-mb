@@ -2,6 +2,7 @@ from meta_mb.logger import logger
 from meta_mb.algos.base import Algo
 from meta_mb.optimizers.rl2_first_order_optimizer import RL2FirstOrderOptimizer
 from meta_mb.optimizers.first_order_optimizer import FirstOrderOptimizer
+from meta_mb.utils import Serializable
 
 import tensorflow as tf
 from collections import OrderedDict
@@ -31,6 +32,7 @@ class PPO(Algo):
             max_epochs=5,
             **kwargs
             ):
+        Serializable.quick_init(self, locals())
         super(PPO, self).__init__(policy)
 
         self.recurrent = getattr(self.policy, 'recurrent', False)
@@ -117,3 +119,17 @@ class PPO(Algo):
         if log:
             logger.logkv('LossBefore', loss_before)
             logger.logkv('LossAfter', loss_after)
+
+    def __getstate__(self):
+        state = dict()
+        state['init_args'] = Serializable.__getstate__(self)
+        print('getstate\n')
+        print(state['init_args'])
+        state['policy'] = self.policy.__getstate__()
+        state['optimizer'] = self.optimizer.__getstate__()
+        return state
+
+    def __setstate__(self, state):
+        Serializable.__setstate__(self, state['init_args'])
+        self.policy.__setstate__(state['policy'])
+        self.optimizer.__getstate__(state['optimizer'])

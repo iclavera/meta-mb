@@ -54,12 +54,18 @@ class WorkerData(Worker):
             env, 
             env_sampler, 
             dynamics_sample_processor, 
+            pickled=True, 
             ):
         super().__init__()
         self.initial_random_samples = initial_random_samples
-        self.env = pickle.loads(env)
-        self.env_sampler = pickle.loads(env_sampler)
-        self.dynamics_sample_processor = pickle.loads(dynamics_sample_processor)
+        if pickled:
+            self.env = pickle.loads(env)
+            self.env_sampler = pickle.loads(env_sampler)
+            self.dynamics_sample_processor = pickle.loads(dynamics_sample_processor)
+        else:
+            self.env = env
+            self.env_sampler = env_sampler
+            self.dynamics_sample_processor = dynamics_sample_processor  
 
     def init_step(self):
         if self.initial_random_samples:
@@ -108,11 +114,15 @@ class WorkerModel(Worker):
             sample_from_buffer, 
             dynamics_model_max_epochs, 
             dynamics_model, 
+            pickled=True, 
             ):
         super().__init__()
         self.sample_from_buffer = sample_from_buffer
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
-        self.dynamics_model = pickle.loads(dynamics_model)
+        if pickled:
+            self.dynamics_model = pickle.loads(dynamics_model)
+        else:
+            self.dynamics_model = dynamics_model
         self.samples_data = None
 
     def step(self):
@@ -150,13 +160,21 @@ class WorkerPolicy(Worker):
             model_sampler, 
             model_sample_processor, 
             algo, 
+            pickled=True
             ):
         super().__init__()
-        self.policy = pickle.loads(policy)
-        self.baseline = pickle.loads(baseline)
-        self.model_sampler = pickle.loads(model_sampler)
-        self.model_sample_processor = pickle.loads(model_sample_processor)
-        self.algo = pickle.loads(algo)
+        if pickled:
+            self.policy = pickle.loads(policy)
+            self.baseline = pickle.loads(baseline)
+            self.model_sampler = pickle.loads(model_sampler)
+            self.model_sample_processor = pickle.loads(model_sample_processor)
+            self.algo = pickle.loads(algo)
+        else:
+            self.policy = policy
+            self.baseline = baseline
+            self.model_sampler = model_sampler
+            self.model_sample_processor = model_sample_processor
+            self.algo = algo
 
     def step(self):
         """

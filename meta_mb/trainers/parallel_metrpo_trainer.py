@@ -56,7 +56,8 @@ class ParallelTrainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
 
         print("\n--------------------------------dump test starts")
-        pickle.dumps(env_sampler)
+        #algo_pkl = pickle.dumps(algo),
+        #pickle.dumps(algo_pkl)
         print("\n--------------------------------dump test passed")
 
         self.worker_instances = [
@@ -76,8 +77,32 @@ class ParallelTrainer(object):
                     pickle.dumps(model_sample_processor.baseline), 
                     pickle.dumps(model_sampler), 
                     pickle.dumps(model_sample_processor), 
-                    pickle.dumps(algo)),
+                    pickle.dumps(algo),
+                    ),
                 ]
+        '''
+        self.worker_instances = [
+                WorkerData(
+                    initial_random_samples, 
+                    env, 
+                    env_sampler.deepcopy(), 
+                    dynamics_sample_processor,
+                    ), 
+                WorkerModel(
+                    sample_from_buffer, 
+                    dynamics_model_max_epochs, 
+                    dynamics_model.deepcopy(),
+                    ), 
+                WorkerPolicy(
+                    pickle.dumps(policy), 
+                    pickle.dumps(model_sample_processor.baseline), 
+                    pickle.dumps(model_sampler), 
+                    pickle.dumps(model_sample_processor), 
+                    pickle.dumps(algo),
+                    ),
+                ]
+        '''
+
 
     def train(self):
         """

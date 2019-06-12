@@ -32,7 +32,7 @@ class Policy(Serializable):
                  output_nonlinearity=None,
                  **kwargs
                  ):
-        Serializable.quick_init(self, locals())
+        Serializable.quick_init(self, locals()) 
 
         self.obs_dim = obs_dim
         self.action_dim = action_dim

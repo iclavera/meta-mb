@@ -60,7 +60,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         output_nonlinearity = self._activations[output_nonlinearity]
 
         """ computation graph for training and simple inference """
-        with tf.variable_scope(name):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
