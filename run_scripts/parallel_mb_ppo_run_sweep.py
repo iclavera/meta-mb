@@ -1,8 +1,9 @@
 import os
 import json
 import pickle
-import tensorflow as tf
 import numpy as np
+from tensorflow import tanh, ConfigProto
+from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -22,16 +23,41 @@ INSTANCE_TYPE = 'c4.4xlarge'
 EXP_NAME = 'parallel-mb-ppo'
 
 
+def init_vars(config, policy, dynamics_model):
+    import tensorflow as tf
+
+    sess = tf.Session(config=config)
+
+    with sess.as_default() as sess:
+        # initialize uninitialized vars  (only initialize vars that were not loaded)
+        uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+
+        sess.run(tf.variables_initializer(uninit_vars))
+
+        policy_pickle = pickle.dumps(policy)
+        policy = pickle.loads(policy_pickle)
+
+        dynamics_model_pickle = pickle.dumps(dynamics_model)
+        dynamics_model = pickle.loads(dynamics_model_pickle)
+
+    return policy, dynamics_model
+
+    print("\n-----about to finish init_vars")
+    sender.send((policy, dynamics_model))
+    sender.close()
+    print("\n----------exiting init_vars")
+
+
+
 def run_experiment(**kwargs):
 
-    print("\n----------running experiment")
+    print("\n---------- running experiment ---------------------------")
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    config = tf.ConfigProto()
+    config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
-    sess = tf.Session(config=config)
 
     # Instantiate classes
     set_seed(kwargs['seed'])
@@ -61,23 +87,27 @@ def run_experiment(**kwargs):
                                             buffer_size=kwargs['dynamics_buffer_size'],
                                             )
 
+    '''-------- dumps and reloads -----------------'''
+
     baseline = pickle.dumps(baseline)
     baseline = pickle.loads(baseline)
 
     env = pickle.dumps(env)
     env = pickle.loads(env)
 
-    with sess.as_default() as sess:
-        # initialize uninitialized vars  (only initialize vars that were not loaded)
-        uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+    '''
+    receiver, sender = Pipe()
+    p = Process(
+        target=init_vars,
+        name="init_vars",
+        args=(sender, config, policy, dynamics_model),
+        daemon=True,
+    )
+    p.start()
+    policy, dynamics_model = receiver.recv()
+    '''
 
-        sess.run(tf.variables_initializer(uninit_vars))
-
-        policy = pickle.dumps(policy)
-        policy = pickle.loads(policy)
-
-        dynamics_model = pickle.dumps(dynamics_model)
-        dynamics_model = pickle.loads(dynamics_model)
+    policy, dynamics_model = init_vars(config, policy, dynamics_model)
 
     '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
 
@@ -139,7 +169,6 @@ def run_experiment(**kwargs):
     )
 
     trainer.train()
-        # TODO: close default session? 
 
 
 if __name__ == '__main__':
@@ -179,7 +208,7 @@ if __name__ == '__main__':
         # Policy
         'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': [tf.tanh],
+        'policy_hidden_nonlinearity': [tanh], # [tf.tanh],
         'policy_output_nonlinearity': [None],
 
         # Algo

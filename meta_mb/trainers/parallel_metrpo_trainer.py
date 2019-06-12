@@ -1,9 +1,9 @@
-import tensorflow as tf
 import numpy as np
-import time, pickle
+import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe
 from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
+
 
 class ParallelTrainer(object):
     """
@@ -35,30 +35,22 @@ class ParallelTrainer(object):
             start_itr=0,
             steps_per_iter=30,
             initial_random_samples=True,
-            sess=None,
             dynamics_model_max_epochs=200,
             log_real_performance=True,
             sample_from_buffer=False,
+            config=None,
             ):
         self.n_itr = n_itr
         self.start_itr = start_itr
         self.steps_per_iter = steps_per_iter
         self.log_real_performance = log_real_performance
+        self.initial_random_samples = initial_random_samples
+        self.config = config
 
-        if sess is None:
-            sess = tf.Session()
-        self.sess = sess
-
-        with self.sess.as_default() as sess:
-
-            # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
-
-        print("\n--------------------------------dump test starts")
+        #print("\n--------------------------------dump test starts")
         #algo_pkl = pickle.dumps(algo),
         #pickle.dumps(algo_pkl)
-        print("\n--------------------------------dump test passed")
+        #print("\n--------------------------------dump test passed")
 
         '''
         self.worker_instances = [
@@ -84,28 +76,26 @@ class ParallelTrainer(object):
         '''
         self.worker_instances = [
                 WorkerData(
-                    initial_random_samples, 
-                    env, 
+                    env,
                     env_sampler,
                     dynamics_sample_processor,
                     pickled=False,
-                    ), 
+                ),
                 WorkerModel(
                     sample_from_buffer, 
                     dynamics_model_max_epochs, 
-                    dynamics_model.deepcopy(),
+                    dynamics_model,
                     pickled=False,
-                    ), 
+                ),
                 WorkerPolicy(
                     policy, 
                     model_sample_processor.baseline, 
                     model_sampler, 
                     model_sample_processor, 
                     algo,
-                    pickled=False
-                    ),
-                ]
-
+                    pickled=False,
+                ),
+        ]
 
     def train(self):
         """
@@ -119,62 +109,55 @@ class ParallelTrainer(object):
                 algo.optimize_policy()
                 sampler.update_goals()
         """
-        
         names = ["worker_data", "worker_model", "worker_policy"]
         receivers, senders = zip(*[Pipe() for _ in range(3)])
         worker_data_sender, worker_model_sender, worker_policy_sender = senders
-        worker_data, worker_model, worker_policy = self.worker_instances
+        # worker_data, worker_model, worker_policy = self.worker_instances
 
         self.ps = [
-                Process(target=worker_instance, name=name, args=(remote, synch_notifier))
-                for (worker_instance, name, remote, synch_notifier) in zip(
-                    self.worker_instances, names, receivers, 
-                    [worker_model_sender, worker_policy_sender, worker_data_sender])]
+            Process(target=worker_instance, name=name, args=(remote, synch_notifier, self.config))
+            for (worker_instance, name, remote, synch_notifier) in zip(
+                self.worker_instances, names, receivers,
+                [worker_model_sender, worker_policy_sender, worker_data_sender]
+            )
+        ]
 
-        # TODO: close?
-        
+        if type(self.steps_per_iter) is tuple:
+            steps_per_iter = np.linspace(self.steps_per_iter[0],
+                                            self.steps_per_iter[1], self.n_itr).astype(np.int)
+        else:
+            steps_per_iter = [self.steps_per_iter] * self.n_itr
+
         print("\ntrainer start training...")
 
-        with self.sess.as_default() as sess:
+        for p in self.ps:
+            p.start()
 
-            if type(self.steps_per_iter) is tuple:
-                steps_per_iter = np.linspace(self.steps_per_iter[0],
-                                             self.steps_per_iter[1], self.n_itr).astype(np.int)
-            else:
-                steps_per_iter = [self.steps_per_iter] * self.n_itr
+        # initialize worker_model.samples_data
+        worker_data_sender.send(('step', self.initial_random_samples))
+        time.sleep(5)
+        print("\n---------------initialization finishes")
 
-    
-            # initialize worker_model.samples_data
-            samples_data = worker_data.init_step()
-            worker_model.synch(pickle.dumps(samples_data))
+        for itr in range(5): #range(self.start_itr, self.n_itr):
 
-            self.ps[0].start()
+            print("\n--------------------starting iteration %s-----------------" % itr)
+            
+            worker_data_sender.send(('step', None)) 
 
-            for itr in range(5): #range(self.start_itr, self.n_itr):
+            worker_model_sender.send(('step', None))
 
-                print("\n--------------------starting iteration %s-----------------" % itr)
-                
-                worker_data_sender.send(('step', None)) 
-#                worker_data.step()
-
-                # worker_model_sender.send(('step', None))
-
-                ''' --------------- MAML steps --------------- '''
+            ''' --------------- MAML steps --------------- '''
 
 #                for step in range(steps_per_iter[itr]):
 
-                # worker_policy_sender.send(('step', None))
+            worker_policy_sender.send(('step', None))
 
-                #for p in self.ps:
-                #    p.join()
+        time.sleep(10)
 
         for sender in senders:
-            sender.close()
+            sender.send(('close', None))
 
-        self.ps[0].join()
-        # for p in self.ps:
-        #    p.terminate()
-        #    p.join()
+        for p in self.ps:
+            p.join()
 
         logger.log("Training finished")
-        self.sess.close()

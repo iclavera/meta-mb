@@ -241,6 +241,12 @@ class GaussianMLPPolicy(Policy):
     def __setstate__(self, state):
         # LayersPowered.__setstate__(self, state)
         Serializable.__setstate__(self, state['init_args'])
+        '''
+        sess = tf.get_default_session()
+        if sess is None:
+            sess = tf.Session()
+        '''
         tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
+
         self.set_params(state['policy_params'])
 
