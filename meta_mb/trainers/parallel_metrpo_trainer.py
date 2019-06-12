@@ -23,14 +23,11 @@ class ParallelTrainer(object):
     """
     def __init__(
             self,
-            algo,
-            env,
-            model_sampler,
-            env_sampler,
-            model_sample_processor,
-            dynamics_sample_processor,
-            policy,
-            dynamics_model,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dicts,
             n_itr,
             start_itr=0,
             steps_per_iter=30,
@@ -45,88 +42,42 @@ class ParallelTrainer(object):
         self.steps_per_iter = steps_per_iter
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
-        self.config = config
 
-        #print("\n--------------------------------dump test starts")
-        #algo_pkl = pickle.dumps(algo),
-        #pickle.dumps(algo_pkl)
-        #print("\n--------------------------------dump test passed")
+        worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy()]
+        names = ["worker_data", "worker_model", "worker_policy"]
+        receivers, senders = zip(*[Pipe() for _ in range(3)])
 
-        '''
-        self.worker_instances = [
-                WorkerData(
-                    initial_random_samples, 
-                    pickle.dumps(env), 
-                    pickle.dumps(env_sampler), 
-                    pickle.dumps(dynamics_sample_processor), 
-                    ), 
-                WorkerModel(
-                    sample_from_buffer, 
-                    dynamics_model_max_epochs, 
-                    pickle.dumps(dynamics_model), 
-                    ), 
-                WorkerPolicy(
-                    pickle.dumps(policy), 
-                    pickle.dumps(model_sample_processor.baseline), 
-                    pickle.dumps(model_sampler), 
-                    pickle.dumps(model_sample_processor), 
-                    pickle.dumps(algo),
-                    ),
-                ]
-        '''
-        self.worker_instances = [
-                WorkerData(
-                    env,
-                    env_sampler,
-                    dynamics_sample_processor,
-                    pickled=False,
-                ),
-                WorkerModel(
-                    sample_from_buffer, 
-                    dynamics_model_max_epochs, 
-                    dynamics_model,
-                    pickled=False,
-                ),
-                WorkerPolicy(
-                    policy, 
-                    model_sample_processor.baseline, 
-                    model_sampler, 
-                    model_sample_processor, 
-                    algo,
-                    pickled=False,
-                ),
+        self.ps = [
+            Process(
+                target=worker_instance,
+                name=name,
+                args=(
+                    policy_pickle,
+                    env_pickle,
+                    baseline_pickle,
+                    dynamics_model_pickle,
+                    feed_dict,
+                    remote,
+                    synch_notifier,
+                    config,
+                )
+            ) for (worker_instance, name, feed_dict, remote, synch_notifier) in zip(
+                worker_instances, names, feed_dicts, receivers, senders[1:] + senders[:1]
+            )
         ]
+        self.senders = senders
 
     def train(self):
         """
         Trains policy on env using algo
-
-        Pseudocode:
-            for itr in n_itr:
-                for step in num_inner_grad_steps:
-                    sampler.sample()
-                    algo.compute_updated_dists()
-                algo.optimize_policy()
-                sampler.update_goals()
         """
-        names = ["worker_data", "worker_model", "worker_policy"]
-        receivers, senders = zip(*[Pipe() for _ in range(3)])
-        worker_data_sender, worker_model_sender, worker_policy_sender = senders
-        # worker_data, worker_model, worker_policy = self.worker_instances
-
-        self.ps = [
-            Process(target=worker_instance, name=name, args=(remote, synch_notifier, self.config))
-            for (worker_instance, name, remote, synch_notifier) in zip(
-                self.worker_instances, names, receivers,
-                [worker_model_sender, worker_policy_sender, worker_data_sender]
-            )
-        ]
-
         if type(self.steps_per_iter) is tuple:
             steps_per_iter = np.linspace(self.steps_per_iter[0],
                                             self.steps_per_iter[1], self.n_itr).astype(np.int)
         else:
             steps_per_iter = [self.steps_per_iter] * self.n_itr
+
+        worker_data_sender, worker_model_sender, worker_policy_sender = self.senders
 
         print("\ntrainer start training...")
 
@@ -138,7 +89,8 @@ class ParallelTrainer(object):
         time.sleep(5)
         print("\n---------------initialization finishes")
 
-        for itr in range(5): #range(self.start_itr, self.n_itr):
+        for itr in range(1): #range(self.start_itr, self.n_itr):
+
 
             print("\n--------------------starting iteration %s-----------------" % itr)
             
@@ -154,7 +106,7 @@ class ParallelTrainer(object):
 
         time.sleep(10)
 
-        for sender in senders:
+        for sender in self.senders:
             sender.send(('close', None))
 
         for p in self.ps:

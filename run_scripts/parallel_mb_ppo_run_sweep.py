@@ -9,44 +9,29 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
-from meta_mb.samplers.sampler import Sampler
-from meta_mb.samplers.base import SampleProcessor
-from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
 EXP_NAME = 'parallel-mb-ppo'
 
 
-def init_vars(config, policy, dynamics_model):
+def init_vars(sender, config, policy, dynamics_model):
     import tensorflow as tf
 
-    sess = tf.Session(config=config)
-
-    with sess.as_default() as sess:
+    with tf.Session(config=config).as_default() as sess:
         # initialize uninitialized vars  (only initialize vars that were not loaded)
         uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
 
         sess.run(tf.variables_initializer(uninit_vars))
 
         policy_pickle = pickle.dumps(policy)
-        policy = pickle.loads(policy_pickle)
-
         dynamics_model_pickle = pickle.dumps(dynamics_model)
-        dynamics_model = pickle.loads(dynamics_model_pickle)
 
-    return policy, dynamics_model
-
-    print("\n-----about to finish init_vars")
-    sender.send((policy, dynamics_model))
+    sender.send((policy_pickle, dynamics_model_pickle))
     sender.close()
-    print("\n----------exiting init_vars")
-
 
 
 def run_experiment(**kwargs):
@@ -89,13 +74,9 @@ def run_experiment(**kwargs):
 
     '''-------- dumps and reloads -----------------'''
 
-    baseline = pickle.dumps(baseline)
-    baseline = pickle.loads(baseline)
+    baseline_pickle = pickle.dumps(baseline)
+    env_pickle = pickle.dumps(env)
 
-    env = pickle.dumps(env)
-    env = pickle.loads(env)
-
-    '''
     receiver, sender = Pipe()
     p = Process(
         target=init_vars,
@@ -104,62 +85,53 @@ def run_experiment(**kwargs):
         daemon=True,
     )
     p.start()
-    policy, dynamics_model = receiver.recv()
-    '''
-
-    policy, dynamics_model = init_vars(config, policy, dynamics_model)
+    policy_pickle, dynamics_model_pickle = receiver.recv()
+    receiver.close()
 
     '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
+    
+    worker_data_feed_dict = {
+        'env_sampler': {
+            'num_rollouts': kwargs['num_rollouts'],
+            'max_path_length': kwargs['max_path_length'],
+            'n_parallel': kwargs['n_parallel'],
+        },
+        'dynamics_sample_processor': {
+            'discount': kwargs['discount'],
+            'gae_lambda': kwargs['gae_lambda'],
+            'normalize_adv': kwargs['normalize_adv'],
+            'positive_adv': kwargs['positive_adv'],
+        },
+    }
 
-    env_sampler = Sampler(
-        env=env,
-        policy=policy,
-        num_rollouts=kwargs['num_rollouts'],
-        max_path_length=kwargs['max_path_length'],
-        n_parallel=kwargs['n_parallel'],
-    )
-
-    model_sampler = METRPOSampler(
-        env=env,
-        policy=policy,
-        num_rollouts=kwargs['imagined_num_rollouts'],
-        max_path_length=kwargs['max_path_length'],
-        dynamics_model=dynamics_model,
-        deterministic=kwargs['deterministic'],
-    )
-
-    dynamics_sample_processor = ModelSampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
-
-    model_sample_processor = SampleProcessor(
-        baseline=baseline,
-        discount=kwargs['discount'],
-        gae_lambda=kwargs['gae_lambda'],
-        normalize_adv=kwargs['normalize_adv'],
-        positive_adv=kwargs['positive_adv'],
-    )
-
-    algo = PPO(
-        policy=policy, 
-        learning_rate=kwargs['learning_rate'],
-        clip_eps=kwargs['clip_eps'],
-        max_epochs=kwargs['num_ppo_steps'],
-    )
+    worker_model_feed_dict = {}
+    
+    worker_policy_feed_dict = {
+        'model_sampler': {
+            'num_rollouts': kwargs['imagined_num_rollouts'],
+            'max_path_length': kwargs['max_path_length'],
+            'dynamics_model': dynamics_model,
+            'deterministic': kwargs['deterministic'],
+        },
+        'model_sample_processor': {
+            'discount': kwargs['discount'],
+            'gae_lambda': kwargs['gae_lambda'],
+            'normalize_adv': kwargs['normalize_adv'],
+            'positive_adv': kwargs['positive_adv'],
+        },
+        'algo': {
+            'learning_rate': kwargs['learning_rate'],
+            'clip_eps': kwargs['clip_eps'],
+            'max_epochs': kwargs['num_ppo_steps'],
+        }
+    }
 
     trainer = ParallelTrainer(
-        algo=algo,
-        policy=policy,
-        env=env,
-        model_sampler=model_sampler,
-        env_sampler=env_sampler,
-        model_sample_processor=model_sample_processor,
-        dynamics_sample_processor=dynamics_sample_processor,
-        dynamics_model=dynamics_model,
+        policy_pickle=policy_pickle,
+        env_pickle=env_pickle,
+        baseline_pickle=baseline_pickle,
+        dynamics_model_pickle=dynamics_model_pickle,
+        feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],

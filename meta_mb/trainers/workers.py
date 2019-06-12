@@ -10,7 +10,17 @@ class Worker(object):
     def __init__(self):
         pass
 
-    def __call__(self, remote, synch_notifier=None, config=None):
+    def __call__(
+            self,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dict,
+            remote,
+            synch_notifier=None,
+            config=None
+    ):
         """
         Args:
             remote (multiprocessing.Connection):
@@ -18,6 +28,15 @@ class Worker(object):
         """
         import tensorflow as tf
         with tf.Session(config=config).as_default() as sess:
+
+            self.construct_from_feed_dict(
+                policy_pickle,
+                env_pickle,
+                baseline_pickle,
+                dynamics_model_pickle,
+                feed_dict
+            )
+
             while True:
                 cmd, args = remote.recv()
                 print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
@@ -39,6 +58,16 @@ class Worker(object):
                 sys.stdout.flush()
         sess.close()
 
+    def construct_from_feed_dict(
+            self,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dict
+    ):
+        raise NotImplementedError
+
     def step(self, args=None):
         raise NotImplementedError
 
@@ -47,27 +76,34 @@ class Worker(object):
 
 
 class WorkerData(Worker):
-    def __init__(
-            self,
-            env,
-            env_sampler, 
-            dynamics_sample_processor, 
-            pickled=True,
-            ):
+    def __init__(self):
         super().__init__()
-        if pickled:
-            self.env = pickle.loads(env)
-            self.env_sampler = pickle.loads(env_sampler)
-            self.dynamics_sample_processor = pickle.loads(dynamics_sample_processor)
-        else:
-            self.env = env
-            self.env_sampler = env_sampler
-            self.dynamics_sample_processor = dynamics_sample_processor
+        self.env = None
+        self.env_sampler = None
+        self.dynamics_sample_processor = None
+
+    def construct_from_feed_dict(
+            self,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dict
+    ):
+
+        from meta_mb.samplers.sampler import Sampler
+        from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
+
+        env = pickle.loads(env_pickle)
+        policy = pickle.loads(policy_pickle)
+        baseline = pickle.loads(baseline_pickle)
+
+        self.env = env
+        self.env_sampler = Sampler(env=env, policy=policy, **feed_dict['env_sampler'])
+        self.dynamics_sample_processor = ModelSampleProcessor(baseline=baseline, **feed_dict['dynamics_sample_processor'])
 
     def step(self, args=None):
         """
-        Uses self.env_sampler which samples data under policy.
-        Outcome: generate samples_data.
         When args is not None, args = initial_random_samples (bool)
         """
 
@@ -94,26 +130,23 @@ class WorkerData(Worker):
             
 
 class WorkerModel(Worker):
-    def __init__(
-            self, 
-            sample_from_buffer, 
-            dynamics_model_max_epochs, 
-            dynamics_model, 
-            pickled=True,
-            ):
+    def __init__(self, dynamics_model_max_epochs):
         super().__init__()
-        self.sample_from_buffer = sample_from_buffer
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
-        if pickled:
-            self.dynamics_model = pickle.loads(dynamics_model)
-        else:
-            self.dynamics_model = dynamics_model
+        self.dynamics_model = None
         self.samples_data = None
 
+    def construct_from_feed_dict(
+            self,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dict
+    ):
+        self.dynamics_model = pickle.loads(dynamics_model_pickle)
+
     def step(self, args=None):
-        '''
-        Outcome: dynamics model is updated with self.samples_data.?
-        '''
 
         assert self.samples_data is not None
 
@@ -127,8 +160,6 @@ class WorkerModel(Worker):
                                 self.samples_data['next_observations'],
                                 epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
-        # buffer = None if not self.sample_from_buffer else samples_data
-
 #        logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
         return pickle.dumps(self.dynamics_model)
@@ -138,28 +169,36 @@ class WorkerModel(Worker):
 
 
 class WorkerPolicy(Worker):
-    def __init__(
-            self, 
-            policy, 
-            baseline, 
-            model_sampler, 
-            model_sample_processor, 
-            algo, 
-            pickled=True,
-            ):
+    def __init__(self):
         super().__init__()
-        if pickled:
-            self.policy = pickle.loads(policy)
-            self.baseline = pickle.loads(baseline)
-            self.model_sampler = pickle.loads(model_sampler)
-            self.model_sample_processor = pickle.loads(model_sample_processor)
-            self.algo = pickle.loads(algo)
-        else:
-            self.policy = policy
-            self.baseline = baseline
-            self.model_sampler = model_sampler
-            self.model_sample_processor = model_sample_processor
-            self.algo = algo
+        self.policy = None
+        self.baseline = None
+        self.model_sampler = None
+        self.model_sample_processor = None
+        self.algo = None
+
+    def construct_from_feed_dict(
+            self,
+            policy_pickle,
+            env_pickle,
+            baseline_pickle,
+            dynamics_model_pickle,
+            feed_dict
+    ):
+
+        from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+        from meta_mb.samplers.base import SampleProcessor
+        from meta_mb.algos.ppo import PPO
+
+        env = pickle.loads(env_pickle)
+        policy = pickle.loads(policy_pickle)
+        baseline = pickle.loads(baseline_pickle)
+
+        self.policy = policy
+        self.baseline = baseline
+        self.model_sampler = METRPOSampler(env=env, policy=policy, **feed_dict['model_sampler'])
+        self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
+        self.algo = PPO(policy=policy, **feed_dict['algo'])
 
     def step(self, args=None):
         """
