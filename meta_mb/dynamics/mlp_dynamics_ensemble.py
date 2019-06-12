@@ -486,6 +486,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
     def _normalize_data(self, obs, act, delta=None):
         assert len(obs) == len(act) == self.num_models
+        assert self.normalization is not None
         norm_obses = []
         norm_acts = []
         norm_deltas = []

@@ -91,7 +91,6 @@ class ParallelTrainer(object):
 
         for itr in range(1): #range(self.start_itr, self.n_itr):
 
-
             print("\n--------------------starting iteration %s-----------------" % itr)
             
             worker_data_sender.send(('step', None)) 
