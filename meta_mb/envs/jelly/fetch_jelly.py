@@ -10,6 +10,8 @@ from meta_mb.meta_envs.base import MetaEnv
 class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'jelly.xml')
+
+        self.goal = np.append(np.random.uniform(-5, 5, 2), np.random.uniform(0, 0.15))
         MujocoEnv.__init__(self, xml_file, 2)
         gym.utils.EzPickle.__init__(self)
 
@@ -17,18 +19,19 @@ class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat[1:],
             self.sim.data.qvel.flat,
+            self.body_position() - self.goal
         ])
 
     def step(self, action):
-        xposbefore = self.sim.data.qpos[0]
         self.do_simulation(action, self.frame_skip)
-        xposafter = self.sim.data.qpos[0]
-        ob = self._get_obs()
-        reward_ctrl = - 0.5 * 0.1 * np.square(action).sum()
-        reward_run = (xposafter - xposbefore) / self.dt
-        reward = reward_ctrl + reward_run
+        vec_to_goal = self.body_position() - self.goal
+        reward_dist = -0.5*(np.linalg.norm(vec_to_goal))
+        reward_ctrl = -np.square(action).sum()
+        reward = reward_dist + 1.25e-4 *reward_ctrl
+        observation = self._get_obs()
         done = False
-        return ob, reward, done, dict(reward_run=reward_run, reward_ctrl=reward_ctrl)
+        info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
+        return observation, reward, done, info
 
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
@@ -50,8 +53,12 @@ class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(low=-.1, high=.1, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.randn(self.model.nv) * .1
+        self.sim.model.body_pos[-1] = np.append(np.random.uniform(-5, 5, 2), np.random.uniform(0, 0.15))
         self.set_state(qpos, qvel)
         return self._get_obs()
+
+    def body_position(self):
+        return self.get_body_com("base_link")
 
     def foot_position(self, foot):
         return
@@ -63,7 +70,7 @@ if __name__ == "__main__":
     env = FullJellyEnv()
     while True:
         env.reset()
-        for _ in range(100):
+        for _ in range(500):
             action = env.action_space.sample()
             env.step(action)
             env.render()
