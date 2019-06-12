@@ -115,21 +115,20 @@ def create_cnn(name,
 
     if input_var is None:
         input_var = tf.placeholder(dtype=tf.float32, shape=input_dim, name='input')
-    with tf.variable_scope(name):
-        x = input_var
+    x = input_var
 
-        for idx, (kernel_size, stride, filter) in enumerate(zip(kernel_sizes, strides, num_filters)):
-            x = tf.layers.conv2d(x,
-                                 filters=filter,
-                                 kernel_size=kernel_size,
-                                 strides=stride,
-                                 name='conv_%d' % idx,
-                                 activation=hidden_nonlinearity,
-                                 kernel_initializer=w_init,
-                                 bias_initializer=b_init,
-                                 )
+    for idx, (kernel_size, stride, filter) in enumerate(zip(kernel_sizes, strides, num_filters)):
+        x = tf.layers.conv2d(x,
+                             filters=filter,
+                             kernel_size=kernel_size,
+                             strides=stride,
+                             name='conv_%d' % idx,
+                             activation=hidden_nonlinearity,
+                             kernel_initializer=w_init,
+                             bias_initializer=b_init,
+                             )
 
-        output_var = tf.contrib.layers.flatten(x)
+    output_var = tf.contrib.layers.flatten(x)
 
     return input_var, output_var
 
@@ -240,37 +239,36 @@ def create_mlp(name,
 
     if input_var is None:
         input_var = tf.placeholder(dtype=tf.float32, shape=input_dim, name='input')
-    with tf.variable_scope(name):
-        x = input_var
+    x = input_var
 
-        for idx, hidden_size in enumerate(hidden_sizes):
-            if batch_normalization == 'traning':
-                x = tf.layers.batch_normalization(x, training=True)
-            elif batch_normalization == 'testing':
-                x = tf.layers.batch_normalization(x, training=False)
-
-            x = tf.layers.dense(x,
-                                hidden_size,
-                                name='hidden_%d' % idx,
-                                activation=hidden_nonlinearity,
-                                kernel_initializer=w_init,
-                                bias_initializer=b_init,
-                                reuse=reuse,
-                                )
-
+    for idx, hidden_size in enumerate(hidden_sizes):
         if batch_normalization == 'traning':
             x = tf.layers.batch_normalization(x, training=True)
         elif batch_normalization == 'testing':
             x = tf.layers.batch_normalization(x, training=False)
 
-        output_var = tf.layers.dense(x,
-                                     output_dim,
-                                     name='output',
-                                     activation=output_nonlinearity,
-                                     kernel_initializer=w_init,
-                                     bias_initializer=b_init,
-                                     reuse=reuse,
-                                     )
+        x = tf.layers.dense(x,
+                            hidden_size,
+                            name='hidden_%d' % idx,
+                            activation=hidden_nonlinearity,
+                            kernel_initializer=w_init,
+                            bias_initializer=b_init,
+                            reuse=reuse,
+                            )
+
+    if batch_normalization == 'traning':
+        x = tf.layers.batch_normalization(x, training=True)
+    elif batch_normalization == 'testing':
+        x = tf.layers.batch_normalization(x, training=False)
+
+    output_var = tf.layers.dense(x,
+                                 output_dim,
+                                 name='output',
+                                 activation=output_nonlinearity,
+                                 kernel_initializer=w_init,
+                                 bias_initializer=b_init,
+                                 reuse=reuse,
+                                 )
 
     return input_var, output_var
 

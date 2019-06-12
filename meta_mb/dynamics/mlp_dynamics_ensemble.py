@@ -76,8 +76,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             delta_preds = []
             self.obs_next_pred = []
             for i in range(num_models):
-                with tf.variable_scope('model_{}'.format(i)):
-                    mlp = MLP(name,
+                with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
@@ -121,7 +121,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
-                    mlp = MLP(name,
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,

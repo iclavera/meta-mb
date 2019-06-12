@@ -142,23 +142,24 @@ class MLP(Layer):
         """
         Builds computational graph for policy
         """
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+        # with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             # build the actual policy network
-            self.input_var, self.output_var = create_mlp(name='mlp',
-                                                         output_dim=self.output_dim,
-                                                         hidden_sizes=self.hidden_sizes,
-                                                         hidden_nonlinearity=self.hidden_nonlinearity,
-                                                         output_nonlinearity=self.output_nonlinearity,
-                                                         input_dim=(None, self.input_dim,),
-                                                         input_var=self.input_var,
-                                                         batch_normalization=self.batch_normalization,
-                                                         )
+        self.input_var, self.output_var = create_mlp(name='mlp',
+                                                 output_dim=self.output_dim,
+                                                 hidden_sizes=self.hidden_sizes,
+                                                 hidden_nonlinearity=self.hidden_nonlinearity,
+                                                 output_nonlinearity=self.output_nonlinearity,
+                                                 input_dim=(None, self.input_dim,),
+                                                 input_var=self.input_var,
+                                                 batch_normalization=self.batch_normalization,
+                                                 )
 
             # save the policy's trainable variables in dicts
-            current_scope = tf.get_default_graph().get_name_scope()
-            trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
-            self._params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var)
-                                        for var in trainable_policy_vars])
+            # current_scope = tf.get_default_graph().get_name_scope()
+        current_scope = self.name
+        trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+        self._params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var)
+                                    for var in trainable_policy_vars])
 
 
 class RNN(Layer):

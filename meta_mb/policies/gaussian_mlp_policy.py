@@ -61,7 +61,7 @@ class GaussianMLPPolicy(Policy):
                                                      input_dim=(None, self.obs_dim,),
                                                      )
 
-            with tf.variable_scope("log_std_network"):
+            with tf.variable_scope("log_std_network", reuse=tf.AUTO_REUSE):
                 log_std_var = tf.get_variable(name='log_std_var',
                                               shape=(1, self.action_dim,),
                                               dtype=tf.float32,
@@ -76,7 +76,8 @@ class GaussianMLPPolicy(Policy):
             self._dist = DiagonalGaussian(self.action_dim)
 
             # save the policy's trainable variables in dicts
-            current_scope = tf.get_default_graph().get_name_scope()
+            # current_scope = tf.get_default_graph().get_name_scope()
+            current_scope = self.name
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             print("\n-------------policy is building graph")
             print("printint trainable_policy_vars: ")

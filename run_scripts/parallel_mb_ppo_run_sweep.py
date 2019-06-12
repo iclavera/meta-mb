@@ -81,12 +81,12 @@ def run_experiment(**kwargs):
             policy = pickle.loads(policy)
             policy.get_params()
 
-        print("\n------------------starts pickling dynamics model...")
+            print("\n------------------starts pickling dynamics model...")
 
-        dynamics_model = pickle.dumps(dynamics_model)
-        dynamics_model = pickle.loads(dynamics_model)
+            dynamics_model = pickle.dumps(dynamics_model)
+            dynamics_model = pickle.loads(dynamics_model)
 
-        print("finish pickling")
+            print("finish pickling")
 
         '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
 

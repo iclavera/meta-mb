@@ -75,20 +75,19 @@ class MLPDynamicsModel(Serializable):
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
 
             # create MLP
-            with tf.variable_scope('dynamics_model'):
-                mlp = MLP(name,
-                          output_dim=self.obs_space_dims,
-                          hidden_sizes=hidden_sizes,
-                          hidden_nonlinearity=hidden_nonlinearity,
-                          output_nonlinearity=output_nonlinearity,
-                          input_var=self.nn_input,
-                          input_dim=self.obs_space_dims + self.action_space_dims,
-                          weight_normalization=weight_normalization)
+            mlp = MLP(name,
+                      output_dim=self.obs_space_dims,
+                      hidden_sizes=hidden_sizes,
+                      hidden_nonlinearity=hidden_nonlinearity,
+                      output_nonlinearity=output_nonlinearity,
+                      input_var=self.nn_input,
+                      input_dim=self.obs_space_dims + self.action_space_dims,
+                      weight_normalization=weight_normalization)
 
             self.delta_pred = mlp.output_var
 
             # define loss and train_op
-            self.loss = tf.reduce_mean((self.delta_ph - self.delta_pred)**2)
+            self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph - self.delta_pred, axis=-1))
             self.optimizer = optimizer(self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
