@@ -6,13 +6,14 @@ import gym
 from meta_mb.logger import logger
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
+from meta_mb.meta_envs.base import RandomEnv
 
-class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
+class FullJellyEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self):
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'jelly.xml')
 
         self.goal = np.append(np.random.uniform(-5, 5, 2), np.random.uniform(0, 0.15))
-        MujocoEnv.__init__(self, xml_file, 2)
+        RandomEnv.__init__(self, 0,  xml_file, 2)
         gym.utils.EzPickle.__init__(self)
 
     def _get_obs(self):
@@ -37,16 +38,16 @@ class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
-            reward_run = obs_next[:, 8]
-            reward = reward_run + reward_ctrl
-            return np.clip(reward, -1e2, 1e2)
+            reward_dist = -0.5 * np.sum(np.square(act), axis=1)
+            reward_ctrl = -np.square(act).sum()
+            reward = reward_run + 1.25e-4 * reward_ctrl
+            return reward
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
-            reward_run = obs_next[8]
-            reward = reward_run + reward_ctrl
-            return np.clip(reward, -1e2, 1e2)
+            reward_ctrl = -0.5 * np.sum(np.square(act))
+            reward_run = -np.square(act).sum()
+            reward = reward_run + 1.25e-4 * reward_ctrl
+            return reward
         else:
             raise NotImplementedError
 
@@ -60,17 +61,11 @@ class FullJellyEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def body_position(self):
         return self.get_body_com("base_link")
 
-    def foot_position(self, foot):
-        return
-
-    def viewer_setup(self):
-        return
-
 if __name__ == "__main__":
     env = FullJellyEnv()
     while True:
         env.reset()
-        for _ in range(500):
+        for _ in range(600):
             action = env.action_space.sample()
             env.step(action)
             env.render()
