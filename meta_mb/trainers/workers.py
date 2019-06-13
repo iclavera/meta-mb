@@ -37,6 +37,9 @@ class Worker(object):
                 feed_dict
             )
 
+            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            sess.run(tf.variables_initializer(uninit_vars))
+
             while True:
                 cmd, args = remote.recv()
                 print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
