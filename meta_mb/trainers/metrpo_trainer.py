@@ -127,7 +127,6 @@ class Trainer(object):
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
-
                 ''' --------------- MAML steps --------------- '''
                 times_dyn_sampling = []
                 times_dyn_sample_processing = []
@@ -138,7 +137,7 @@ class Trainer(object):
 
                     logger.log("\n ---------------- Grad-Step %d ----------------" % int(sum(steps_per_iter[:itr])
                                                                                          + step))
-                    itr_start_time = time.time()
+                    step_start_time = time.time()
 
                     """ -------------------- Sampling --------------------------"""
 
@@ -170,7 +169,7 @@ class Trainer(object):
                     times_dyn_sampling.append(sampling_time)
                     times_dyn_sample_processing.append(proc_samples_time)
                     times_optimization.append(optimization_time)
-                    times_step.append(time.time() - itr_start_time)
+                    times_step.append(time.time() - step_start_time)
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)

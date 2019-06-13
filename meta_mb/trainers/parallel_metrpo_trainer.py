@@ -65,6 +65,7 @@ class ParallelTrainer(object):
                     queue,
                     queue_next,
                     rcp_sender,
+                    start_itr,
                     config,
                 )
             ) for (worker_instance, name, feed_dict, queue, rcp_sender, queue_next) in zip(
@@ -83,7 +84,7 @@ class ParallelTrainer(object):
         """
         if type(self.steps_per_iter) is tuple:
             steps_per_iter = np.linspace(self.steps_per_iter[0],
-                                            self.steps_per_iter[1], self.n_itr).astype(np.int)
+                                         self.steps_per_iter[1], self.n_itr).astype(np.int)
         else:
             steps_per_iter = [self.steps_per_iter] * self.n_itr
 
@@ -98,7 +99,7 @@ class ParallelTrainer(object):
         # warm up all workers in chain
         worker_data_queue.put(('step', self.initial_random_samples), block=True, timeout=TIMEOUT)
         # confirm all workers are warmed up
-        assert worker_data_rcp_receiver.recv() == 'step done'
+        assert worker_data_rcp_receiver.recv() == 'step {} done'.format(self.start_itr-1)
         assert worker_data_rcp_receiver.recv() == 'synch done'
 
         time_total = time.time()
@@ -106,11 +107,15 @@ class ParallelTrainer(object):
         for itr in range(self.start_itr, self.n_itr):
             worker_data_queue.put(('step', None), block=True, timeout=TIMEOUT)
             worker_model_queue.put(('step', None), block=True, timeout=TIMEOUT)
+            worker_policy_queue.put(('step', steps_per_iter[itr]), block=True, timeout=TIMEOUT)
+            assert worker_data_rcp_receiver.recv() == 'step {} done'.format(itr)
+            assert worker_data_rcp_receiver.recv() == 'synch done'
 
-            for step in range(steps_per_iter[itr]):
-                worker_policy_queue.put(('step', None), block=True, timeout=TIMEOUT)
+        for queue in self.queues:
+            queue.put(('close', None))
 
         # collect timing info
+        logger.log("Logging summary...")
         summary = {}
         for name, rcp_receiver in zip(self.names, self.rcp_receivers):
             tasks = []
@@ -126,8 +131,8 @@ class ParallelTrainer(object):
             print(info)
             summary[name] = (tasks, info)
 
-        time_total = time.time() - time_total
+        logger.logkv('time_total', time.time() - time_total)
+        logger.dumpkvs()
 
-        print(summary)
+        logger.log("Training finished")
 
-        logger.log("Training finished with total time %d" % time_total)
