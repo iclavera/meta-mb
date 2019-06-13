@@ -83,7 +83,6 @@ class Worker(object):
 
                 # Notify trainer that one more task is completed
                 rcp_sender.send('{} done'.format(cmd))
-                logger.log('============== {} completed {}'.format(multiprocessing.current_process().name, cmd))
         sess.close()
 
         rcp_sender.send('worker exists')
@@ -145,7 +144,10 @@ class WorkerData(Worker):
             logger.log("Obtaining samples from the environment using the policy...")
         time_env_sampling = time.time()
         random = args if args is not None else False
-        env_paths = self.env_sampler.obtain_samples(log=True, random=random, log_prefix='EnvSampler-')
+        env_paths = self.env_sampler.obtain_samples(
+            log=True,
+            random=random,
+            log_prefix='{} EnvSampler-'.format(self.itr_counter))
         time_env_sampling = time.time() - time_env_sampling
 
         if self.verbose:
@@ -161,16 +163,14 @@ class WorkerData(Worker):
         time_env_samp_proc = time.time() - time_env_samp_proc
 
         # info = [time_env_sampling, time_env_samp_proc]
-        self.info.append((time_env_sampling, time_env_samp_proc))
+        logger.logkv("{} TimeEnvSampling".format(self.itr_counter), time_env_sampling)
+        logger.logkv("{} TimeEnvSampProc".format(self.itr_counter), time_env_samp_proc)
 
         return pickle.dumps(samples_data)
 
     def synch(self, policy_pickle):
-        time_synch = time.time()
         self.env_sampler.policy = pickle.loads(policy_pickle)
-        time_synch = time.time() - time_synch
-        self.info.append(('synch', time_synch))
-            
+
 
 class WorkerModel(Worker):
     def __init__(self, dynamics_model_max_epochs, warm_next=True):
@@ -205,8 +205,9 @@ class WorkerModel(Worker):
                                 epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
         time_model_fit = time.time() - time_model_fit
+
         # info = [time_model_fit]
-        self.info.append(time_model_fit)
+        logger.logkv("{} TimeModelFit".format(self.itr_counter), time_model_fit)
 
         return pickle.dumps(self.dynamics_model)
 
@@ -300,7 +301,9 @@ class WorkerPolicy(Worker):
             time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
 
         # info = [avg_time_step, avg_time_sampling, avg_time_sample_proc, avg_algo_opt]
-        self.info.append(tuple(time_maml/args))
+        for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'],
+                            time_maml/args):
+            logger.logkv('{} {}'.format(self.itr_counter, key), val)
 
         return pickle.dumps(self.model_sampler.policy)
 
