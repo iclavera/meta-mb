@@ -1,6 +1,8 @@
-import time, sys, pickle
+import time, pickle
 from meta_mb.logger import logger
 import multiprocessing
+
+TIMEOUT = 100
 
 
 class Worker(object):
@@ -21,15 +23,15 @@ class Worker(object):
             baseline_pickle,
             dynamics_model_pickle,
             feed_dict,
-            remote,
+            queue,
+            queue_next,
             rcp_sender,
-            synch_notifier=None,
             config=None,
     ):
         """
         Args:
             remote (multiprocessing.Connection):
-            synch_notifier (multiprocessing.Connection):
+            queue_next (multiprocessing.Connection):
         """
         import tensorflow as tf
 
@@ -51,13 +53,13 @@ class Worker(object):
             _init_vars()
 
             while True:
-                cmd, args = remote.recv()
+                cmd, args = queue.get()
 
                 if cmd == 'step':
                     result_pickle = self.step(args)
-                    synch_notifier.send(('synch', result_pickle))
+                    queue_next.put(('synch', result_pickle), block=True, timeout=TIMEOUT)
                     if self.warm_next:
-                        synch_notifier.send(('step', None))
+                        queue_next.put(('step', None))
                         self.warm_next = False
 
                 elif cmd == 'synch':
@@ -65,12 +67,12 @@ class Worker(object):
 
                 elif cmd == 'start_chain':
                     result_pickle = self.step(args)
-                    synch_notifier.send(('synch_and_chain', result_pickle))
+                    queue_next.put(('synch_and_chain', result_pickle), block=True, timeout=TIMEOUT)
 
                 elif cmd == 'synch_and_chain':
                     self.synch(args)
                     result_pickle = self.step(args)
-                    synch_notifier.sned(('synch_and_chain', result_pickle))
+                    queue_next.put(('synch_and_chain', result_pickle), block=True, timeout=TIMEOUT)
 
                 elif cmd == 'close':
                     break
@@ -82,6 +84,8 @@ class Worker(object):
                 rcp_sender.send('{} done'.format(cmd))
                 print("\n-----------------" + multiprocessing.current_process().name + " finishing " + cmd)
         sess.close()
+        print("\n---------------{} hitting exit".format(multiprocessing.current_process().name))
+        rcp_sender.send('worker exists')
 
     def construct_from_feed_dict(
             self,

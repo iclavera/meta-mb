@@ -1,8 +1,9 @@
 import numpy as np
-import time
 from meta_mb.logger import logger
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Queue
 from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
+
+TIMEOUT = 100
 
 
 class ParallelTrainer(object):
@@ -46,7 +47,7 @@ class ParallelTrainer(object):
         worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy()]
         names = ["worker_data", "worker_model", "worker_policy"]
         # command receivers and senders
-        receivers, senders = zip(*[Pipe() for _ in range(3)])
+        queues = [Queue() for _ in range(3)]
         # receipt receivers and senders
         rcp_receivers, rcp_senders = zip(*[Pipe() for _ in range(3)])
 
@@ -60,18 +61,18 @@ class ParallelTrainer(object):
                     baseline_pickle,
                     dynamics_model_pickle,
                     feed_dict,
-                    remote,
+                    queue,
+                    queue_next,
                     rcp_sender,
-                    synch_notifier,
                     config,
                 )
-            ) for (worker_instance, name, feed_dict, remote, rcp_sender, synch_notifier) in zip(
-                worker_instances, names, feed_dicts, receivers, rcp_senders, senders[1:] + senders[:1]
+            ) for (worker_instance, name, feed_dict, queue, rcp_sender, queue_next) in zip(
+                worker_instances, names, feed_dicts, queues, rcp_senders, queues[1:] + queues[:1]
             )
         ]
 
         # central scheduler sends command and receives receipts
-        self.senders = senders
+        self.queues = queues
         self.rcp_receivers = rcp_receivers
 
     def train(self):
@@ -84,7 +85,7 @@ class ParallelTrainer(object):
         else:
             steps_per_iter = [self.steps_per_iter] * self.n_itr
 
-        worker_data_sender, worker_model_sender, worker_policy_sender = self.senders
+        worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
         worker_data_rcp_receiver, worker_model_rcp_receiver, worker_policy_rcp_receiver = self.rcp_receivers
 
         print("\ntrainer start training...")
@@ -93,7 +94,7 @@ class ParallelTrainer(object):
             p.start()
 
         # initialize worker_model.samples_data
-        worker_data_sender.send(('step', self.initial_random_samples))
+        worker_data_queue.put(('step', self.initial_random_samples), block=True, timeout=TIMEOUT)
         # confirm all workes are wamred up
         assert worker_data_rcp_receiver.recv() == 'step done'
         assert worker_data_rcp_receiver.recv() == 'synch done'
@@ -101,9 +102,9 @@ class ParallelTrainer(object):
         for itr in range(1): #range(self.start_itr, self.n_itr):
 
             print("\n--------------------starting iteration %s-----------------" % itr)
-            
-            worker_data_sender.send(('step', None)) 
-            worker_model_sender.send(('step', None))
+
+            worker_data_queue.put(('step', None), block=True, timeout=TIMEOUT)
+            worker_model_queue.put(('step', None), block=True, timeout=TIMEOUT)
 
             ''' --------------- MAML steps --------------- '''
 
@@ -111,12 +112,16 @@ class ParallelTrainer(object):
 
                 print("\n--------------------starting step %s-----------------" % step)
 
-                worker_policy_sender.send(('step', None))
+                worker_policy_queue.put(('step', None), block=True, timeout=TIMEOUT)
 
-        for sender in self.senders:
-            sender.send(('close', None))
+        for queue in self.queues:
+            queue.put(('close', None))
+            queue.close()
 
-        for p in self.ps:
-            p.join()
+        print("closed queues")
+
+        for rcp_receiver in self.rcp_receivers:
+            while rcp_receiver.recv() != 'worker exists':
+                pass
 
         logger.log("Training finished")
