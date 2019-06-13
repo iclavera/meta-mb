@@ -1,6 +1,6 @@
 <mujoco model="jelly_description">
     <compiler angle="radian" />
-    <option timestep="0.001" gravity="0 0 0" />
+    <option timestep="0.001"/>
     <size njmax="500" nconmax="100" />
 
     <!--default>
