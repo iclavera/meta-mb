@@ -22,9 +22,9 @@ def init_vars(sender, config, policy, dynamics_model):
     import tensorflow as tf
 
     with tf.Session(config=config).as_default() as sess:
+
         # initialize uninitialized vars  (only initialize vars that were not loaded)
         uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-
         sess.run(tf.variables_initializer(uninit_vars))
 
         policy_pickle = pickle.dumps(policy)
@@ -61,16 +61,17 @@ def run_experiment(**kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                            env=env,
-                                            num_models=kwargs['num_models'],
-                                            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                            hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                            learning_rate=kwargs['dynamics_learning_rate'],
-                                            batch_size=kwargs['dynamics_batch_size'],
-                                            buffer_size=kwargs['dynamics_buffer_size'],
-                                            )
+    dynamics_model = MLPDynamicsEnsemble(
+        'dynamics-ensemble',
+        env=env,
+        num_models=kwargs['num_models'],
+        hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+        hidden_sizes=kwargs['dynamics_hidden_sizes'],
+        output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+        learning_rate=kwargs['dynamics_learning_rate'],
+        batch_size=kwargs['dynamics_batch_size'],
+        buffer_size=kwargs['dynamics_buffer_size'],
+    )
 
     '''-------- dumps and reloads -----------------'''
 

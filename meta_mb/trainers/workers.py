@@ -7,8 +7,12 @@ class Worker(object):
     """
     Abstract class for worker instantiations. 
     """
-    def __init__(self):
-        self.initialized = False
+    def __init__(self, warm_next):
+        """
+        Args:
+            warm_next (bool): whether to synch and step next worker at the very start
+        """
+        self.warm_next = warm_next
 
     def __call__(
             self,
@@ -18,8 +22,9 @@ class Worker(object):
             dynamics_model_pickle,
             feed_dict,
             remote,
+            rcp_sender,
             synch_notifier=None,
-            config=None
+            config=None,
     ):
         """
         Args:
@@ -27,6 +32,12 @@ class Worker(object):
             synch_notifier (multiprocessing.Connection):
         """
         import tensorflow as tf
+
+        def _init_vars():
+            sess = tf.get_default_session()
+            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            sess.run(tf.variables_initializer(uninit_vars))
+
         with tf.Session(config=config).as_default() as sess:
 
             self.construct_from_feed_dict(
@@ -34,22 +45,20 @@ class Worker(object):
                 env_pickle,
                 baseline_pickle,
                 dynamics_model_pickle,
-                feed_dict
+                feed_dict,
             )
 
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            _init_vars()
 
             while True:
                 cmd, args = remote.recv()
-                print("\n-----------------" + multiprocessing.current_process().name + " starting command " + cmd)
 
                 if cmd == 'step':
                     result_pickle = self.step(args)
                     synch_notifier.send(('synch', result_pickle))
-                    if not self.initialized:
+                    if self.warm_next:
                         synch_notifier.send(('step', None))
-                        self.initialized = True
+                        self.warm_next = False
 
                 elif cmd == 'synch':
                     self.synch(args)
@@ -69,8 +78,9 @@ class Worker(object):
                 else:
                     raise NotImplementedError
 
-                print("\n-----------------" + multiprocessing.current_process().name + " finishing command " + cmd)
-                sys.stdout.flush()
+                # Notify trainer that one more task is completed
+                rcp_sender.send('{} done'.format(cmd))
+                print("\n-----------------" + multiprocessing.current_process().name + " finishing " + cmd)
         sess.close()
 
     def construct_from_feed_dict(
@@ -91,8 +101,8 @@ class Worker(object):
 
 
 class WorkerData(Worker):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, warm_next=True):
+        super().__init__(warm_next)
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
@@ -145,8 +155,8 @@ class WorkerData(Worker):
             
 
 class WorkerModel(Worker):
-    def __init__(self, dynamics_model_max_epochs):
-        super().__init__()
+    def __init__(self, dynamics_model_max_epochs, warm_next=True):
+        super().__init__(warm_next)
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.dynamics_model = None
         self.samples_data = None
@@ -184,8 +194,8 @@ class WorkerModel(Worker):
 
 
 class WorkerPolicy(Worker):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, warm_next=False):
+        super().__init__(warm_next)
         self.policy = None
         self.baseline = None
         self.model_sampler = None
@@ -258,7 +268,10 @@ class WorkerPolicy(Worker):
         return pickle.dumps(self.model_sampler.policy)
 
     def synch(self, dynamics_model_pickle):
-        self.model_sampler.dynamics_model = pickle.loads(dynamics_model_pickle)
+        dynamics_model = pickle.loads(dynamics_model_pickle)
+        self.model_sampler.dynamics_model = dynamics_model
+        self.model_sampler.vec_env.dynamics_model = dynamics_model
+        assert dynamics_model.normalization is not None
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)

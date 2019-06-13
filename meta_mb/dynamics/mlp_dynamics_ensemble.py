@@ -8,7 +8,7 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
-
+import multiprocessing
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
@@ -262,12 +262,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
 
                     # run train op
-                    print("\n-----------before running train op------")
                     batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
                                                    feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
                                                               self.act_model_batches_stack_ph: act_batch_stack,
                                                               self.delta_model_batches_stack_ph: delta_batch_stack})
-                    print("\n-----------after running train op------")
 
                     batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                     batch_losses.append(batch_loss)
@@ -512,5 +510,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
+
+
 
 

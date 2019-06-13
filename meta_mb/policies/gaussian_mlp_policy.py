@@ -115,10 +115,8 @@ class GaussianMLPPolicy(Policy):
         assert observations.ndim == 2 and observations.shape[1] == self.obs_dim
 
         sess = tf.get_default_session()
-        print("\n---------before running session in policy.get_actions (called by sampler.obtain_samples)")
         actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
                                              feed_dict={self.obs_var: observations})
-        print("after running session")
 
         agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
         return actions, agent_infos
