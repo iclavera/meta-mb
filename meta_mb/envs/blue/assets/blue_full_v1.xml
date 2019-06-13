@@ -36,31 +36,31 @@
                 <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="arm_base_link_v1" />
                 <body name="left_shoulder_roll_link" pos="0 0 0.087371" quat="-3.67321e-06 1 0 0">
                     <inertial pos="0.00526386 2.70692e-05 -0.0641638" quat="0.999876 0.0133095 -0.00835638 -0.000644765" mass="1.88492" diaginertia="0.00615005 0.00509851 0.00418291" />
-                    <joint name="left_base_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.3412 3.3999" />
+                    <!--joint name="left_base_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.3412 3.3999" /-->
                     <geom type="mesh" rgba="1 1 1 1" mesh="roll_link_v1" />
                     <body name="left_shoulder_lift_link" pos="-0.01143 0 -0.18056" quat="-2.59734e-06 2.59735e-06 -0.707108 0.707105">
                         <inertial pos="-5.00836e-06 0.000232928 -1.77451e-05" mass="0.58967" diaginertia="0.00116314 0.000985221 0.000891661" />
-                        <joint name="left_shoulder_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" />
+                        <!--joint name="left_shoulder_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" /-->
                         <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v1" />
                         <body name="left_elbow_roll_link" pos="0 0.070147 -6.25e-05" quat="0.499124 0.499126 0.500872 -0.500874">
                             <inertial pos="0.00526386 2.70692e-05 -0.0641638" quat="0.999876 0.0133095 -0.00835638 -0.000644765" mass="1.88492" diaginertia="0.00615005 0.00509851 0.00418291" />
-                            <joint name="left_shoulder_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />
+                            <!--joint name="left_shoulder_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" /-->
                             <geom type="mesh" rgba="1 1 1 1" mesh="roll_link_v1" />
                             <body name="left_elbow_lift_link" pos="-0.01143 0 -0.18056" quat="-2.59734e-06 2.59735e-06 -0.707108 0.707105">
                                 <inertial pos="-5.00836e-06 0.000232928 -1.77451e-05" mass="0.58967" diaginertia="0.00116314 0.000985221 0.000891661" />
-                                <joint name="left_elbow_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" />
+                                <!--joint name="left_elbow_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" /-->
                                 <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v1" />
                                 <body name="left_wrist_roll_link" pos="0 0.070147 -6.25e-05" quat="-0.499128 -0.499122 0.500876 -0.500871">
                                     <inertial pos="0.00526386 2.70692e-05 -0.0641638" quat="0.999876 0.0133095 -0.00835638 -0.000644765" mass="1.6251" diaginertia="0.00615005 0.00509851 0.00418291" />
-                                    <joint name="left_elbow_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />
+                                    <!--joint name="left_elbow_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" /-->
                                     <geom type="mesh" rgba="1 1 1 1" mesh="roll_link_v1" />
                                     <body name="left_wrist_lift_link" pos="-0.01143 0 -0.18056" quat="-2.59734e-06 2.59735e-06 -0.707108 0.707105">
                                         <inertial pos="-5.00836e-06 0.000232928 -1.77451e-05" mass="0.44906" diaginertia="0.00116314 0.000985221 0.000891661" />
-                                        <joint name="left_wrist_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" />
+                                        <!--joint name="left_wrist_lift_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.2944 0" /-->
                                         <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v1" />
                                         <body name="left_end_roll_link" pos="0 0.070147 -6.25e-05" quat="-2.59734e-06 2.59735e-06 0.707108 -0.707105">
                                             <inertial pos="0.00526386 2.70692e-05 -0.0641638" quat="0.99991 0.000246685 0.0133803 0.00035395" mass="0.65711" diaginertia="0.00578835 0.00530224 0.0034223" />
-                                            <joint name="left_wrist_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />
+                                            <!--joint name="left_wrist_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" /-->
                                             <geom type="mesh" rgba="1 1 1 1" mesh="hand_base_link" />
                                             <body name="left_gripper_link" pos="0 0 -0.1" quat="0.535369 0.498747 0.498747 -0.464631">
                                                 <inertial pos="-7.00549e-05 2.51272e-05 -0.0523671" quat="1 5.54202e-05 -0.000544908 -0.000762021" mass="0.00471098" diaginertia="0.000916889 0.000877269 0.000293332" />
@@ -216,12 +216,12 @@
         <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_lift_joint" />
         <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_roll_joint" />
 
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_base_roll_joint" />
+        <!--motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_base_roll_joint" />
         <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_shoulder_lift_joint" />
         <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_shoulder_roll_joint" />
         <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_elbow_lift_joint" />
         <motor ctrlrange="-20.0 20.0" gear="1.0" joint="left_elbow_roll_joint" />
         <motor ctrlrange="-10.0 10.0" gear="1.0" joint="left_wrist_lift_joint" />
-        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="left_wrist_roll_joint" />
+        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="left_wrist_roll_joint" /-->
   </actuator>
 </mujoco>

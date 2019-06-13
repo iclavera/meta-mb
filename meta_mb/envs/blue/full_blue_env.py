@@ -13,7 +13,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         self.goal_left = np.zeros((3,))
         self.goal_right = np.zeros((3,))
 
-        RandomEnv.__init__(self, 5, xml_file, 2)
+        RandomEnv.__init__(self, 0, xml_file, 2)
 
     def _get_obs(self):
         return np.concatenate([
@@ -26,7 +26,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
         vec_left = self.ee_position('left') - self.goal_left,
-        vec_right = self.ee_position('right') - self.goal_right,
+        vec_right = self.ee_position('right') - self.goal_right
         reward_dist = - 0.5 * (np.linalg.norm(vec_left) + np.linalg.norm(vec_right))
         reward_ctrl = -np.square(action).sum()
         reward = reward_dist + 1.25e-4 * reward_ctrl
@@ -54,19 +54,20 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
 
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
-        print(obs.ndim)
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
-            reward_run = obs_next[:, 8]
-            reward = reward_run + reward_ctrl
+            vec_left = self.ee_position('left') - self.goal_left
+            vec_right = self.ee_position('right') - self.goal_right
+            reward_ctrl = -np.sum(np.square(act), axis=1)
+            reward_dist = -0.5 * (np.linalg.norm(vec_right))
+            reward = reward_dist + 1.25e-4 * reward_ctrl
             return np.clip(reward, -1e2, 1e2)
-        elif obs.ndim == 1:
-            assert obs.shape == obs_next.shape
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
-            reward_run = obs_next[8]
-            reward = reward_run + reward_ctrl
-            return np.clip(reward, -1e2, 1e2)
+        #elif obs.ndim == 1:
+        #    assert obs.shape == obs_next.shape
+        #    reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
+        #    reward_run = obs_next[8]
+        #    reward = reward_run + reward_ctrl
+        #    return np.clip(reward, -1e2, 1e2)
         else:
             raise NotImplementedError
 
