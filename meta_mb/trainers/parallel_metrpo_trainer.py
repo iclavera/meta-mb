@@ -1,9 +1,10 @@
 import numpy as np
+import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe, Queue
 from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
 
-TIMEOUT = 100
+TIMEOUT = 1000
 
 
 class ParallelTrainer(object):
@@ -46,9 +47,9 @@ class ParallelTrainer(object):
 
         worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy()]
         names = ["worker_data", "worker_model", "worker_policy"]
-        # command receivers and senders
+        # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]
-        # receipt receivers and senders
+        # worker sends task-completed notification and time info to scheduler
         rcp_receivers, rcp_senders = zip(*[Pipe() for _ in range(3)])
 
         self.ps = [
@@ -72,6 +73,7 @@ class ParallelTrainer(object):
         ]
 
         # central scheduler sends command and receives receipts
+        self.names = names
         self.queues = queues
         self.rcp_receivers = rcp_receivers
 
@@ -93,35 +95,39 @@ class ParallelTrainer(object):
         for p in self.ps:
             p.start()
 
-        # initialize worker_model.samples_data
+        # warm up all workers in chain
         worker_data_queue.put(('step', self.initial_random_samples), block=True, timeout=TIMEOUT)
-        # confirm all workes are wamred up
+        # confirm all workers are warmed up
         assert worker_data_rcp_receiver.recv() == 'step done'
         assert worker_data_rcp_receiver.recv() == 'synch done'
 
-        for itr in range(1): #range(self.start_itr, self.n_itr):
-
-            print("\n--------------------starting iteration %s-----------------" % itr)
-
+        time_total = time.time()
+        # put tasks onto queues
+        for itr in range(self.start_itr, self.n_itr):
             worker_data_queue.put(('step', None), block=True, timeout=TIMEOUT)
             worker_model_queue.put(('step', None), block=True, timeout=TIMEOUT)
 
-            ''' --------------- MAML steps --------------- '''
-
             for step in range(steps_per_iter[itr]):
-
-                print("\n--------------------starting step %s-----------------" % step)
-
                 worker_policy_queue.put(('step', None), block=True, timeout=TIMEOUT)
 
-        for queue in self.queues:
-            queue.put(('close', None))
-            queue.close()
+        # collect timing info
+        summary = {}
+        for name, rcp_receiver in zip(self.names, self.rcp_receivers):
+            tasks = []
+            while True:
+                rcp = rcp_receiver.recv()
+                tasks.append(rcp)
+                if rcp == 'worker exists':
+                    info = rcp_receiver.recv()
+                    break
+            print("\n-------------------------------------\n")
+            print(name)
+            print(tasks)
+            print(info)
+            summary[name] = (tasks, info)
 
-        print("closed queues")
+        time_total = time.time() - time_total
 
-        for rcp_receiver in self.rcp_receivers:
-            while rcp_receiver.recv() != 'worker exists':
-                pass
+        print(summary)
 
-        logger.log("Training finished")
+        logger.log("Training finished with total time %d" % time_total)
