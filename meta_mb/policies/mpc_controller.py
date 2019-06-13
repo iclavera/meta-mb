@@ -19,6 +19,7 @@ class MPCController(Serializable):
             alpha=0.1,
             num_particles=20,
     ):
+        Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
         self.reward_model = reward_model
         self.discount = discount
@@ -38,9 +39,6 @@ class MPCController(Serializable):
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
-
-        Serializable.quick_init(self, locals())
-        super(MPCController, self).__init__(env=env)
 
     @property
     def vectorized(self):
@@ -140,3 +138,11 @@ class MPCController(Serializable):
 
     def log_diagnostics(*args):
         pass
+
+    def __getstate__(self):
+        state = dict()
+        state['init_args'] = Serializable.__getstate__(self)
+        return state
+
+    def __setstate__(self, state):
+        Serializable.__setstate__(self, state['init_args'])
