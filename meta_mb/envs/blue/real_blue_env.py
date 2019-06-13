@@ -10,7 +10,7 @@ from blue_interface.blue_interface import BlueInterface
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='left', ip='127.0.0.1', port=9090):
         self.goal = np.ones((3,))
-        max_torques = np.array([10, 10, 8, 6, 6]) #, 4, 4]) # Note: Just using the first 5 joints
+        max_torques = np.array([10, 10, 8, 6, 6, 4, 4]) # Note: Just using the first 5 joints
         self.frame_skip = 1
         self.dt = 0.2
         super(BlueReacherEnv, self).__init__(side, ip, port)
@@ -69,13 +69,13 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
     def _get_obs(self):
         return np.concatenate([
-            self.get_joint_positions(),
+            np.append(self.get_joint_positions(), self.goal),
             self.get_joint_velocities(),
             self.tip_position,
             self.vec_gripper_to_goal,
             ]).reshape(-1)
 
-    @property
+i    @property
     def tip_position(self):
         pose = self.get_cartesian_pose()
         return pose['position']
