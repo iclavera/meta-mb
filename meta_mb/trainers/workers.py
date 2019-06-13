@@ -1,4 +1,5 @@
 import time, pickle
+import numpy as np
 from meta_mb.logger import logger
 import multiprocessing
 
@@ -9,12 +10,14 @@ class Worker(object):
     """
     Abstract class for worker instantiations. 
     """
-    def __init__(self, warm_next):
+    def __init__(self, warm_next, verbose=False):
         """
         Args:
             warm_next (bool): whether to synch and step next worker at the very start
         """
         self.warm_next = warm_next
+        self.verbose = verbose
+        self.info = []
 
     def __call__(
             self,
@@ -26,12 +29,14 @@ class Worker(object):
             queue,
             queue_next,
             rcp_sender,
+            start_itr,
             config=None,
     ):
         """
         Args:
-            remote (multiprocessing.Connection):
-            queue_next (multiprocessing.Connection):
+            queue (multiprocessing.Queue): queue for current worker
+            queue_next (multiprocessing.Queue): queue for next worker
+            rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
         import tensorflow as tf
 
@@ -51,28 +56,24 @@ class Worker(object):
             )
 
             _init_vars()
+            self.itr_counter = start_itr - 1
 
             while True:
                 cmd, args = queue.get()
 
                 if cmd == 'step':
+                    cmd = 'step {}'.format(self.itr_counter)
+                    self.itr_counter += 1
                     result_pickle = self.step(args)
                     queue_next.put(('synch', result_pickle), block=True, timeout=TIMEOUT)
                     if self.warm_next:
                         queue_next.put(('step', None))
                         self.warm_next = False
 
+                    logger.dumpkvs()
+
                 elif cmd == 'synch':
                     self.synch(args)
-
-                elif cmd == 'start_chain':
-                    result_pickle = self.step(args)
-                    queue_next.put(('synch_and_chain', result_pickle), block=True, timeout=TIMEOUT)
-
-                elif cmd == 'synch_and_chain':
-                    self.synch(args)
-                    result_pickle = self.step(args)
-                    queue_next.put(('synch_and_chain', result_pickle), block=True, timeout=TIMEOUT)
 
                 elif cmd == 'close':
                     break
@@ -82,10 +83,11 @@ class Worker(object):
 
                 # Notify trainer that one more task is completed
                 rcp_sender.send('{} done'.format(cmd))
-                print("\n-----------------" + multiprocessing.current_process().name + " finishing " + cmd)
+                logger.log('============== {} completed {}'.format(multiprocessing.current_process().name, cmd))
         sess.close()
-        print("\n---------------{} hitting exit".format(multiprocessing.current_process().name))
+
         rcp_sender.send('worker exists')
+        rcp_sender.send(self.info)
 
     def construct_from_feed_dict(
             self,
@@ -97,7 +99,7 @@ class Worker(object):
     ):
         raise NotImplementedError
 
-    def step(self, args=None):
+    def step(self, args):
         raise NotImplementedError
 
     def synch(self, args):
@@ -129,33 +131,45 @@ class WorkerData(Worker):
 
         self.env = env
         self.env_sampler = Sampler(env=env, policy=policy, **feed_dict['env_sampler'])
-        self.dynamics_sample_processor = ModelSampleProcessor(baseline=baseline, **feed_dict['dynamics_sample_processor'])
+        self.dynamics_sample_processor = ModelSampleProcessor(
+            baseline=baseline,
+            **feed_dict['dynamics_sample_processor']
+        )
 
     def step(self, args=None):
         """
         When args is not None, args = initial_random_samples (bool)
         """
 
-        time_env_sampling_start = time.time()
-
-        logger.log("Obtaining samples from the environment using the policy...")
+        if self.verbose:
+            logger.log("Obtaining samples from the environment using the policy...")
+        time_env_sampling = time.time()
         random = args if args is not None else False
         env_paths = self.env_sampler.obtain_samples(log=True, random=random, log_prefix='EnvSampler-')
+        time_env_sampling = time.time() - time_env_sampling
 
-#        logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
-        logger.log("Processing environment samples...")
-
+        if self.verbose:
+            logger.log("Processing environment samples...")
         # first processing just for logging purposes
         time_env_samp_proc = time.time()
-        samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
-                                                                      log_prefix='EnvTrajs-')
-        self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
-#        logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
-        
+        samples_data = self.dynamics_sample_processor.process_samples(
+            env_paths,
+            log=True,
+            log_prefix='{} EnvTrajs-'.format(self.itr_counter)
+        )
+        self.env.log_diagnostics(env_paths, prefix='{} EnvTrajs-'.format(self.itr_counter))
+        time_env_samp_proc = time.time() - time_env_samp_proc
+
+        # info = [time_env_sampling, time_env_samp_proc]
+        self.info.append((time_env_sampling, time_env_samp_proc))
+
         return pickle.dumps(samples_data)
 
     def synch(self, policy_pickle):
+        time_synch = time.time()
         self.env_sampler.policy = pickle.loads(policy_pickle)
+        time_synch = time.time() - time_synch
+        self.info.append(('synch', time_synch))
             
 
 class WorkerModel(Worker):
@@ -179,17 +193,20 @@ class WorkerModel(Worker):
 
         assert self.samples_data is not None
 
-        time_fit_start = time.time()
+        time_model_fit = time.time()
 
         ''' --------------- fit dynamics model --------------- '''
 
-        logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
+        if self.verbose:
+            logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
         self.dynamics_model.fit(self.samples_data['observations'],
                                 self.samples_data['actions'],
                                 self.samples_data['next_observations'],
                                 epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
-#        logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
+        time_model_fit = time.time() - time_model_fit
+        # info = [time_model_fit]
+        self.info.append(time_model_fit)
 
         return pickle.dumps(self.dynamics_model)
 
@@ -229,45 +246,61 @@ class WorkerPolicy(Worker):
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
-    def step(self, args=None):
+    def step(self, args):
         """
-        Uses self.model_sampler which is asynchrounously updated by worker_model.
+        Uses self.model_sampler which is asynchronously updated by worker_model.
         Outcome: policy is updated by PPO on one fictitious trajectory. 
         """
 
-        itr_start_time = time.time()
+        ''' --------------- MAML steps --------------- '''
 
-        """ -------------------- Sampling --------------------------"""
+        time_maml = np.zeros(4)
+        if args is None:
+            args = 1
 
-        logger.log("Obtaining samples from the model...")
-        time_env_sampling_start = time.time()
-        paths = self.model_sampler.obtain_samples(log=True, log_prefix='train-')
-        sampling_time = time.time() - time_env_sampling_start
+        for step in range(args):
 
-        """ ----------------- Processing Samples ---------------------"""
+            time_step = time.time()
 
-        logger.log("Processing samples from the model...")
-        time_proc_samples_start = time.time()
-        samples_data = self.model_sample_processor.process_samples(paths, log='all', log_prefix='train-')
-        proc_samples_time = time.time() - time_proc_samples_start
+            """ -------------------- Sampling --------------------------"""
 
-        if type(paths) is list:
-            self.log_diagnostics(paths, prefix='train-')
-        else:
-            self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+            if self.verbose:
+                logger.log("Obtaining samples from the model...")
+            time_sampling = time.time()
+            paths = self.model_sampler.obtain_samples(log=self.verbose, log_prefix='{} train-'.format(self.itr_counter))
+            time_sampling = time.time() - time_sampling
 
-        """ ------------------ Policy Update ---------------------"""
+            """ ----------------- Processing Samples ---------------------"""
 
-        logger.log("Optimizing policy...")
-        # This needs to take all samples_data so that it can construct graph for meta-optimization.
-        time_optimization_step_start = time.time()
-        self.algo.optimize_policy(samples_data)
-        optimization_time = time.time() - time_optimization_step_start
+            if self.verbose:
+                logger.log("Processing samples from the model...")
+            time_sample_proc = time.time()
+            samples_data = self.model_sample_processor.process_samples(
+                paths,
+                log='all',
+                log_prefix='{} train-'.format(self.itr_counter)
+            )
+            time_sample_proc = time.time() - time_sample_proc
 
-#        times_dyn_sampling.append(sampling_time)
-#        times_dyn_sample_processing.append(proc_samples_time)
-#        times_optimization.append(optimization_time)
-#        times_step.append(time.time() - itr_start_time)
+            if type(paths) is list:
+                self.log_diagnostics(paths, prefix='{} train-'.format(self.itr_counter))
+            else:
+                self.log_diagnostics(sum(paths.values(), []), prefix='{} train-'.format(self.itr_counter))
+
+            """ ------------------ Policy Update ---------------------"""
+
+            if self.verbose:
+                logger.log("Optimizing policy...")
+            # This needs to take all samples_data so that it can construct graph for meta-optimization.
+            time_algo_opt = time.time()
+            self.algo.optimize_policy(samples_data)
+            time_algo_opt = time.time() - time_algo_opt
+
+            time_step = time.time() - time_step
+            time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
+
+        # info = [avg_time_step, avg_time_sampling, avg_time_sample_proc, avg_algo_opt]
+        self.info.append(tuple(time_maml/args))
 
         return pickle.dumps(self.model_sampler.policy)
 
@@ -275,7 +308,6 @@ class WorkerPolicy(Worker):
         dynamics_model = pickle.loads(dynamics_model_pickle)
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
-        assert dynamics_model.normalization is not None
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
