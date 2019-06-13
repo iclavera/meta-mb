@@ -123,13 +123,12 @@ class ParallelTrainer(object):
                 rcp = rcp_receiver.recv()
                 tasks.append(rcp)
                 if rcp == 'worker exists':
-                    info = rcp_receiver.recv()
+                    # info = rcp_receiver.recv()
                     break
             print("\n-------------------------------------\n")
             print(name)
             print(tasks)
-            print(info)
-            summary[name] = (tasks, info)
+            summary[name] = (tasks)
 
         logger.logkv('time_total', time.time() - time_total)
         logger.dumpkvs()
