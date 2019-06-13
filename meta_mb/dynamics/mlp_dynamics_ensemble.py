@@ -247,9 +247,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 list(zip(self.act_batches_dataset_ph, act_train)) +
                 list(zip(self.delta_batches_dataset_ph, delta_train))
             )
-            print("\n------------before session runs in mlp_dynamics_ensemble.py")
             sess.run(self.iterator.initializer, feed_dict=feed_dict)
-            print("\n------------after session runs in mlp_dynamics_ensemble.py, model.fit")
 
             # preparations for recording training stats
             epoch_start_time = time.time()
@@ -264,10 +262,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
 
                     # run train op
+                    print("\n-----------before running train op------")
                     batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
                                                    feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
                                                               self.act_model_batches_stack_ph: act_batch_stack,
                                                               self.delta_model_batches_stack_ph: delta_batch_stack})
+                    print("\n-----------after running train op------")
 
                     batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                     batch_losses.append(batch_loss)

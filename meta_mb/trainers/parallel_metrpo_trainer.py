@@ -86,10 +86,8 @@ class ParallelTrainer(object):
 
         # initialize worker_model.samples_data
         worker_data_sender.send(('step', self.initial_random_samples))
-        time.sleep(5)
-        print("\n---------------initialization finishes")
 
-        for itr in range(1): #range(self.start_itr, self.n_itr):
+        for itr in range(0): #range(self.start_itr, self.n_itr):
 
             print("\n--------------------starting iteration %s-----------------" % itr)
             
@@ -103,12 +101,13 @@ class ParallelTrainer(object):
 
             worker_policy_sender.send(('step', None))
 
-        time.sleep(10)
+        time.sleep(500)
 
         for sender in self.senders:
             sender.send(('close', None))
 
         for p in self.ps:
+            p.terminate()
             p.join()
 
         logger.log("Training finished")

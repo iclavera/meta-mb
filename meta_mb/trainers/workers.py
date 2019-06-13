@@ -8,7 +8,7 @@ class Worker(object):
     Abstract class for worker instantiations. 
     """
     def __init__(self):
-        pass
+        self.initialized = False
 
     def __call__(
             self,
@@ -44,9 +44,21 @@ class Worker(object):
                 if cmd == 'step':
                     result_pickle = self.step(args)
                     synch_notifier.send(('synch', result_pickle))
+                    if not self.initialized:
+                        synch_notifier.send(('step', None))
+                        self.initialized = True
 
                 elif cmd == 'synch':
                     self.synch(args)
+
+                elif cmd == 'start_chain':
+                    result_pickle = self.step(args)
+                    synch_notifier.send(('synch_and_chain', result_pickle))
+
+                elif cmd == 'synch_and_chain':
+                    self.synch(args)
+                    result_pickle = self.step(args)
+                    synch_notifier.sned(('synch_and_chain', result_pickle))
 
                 elif cmd == 'close':
                     break
