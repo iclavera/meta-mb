@@ -39,13 +39,16 @@ class ParallelTrainer(object):
             sample_from_buffer=False,
             config=None,
             ):
-        self.n_itr = n_itr
-        self.start_itr = start_itr
-        self.steps_per_iter = steps_per_iter
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
-        worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy()]
+        if type(steps_per_iter) is tuple:
+            step_per_iter = int((steps_per_iter[1] + steps_per_iter[0])/2)
+        else:
+            step_per_iter = steps_per_iter
+        assert step_per_iter > 0
+
+        worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy(step_per_iter)]
         names = ["worker_data", "worker_model", "worker_policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]
@@ -66,10 +69,11 @@ class ParallelTrainer(object):
                     queue_next,
                     rcp_sender,
                     start_itr,
+                    n_itr,
                     config,
                 )
-            ) for (worker_instance, name, feed_dict, queue, rcp_sender, queue_next) in zip(
-                worker_instances, names, feed_dicts, queues, rcp_senders, queues[1:] + queues[:1]
+            ) for (worker_instance, name, feed_dict, queue, queue_next, rcp_sender) in zip(
+                worker_instances, names, feed_dicts, queues, queues[1:] + queues[:1], rcp_senders,
             )
         ]
 
@@ -82,12 +86,6 @@ class ParallelTrainer(object):
         """
         Trains policy on env using algo
         """
-        if type(self.steps_per_iter) is tuple:
-            steps_per_iter = np.linspace(self.steps_per_iter[0],
-                                         self.steps_per_iter[1], self.n_itr).astype(np.int)
-        else:
-            steps_per_iter = [self.steps_per_iter] * self.n_itr
-
         worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
         worker_data_rcp_receiver, worker_model_rcp_receiver, worker_policy_rcp_receiver = self.rcp_receivers
 
@@ -96,23 +94,24 @@ class ParallelTrainer(object):
         for p in self.ps:
             p.start()
 
-        # warm up all workers in chain
-        worker_data_queue.put(('step', self.initial_random_samples), block=True, timeout=TIMEOUT)
-        # confirm all workers are warmed up
-        assert worker_data_rcp_receiver.recv() == 'step {} done'.format(self.start_itr-1)
-        assert worker_data_rcp_receiver.recv() == 'synch done'
-
-        time_total = time.time()
-        # put tasks onto queues
-        for itr in range(self.start_itr, self.n_itr):
-            worker_data_queue.put(('step', None), block=True, timeout=TIMEOUT)
-            worker_model_queue.put(('step', None), block=True, timeout=TIMEOUT)
-            worker_policy_queue.put(('step', steps_per_iter[itr]), block=True, timeout=TIMEOUT)
-            assert worker_data_rcp_receiver.recv() == 'step {} done'.format(itr)
-            assert worker_data_rcp_receiver.recv() == 'synch done'
+        # warm up all workers
+        worker_data_queue.put(('warm_up', self.initial_random_samples))
+        rcp, args = worker_data_rcp_receiver.recv()
+        assert rcp == 'warm_up done'
+        worker_model_queue.put(('warm_up', args))
+        rcp, args = worker_model_rcp_receiver.recv()
+        assert rcp == 'warm_up done'
+        worker_policy_queue.put(('warm_up', args))
+        rcp, args = worker_policy_rcp_receiver.recv()
+        assert rcp == 'warm_up done'
 
         for queue in self.queues:
-            queue.put(('close', None))
+            assert queue.empty()
+
+        time_total = time.time()
+
+        for queue in self.queues:
+            queue.put(('loop', None))
 
         # collect timing info
         logger.log("Logging summary...")
@@ -123,7 +122,6 @@ class ParallelTrainer(object):
                 rcp = rcp_receiver.recv()
                 tasks.append(rcp)
                 if rcp == 'worker exists':
-                    # info = rcp_receiver.recv()
                     break
             print("\n-------------------------------------\n")
             print(name)

@@ -96,7 +96,7 @@ class PPO(Algo, Serializable):
             next_hidden_var=next_hidden_var
         )
 
-    def optimize_policy(self, samples_data, log=True):
+    def optimize_policy(self, samples_data, log=True, verbose=False):
         """
         Performs MAML outer step
 
@@ -110,10 +110,10 @@ class PPO(Algo, Serializable):
         """
         input_dict = self._extract_input_dict(samples_data, self._optimization_keys, prefix='train')
 
-        if log: logger.log("Optimizing")
+        if verbose: logger.log("Optimizing")
         loss_before = self.optimizer.optimize(input_val_dict=input_dict)
 
-        if log: logger.log("Computing statistics")
+        if verbose: logger.log("Computing statistics")
         loss_after = self.optimizer.loss(input_val_dict=input_dict)
 
         if log:

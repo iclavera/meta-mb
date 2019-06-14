@@ -8,7 +8,6 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
-import multiprocessing
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """

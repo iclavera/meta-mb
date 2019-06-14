@@ -2,22 +2,15 @@ import time, pickle
 import numpy as np
 from meta_mb.logger import logger
 import multiprocessing
-
-TIMEOUT = 100
+from queue import Empty
 
 
 class Worker(object):
     """
     Abstract class for worker instantiations. 
     """
-    def __init__(self, warm_next, verbose=False):
-        """
-        Args:
-            warm_next (bool): whether to synch and step next worker at the very start
-        """
-        self.warm_next = warm_next
+    def __init__(self, verbose=False):
         self.verbose = verbose
-        self.info = []
 
     def __call__(
             self,
@@ -30,6 +23,7 @@ class Worker(object):
             queue_next,
             rcp_sender,
             start_itr,
+            n_itr,
             config=None,
     ):
         """
@@ -55,38 +49,54 @@ class Worker(object):
                 feed_dict,
             )
 
+            # warm up
             _init_vars()
             self.itr_counter = start_itr - 1
+            cmd, args = queue.get(block=True)
+            assert cmd == 'warm_up'
+            print("Warming up...")
+            result_pickle = self.warm_up(args)
+            rcp_sender.send(('warm_up done', result_pickle))
+            print("{} warm_up done".format(multiprocessing.current_process().name))
 
-            while True:
-                cmd, args = queue.get()
+            cmd, args = queue.get(block=True)
+            # if case only happens in worker_data
+            if cmd != 'loop':
+                assert cmd == 'synch'
+                self.synch(args)
+                cmd, _ = queue.get(block=True)
+            assert cmd == 'loop'
+            rcp_sender.send(('starting loop'))
 
-                if cmd == 'step':
+            while self.itr_counter < n_itr: # or some other predicate
+                logger.logkv('Worker', multiprocessing.current_process().name)
+
+                try:
+                    cmd, args = queue.get_nowait()
+
+                    if cmd == 'synch':
+                        cmd = 'synch and step {}'.format(self.itr_counter)
+                        self.synch(args)
+                        logger.logkv('SynchBeforeStep', True)
+                    else:
+                        raise NotImplementedError
+
+                except Empty:
                     cmd = 'step {}'.format(self.itr_counter)
-                    self.itr_counter += 1
-                    result_pickle = self.step(args)
-                    queue_next.put(('synch', result_pickle), block=True, timeout=TIMEOUT)
-                    if self.warm_next:
-                        queue_next.put(('step', None))
-                        self.warm_next = False
+                    logger.logkv('SynchBeforeStep', False)
 
-                    logger.dumpkvs()
-
-                elif cmd == 'synch':
-                    self.synch(args)
-
-                elif cmd == 'close':
-                    break
-
-                else:
-                    raise NotImplementedError
+                result_pickle = self.step()
+                queue_next.put(('synch', result_pickle))
 
                 # Notify trainer that one more task is completed
                 rcp_sender.send('{} done'.format(cmd))
+                logger.log("\n========================== {} completes {} ===================".format(
+                    multiprocessing.current_process().name, cmd
+                ))
+
         sess.close()
 
         rcp_sender.send('worker exists')
-        rcp_sender.send(self.info)
 
     def construct_from_feed_dict(
             self,
@@ -98,7 +108,10 @@ class Worker(object):
     ):
         raise NotImplementedError
 
-    def step(self, args):
+    def warm_up(self, args):
+        raise NotImplementedError
+
+    def step(self):
         raise NotImplementedError
 
     def synch(self, args):
@@ -106,8 +119,8 @@ class Worker(object):
 
 
 class WorkerData(Worker):
-    def __init__(self, warm_next=True):
-        super().__init__(warm_next)
+    def __init__(self):
+        super().__init__()
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
@@ -135,7 +148,10 @@ class WorkerData(Worker):
             **feed_dict['dynamics_sample_processor']
         )
 
-    def step(self, args=None):
+    def warm_up(self, initial_random_samples):
+        return self.step(initial_random_samples)
+
+    def step(self, random=False):
         """
         When args is not None, args = initial_random_samples (bool)
         """
@@ -143,11 +159,12 @@ class WorkerData(Worker):
         if self.verbose:
             logger.log("Obtaining samples from the environment using the policy...")
         time_env_sampling = time.time()
-        random = args if args is not None else False
         env_paths = self.env_sampler.obtain_samples(
             log=True,
             random=random,
-            log_prefix='{} EnvSampler-'.format(self.itr_counter))
+            log_prefix='{} EnvSampler-'.format(self.itr_counter),
+            verbose=self.verbose,
+        )
         time_env_sampling = time.time() - time_env_sampling
 
         if self.verbose:
@@ -157,7 +174,7 @@ class WorkerData(Worker):
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
-            log_prefix='{} EnvTrajs-'.format(self.itr_counter)
+            log_prefix='{} EnvTrajs-'.format(self.itr_counter),
         )
         self.env.log_diagnostics(env_paths, prefix='{} EnvTrajs-'.format(self.itr_counter))
         time_env_samp_proc = time.time() - time_env_samp_proc
@@ -165,6 +182,10 @@ class WorkerData(Worker):
         # info = [time_env_sampling, time_env_samp_proc]
         logger.logkv("{} TimeEnvSampling".format(self.itr_counter), time_env_sampling)
         logger.logkv("{} TimeEnvSampProc".format(self.itr_counter), time_env_samp_proc)
+        logger.dumpkvs()
+
+        self.itr_counter += 1
+        time.sleep(10)
 
         return pickle.dumps(samples_data)
 
@@ -189,7 +210,11 @@ class WorkerModel(Worker):
     ):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 
-    def step(self, args=None):
+    def warm_up(self, args):
+        self.synch(args)
+        return self.step()
+
+    def step(self):
 
         assert self.samples_data is not None
 
@@ -208,6 +233,8 @@ class WorkerModel(Worker):
 
         # info = [time_model_fit]
         logger.logkv("{} TimeModelFit".format(self.itr_counter), time_model_fit)
+        logger.dumpkvs()
+        self.itr_counter += 1
 
         return pickle.dumps(self.dynamics_model)
 
@@ -216,8 +243,9 @@ class WorkerModel(Worker):
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, warm_next=False):
+    def __init__(self, step_per_iter, warm_next=False):
         super().__init__(warm_next)
+        self.step_per_iter = step_per_iter
         self.policy = None
         self.baseline = None
         self.model_sampler = None
@@ -247,7 +275,11 @@ class WorkerPolicy(Worker):
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
-    def step(self, args):
+    def warm_up(self, args):
+        self.synch(args)
+        return self.step()
+
+    def step(self):
         """
         Uses self.model_sampler which is asynchronously updated by worker_model.
         Outcome: policy is updated by PPO on one fictitious trajectory. 
@@ -256,10 +288,8 @@ class WorkerPolicy(Worker):
         ''' --------------- MAML steps --------------- '''
 
         time_maml = np.zeros(4)
-        if args is None:
-            args = 1
 
-        for step in range(args):
+        for step in range(self.step_per_iter):
 
             time_step = time.time()
 
@@ -268,7 +298,7 @@ class WorkerPolicy(Worker):
             if self.verbose:
                 logger.log("Obtaining samples from the model...")
             time_sampling = time.time()
-            paths = self.model_sampler.obtain_samples(log=self.verbose, log_prefix='{} train-'.format(self.itr_counter))
+            paths = self.model_sampler.obtain_samples(log=False, log_prefix='{} train-'.format(self.itr_counter))
             time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
@@ -294,16 +324,17 @@ class WorkerPolicy(Worker):
                 logger.log("Optimizing policy...")
             # This needs to take all samples_data so that it can construct graph for meta-optimization.
             time_algo_opt = time.time()
-            self.algo.optimize_policy(samples_data)
+            self.algo.optimize_policy(samples_data, log=True, verbose=self.verbose)
             time_algo_opt = time.time() - time_algo_opt
 
             time_step = time.time() - time_step
             time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
 
         # info = [avg_time_step, avg_time_sampling, avg_time_sample_proc, avg_algo_opt]
-        for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'],
-                            time_maml/args):
-            logger.logkv('{} {}'.format(self.itr_counter, key), val)
+        for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'], time_maml):
+            logger.logkv('{} {}'.format(self.itr_counter, key), val/self.step_per_iter)
+        logger.dumpkvs()
+        self.itr_counter += 1
 
         return pickle.dumps(self.model_sampler.policy)
 

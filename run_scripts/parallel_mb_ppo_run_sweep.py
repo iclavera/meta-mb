@@ -147,7 +147,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1],
+        'seed': [1, 2, 3],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
@@ -155,7 +155,7 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [51],
-        'max_path_length': [200,],
+        'max_path_length': [400,],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],
-        'dynamics_learning_rate': [1e-3],
+        'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
