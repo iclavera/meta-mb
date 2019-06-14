@@ -40,7 +40,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         assert frame_skip > 0
         for _ in range(frame_skip):
             time.sleep(self.dt)
-            self.set_joint_torques(np.concatenate([action,np.zeros((2,))]))
+            self.set_joint_torques(action)
 
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
@@ -75,7 +75,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             self.vec_gripper_to_goal,
             ]).reshape(-1)
 
-i    @property
+    @property
     def tip_position(self):
         pose = self.get_cartesian_pose()
         return pose['position']
