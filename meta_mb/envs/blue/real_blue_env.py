@@ -9,10 +9,10 @@ from blue_interface.blue_interface import BlueInterface
 
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='left', ip='127.0.0.1', port=9090):
-        self.goal = np.ones((3,))
+        self.goal = np.zeros((3,))
         max_torques = np.array([10, 10, 8, 6, 6, 4, 4]) # Note: Just using the first 5 joints
         self.frame_skip = 1
-        self.dt = 0.2
+        self.dt = 0.02
         super(BlueReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
         self._prev_qpos = self.init_qpos.copy()
@@ -58,18 +58,17 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             raise NotImplementedError
 
     def reset(self):
-        self.set_joint_positions(self.init_qpos + np.random.uniform(low=-0.05, high=0.05, size=self.init_qpos.shape),
-                                 duration=5.)
+        self.set_joint_positions(np.zeros((7,)),duration=5.)
         while True:
             # self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([-.3, .3, .5]) # Note: this is with fixed goal
+            self.goal = np.array([.5, -.45, .4]) # Note: this is with fixed goal
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
 
     def _get_obs(self):
         return np.concatenate([
-            np.concatenate((self.get_joint_positions(),self.goal)),
+            np.concatenate((self.get_joint_positions(), self.goal)),
             self.get_joint_velocities(),
             self.tip_position,
             self.vec_gripper_to_goal,
