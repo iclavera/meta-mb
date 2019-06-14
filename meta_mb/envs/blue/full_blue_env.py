@@ -10,9 +10,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
-        self.goal_left = np.zeros((3,))
         self.goal_right = np.zeros((3,))
-
         max_torques = np.array([10, 10, 8, 6, 6, 4, 4])
 
         self._low = -max_torques
@@ -24,12 +22,12 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
+            self.ee_position('right'),
             self.ee_position('right') - self.goal_right,
         ])
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
-        #vec_left = self.ee_position('left') - self.goal_left,
         vec_right = self.ee_position('right') - self.goal_right
         reward_dist = -np.linalg.norm(vec_right)
         reward_ctrl = -np.square(action/(2* self._high)).sum()
@@ -42,9 +40,8 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
-        self.goal_left = np.random.uniform(low=[0.25, 0.25, 0.25], high=[0.75, 0.75, 0.5])
         self.goal_right = np.random.uniform(low=[0.25, -0.75, 0.25], high=[0.75, -0.25, 0.5])
-        qpos[-6:-3] = self.goal_left
+        qpos[-6:-3] = 0
         qpos[-3:] = self.goal_right
         qvel[-6:] = 0
 
