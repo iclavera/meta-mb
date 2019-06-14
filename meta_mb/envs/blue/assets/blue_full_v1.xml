@@ -197,7 +197,7 @@
             <geom name="goal_left" pos="0 0 0" type="sphere" size="0.05" conaffinity="0" contype="0" rgba="1 0 0 1"/>
             <joint armature="0" axis="1 0 0" damping="0" limited="false" name="goal_left_x" pos="0 0 0" stiffness="0" type="slide"/>
             <joint armature="0" axis="0 1 0" damping="0" limited="false" name="goal_left_y" pos="0 0 0" stiffness="0" type="slide"/>
-            <joint armature="0" axis="0 0 1" damping="0" limited="false" name="goal_left_z" pos="0 0 0" stiffness="0" type="slide"/-->
+            <joint armature="0" axis="0 0 1" damping="0" limited="false" name="goal_left_z" pos="0 0 0" stiffness="0" type="slide"/>
         </body>-->
 
         <body name="goal_right" pos="0 0 0">
