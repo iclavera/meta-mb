@@ -154,8 +154,8 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
-        'max_path_length': [400,],
+        'n_itr': [60, 100],
+        'max_path_length': [400, 500],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -172,7 +172,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],
+        'dynamics_max_epochs': [40, 50],
         'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],

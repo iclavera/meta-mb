@@ -49,15 +49,14 @@ class Worker(object):
                 feed_dict,
             )
 
-            # warm up
             _init_vars()
+
+            # warm up
             self.itr_counter = start_itr - 1
             cmd, args = queue.get(block=True)
             assert cmd == 'warm_up'
-            print("Warming up...")
             result_pickle = self.warm_up(args)
             rcp_sender.send(('warm_up done', result_pickle))
-            print("{} warm_up done".format(multiprocessing.current_process().name))
 
             cmd, args = queue.get(block=True)
             # if case only happens in worker_data
@@ -66,18 +65,25 @@ class Worker(object):
                 self.synch(args)
                 cmd, _ = queue.get(block=True)
             assert cmd == 'loop'
-            rcp_sender.send(('starting loop'))
+            rcp_sender.send(('start looping'))
 
+            steps_per_synch = []
+            step_per_synch = 1
+            time_start = time.time()
             while self.itr_counter < n_itr: # or some other predicate
                 logger.logkv('Worker', multiprocessing.current_process().name)
+                step_per_synch += 1
 
                 try:
                     cmd, args = queue.get_nowait()
-
                     if cmd == 'synch':
                         cmd = 'synch and step {}'.format(self.itr_counter)
                         self.synch(args)
                         logger.logkv('SynchBeforeStep', True)
+                        steps_per_synch.append(step_per_synch)
+                        step_per_synch = 0
+                    elif cmd == 'close':
+                        break
                     else:
                         raise NotImplementedError
 
@@ -86,17 +92,29 @@ class Worker(object):
                     logger.logkv('SynchBeforeStep', False)
 
                 result_pickle = self.step()
+
+                # Notify next worker
                 queue_next.put(('synch', result_pickle))
 
-                # Notify trainer that one more task is completed
+                # Notify scheduler
                 rcp_sender.send('{} done'.format(cmd))
+
+                # Logging
                 logger.log("\n========================== {} completes {} ===================".format(
                     multiprocessing.current_process().name, cmd
                 ))
 
-        sess.close()
+        self.before_exit()
 
-        rcp_sender.send('worker exists')
+        sess.close()
+        rcp_sender.send('worker closed')
+        logger.logkv('TimeTotal', time.time() - time_start)
+        logger.logkv('Worker', multiprocessing.current_process().name)
+        logger.logkv('StepPerSynch', np.mean(steps_per_synch))
+        logger.dumpkvs()
+        logger.log("\n================== {} closed ===================".format(
+            multiprocessing.current_process().name
+        ))
 
     def construct_from_feed_dict(
             self,
@@ -116,6 +134,9 @@ class Worker(object):
 
     def synch(self, args):
         raise NotImplementedError
+
+    def before_exit(self):
+        pass
 
 
 class WorkerData(Worker):
@@ -191,6 +212,11 @@ class WorkerData(Worker):
 
     def synch(self, policy_pickle):
         self.env_sampler.policy = pickle.loads(policy_pickle)
+
+    def before_exit(self):
+        # step one more time with most updated policy to measure performance
+        # result dumped in logger
+        self.step()
 
 
 class WorkerModel(Worker):

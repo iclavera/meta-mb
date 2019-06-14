@@ -94,7 +94,9 @@ class ParallelTrainer(object):
         for p in self.ps:
             p.start()
 
-        # warm up all workers
+        ''' --------------- worker warm-up --------------- '''
+
+        logger.log('Start warming up...')
         worker_data_queue.put(('warm_up', self.initial_random_samples))
         rcp, args = worker_data_rcp_receiver.recv()
         assert rcp == 'warm_up done'
@@ -110,25 +112,28 @@ class ParallelTrainer(object):
 
         time_total = time.time()
 
+        ''' --------------- worker looping --------------- '''
+
+        logger.log('Start looping...')
         for queue in self.queues:
             queue.put(('loop', None))
 
-        # collect timing info
-        logger.log("Logging summary...")
+        ''' --------------- collect info --------------- '''
+
         summary = {}
         for name, rcp_receiver in zip(self.names, self.rcp_receivers):
             tasks = []
             while True:
                 rcp = rcp_receiver.recv()
                 tasks.append(rcp)
-                if rcp == 'worker exists':
+                if rcp == 'worker closed':
                     break
             print("\n-------------------------------------\n")
             print(name)
             print(tasks)
             summary[name] = (tasks)
 
-        logger.logkv('time_total', time.time() - time_total)
+        logger.logkv('TimeTotal', time.time() - time_total)
         logger.dumpkvs()
 
         logger.log("Training finished")
