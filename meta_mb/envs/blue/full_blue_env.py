@@ -22,7 +22,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
-            self.ee_position('right'),
+            self.sim.data.body_xpos.flat[:3],
             self.ee_position('right') - self.goal_right,
         ])
 
