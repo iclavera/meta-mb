@@ -14,7 +14,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.4xlarge'
+INSTANCE_TYPE = 'c4.xlarge'
 EXP_NAME = 'parallel-mb-ppo'
 
 
@@ -154,8 +154,8 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [60, 100],
-        'max_path_length': [400, 500],
+        'n_itr': [60],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -164,15 +164,15 @@ if __name__ == '__main__':
         'steps_per_iter': [(10, 10), (50, 50)],
 
         # Real Env Sampling
-        'num_rollouts': [5],
-        'n_parallel': [5],
+        'num_rollouts': [20],
+        'n_parallel': [1],
 
         # Dynamics Model
         'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [40, 50],
+        'dynamics_max_epochs': [30, 50],
         'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],

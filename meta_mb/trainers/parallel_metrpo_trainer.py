@@ -1,7 +1,7 @@
-import numpy as np
+from collections import defaultdict
 import time
 from meta_mb.logger import logger
-from multiprocessing import Process, Pipe, Queue
+from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
 
 TIMEOUT = 1000
@@ -41,6 +41,7 @@ class ParallelTrainer(object):
             ):
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
+        self.summary = defaultdict(list)
 
         if type(steps_per_iter) is tuple:
             step_per_iter = int((steps_per_iter[1] + steps_per_iter[0])/2)
@@ -53,7 +54,9 @@ class ParallelTrainer(object):
         # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]
         # worker sends task-completed notification and time info to scheduler
-        rcp_receivers, rcp_senders = zip(*[Pipe() for _ in range(3)])
+        worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
+        # stop condition
+        stop_cond = Event()
 
         self.ps = [
             Process(
@@ -67,27 +70,28 @@ class ParallelTrainer(object):
                     feed_dict,
                     queue,
                     queue_next,
-                    rcp_sender,
+                    worker_remote,
                     start_itr,
                     n_itr,
+                    stop_cond,
                     config,
                 )
-            ) for (worker_instance, name, feed_dict, queue, queue_next, rcp_sender) in zip(
-                worker_instances, names, feed_dicts, queues, queues[1:] + queues[:1], rcp_senders,
+            ) for (worker_instance, name, feed_dict, queue, queue_next, worker_remote) in zip(
+                worker_instances, names, feed_dicts, queues, queues[1:] + queues[:1], worker_remotes,
             )
         ]
 
         # central scheduler sends command and receives receipts
         self.names = names
         self.queues = queues
-        self.rcp_receivers = rcp_receivers
+        self.remotes = remotes
 
     def train(self):
         """
         Trains policy on env using algo
         """
         worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
-        worker_data_rcp_receiver, worker_model_rcp_receiver, worker_policy_rcp_receiver = self.rcp_receivers
+        worker_data_remote, worker_model_remote, worker_policy_remote = self.remotes
 
         print("\ntrainer start training...")
 
@@ -96,45 +100,49 @@ class ParallelTrainer(object):
 
         ''' --------------- worker warm-up --------------- '''
 
-        logger.log('Start warming up...')
-        worker_data_queue.put(('warm_up', self.initial_random_samples))
-        rcp, args = worker_data_rcp_receiver.recv()
-        assert rcp == 'warm_up done'
-        worker_model_queue.put(('warm_up', args))
-        rcp, args = worker_model_rcp_receiver.recv()
-        assert rcp == 'warm_up done'
-        worker_policy_queue.put(('warm_up', args))
-        rcp, args = worker_policy_rcp_receiver.recv()
-        assert rcp == 'warm_up done'
+        logger.log('Prepare start...')
 
-        for queue in self.queues:
-            assert queue.empty()
+        worker_data_remote.send('prepare start')
+        worker_data_queue.put(self.initial_random_samples)
+        msg = worker_data_remote.recv()
+        assert msg == 'loop ready'
+
+        worker_model_remote.send('prepare start')
+        msg = worker_model_remote.recv()
+        assert msg == 'loop ready'
+
+        worker_policy_remote.send('prepare start')
+        msg = worker_policy_remote.recv()
+        assert msg == 'loop ready'
 
         time_total = time.time()
 
         ''' --------------- worker looping --------------- '''
 
         logger.log('Start looping...')
-        for queue in self.queues:
-            queue.put(('loop', None))
+        for remote in self.remotes:
+            remote.send('start loop')
 
         ''' --------------- collect info --------------- '''
 
-        summary = {}
-        for name, rcp_receiver in zip(self.names, self.rcp_receivers):
-            tasks = []
-            while True:
-                rcp = rcp_receiver.recv()
-                tasks.append(rcp)
-                if rcp == 'worker closed':
-                    break
-            print("\n-------------------------------------\n")
-            print(name)
-            print(tasks)
-            summary[name] = (tasks)
+        self.collect_summary('loop done')
+        logger.log('\n------------all workers exit loops -------------')
 
+        self.collect_summary('worker closed')
+        print(self.summary)
         logger.logkv('TimeTotal', time.time() - time_total)
         logger.dumpkvs()
 
         logger.log("Training finished")
 
+        assert False
+
+    def collect_summary(self, stop_rcp):
+        for name, remote in zip(self.names, self.remotes):
+            tasks = []
+            while True:
+                rcp = remote.recv()
+                tasks.append(rcp)
+                if rcp == stop_rcp:
+                    break
+            self.summary[name].extend(tasks)

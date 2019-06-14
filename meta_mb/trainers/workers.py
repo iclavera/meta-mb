@@ -1,7 +1,7 @@
 import time, pickle
 import numpy as np
 from meta_mb.logger import logger
-import multiprocessing
+from multiprocessing import current_process
 from queue import Empty
 
 
@@ -21,9 +21,10 @@ class Worker(object):
             feed_dict,
             queue,
             queue_next,
-            rcp_sender,
+            remote,
             start_itr,
             n_itr,
+            stop_cond,
             config=None,
     ):
         """
@@ -32,6 +33,8 @@ class Worker(object):
             queue_next (multiprocessing.Queue): queue for next worker
             rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
+        self.n_itr = n_itr
+
         import tensorflow as tf
 
         def _init_vars():
@@ -39,7 +42,7 @@ class Worker(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
 
-        with tf.Session(config=config).as_default() as sess:
+        with tf.Session(config=config).as_default() as _:
 
             self.construct_from_feed_dict(
                 policy_pickle,
@@ -50,71 +53,76 @@ class Worker(object):
             )
 
             _init_vars()
+            steps_per_synch = []
+            step_per_synch = 0
 
             # warm up
-            self.itr_counter = start_itr - 1
-            cmd, args = queue.get(block=True)
-            assert cmd == 'warm_up'
-            result_pickle = self.warm_up(args)
-            rcp_sender.send(('warm_up done', result_pickle))
+            self.itr_counter = start_itr
+            assert remote.recv() == 'prepare start'
+            data = queue.get()
+            result_pickle = self.prepare_start(data)
+            logger.dumpkvs()
+            step_per_synch += 1
+            remote.send('loop ready')
+            queue_next.put(result_pickle)
+            logger.log("\n============== {} is ready =============".format(current_process().name))
 
-            cmd, args = queue.get(block=True)
-            # if case only happens in worker_data
-            if cmd != 'loop':
-                assert cmd == 'synch'
-                self.synch(args)
-                cmd, _ = queue.get(block=True)
-            assert cmd == 'loop'
-            rcp_sender.send(('start looping'))
-
-            steps_per_synch = []
-            step_per_synch = 1
+            assert remote.recv() == 'start loop'
             time_start = time.time()
-            while self.itr_counter < n_itr: # or some other predicate
-                logger.logkv('Worker', multiprocessing.current_process().name)
-                step_per_synch += 1
-
-                try:
-                    cmd, args = queue.get_nowait()
-                    if cmd == 'synch':
-                        cmd = 'synch and step {}'.format(self.itr_counter)
-                        self.synch(args)
-                        logger.logkv('SynchBeforeStep', True)
-                        steps_per_synch.append(step_per_synch)
-                        step_per_synch = 0
-                    elif cmd == 'close':
+            while not stop_cond.is_set():
+                data = None
+                # only the latest data is used for synchronization
+                while True:
+                    try:
+                        data = queue.get_nowait()
+                    except Empty:
                         break
-                    else:
-                        raise NotImplementedError
+                if data is not None:
+                    steps_per_synch.append(step_per_synch)
+                    step_per_synch = 0
+                    action = 'synch'
+                    self.synch(data)
+                else:
+                    self.itr_counter += 1
+                    step_per_synch += 1
+                    action = 'step {}'.format(self.itr_counter)
+                    logger.logkv('Worker', current_process().name)
+                    logger.logkv('Iteration', self.itr_counter)
+                    logger.logkv('StepPerSynch', step_per_synch)
+                    result_pickle = self.step()
+                    queue_next.put(result_pickle)
+                    logger.dumpkvs()
 
-                except Empty:
-                    cmd = 'step {}'.format(self.itr_counter)
-                    logger.logkv('SynchBeforeStep', False)
-
-                result_pickle = self.step()
-
-                # Notify next worker
-                queue_next.put(('synch', result_pickle))
-
-                # Notify scheduler
-                rcp_sender.send('{} done'.format(cmd))
-
-                # Logging
+                remote.send(action)
                 logger.log("\n========================== {} completes {} ===================".format(
-                    multiprocessing.current_process().name, cmd
+                    current_process().name, action
                 ))
+                if self.set_stop_cond():
+                    stop_cond.set()
 
-        self.before_exit()
+            remote.send('loop done')
 
-        sess.close()
-        rcp_sender.send('worker closed')
+            # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
+            data = None
+            while True:
+                try:
+                    data = queue.get_nowait()
+                except Empty:
+                    break
+            assert queue.empty()
+            self.prepare_close(data)
+            logger.log("\n========== prepared close =====================")
+            remote.send('worker closed')
+
         logger.logkv('TimeTotal', time.time() - time_start)
-        logger.logkv('Worker', multiprocessing.current_process().name)
+        logger.logkv('Worker', current_process().name)
         logger.logkv('StepPerSynch', np.mean(steps_per_synch))
         logger.dumpkvs()
         logger.log("\n================== {} closed ===================".format(
-            multiprocessing.current_process().name
+            current_process().name
         ))
+
+        remote.send('worker closed')
 
     def construct_from_feed_dict(
             self,
@@ -126,7 +134,7 @@ class Worker(object):
     ):
         raise NotImplementedError
 
-    def warm_up(self, args):
+    def prepare_start(self, args):
         raise NotImplementedError
 
     def step(self):
@@ -135,7 +143,10 @@ class Worker(object):
     def synch(self, args):
         raise NotImplementedError
 
-    def before_exit(self):
+    def set_stop_cond(self):
+        return False
+
+    def prepare_close(self, args):
         pass
 
 
@@ -169,7 +180,7 @@ class WorkerData(Worker):
             **feed_dict['dynamics_sample_processor']
         )
 
-    def warm_up(self, initial_random_samples):
+    def prepare_start(self, initial_random_samples):
         return self.step(initial_random_samples)
 
     def step(self, random=False):
@@ -183,7 +194,7 @@ class WorkerData(Worker):
         env_paths = self.env_sampler.obtain_samples(
             log=True,
             random=random,
-            log_prefix='{} EnvSampler-'.format(self.itr_counter),
+            log_prefix='EnvSampler-',
             verbose=self.verbose,
         )
         time_env_sampling = time.time() - time_env_sampling
@@ -195,17 +206,15 @@ class WorkerData(Worker):
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
-            log_prefix='{} EnvTrajs-'.format(self.itr_counter),
+            log_prefix='EnvTrajs-'
         )
-        self.env.log_diagnostics(env_paths, prefix='{} EnvTrajs-'.format(self.itr_counter))
+        self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
         time_env_samp_proc = time.time() - time_env_samp_proc
 
         # info = [time_env_sampling, time_env_samp_proc]
-        logger.logkv("{} TimeEnvSampling".format(self.itr_counter), time_env_sampling)
-        logger.logkv("{} TimeEnvSampProc".format(self.itr_counter), time_env_samp_proc)
-        logger.dumpkvs()
+        logger.logkv("TimeEnvSampling", time_env_sampling)
+        logger.logkv("TimeEnvSampProc", time_env_samp_proc)
 
-        self.itr_counter += 1
         time.sleep(10)
 
         return pickle.dumps(samples_data)
@@ -213,10 +222,11 @@ class WorkerData(Worker):
     def synch(self, policy_pickle):
         self.env_sampler.policy = pickle.loads(policy_pickle)
 
-    def before_exit(self):
+    def prepare_close(self, data):
         # step one more time with most updated policy to measure performance
         # result dumped in logger
-        self.step()
+        self.synch(data)
+        _ = self.step()
 
 
 class WorkerModel(Worker):
@@ -236,8 +246,8 @@ class WorkerModel(Worker):
     ):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 
-    def warm_up(self, args):
-        self.synch(args)
+    def prepare_start(self, data):
+        self.synch(data)
         return self.step()
 
     def step(self):
@@ -258,9 +268,7 @@ class WorkerModel(Worker):
         time_model_fit = time.time() - time_model_fit
 
         # info = [time_model_fit]
-        logger.logkv("{} TimeModelFit".format(self.itr_counter), time_model_fit)
-        logger.dumpkvs()
-        self.itr_counter += 1
+        logger.logkv("TimeModelFit", time_model_fit)
 
         return pickle.dumps(self.dynamics_model)
 
@@ -301,7 +309,7 @@ class WorkerPolicy(Worker):
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
-    def warm_up(self, args):
+    def prepare_start(self, args):
         self.synch(args)
         return self.step()
 
@@ -324,7 +332,7 @@ class WorkerPolicy(Worker):
             if self.verbose:
                 logger.log("Obtaining samples from the model...")
             time_sampling = time.time()
-            paths = self.model_sampler.obtain_samples(log=False, log_prefix='{} train-'.format(self.itr_counter))
+            paths = self.model_sampler.obtain_samples(log=False, log_prefix='train-')
             time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
@@ -335,14 +343,14 @@ class WorkerPolicy(Worker):
             samples_data = self.model_sample_processor.process_samples(
                 paths,
                 log='all',
-                log_prefix='{} train-'.format(self.itr_counter)
+                log_prefix='train-'
             )
             time_sample_proc = time.time() - time_sample_proc
 
             if type(paths) is list:
-                self.log_diagnostics(paths, prefix='{} train-'.format(self.itr_counter))
+                self.log_diagnostics(paths, prefix='train-')
             else:
-                self.log_diagnostics(sum(paths.values(), []), prefix='{} train-'.format(self.itr_counter))
+                self.log_diagnostics(sum(paths.values(), []), prefix='train-')
 
             """ ------------------ Policy Update ---------------------"""
 
@@ -358,9 +366,7 @@ class WorkerPolicy(Worker):
 
         # info = [avg_time_step, avg_time_sampling, avg_time_sample_proc, avg_algo_opt]
         for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'], time_maml):
-            logger.logkv('{} {}'.format(self.itr_counter, key), val/self.step_per_iter)
-        logger.dumpkvs()
-        self.itr_counter += 1
+            logger.logkv(key, val/self.step_per_iter)
 
         return pickle.dumps(self.model_sampler.policy)
 
@@ -368,6 +374,9 @@ class WorkerPolicy(Worker):
         dynamics_model = pickle.loads(dynamics_model_pickle)
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
+
+    def set_stop_cond(self):
+        return self.itr_counter >= self.n_itr
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
