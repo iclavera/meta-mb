@@ -69,7 +69,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
     def _get_obs(self):
         return np.concatenate([
-            np.append(self.get_joint_positions(), self.goal),
+            np.concatenate((self.get_joint_positions(),self.goal)),
             self.get_joint_velocities(),
             self.tip_position,
             self.vec_gripper_to_goal,

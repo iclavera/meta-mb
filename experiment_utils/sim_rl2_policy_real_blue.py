@@ -4,7 +4,9 @@ import argparse
 from meta_mb.samplers.utils import rollout
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.meta_envs.rl2_env import rl2_env
+from meta_mb.meta_envs.rl2_env import rl2env
+import numpy as np
+import time
 
 
 if __name__ == "__main__":
@@ -35,7 +37,10 @@ if __name__ == "__main__":
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
-        env = rl2_env(normalize(BlueReacherEnv(side='right')))
+        env = rl2env(normalize(BlueReacherEnv(side='right')))
+        #env.init_qpos = np.zeros(7)
+        #env.reset()
+        #time.sleep(5)
         for _ in range(args.num_rollouts):
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
