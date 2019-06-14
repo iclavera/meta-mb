@@ -67,6 +67,13 @@ class MPCController(Serializable):
         return np.random.uniform(low=self.env.action_space.low,
                                  high=self.env.action_space.high, size=(n,) + self.env.action_space.low.shape)
 
+    def get_sinusoid_actions(self, n):
+        actions = np.array([])
+        step_size = (2 * np.pi) / n
+        for i in range(n):
+            actions = np.append(actions, np.sin(i * step_size))
+        return actions
+
     def get_cem_action(self, observations):
 
         n = self.n_candidates
