@@ -128,8 +128,8 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [65],
-        'max_path_length': [200,],
+        'n_itr': [51],
+        'max_path_length': [50,],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],

@@ -90,7 +90,7 @@ class Worker(object):
                     logger.logkv('Iteration', self.itr_counter)
                     logger.logkv('StepPerSynch', step_per_synch)
                     result_pickle = self.step()
-                    queue_next.put(result_pickle)
+                    # queue_next.put(result_pickle)
                     logger.dumpkvs()
 
                 remote.send(action)
@@ -103,6 +103,8 @@ class Worker(object):
             remote.send('loop done')
 
             # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
+            # FIXME
+            """
             data = None
             while True:
                 try:
@@ -112,6 +114,7 @@ class Worker(object):
             assert queue.empty()
             self.prepare_close(data)
             logger.log("\n========== prepared close =====================")
+            """
             remote.send('worker closed')
 
         logger.logkv('TimeTotal', time.time() - time_start)
@@ -221,6 +224,9 @@ class WorkerData(Worker):
 
     def synch(self, policy_pickle):
         self.env_sampler.policy = pickle.loads(policy_pickle)
+
+    def set_stop_cond(self):
+        return self.itr_counter >= self.n_itr
 
     def prepare_close(self, data):
         # step one more time with most updated policy to measure performance
@@ -374,9 +380,6 @@ class WorkerPolicy(Worker):
         dynamics_model = pickle.loads(dynamics_model_pickle)
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
-
-    def set_stop_cond(self):
-        return self.itr_counter >= self.n_itr
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
