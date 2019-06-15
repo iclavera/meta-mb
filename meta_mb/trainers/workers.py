@@ -9,8 +9,12 @@ class Worker(object):
     """
     Abstract class for worker instantiations. 
     """
-    def __init__(self, verbose=False):
+    def __init__(
+            self, 
+            verbose=False, 
+    ):
         self.verbose = verbose
+        self.result_pickle = None
 
     def __call__(
             self,
@@ -19,12 +23,15 @@ class Worker(object):
             baseline_pickle,
             dynamics_model_pickle,
             feed_dict,
-            queue,
-            queue_next,
+            queue_prev, 
+            queue, 
+            queue_next, 
             remote,
             start_itr,
             n_itr,
             stop_cond,
+            need_query=False, 
+            auto_push=True, 
             config=None,
     ):
         """
@@ -34,6 +41,7 @@ class Worker(object):
             rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
         self.n_itr = n_itr
+        self.queue = queue
 
         import tensorflow as tf
 
@@ -59,40 +67,37 @@ class Worker(object):
             # warm up
             self.itr_counter = start_itr
             assert remote.recv() == 'prepare start'
-            data = queue.get()
-            result_pickle = self.prepare_start(data)
+            data = self.queue.get()
+            self.prepare_start(data)
             logger.dumpkvs()
             step_per_synch += 1
             remote.send('loop ready')
-            queue_next.put(result_pickle)
+            queue_next.put(self.result_pickle)
             logger.log("\n============== {} is ready =============".format(current_process().name))
 
             assert remote.recv() == 'start loop'
             time_start = time.time()
             while not stop_cond.is_set():
-                data = None
-                # only the latest data is used for synchronization
-                while True:
-                    try:
-                        data = queue.get_nowait()
-                    except Empty:
-                        break
-                if data is not None:
-                    steps_per_synch.append(step_per_synch)
-                    step_per_synch = 0
-                    action = 'synch'
-                    self.synch(data)
-                else:
+                if need_query:
+                    queue_prev.put('push')
+                action = self.process_queue()
+                if action == 'step':
                     self.itr_counter += 1
                     step_per_synch += 1
                     action = 'step {}'.format(self.itr_counter)
                     logger.logkv('Worker', current_process().name)
                     logger.logkv('Iteration', self.itr_counter)
                     logger.logkv('StepPerSynch', step_per_synch)
-                    result_pickle = self.step()
-                    # queue_next.put(result_pickle)
+                    self.step()
                     logger.dumpkvs()
-
+                    if auto_push:
+                        queue_next.put(self.result_pickle)
+                elif action == 'push':
+                    queue_next.put(self.result_pickle)
+                else:
+                    steps_per_synch.append(step_per_synch)
+                    step_per_synch = 0
+                    
                 remote.send(action)
                 logger.log("\n========================== {} completes {} ===================".format(
                     current_process().name, action
@@ -142,10 +147,27 @@ class Worker(object):
 
     def step(self):
         raise NotImplementedError
+    
+    def process_queue(self):
+        data = None
+        while True:
+            try:
+                data = self.queue.get_nowait()
+            except Empty:
+                break
+                
+        if data is None:
+            return 'step'
 
-    def synch(self, args):
+        if data == 'push':
+            return 'push'
+
+        self._synch(data)
+        return 'synch'
+    
+    def _synch(self, data):
         raise NotImplementedError
-
+    
     def set_stop_cond(self):
         return False
 
@@ -184,7 +206,7 @@ class WorkerData(Worker):
         )
 
     def prepare_start(self, initial_random_samples):
-        return self.step(initial_random_samples)
+        self.step(initial_random_samples)
 
     def step(self, random=False):
         """
@@ -220,9 +242,9 @@ class WorkerData(Worker):
 
         time.sleep(10)
 
-        return pickle.dumps(samples_data)
+        self.result_pickle = pickle.dumps(samples_data)
 
-    def synch(self, policy_pickle):
+    def _synch(self, policy_pickle):
         self.env_sampler.policy = pickle.loads(policy_pickle)
 
     def set_stop_cond(self):
@@ -231,9 +253,7 @@ class WorkerData(Worker):
     def prepare_close(self, data):
         # step one more time with most updated policy to measure performance
         # result dumped in logger
-        self.synch(data)
-        _ = self.step()
-
+        raise NotImplementedError
 
 class WorkerModel(Worker):
     def __init__(self, dynamics_model_max_epochs, warm_next=True):
@@ -253,8 +273,8 @@ class WorkerModel(Worker):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 
     def prepare_start(self, data):
-        self.synch(data)
-        return self.step()
+        self._synch(data)
+        self.step()
 
     def step(self):
 
@@ -276,9 +296,9 @@ class WorkerModel(Worker):
         # info = [time_model_fit]
         logger.logkv("TimeModelFit", time_model_fit)
 
-        return pickle.dumps(self.dynamics_model)
+        self.result_pickle = pickle.dumps(self.dynamics_model)
 
-    def synch(self, samples_data_pickle):
+    def _synch(self, samples_data_pickle):
         self.samples_data = pickle.loads(samples_data_pickle)
 
 
@@ -315,9 +335,9 @@ class WorkerPolicy(Worker):
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
-    def prepare_start(self, args):
-        self.synch(args)
-        return self.step()
+    def prepare_start(self, data):
+        self._synch(data)
+        self.step()
 
     def step(self):
         """
@@ -374,9 +394,9 @@ class WorkerPolicy(Worker):
         for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'], time_maml):
             logger.logkv(key, val/self.step_per_iter)
 
-        return pickle.dumps(self.model_sampler.policy)
+        self.result_pickle = pickle.dumps(self.model_sampler.policy)
 
-    def synch(self, dynamics_model_pickle):
+    def _synch(self, dynamics_model_pickle):
         dynamics_model = pickle.loads(dynamics_model_pickle)
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model

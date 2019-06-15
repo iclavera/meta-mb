@@ -57,6 +57,10 @@ class ParallelTrainer(object):
         worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
         # stop condition
         stop_cond = Event()
+        # current worker needs query means previous workers does not auto push
+        # skipped checking here
+        flags_need_query = [True, False, True]
+        flags_auto_push = [True, False, False]
 
         self.ps = [
             Process(
@@ -68,16 +72,23 @@ class ParallelTrainer(object):
                     baseline_pickle,
                     dynamics_model_pickle,
                     feed_dict,
+                    queue_prev,
                     queue,
                     queue_next,
                     worker_remote,
                     start_itr,
                     n_itr,
                     stop_cond,
+                    need_query,
+                    auto_push,
                     config,
                 )
-            ) for (worker_instance, name, feed_dict, queue, queue_next, worker_remote) in zip(
-                worker_instances, names, feed_dicts, queues, queues[1:] + queues[:1], worker_remotes,
+            ) for (worker_instance, name, feed_dict,
+                   queue_prev, queue, queue_next,
+                   worker_remote, need_query, auto_push) in zip(
+                worker_instances, names, feed_dicts,
+                queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
+                worker_remotes, flags_need_query, flags_auto_push,
             )
         ]
 

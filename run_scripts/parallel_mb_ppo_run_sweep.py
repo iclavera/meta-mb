@@ -154,7 +154,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [3, 51],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
