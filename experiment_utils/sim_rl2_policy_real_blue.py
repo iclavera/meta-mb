@@ -3,10 +3,13 @@ import tensorflow as tf
 import argparse
 from meta_mb.samplers.utils import rollout
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.envs.blue.mimic_blue_act_env import MimicBlueActEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_envs.rl2_env import rl2env
 import numpy as np
 import time
+
 
 
 if __name__ == "__main__":
@@ -38,11 +41,19 @@ if __name__ == "__main__":
         data = joblib.load(pkl_path)
         policy = data['policy']
         env = rl2env(normalize(BlueReacherEnv(side='right')))
+        mujoco_env_mimic_pos = data['env']
+        mujoco_env_mimic_act = rl2env(normalize(MimicBlueActEnv(data['env'])))
         #env.init_qpos = np.zeros(7)
         #env.reset()
         #time.sleep(5)
         for _ in range(args.num_rollouts):
+            path = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
+                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
+                           stochastic=args.stochastic)
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            print(len(path['rewards']))
+            path_act = rollout(mujoco_env_mimic_act, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
+                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
+                           stochastic=args.stochastic)
+            #print(len(path['rewards']))

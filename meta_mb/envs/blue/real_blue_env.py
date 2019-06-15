@@ -58,10 +58,11 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             raise NotImplementedError
 
     def reset(self):
-        self.set_joint_positions(np.zeros((7,)),duration=5.)
+        self.set_joint_positions(np.zeros((7,)), duration=5.)
+        time.sleep(5)
         while True:
             # self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([.5, -.45, .4]) # Note: this is with fixed goal
+            self.goal = np.array([.65, -0.5, .41]) # Note: this is with fixed goal
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
