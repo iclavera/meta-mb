@@ -165,7 +165,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5), (10, 10)],
+        'steps_per_iter': [(5, 5), (15, 15)],
 
         # Real Env Sampling
         'num_rollouts': [20],
@@ -176,7 +176,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [25, 40],
+        'dynamics_max_epochs': [35, 50],
         'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],

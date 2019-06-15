@@ -138,15 +138,19 @@ class ParallelTrainer(object):
 
         self.collect_summary('loop done')
         logger.log('\n------------all workers exit loops -------------')
-
         self.collect_summary('worker closed')
+        logger.logkv('TimeTotal', time.time() - time_total)
+
         for key, value in self.summary.items():
             print(key)
-            print(value)
-        logger.logkv('TimeTotal', time.time() - time_total)
-        logger.dumpkvs()
-
+            value = value[:-2]
+            do_push, do_step = zip(*value)
+            print('do_push', do_push)
+            print('do_step', do_step)
+            logger.logkv('{}PushPercentage'.format(key), sum(do_push)/len(value))
+            logger.logkv('{}StepPercentage'.format(key), sum(do_step)/len(value))
         logger.log("Training finished")
+        logger.dumpkvs()
 
     def collect_summary(self, stop_rcp):
         for name, remote in zip(self.names, self.remotes):

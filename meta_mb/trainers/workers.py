@@ -61,8 +61,6 @@ class Worker(object):
             )
 
             _init_vars()
-            steps_per_synch = []
-            step_per_synch = 0
 
             # warm up
             self.itr_counter = start_itr
@@ -70,7 +68,6 @@ class Worker(object):
             data = self.queue.get()
             self.prepare_start(data)
             logger.dumpkvs()
-            step_per_synch += 1
             remote.send('loop ready')
             queue_next.put(self.result_pickle)
             logger.log("\n============== {} is ready =============".format(current_process().name))
@@ -78,33 +75,33 @@ class Worker(object):
             assert remote.recv() == 'start loop'
             time_start = time.time()
             while not stop_cond.is_set():
-                if need_query:
+                if need_query: # poll
                     queue_prev.put('push')
                 do_push, do_step = self.process_queue()
-                if do_push:
+                if do_push: # push
                     queue_next.put(self.result_pickle)
-                if do_step:
+                if do_step: # step
                     self.itr_counter += 1
-                    step_per_synch += 1
                     logger.logkv('Worker', current_process().name)
                     logger.logkv('Iteration', self.itr_counter)
-                    logger.logkv('StepPerSynch', step_per_synch)
                     self.step()
                     logger.dumpkvs()
                     if auto_push:
                         queue_next.put(self.result_pickle)
-                else:
-                    steps_per_synch.append(step_per_synch)
-                    step_per_synch = 0
-                    
-                remote.send(('push' if do_push else None, 'step' if do_step else 'synch'))
-                logger.log("\n========================== {} completes {} ===================".format(
-                    current_process().name, ('push' if do_push else None, 'step' if do_step else 'synch')
+
+                remote.send((int(do_push), int(do_step)))
+                logger.log("\n========================== {} {} {} ===================".format(
+                    current_process().name,
+                    ('push' if do_push else None, 'step' if do_step else 'synch'),
+                    self.itr_counter
                 ))
                 if self.set_stop_cond():
                     stop_cond.set()
 
             remote.send('loop done')
+
+            # worker_policy push latest policy
+            # worker_data synch and step
 
             # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
             # FIXME
@@ -123,7 +120,6 @@ class Worker(object):
 
         logger.logkv('TimeTotal', time.time() - time_start)
         logger.logkv('Worker', current_process().name)
-        logger.logkv('StepPerSynch', np.mean(steps_per_synch))
         logger.dumpkvs()
         logger.log("\n================== {} closed ===================".format(
             current_process().name
