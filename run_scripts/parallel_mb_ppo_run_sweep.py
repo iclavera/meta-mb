@@ -137,7 +137,7 @@ def run_experiment(**kwargs):
         dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
         steps_per_iter=kwargs['steps_per_iter'],
-        sample_from_buffer=True,
+        flags_need_query=kwargs['flags_need_query'],
         config=config,
     )
 
@@ -147,14 +147,18 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3],
+
+        'flags_need_query': [[True, True, False], [False, True, True], [True, False, True], ],
+        # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
+
+        'seed': [1],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [3, 51],
+        'n_itr': [51],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -191,6 +195,7 @@ if __name__ == '__main__':
         'imagined_num_rollouts': [20, 50],
         'scope': [None],
         'exp_tag': [''],  # For changes besides hyperparams
+
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

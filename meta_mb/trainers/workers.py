@@ -80,11 +80,12 @@ class Worker(object):
             while not stop_cond.is_set():
                 if need_query:
                     queue_prev.put('push')
-                action = self.process_queue()
-                if action == 'step':
+                do_push, do_step = self.process_queue()
+                if do_push:
+                    queue_next.put(self.result_pickle)
+                if do_step:
                     self.itr_counter += 1
                     step_per_synch += 1
-                    action = 'step {}'.format(self.itr_counter)
                     logger.logkv('Worker', current_process().name)
                     logger.logkv('Iteration', self.itr_counter)
                     logger.logkv('StepPerSynch', step_per_synch)
@@ -92,15 +93,13 @@ class Worker(object):
                     logger.dumpkvs()
                     if auto_push:
                         queue_next.put(self.result_pickle)
-                elif action == 'push':
-                    queue_next.put(self.result_pickle)
                 else:
                     steps_per_synch.append(step_per_synch)
                     step_per_synch = 0
                     
-                remote.send(action)
+                remote.send(('push' if do_push else None, 'step' if do_step else 'synch'))
                 logger.log("\n========================== {} completes {} ===================".format(
-                    current_process().name, action
+                    current_process().name, ('push' if do_push else None, 'step' if do_step else 'synch')
                 ))
                 if self.set_stop_cond():
                     stop_cond.set()
@@ -149,21 +148,25 @@ class Worker(object):
         raise NotImplementedError
     
     def process_queue(self):
+        push = False
         data = None
         while True:
             try:
-                data = self.queue.get_nowait()
+                new_data = self.queue.get_nowait()
+                if new_data == 'push':
+                    push = True
+                else:
+                    data = new_data
             except Empty:
                 break
-                
-        if data is None:
-            return 'step'
 
-        if data == 'push':
-            return 'push'
-
-        self._synch(data)
-        return 'synch'
+        # actions is a boolean array
+        # actions[0] = push (True) or not (False)
+        # actions[1] = step (True) or synch (False)
+        actions = [push, data is None]
+        if data is not None:
+            self._synch(data)
+        return actions
     
     def _synch(self, data):
         raise NotImplementedError

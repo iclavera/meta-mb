@@ -36,7 +36,7 @@ class ParallelTrainer(object):
             initial_random_samples=True,
             dynamics_model_max_epochs=200,
             log_real_performance=True,
-            sample_from_buffer=False,
+            flags_need_query=(True, False, True),
             config=None,
             ):
         self.log_real_performance = log_real_performance
@@ -59,8 +59,8 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_need_query = [True, False, True]
-        flags_auto_push = [True, False, False]
+        flags_need_query = flags_need_query # [True, False, True]
+        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]] # [True, False, False]
 
         self.ps = [
             Process(
@@ -140,13 +140,13 @@ class ParallelTrainer(object):
         logger.log('\n------------all workers exit loops -------------')
 
         self.collect_summary('worker closed')
-        print(self.summary)
+        for key, value in self.summary.items():
+            print(key)
+            print(value)
         logger.logkv('TimeTotal', time.time() - time_total)
         logger.dumpkvs()
 
         logger.log("Training finished")
-
-        assert False
 
     def collect_summary(self, stop_rcp):
         for name, remote in zip(self.names, self.remotes):
