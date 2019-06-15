@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import moviepy.editor as mpy
+from mujoco_py import MjViewer
 
 
 def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_video=True,
@@ -27,7 +28,6 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
         rewards = []
         agent_infos = []
         env_infos = []
-
         o = env.reset()
         agent.reset()
         path_length = 0
@@ -57,7 +57,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
                 time.sleep(timestep/speedup)
 
             if save_video:
-                image = env.render(mode)
+                image = env.viewer._read_pixels_as_in_window()
                 images.append(image)
 
         paths.append(dict(
