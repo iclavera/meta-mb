@@ -101,7 +101,7 @@ class Trainer(object):
                     env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
 
                 # Add sleeping time to match parallel experiment
-                time.sleep(10)
+                # time.sleep(10)
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")

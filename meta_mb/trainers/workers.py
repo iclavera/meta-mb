@@ -14,7 +14,7 @@ class Worker(object):
             verbose=True,
     ):
         self.verbose = verbose
-        self.result_pickle = None
+        self.result = None
         self.info = {}
 
     def __call__(
@@ -51,7 +51,7 @@ class Worker(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
 
-        with tf.Session(config=config).as_default() as _:
+        with tf.Session(config=config).as_default() as sess:
 
             self.construct_from_feed_dict(
                 policy_pickle,
@@ -61,6 +61,8 @@ class Worker(object):
                 feed_dict,
             )
 
+            sess.graph.finalize()
+
             _init_vars()
 
             # warm up
@@ -69,7 +71,7 @@ class Worker(object):
             data = self.queue.get()
             self.prepare_start(data)
             remote.send('loop ready')
-            queue_next.put(self.result_pickle)
+            queue_next.put(pickle.dumps(self.result))
             logger.log("\n============== {} is ready =============".format(current_process().name))
 
             assert remote.recv() == 'start loop'
@@ -82,14 +84,14 @@ class Worker(object):
                 do_push, do_step = self.process_queue()
                 if do_push: # push
                     time_push = time.time()
-                    queue_next.put(self.result_pickle)
+                    queue_next.put(pickle.dumps(self.result))
                     self.info.update({current_process().name+'-TimePush': time.time() - time_push})
                 if do_step: # step
                     self.itr_counter += 1
                     self.step()
                     if auto_push:
                         time_push = time.time()
-                        queue_next.put(self.result_pickle)
+                        queue_next.put(pickle.dumps(self.result))
                         self.info.update({current_process().name+'-TimePush': time.time() - time_push})
 
                 remote.send(((int(do_push), int(do_step)), self.dump_info()))
@@ -249,7 +251,7 @@ class WorkerData(Worker):
         time_env_samp_proc = time.time() - time_env_samp_proc
 
         time.sleep(10)
-        self.result_pickle = pickle.dumps(samples_data)
+        self.result = samples_data
 
         # logger.logkv("TimeEnvSampling", time_env_sampling)
         # logger.logkv("TimeEnvSampProc", time_env_samp_proc)
@@ -311,7 +313,7 @@ class WorkerModel(Worker):
                                 log_tabular=True, prefix='Model-')
         time_model_fit = time.time() - time_model_fit
 
-        self.result_pickle = pickle.dumps(self.dynamics_model)
+        self.result = self.dynamics_model
 
         self.update_info()
         info = {'Model-Iteration': self.itr_counter,
@@ -414,7 +416,7 @@ class WorkerPolicy(Worker):
             time_step = time.time() - time_step
             time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
 
-        self.result_pickle = pickle.dumps(self.model_sampler.policy)
+        self.result = self.model_sampler.policy
 
         self.update_info()
         info = {'Policy-Iteration': self.itr_counter,

@@ -14,7 +14,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c1.medium' # ''c4.xlarge'
+INSTANCE_TYPE = 'c4.xlarge'
 EXP_NAME = 'parallel-mb-ppo'
 
 
@@ -148,10 +148,11 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[True, True, False], [False, True, True], [True, False, True], ],
-        # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
+        'flags_need_query': [[True, True, True], [False, False, False],
+                             [True, True, False], [False, True, True], [True, False, True],
+                             [True, False, False], [False, True, False], [False, False, True]],
 
-        'seed': [1],
+        'seed': [1, 2],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
@@ -176,7 +177,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [35, 50],
+        'dynamics_max_epochs': [35],
         'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
