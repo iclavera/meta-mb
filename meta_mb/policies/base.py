@@ -230,7 +230,7 @@ class Policy(Serializable):
 
     def __setstate__(self, state):
         Serializable.__setstate__(self, state['init_args'])
-        tf.get_default_session().run(tf.global_variables_initializer())
+        # tf.get_default_session().run(tf.global_variables_initializer())
         self.set_params(state['network_params'])
 
 

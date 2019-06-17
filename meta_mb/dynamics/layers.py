@@ -108,7 +108,7 @@ class Layer(Serializable):
 
     def __setstate__(self, state):
         # Serializable.__setstate__(self, state['init_args'])
-        tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
+        # tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
         self.set_params(state['network_params'])
 
 
