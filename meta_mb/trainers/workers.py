@@ -61,7 +61,7 @@ class Worker(object):
                 feed_dict,
             )
 
-            sess.graph.finalize()
+            # sess.graph.finalize()
 
             _init_vars()
 
