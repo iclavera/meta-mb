@@ -19,10 +19,14 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.act_dim = len(max_torques)
         self.obs_dim = len(self._get_obs())
         self._low, self._high = -max_torques, max_torques
+        self.positions = {}
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
         self._prev_qpos = self.get_joint_positions()
+        self._prev_qvel = self.get_joint_velocities()
+        if (len(action) == 1):
+            action = action[0]
         self.do_simulation(action, self.frame_skip)
         vec = self.vec_gripper_to_goal
         reward_dist = -np.linalg.norm(vec)
@@ -30,6 +34,13 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         ob = self._get_obs()
         done = False
+        if self.positions is not None:
+            if len(self.positions) == 0:
+                self.positions = dict({0 : np.vstack((self._prev_qpos, self._prev_qvel))})
+            else:
+                arr = np.vstack((self.get_joint_positions(), self.get_joint_velocities()))
+                self.positions.update({len(self.positions) : arr})
+        print(self.positions)
         return ob, reward, done, dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
 
     def viewer_setup(self):

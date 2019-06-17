@@ -41,6 +41,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
         self.goal_right = np.random.uniform(low=[0.25, -0.75, 0.25], high=[0.75, -0.25, 0.5])
+        #self.goal_right = np.array([.65, -0.5, .41])
         qpos[-6:-3] = 0
         qpos[-3:] = self.goal_right
         qvel[-6:] = 0
@@ -67,6 +68,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         
         else:
             raise NotImplementedError
+
 
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 2
