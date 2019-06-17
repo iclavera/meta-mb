@@ -11,10 +11,11 @@ class Worker(object):
     """
     def __init__(
             self, 
-            verbose=False, 
+            verbose=True,
     ):
         self.verbose = verbose
         self.result_pickle = None
+        self.info = {}
 
     def __call__(
             self,
@@ -67,7 +68,6 @@ class Worker(object):
             assert remote.recv() == 'prepare start'
             data = self.queue.get()
             self.prepare_start(data)
-            logger.dumpkvs()
             remote.send('loop ready')
             queue_next.put(self.result_pickle)
             logger.log("\n============== {} is ready =============".format(current_process().name))
@@ -76,20 +76,23 @@ class Worker(object):
             time_start = time.time()
             while not stop_cond.is_set():
                 if need_query: # poll
+                    time_poll = time.time()
                     queue_prev.put('push')
+                    self.info.update({current_process().name+'-TimePoll': time.time() - time_poll})
                 do_push, do_step = self.process_queue()
                 if do_push: # push
+                    time_push = time.time()
                     queue_next.put(self.result_pickle)
+                    self.info.update({current_process().name+'-TimePush': time.time() - time_push})
                 if do_step: # step
                     self.itr_counter += 1
-                    logger.logkv('Worker', current_process().name)
-                    logger.logkv('Iteration', self.itr_counter)
                     self.step()
-                    logger.dumpkvs()
                     if auto_push:
+                        time_push = time.time()
                         queue_next.put(self.result_pickle)
+                        self.info.update({current_process().name+'-TimePush': time.time() - time_push})
 
-                remote.send((int(do_push), int(do_step)))
+                remote.send(((int(do_push), int(do_step)), self.dump_info()))
                 logger.log("\n========================== {} {} {} ===================".format(
                     current_process().name,
                     ('push' if do_push else None, 'step' if do_step else 'synch'),
@@ -116,10 +119,9 @@ class Worker(object):
             self.prepare_close(data)
             logger.log("\n========== prepared close =====================")
             """
-            remote.send('worker closed')
+            # remote.send('worker closed')
 
-        logger.logkv('TimeTotal', time.time() - time_start)
-        logger.logkv('Worker', current_process().name)
+        logger.logkv(current_process().name+'-TimeTotal', time.time() - time_start)
         logger.dumpkvs()
         logger.log("\n================== {} closed ===================".format(
             current_process().name
@@ -173,6 +175,15 @@ class Worker(object):
     def prepare_close(self, args):
         pass
 
+    def update_info(self):
+        self.info.update(logger.getkvs())
+        logger.reset()
+
+    def dump_info(self):
+        info = self.info
+        self.info = {}
+        return info
+
 
 class WorkerData(Worker):
     def __init__(self):
@@ -212,16 +223,19 @@ class WorkerData(Worker):
         When args is not None, args = initial_random_samples (bool)
         """
 
+        '''------------- Obtaining samples from the environment -----------'''
+
         if self.verbose:
-            logger.log("Obtaining samples from the environment using the policy...")
+            logger.log("Obtaining samples from the environment...")
         time_env_sampling = time.time()
         env_paths = self.env_sampler.obtain_samples(
             log=True,
             random=random,
-            log_prefix='EnvSampler-',
-            verbose=self.verbose,
+            log_prefix='Data-EnvSampler-',
         )
         time_env_sampling = time.time() - time_env_sampling
+
+        '''-------------- Processing environment samples -------------------'''
 
         if self.verbose:
             logger.log("Processing environment samples...")
@@ -230,21 +244,26 @@ class WorkerData(Worker):
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
-            log_prefix='EnvTrajs-'
+            log_prefix='Data-EnvTrajs-'
         )
-        self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
         time_env_samp_proc = time.time() - time_env_samp_proc
 
-        # info = [time_env_sampling, time_env_samp_proc]
-        logger.logkv("TimeEnvSampling", time_env_sampling)
-        logger.logkv("TimeEnvSampProc", time_env_samp_proc)
-
         time.sleep(10)
-
         self.result_pickle = pickle.dumps(samples_data)
 
+        # logger.logkv("TimeEnvSampling", time_env_sampling)
+        # logger.logkv("TimeEnvSampProc", time_env_samp_proc)
+        self.update_info()
+        info = {'Data-Iteration': self.itr_counter,
+                'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
+        self.info.update(info)
+
     def _synch(self, policy_pickle):
+        time_synch = time.time()
         self.env_sampler.policy = pickle.loads(policy_pickle)
+        time_synch = time.time() - time_synch
+        info = {'Data-TimeSynch': time_synch}
+        self.info.update(info)
 
     def set_stop_cond(self):
         return self.itr_counter >= self.n_itr
@@ -288,17 +307,23 @@ class WorkerModel(Worker):
         self.dynamics_model.fit(self.samples_data['observations'],
                                 self.samples_data['actions'],
                                 self.samples_data['next_observations'],
-                                epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
-
+                                epochs=self.dynamics_model_max_epochs, verbose=False,
+                                log_tabular=True, prefix='Model-')
         time_model_fit = time.time() - time_model_fit
-
-        # info = [time_model_fit]
-        logger.logkv("TimeModelFit", time_model_fit)
 
         self.result_pickle = pickle.dumps(self.dynamics_model)
 
+        self.update_info()
+        info = {'Model-Iteration': self.itr_counter,
+                "Model-TimeModelFit": time_model_fit}
+        self.info.update(info)
+
     def _synch(self, samples_data_pickle):
+        time_synch = time.time()
         self.samples_data = pickle.loads(samples_data_pickle)
+        time_synch = time.time() - time_synch
+        info = {'Model-TimeSynch': time_synch}
+        self.info.update(info)
 
 
 class WorkerPolicy(Worker):
@@ -357,7 +382,7 @@ class WorkerPolicy(Worker):
             if self.verbose:
                 logger.log("Obtaining samples from the model...")
             time_sampling = time.time()
-            paths = self.model_sampler.obtain_samples(log=False, log_prefix='train-')
+            paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
             time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
@@ -368,14 +393,14 @@ class WorkerPolicy(Worker):
             samples_data = self.model_sample_processor.process_samples(
                 paths,
                 log='all',
-                log_prefix='train-'
+                log_prefix='Policy-'
             )
             time_sample_proc = time.time() - time_sample_proc
 
             if type(paths) is list:
-                self.log_diagnostics(paths, prefix='train-')
+                self.log_diagnostics(paths, prefix='Policy-')
             else:
-                self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+                self.log_diagnostics(sum(paths.values(), []), prefix='Policy-')
 
             """ ------------------ Policy Update ---------------------"""
 
@@ -389,16 +414,22 @@ class WorkerPolicy(Worker):
             time_step = time.time() - time_step
             time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
 
-        # info = [avg_time_step, avg_time_sampling, avg_time_sample_proc, avg_algo_opt]
-        for key, val in zip(['TimeAvgStep', 'TimeAvgSampling', 'TimeAvgSampleProc', 'TimeAvgAlgoOpt'], time_maml):
-            logger.logkv(key, val/self.step_per_iter)
-
         self.result_pickle = pickle.dumps(self.model_sampler.policy)
 
+        self.update_info()
+        info = {'Policy-Iteration': self.itr_counter,
+                'Policy-TimeStep': time_maml[0], 'Policy-TimeSampling': time_maml[1],
+                'Policy-TimeSampleProc': time_maml[2], 'Policy-TimeAlgoOpt': time_maml[3], }
+        self.info.update(info)
+
     def _synch(self, dynamics_model_pickle):
+        time_synch = time.time()
         dynamics_model = pickle.loads(dynamics_model_pickle)
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
+        time_synch = time.time() - time_synch
+        info = {'Policy-TimeSynch': time_synch}
+        self.info.update(info)
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)

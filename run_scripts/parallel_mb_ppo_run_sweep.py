@@ -14,7 +14,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.xlarge'
+INSTANCE_TYPE = 'c1.medium' # ''c4.xlarge'
 EXP_NAME = 'parallel-mb-ppo'
 
 
@@ -37,7 +37,7 @@ def init_vars(sender, config, policy, dynamics_model):
 def run_experiment(**kwargs):
 
     print("\n---------- running experiment ---------------------------")
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = ConfigProto()

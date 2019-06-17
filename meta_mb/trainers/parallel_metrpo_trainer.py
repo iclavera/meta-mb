@@ -50,7 +50,7 @@ class ParallelTrainer(object):
         assert step_per_iter > 0
 
         worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy(step_per_iter)]
-        names = ["worker_data", "worker_model", "worker_policy"]
+        names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]
         # worker sends task-completed notification and time info to scheduler
@@ -139,7 +139,7 @@ class ParallelTrainer(object):
         self.collect_summary('loop done')
         logger.log('\n------------all workers exit loops -------------')
         self.collect_summary('worker closed')
-        logger.logkv('TimeTotal', time.time() - time_total)
+        logger.logkv('Trainer-TimeTotal', time.time() - time_total)
 
         for key, value in self.summary.items():
             print(key)
@@ -147,8 +147,8 @@ class ParallelTrainer(object):
             do_push, do_step = zip(*value)
             print('do_push', do_push)
             print('do_step', do_step)
-            logger.logkv('{}PushPercentage'.format(key), sum(do_push)/len(value))
-            logger.logkv('{}StepPercentage'.format(key), sum(do_step)/len(value))
+            logger.logkv('{}-PushPercentage'.format(key), sum(do_push)/len(value))
+            logger.logkv('{}-StepPercentage'.format(key), sum(do_step)/len(value))
         logger.log("Training finished")
         logger.dumpkvs()
 
@@ -157,7 +157,12 @@ class ParallelTrainer(object):
             tasks = []
             while True:
                 rcp = remote.recv()
-                tasks.append(rcp)
                 if rcp == stop_rcp:
+                    print('receiving stop rcp {}'.format(rcp))
                     break
+                task, info = rcp
+                tasks.append(task)
+                assert isinstance(info, dict)
+                logger.logkvs(info)
+                logger.dumpkvs()
             self.summary[name].extend(tasks)
