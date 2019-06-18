@@ -21,6 +21,7 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self._low, self._high = -max_torques, max_torques
         self.goal = np.zeros(3)
         self.positions = {}
+        self.actions = {}
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
@@ -35,6 +36,11 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         ob = self._get_obs()
         done = False
+
+        if self.actions is not None:
+            action_num = len(self.actions)
+            self.actions.update({action_num : action})
+
         if self.positions is not None:
             if len(self.positions) == 0:
                 self.positions = dict({0 : np.vstack((self._prev_qpos, self._prev_qvel))})
