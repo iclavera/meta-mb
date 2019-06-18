@@ -148,7 +148,7 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[True, True, True], [False, False, False],
+        'flags_need_query': [[True, True, True],
                              [True, True, False], [False, True, True], [True, False, True],
                              [True, False, False], [False, True, False], [False, False, True]],
 
@@ -166,7 +166,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5), (15, 15)],
+        'steps_per_iter': [(5, 5)],
 
         # Real Env Sampling
         'num_rollouts': [20],
@@ -190,10 +190,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2, 0.3, 0.1],
+        'clip_eps': [0.3],
         'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20, 50],
+        'imagined_num_rollouts': [20],
         'scope': [None],
         'exp_tag': [''],  # For changes besides hyperparams
 

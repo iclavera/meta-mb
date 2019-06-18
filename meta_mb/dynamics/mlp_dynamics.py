@@ -381,5 +381,15 @@ class MLPDynamicsModel(Serializable):
         for i in range(len(self._networks)):
             self._networks[i].__setstate__(state['networks'][i])
 
+    def get_params(self): # to feed policy
+        state = dict()
+        state['normalization'] = self.normalization
+        state['networks_params'] = [nn.get_param_values() for nn in self._networks]
+        return state
 
+    def set_params(self, state):
+        # LayersPowered.__setstate__(self, state)
+        self.normalization = state['normalization']
+        for i in range(len(self._networks)):
+            self._networks[i].set_params(state['networks_params'][i])
 

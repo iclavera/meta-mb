@@ -14,7 +14,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c1.medium' # ''c4.xlarge'
+INSTANCE_TYPE = 'c4.large'
 EXP_NAME = 'try'
 
 
@@ -158,7 +158,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [61],
+        'n_itr': [51],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],

@@ -59,8 +59,8 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_need_query = flags_need_query # [True, False, True]
-        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]] # [True, False, False]
+        flags_need_query = flags_need_query
+        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
             Process(

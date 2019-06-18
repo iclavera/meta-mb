@@ -15,6 +15,7 @@ class Worker(object):
     ):
         self.verbose = verbose
         self.result = None
+        self.state_pickle = None
         self.info = {}
 
     def __call__(
@@ -26,7 +27,7 @@ class Worker(object):
             feed_dict,
             queue_prev, 
             queue, 
-            queue_next, 
+            queue_next,
             remote,
             start_itr,
             n_itr,
@@ -42,7 +43,9 @@ class Worker(object):
             rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
         self.n_itr = n_itr
+        self.queue_prev = queue_prev
         self.queue = queue
+        self.queue_next = queue_next
 
         import tensorflow as tf
 
@@ -68,10 +71,8 @@ class Worker(object):
             # warm up
             self.itr_counter = start_itr
             assert remote.recv() == 'prepare start'
-            data = self.queue.get()
-            self.prepare_start(data)
+            self.prepare_start()
             remote.send('loop ready')
-            queue_next.put(pickle.dumps(self.result))
             logger.log("\n============== {} is ready =============".format(current_process().name))
 
             assert remote.recv() == 'start loop'
@@ -83,16 +84,12 @@ class Worker(object):
                     self.info.update({current_process().name+'-TimePoll': time.time() - time_poll})
                 do_push, do_step = self.process_queue()
                 if do_push: # push
-                    time_push = time.time()
-                    queue_next.put(pickle.dumps(self.result))
-                    self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+                    self.push()
                 if do_step: # step
                     self.itr_counter += 1
                     self.step()
                     if auto_push:
-                        time_push = time.time()
-                        queue_next.put(pickle.dumps(self.result))
-                        self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+                        self.push()
 
                 remote.send(((int(do_push), int(do_step)), self.dump_info()))
                 logger.log("\n========================== {} {} {} ===================".format(
@@ -141,7 +138,7 @@ class Worker(object):
     ):
         raise NotImplementedError
 
-    def prepare_start(self, args):
+    def prepare_start(self):
         raise NotImplementedError
 
     def step(self):
@@ -170,7 +167,16 @@ class Worker(object):
     
     def _synch(self, data):
         raise NotImplementedError
-    
+
+    def dump_result(self):
+        self.state_pickle = pickle.dumps(self.result)
+
+    def push(self):
+        time_push = time.time()
+        self.dump_result()
+        self.queue_next.put(self.state_pickle)
+        self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+
     def set_stop_cond(self):
         return False
 
@@ -217,8 +223,10 @@ class WorkerData(Worker):
             **feed_dict['dynamics_sample_processor']
         )
 
-    def prepare_start(self, initial_random_samples):
+    def prepare_start(self):
+        initial_random_samples = self.queue.get()
         self.step(initial_random_samples)
+        self.queue_next.put(pickle.dumps(self.result))
 
     def step(self, random=False):
         """
@@ -292,9 +300,11 @@ class WorkerModel(Worker):
     ):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 
-    def prepare_start(self, data):
-        self._synch(data)
+    def prepare_start(self):
+        samples_data_pickle = self.queue.get()
+        self._synch(samples_data_pickle)
         self.step()
+        self.queue_next.put(pickle.dumps(self.result))
 
     def step(self):
 
@@ -326,6 +336,9 @@ class WorkerModel(Worker):
         time_synch = time.time() - time_synch
         info = {'Model-TimeSynch': time_synch}
         self.info.update(info)
+
+    def dump_result(self):
+        self.state_pickle = pickle.dumps(self.result.get_params())
 
 
 class WorkerPolicy(Worker):
@@ -361,9 +374,12 @@ class WorkerPolicy(Worker):
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
-    def prepare_start(self, data):
-        self._synch(data)
+    def prepare_start(self):
+        dynamics_model = pickle.loads(self.queue.get())
+        self.model_sampler.dynamics_model = dynamics_model
+        self.model_sampler.vec_env.dynamics_model = dynamics_model
         self.step()
+        self.queue_next.put(pickle.dumps(self.result))
 
     def step(self):
         """
@@ -424,11 +440,12 @@ class WorkerPolicy(Worker):
                 'Policy-TimeSampleProc': time_maml[2], 'Policy-TimeAlgoOpt': time_maml[3], }
         self.info.update(info)
 
-    def _synch(self, dynamics_model_pickle):
+    def _synch(self, dynamics_model_state_pickle):
         time_synch = time.time()
-        dynamics_model = pickle.loads(dynamics_model_pickle)
-        self.model_sampler.dynamics_model = dynamics_model
-        self.model_sampler.vec_env.dynamics_model = dynamics_model
+        dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
+        assert isinstance(dynamics_model_state, dict)
+        self.model_sampler.dynamics_model.set_params(dynamics_model_state)
+        self.model_sampler.vec_env.dynamics_model.set_params(dynamics_model_state)
         time_synch = time.time() - time_synch
         info = {'Policy-TimeSynch': time_synch}
         self.info.update(info)
