@@ -7,6 +7,12 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DE
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
+
+from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
+from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
+
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
@@ -22,8 +28,8 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'rl2-kate-def'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'rl2-reach-rand0'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -92,7 +98,7 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [HumanoidRandDirec2DEnv],
+        'env': [FullBlueEnv],
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [50, 100, 200],

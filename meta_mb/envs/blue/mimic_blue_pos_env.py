@@ -15,6 +15,7 @@ class MimicBluePosEnv(FullBlueEnv):
 		if positions is not None:
 			self.positions = positions
 		FullBlueEnv.__init__(self)
+		self.goal_right = self.parent.goal
 
 	def step(self, action):
 		self.sim.model.body_pos[-1] = self.parent.goal
