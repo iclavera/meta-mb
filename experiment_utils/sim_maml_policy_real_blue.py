@@ -40,21 +40,23 @@ if __name__ == "__main__":
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
-        env = normalize(BlueReacherEnv(side='right'))
-        mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(data['env']))) 
+        env = normalize(BlueReacherEnv(side='right')) 
         mujoco_env_mimic_act = data['env'] 
-        #env.init_qpos = np.zeros(7)
-        #env.reset()
-        #time.sleep(5)
         for _ in range(args.num_rollouts):
-            positions={}
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
-                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
-                           stochastic=args.stochastic)
+
             path_act = rollout(mujoco_env_mimic_act, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            #print(len(path['rewards']))
+
+            mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(max_path_len=args.max_path_length, parent=env, positions=env.positions)))
+
+            path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
+                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
+                           stochastic=args.stochastic)
+            
+            print(len(path[0]['rewards']))
+            print(len(path_act[0]['rewards']))
+            print(len(path_pos[0]['rewards']))
