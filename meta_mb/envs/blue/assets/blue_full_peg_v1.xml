@@ -140,8 +140,14 @@
                                             <body name="right_gripper_link" pos="0 0 -0.1" quat="0.535369 0.498747 0.498747 -0.464631">
                                                 <inertial pos="-7.00549e-05 2.51272e-05 -0.0523671" quat="1 5.54202e-05 -0.000544908 -0.000762021" mass="0.00471098" diaginertia="0.000916889 0.000877269 0.000293332" />
                                                 <!--<joint name="right_gripper_joint" pos="0 0 0" axis="0 0 1" limited="true" range="0 1.05" />-->
-                                                <body name="peg" pos="0 0.1 0">
-                                                    <geom type="cylinder" rgba="0.001 0.1 0.1 1" pos="0 0 0" size="0.02 0.2" quat="0.2 0.2 0 0" contype="1" conaffinity="1"/>
+                                                <body name="peg-top" pos="0 0.1 0">
+                                                    <geom type="cylinder" rgba="1.0 0.0 0.0 1" pos="0 -0.15 0" size="0.02 0.07" quat="0.2 0.2 0 0" contype="1" conaffinity="1"/>
+                                                </body>
+                                                <body name="peg-center" pos="0 0.1 0">
+                                                    <geom type="cylinder" rgba="0.0 1.0 0.0 1" pos="0 0 0" size="0.02 0.07" quat="1.0 1.0 0 0" contype="1" conaffinity="1"/>
+                                                </body>
+                                                <body name="peg-bottom" pos="0 0.1 0">
+                                                    <geom type="cylinder" rgba="0.0 0.0 1.0 1" pos="0 0.15 0" size="0.02 0.07" quat="0.2 0.2 0 0" contype="1" conaffinity="1"/>
                                                 </body>
                                             </body>
                                             <body name="right_r_finger_link" pos="0 0.030703 -0.071979" quat="0.631851 -0.317432 -0.631853 0.317432">
@@ -195,14 +201,14 @@
         </body>
 
         <body name="goal_peg" pos="0.05 -0.8 0.2">
-            <body name="g1" pos="0.0 0.3 -0.7">
+            <body name="g1" pos="0.0 0.3 -0.4">
                 <geom name="g1" type="sphere" rgba="1.0 0.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
             </body>
             <body name="g2" pos="0.0 0.3 -0.55">
-                <geom name="g2" type="sphere" rgba="1.0 0.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
+                <geom name="g2" type="sphere" rgba="0.0 1.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
             </body>
-            <body name="g3" pos="0.0 0.3 -0.4">
-                <geom name="g3" type="sphere" rgba="1.0 0.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
+            <body name="g3" pos="0.0 0.3 -0.7">
+                <geom name="g3" type="sphere" rgba="0.0 0.0 1.0 1" pos="0.0 0.0 0.0" size="0.01" />
             </body>
 
             <body name="w1" pos="0.216 0.3 -0.55">

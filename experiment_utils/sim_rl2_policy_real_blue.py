@@ -41,15 +41,21 @@ if __name__ == "__main__":
         policy = data['policy']
         env = rl2env(normalize(BlueReacherEnv(side='right')))
         mujoco_env_mimic_act = data['env']
-        mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(parent=env)))
         for _ in range(args.num_rollouts):
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
-                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
-                           stochastic=args.stochastic)
+
             path_act = rollout(mujoco_env_mimic_act, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            #print(len(path['rewards']))
+
+            mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(max_path_len=args.max_path_length, parent=env, positions=env.positions)))
+            
+            path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
+                           video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
+                           stochastic=args.stochastic)
+
+            print(len(path[0]['rewards']))
+            print(len(path_act[0]['rewards']))
+            print(len(path_pos[0]['rewards']))

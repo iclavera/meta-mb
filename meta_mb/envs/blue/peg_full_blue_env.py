@@ -31,6 +31,7 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
+            #self.sim.data.body_xpos.flat[:3],
             self.peg_location() - self.center_goal
         ])
 
@@ -41,25 +42,24 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         reward_dist = -self.peg_dist()
         reward_ctrl = -np.square(action).sum()
         reward = reward_dist + 1.25e-4 * reward_ctrl
+        self.peg_orient()
 
         observation = self._get_obs()
         done = False
         info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
+        print(reward)
         return observation, reward, done, info
 
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
 
-        peg_table_position = np.random.uniform(low=[-0.2, -1, 0.2], high=[0.75, -0.6, 0.8])
+        peg_table_position = np.random.uniform(low=[-0.2, -1, 0.3], high=[0.75, -0.6, 0.3])
         self.sim.model.body_pos[-8] = peg_table_position
-        #self.top_goal = self.top(peg_table_position)
-        #self.center_goal = self.center(peg_table_position)
-        #elf.bottom_goal = self.bottom(peg_table_position)
 
-        self.top_goal = self.get_body_com("g3")
+        self.top_goal = self.get_body_com("g1")
         self.center_goal = self.get_body_com("g2")
-        self.bottom_goal = self.get_body_com("g1")
+        self.bottom_goal = self.get_body_com("g3")
 
         qpos[-6:-3] = np.zeros((3, ))
         qpos[-3:] = self.center_goal
@@ -86,22 +86,21 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         else:
             raise NotImplementedError
 
-    def peg_dist(self):
-        peg = self.peg_loc
-        x = peg[0]
-        y = peg[1]
-        z = peg[2]
+    def peg_orient(self):
+        return self.data.get_body_xquat("peg-center")
 
-        top = np.array([x, y, z+0.15])
-        bottom = np.array([x, y, z-0.15])
+    def peg_dist(self):
+        top = self.get_body_com("peg-top")
+        center = self.get_body_com("peg-center")
+        bottom = self.get_body_com("peg-bottom")
 
         distance = (euclidean(top, self.top_goal)
-                    + euclidean(peg, self.center_goal)
+                    + euclidean(center, self.center_goal)
                     + euclidean(bottom, self.bottom_goal))
         return distance
 
     def peg_location(self):
-        return self.get_body_com("peg")
+        return self.get_body_com("peg-center")
 
     def top(self, center):
         x = center[0]
