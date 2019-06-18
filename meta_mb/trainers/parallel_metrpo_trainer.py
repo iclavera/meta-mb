@@ -38,6 +38,7 @@ class ParallelTrainer(object):
             log_real_performance=True,
             flags_need_query=(True, False, True),
             config=None,
+            simulation_sleep=10,
             ):
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
@@ -49,7 +50,7 @@ class ParallelTrainer(object):
             step_per_iter = steps_per_iter
         assert step_per_iter > 0
 
-        worker_instances = [WorkerData(), WorkerModel(dynamics_model_max_epochs), WorkerPolicy(step_per_iter)]
+        worker_instances = [WorkerData(simulation_sleep), WorkerModel(dynamics_model_max_epochs), WorkerPolicy(step_per_iter)]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]

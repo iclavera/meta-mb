@@ -194,8 +194,9 @@ class Worker(object):
 
 
 class WorkerData(Worker):
-    def __init__(self):
+    def __init__(self, simulation_sleep):
         super().__init__()
+        self.simulation_sleep = simulation_sleep
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
@@ -258,7 +259,7 @@ class WorkerData(Worker):
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
-        time.sleep(10)
+        time.sleep(self.simulation_sleep)
         self.result = samples_data
 
         # logger.logkv("TimeEnvSampling", time_env_sampling)

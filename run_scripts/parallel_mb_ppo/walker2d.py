@@ -2,10 +2,11 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
+from uuid import uuid4
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv
+from meta_mb.envs.mb_envs import Walker2dEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.metrpo_trainer import Trainer
@@ -18,11 +19,11 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mb-ppo'
+EXP_NAME = 'walker2d'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + str(uuid4())
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()

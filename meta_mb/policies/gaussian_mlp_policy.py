@@ -230,6 +230,7 @@ class GaussianMLPPolicy(Policy):
         raise ["mean", "log_std"]
 
     """
+    should not overwrite parent
     def __getstate__(self):
         # state = LayersPowered.__getstate__(self)
         state = dict()

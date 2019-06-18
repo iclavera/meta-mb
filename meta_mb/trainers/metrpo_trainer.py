@@ -94,27 +94,27 @@ class Trainer(object):
 
                 if self.initial_random_samples and itr == 0:
                     logger.log("Obtaining random samples from the environment...")
-                    env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='EnvSampler-')
+                    env_paths = self.env_sampler.obtain_samples(log=True, random=True, log_prefix='Data-EnvSampler-')
 
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='EnvSampler-')
+                    env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-')
 
                 # Add sleeping time to match parallel experiment
                 # time.sleep(10)
 
-                logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
+                logger.record_tabular('Data-TimeEnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
 
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
-                                                                              log_prefix='EnvTrajs-')
+                                                                              log_prefix='Data-EnvTrajs-')
 
-                self.env.log_diagnostics(env_paths, prefix='EnvTrajs-')
+                self.env.log_diagnostics(env_paths, prefix='Data-EnvTrajs-')
 
-                logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
+                logger.record_tabular('Data-TimeEnvSampleProc', time.time() - time_env_samp_proc)
 
                 ''' --------------- fit dynamics model --------------- '''
 
@@ -124,11 +124,12 @@ class Trainer(object):
                 self.dynamics_model.fit(samples_data['observations'],
                                         samples_data['actions'],
                                         samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+                                        epochs=self.dynamics_model_max_epochs, verbose=False,
+                                        log_tabular=True, prefix='Model-')
 
                 buffer = None if not self.sample_from_buffer else samples_data
 
-                logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
+                logger.record_tabular('Model-TimeModelFit', time.time() - time_fit_start)
 
                 ''' --------------- MAML steps --------------- '''
                 times_dyn_sampling = []
@@ -146,20 +147,20 @@ class Trainer(object):
 
                     logger.log("Obtaining samples from the model...")
                     time_env_sampling_start = time.time()
-                    paths = self.model_sampler.obtain_samples(log=True, log_prefix='train-')
+                    paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
                     sampling_time = time.time() - time_env_sampling_start
 
                     """ ----------------- Processing Samples ---------------------"""
 
                     logger.log("Processing samples from the model...")
                     time_proc_samples_start = time.time()
-                    samples_data = self.model_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                    samples_data = self.model_sample_processor.process_samples(paths, log='all', log_prefix='Policy-')
                     proc_samples_time = time.time() - time_proc_samples_start
 
                     if type(paths) is list:
-                        self.log_diagnostics(paths, prefix='train-')
+                        self.log_diagnostics(paths, prefix='Policy-')
                     else:
-                        self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+                        self.log_diagnostics(sum(paths.values(), []), prefix='Policy-')
 
                     """ ------------------ Policy Update ---------------------"""
 
@@ -175,12 +176,12 @@ class Trainer(object):
                     times_step.append(time.time() - step_start_time)
 
                 """ ------------------- Logging Stuff --------------------------"""
-                logger.logkv('Itr', itr)
+                logger.logkv('Iteration', itr)
                 logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
-                logger.logkv('AvgTime-SampleProc', np.mean(times_dyn_sample_processing))
-                logger.logkv('AvgTime-Sampling', np.mean(times_dyn_sampling))
-                logger.logkv('AvgTime-Optmization', np.mean(times_optimization))
-                logger.logkv('AvgTime-Steps', np.mean(times_step))
+                logger.logkv('Policy-TimeSampleProc', np.sum(times_dyn_sample_processing))
+                logger.logkv('Policy-TimeSampling', np.sum(times_dyn_sampling))
+                logger.logkv('Policy-TimeAlgoOpt', np.sum(times_optimization))
+                logger.logkv('Policy-TimeStep', np.sum(times_step))
 
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
@@ -193,6 +194,8 @@ class Trainer(object):
                 logger.dumpkvs()
                 if itr == 0:
                     sess.graph.finalize()
+
+            logger.logkv('Trainer-TimeTotal', time.time() - start_time)
 
         logger.log("Training finished")
         self.sess.close()

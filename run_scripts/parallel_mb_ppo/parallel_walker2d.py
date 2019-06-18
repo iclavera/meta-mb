@@ -8,15 +8,15 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import HalfCheetahEnv
+from meta_mb.envs.mb_envs import Walker2dEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.large'
-EXP_NAME = 'try'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'walker2d'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -37,7 +37,7 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + str(uuid4()) # kwargs.get('exp_name')
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/parallel' + str(uuid4()) # kwargs.get('exp_name')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -149,36 +149,38 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[False, False, False]], #, [False, True, True], [True, False, True], ],
-        # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
+        'flags_need_query': [
+            [False, False, False],
+            [True, True, True],
+        ],
 
-        'seed': [2],
+        'seed': [1, 2,],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
 
         # Problem Conf
-        'n_itr': [3],
+        'n_itr': [51],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5)],
+        'steps_per_iter': [(5, 5), (10, 10)],
 
         # Real Env Sampling
-        'num_rollouts': [20],
+        'num_rollouts': [10, 20],
         'n_parallel': [1],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1, 5],
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3, 8e-4],
+        'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
@@ -191,7 +193,7 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3,],
+        'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [20, 30],
         'scope': [None],
