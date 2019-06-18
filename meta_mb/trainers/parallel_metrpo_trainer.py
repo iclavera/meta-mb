@@ -139,6 +139,7 @@ class ParallelTrainer(object):
         self.collect_summary('loop done')
         logger.log('\n------------all workers exit loops -------------')
         self.collect_summary('worker closed')
+        [p.terminate() for p in self.ps]
         logger.logkv('Trainer-TimeTotal', time.time() - time_total)
 
         for key, value in self.summary.items():
