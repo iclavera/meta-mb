@@ -150,6 +150,7 @@ if __name__ == '__main__':
     sweep_params = {
 
         'flags_need_query': [
+            [False, False, False],
             [True, True, False], [False, True, True], [True, False, True],
             [True, False, False], [False, True, False], [False, False, True],
             [True, True, True],

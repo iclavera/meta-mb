@@ -82,7 +82,7 @@ class ParallelTrainer(object):
                     need_query,
                     auto_push,
                     config,
-                )
+                ),
             ) for (worker_instance, name, feed_dict,
                    queue_prev, queue, queue_next,
                    worker_remote, need_query, auto_push) in zip(

@@ -37,7 +37,7 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + str(uuid4()) #kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + str(uuid4()) # kwargs.get('exp_name')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -84,7 +84,7 @@ def run_experiment(**kwargs):
         target=init_vars,
         name="init_vars",
         args=(sender, config, policy, dynamics_model),
-        daemon=True,
+        daemon=False,
     )
     p.start()
     policy_pickle, dynamics_model_pickle = receiver.recv()
@@ -149,17 +149,17 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[True, True, True], [False, False, False]], #, [False, True, True], [True, False, True], ],
+        'flags_need_query': [[False, False, False]], #, [False, True, True], [True, False, True], ],
         # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
 
-        'seed': [1],
+        'seed': [2],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [41],
+        'n_itr': [3],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -178,7 +178,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3],
+        'dynamics_learning_rate': [1e-3, 8e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
@@ -191,9 +191,9 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3],
+        'learning_rate': [1e-3,],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20],
+        'imagined_num_rollouts': [20, 30],
         'scope': [None],
         'exp_tag': [''],  # For changes besides hyperparams
 
