@@ -229,6 +229,7 @@ class GaussianMLPPolicy(Policy):
         """
         raise ["mean", "log_std"]
 
+    """
     def __getstate__(self):
         # state = LayersPowered.__getstate__(self)
         state = dict()
@@ -247,4 +248,13 @@ class GaussianMLPPolicy(Policy):
         tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
 
         self.set_params(state['policy_params'])
+    """
+
+    def get_shared_param_values(self):
+        state = dict()
+        state['network_params'] = self.get_param_values()
+        return state
+
+    def set_shared_params(self, state):
+        self.set_params(state['network_params'])
 

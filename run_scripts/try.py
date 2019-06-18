@@ -2,6 +2,7 @@ import os
 import json
 import pickle
 import numpy as np
+from uuid import uuid4
 from tensorflow import tanh, ConfigProto
 from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
@@ -36,8 +37,8 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    print("\n---------- running experiment ---------------------------")
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + str(uuid4()) #kwargs.get('exp_name', '')
+    print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = ConfigProto()
@@ -148,7 +149,7 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[True, True, False]], #, [False, True, True], [True, False, True], ],
+        'flags_need_query': [[True, True, True], [False, False, False]], #, [False, True, True], [True, False, True], ],
         # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
 
         'seed': [1],
@@ -158,7 +159,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [41],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -189,7 +190,7 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2],
+        'clip_eps': [0.3],
         'learning_rate': [1e-3],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [20],

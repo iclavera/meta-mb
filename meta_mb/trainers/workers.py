@@ -164,7 +164,7 @@ class Worker(object):
         if data is not None:
             self._synch(data)
         return actions
-    
+
     def _synch(self, data):
         raise NotImplementedError
 
@@ -268,9 +268,11 @@ class WorkerData(Worker):
                 'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
         self.info.update(info)
 
-    def _synch(self, policy_pickle):
+    def _synch(self, policy_state_pickle):
         time_synch = time.time()
-        self.env_sampler.policy = pickle.loads(policy_pickle)
+        policy_state = pickle.loads(policy_state_pickle)
+        assert isinstance(policy_state, dict)
+        self.env_sampler.policy.set_shared_params(policy_state)
         time_synch = time.time() - time_synch
         info = {'Data-TimeSynch': time_synch}
         self.info.update(info)
@@ -338,7 +340,7 @@ class WorkerModel(Worker):
         self.info.update(info)
 
     def dump_result(self):
-        self.state_pickle = pickle.dumps(self.result.get_params())
+        self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
 
 
 class WorkerPolicy(Worker):
@@ -379,12 +381,13 @@ class WorkerPolicy(Worker):
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
         self.step()
-        self.queue_next.put(pickle.dumps(self.result))
+        # self.queue_next.put(pickle.dumps(self.result))
+        self.push()
 
     def step(self):
         """
         Uses self.model_sampler which is asynchronously updated by worker_model.
-        Outcome: policy is updated by PPO on one fictitious trajectory. 
+        Outcome: policy is updated by PPO on one fictitious trajectory.
         """
 
         ''' --------------- MAML steps --------------- '''
@@ -433,6 +436,7 @@ class WorkerPolicy(Worker):
             time_maml += [time_step, time_sampling, time_sample_proc, time_algo_opt]
 
         self.result = self.model_sampler.policy
+        self.policy = self.result
 
         self.update_info()
         info = {'Policy-Iteration': self.itr_counter,
@@ -444,11 +448,14 @@ class WorkerPolicy(Worker):
         time_synch = time.time()
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
         assert isinstance(dynamics_model_state, dict)
-        self.model_sampler.dynamics_model.set_params(dynamics_model_state)
-        self.model_sampler.vec_env.dynamics_model.set_params(dynamics_model_state)
+        self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
+        self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
         time_synch = time.time() - time_synch
         info = {'Policy-TimeSynch': time_synch}
         self.info.update(info)
+
+    def dump_result(self):
+        self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
