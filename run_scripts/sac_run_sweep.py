@@ -119,8 +119,8 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [1000],
-        'max_path_length': [1000],
-        # 'max_path_length': [200],
+        # 'max_path_length': [1000],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],

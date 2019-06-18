@@ -287,11 +287,18 @@ class SAC(Algo):
             'Q_observations':Q_observations, 'actions': self.op_phs_dict[prefix + 'actions']})
 
         Q_values = self.Q_values = tuple(Q(Q_inputs) for Q in self.Qs)
+        """=========for debugging purpose start=========="""
+        all_ones = 12 * tf.ones(tf.shape(Q_target))
+        Q_losses = self.Q_losses = tuple(tf.losses.mean_squared_error(labels = all_ones, predictions = Q_value, weights = 0.5) for Q_value in Q_values)
+        """=========for debugging purpose end============"""
 
-        Q_losses = self.Q_losses = tuple(
-            tf.losses.mean_squared_error(
-                labels=Q_target, predictions=Q_value, weights=0.5)
-            for Q_value in Q_values)
+        # Q_losses = self.Q_losses = tuple(
+        #     tf.losses.mean_squared_error(
+        #         labels=Q_target, predictions=Q_value, weights=0.5)
+        #     for Q_value in Q_values)
+        # self.Q_losses = tf.squeeze(Q_losses, axis = 1)
+        self.all_ones = tf.squeeze(all_ones)
+        self.Q_values = tf.squeeze(Q_values)
 
         self.Q_optimizers = tuple(
             tf.train.AdamOptimizer(
@@ -384,8 +391,6 @@ class SAC(Algo):
 
         policy_train_op = self.policy_optimizer.minimize(
             loss=policy_loss,
-            # var_list=self.policy.trainable_variables)
-            # var_list=list(self.policy.policy_params.items()))
             var_list=list(self.policy.policy_params.values()))
 
         self.training_ops.update({'policy_train_op': policy_train_op})
@@ -425,7 +430,8 @@ class SAC(Algo):
         """Runs the operations for updating training and target ops."""
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch)
         self.session.run(self.training_ops, feed_dict)
-
+        print("Test if Q_losses approaches one: prediction: ", self.session.run(self.Q_values, feed_dict))
+        print("Test if Q_losses approaches one: target: ", self.session.run(self.all_ones, feed_dict))
         if iteration % self.target_update_interval == 0:
             self._update_target()
 
