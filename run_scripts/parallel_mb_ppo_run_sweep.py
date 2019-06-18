@@ -2,6 +2,7 @@ import os
 import json
 import pickle
 import numpy as np
+from uuid import uuid4
 from tensorflow import tanh, ConfigProto
 from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
@@ -36,8 +37,8 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    print("\n---------- running experiment ---------------------------")
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    print("\n---------- running experiment {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = ConfigProto()
@@ -148,24 +149,27 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [[True, True, False], [False, True, True], [True, False, True], ],
-        # 'flags_auto_push': [[False, True, False], [False, False, True], [True, False, False]
+        'flags_need_query': [
+            [True, True, False], [False, True, True], [True, False, True],
+            [True, False, False], [False, True, False], [False, False, True],
+            [True, True, True],
+        ],
 
-        'seed': [1],
+        'seed': [1, 2],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [41],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5), (15, 15)],
+        'steps_per_iter': [(5, 5)],
 
         # Real Env Sampling
         'num_rollouts': [20],
@@ -176,7 +180,7 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [35, 50],
+        'dynamics_max_epochs': [35],
         'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
@@ -189,10 +193,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2, 0.3, 0.1],
+        'clip_eps': [0.3],
         'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20, 50],
+        'imagined_num_rollouts': [20],
         'scope': [None],
         'exp_tag': [''],  # For changes besides hyperparams
 
