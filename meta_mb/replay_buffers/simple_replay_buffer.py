@@ -30,16 +30,18 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._rewards = np.zeros(max_replay_buffer_size)
         # self._terminals[i] = a terminal was received at time i
         self._terminals = np.zeros(max_replay_buffer_size, dtype='uint8')
+        self._advantages = np.zeros(max_replay_buffer_size)
         self._top = 0
         self._size = 0
 
     def add_sample(self, observation, action, reward, terminal,
-                   next_observation, **kwargs):
+                   next_observation, advantage, **kwargs):
         self._observations[self._top] = observation
         self._actions[self._top] = action
         self._rewards[self._top] = reward
         self._terminals[self._top] = terminal
         self._next_obs[self._top] = next_observation
+        self._advantages[self._top] = advantage
 
         self._advance()
 
@@ -60,6 +62,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         result[prefix + '_rewards'] = self._rewards[indices]
         result[prefix + '_dones'] = self._terminals[indices]
         result[prefix + '_next_observations'] = self._next_obs[indices]
+        result[prefix + '_advantages'] = self._advantages[indices]
         return result
         # return dict(
         #     prefix + observations=self._observations[indices],

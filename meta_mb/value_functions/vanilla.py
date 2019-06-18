@@ -1,15 +1,14 @@
 import tensorflow as tf
 from tensorflow.python.keras.engine import training_utils
 
-from softlearning.models.feedforward import feedforward_model
-from softlearning.models.utils import flatten_input_structure, create_inputs
-from softlearning.utils.keras import PicklableModel
+from meta_mb.models.feedforward import feedforward_model
+from meta_mb.models.utils import flatten_input_structure, create_inputs
+from meta_mb.utils.keras import PicklableModel
 
 
 def create_feedforward_Q_function(input_shapes,
                                   *args,
                                   preprocessors=None,
-                                  observation_keys=None,
                                   name='feedforward_Q',
                                   **kwargs):
     inputs_flat = create_inputs(input_shapes)
@@ -34,6 +33,4 @@ def create_feedforward_Q_function(input_shapes,
         **kwargs)
 
     Q_function = PicklableModel(inputs_flat, Q_function(preprocessed_inputs))
-    Q_function.observation_keys = observation_keys
-
     return Q_function

@@ -175,7 +175,7 @@ class SAC(Algo):
         self.target_update_interval = target_update_interval
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self._optimization_keys = ['observations', 'actions', 'next_observations', 'dones', 'rewards']
+        self._optimization_keys = ['observations', 'actions', 'next_observations', 'dones', 'rewards', 'advantages']
 
         self.build_graph()
 
@@ -183,7 +183,7 @@ class SAC(Algo):
         self.op_phs_dict = OrderedDict()
         self.training_ops = {}
         self._init_global_step()
-        obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('train', recurrent=False, next_obs=True)
+        obs_ph, action_ph, next_obs_ph, ad_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('train', recurrent=False, next_obs=True)
         self.op_phs_dict.update(all_phs_dict)
         # distribution_info_vars = self.policy.distribution_info_sym(obs_ph)
         self._init_actor_update()
@@ -218,6 +218,11 @@ class SAC(Algo):
         action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + '_action')
         all_phs_dict['%s_%s' % (prefix, 'actions')] = action_ph
 
+        # advantage ph
+        adv_shape = [None] if not recurrent else [None, None]
+        adv_ph = tf.placeholder(dtype=tf.float32, shape=adv_shape, name=prefix + '_advantage')
+        all_phs_dict['%s_%s' % (prefix, 'advantages')] = adv_ph
+
         """add the placeholder for terminal here"""
         terminal_shape = [None] if not recurrent else [None, None]
         terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + '_dones')
@@ -235,7 +240,7 @@ class SAC(Algo):
             next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + '_obs')
             all_phs_dict['%s_%s' % (prefix, 'next_observations')] = next_obs_ph
 
-        return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
+        return obs_ph, action_ph, next_obs_ph, adv_ph, terminal_ph, all_phs_dict
 
 
     def _get_Q_target(self):
@@ -287,18 +292,11 @@ class SAC(Algo):
             'Q_observations':Q_observations, 'actions': self.op_phs_dict[prefix + 'actions']})
 
         Q_values = self.Q_values = tuple(Q(Q_inputs) for Q in self.Qs)
-        """=========for debugging purpose start=========="""
-        all_ones = 12 * tf.ones(tf.shape(Q_target))
-        Q_losses = self.Q_losses = tuple(tf.losses.mean_squared_error(labels = all_ones, predictions = Q_value, weights = 0.5) for Q_value in Q_values)
-        """=========for debugging purpose end============"""
+        Q_losses = self.Q_losses = tuple(
+            tf.losses.mean_squared_error(
+                labels=Q_target, predictions=Q_value, weights=0.5)
+            for Q_value in Q_values)
 
-        # Q_losses = self.Q_losses = tuple(
-        #     tf.losses.mean_squared_error(
-        #         labels=Q_target, predictions=Q_value, weights=0.5)
-        #     for Q_value in Q_values)
-        # self.Q_losses = tf.squeeze(Q_losses, axis = 1)
-        self.all_ones = tf.squeeze(all_ones)
-        self.Q_values = tf.squeeze(Q_values)
 
         self.Q_optimizers = tuple(
             tf.train.AdamOptimizer(
@@ -351,7 +349,7 @@ class SAC(Algo):
                 loss=alpha_loss, var_list=[log_alpha])
 
             self.training_ops.update({
-                'temperature_alpha': self. alpha_train_op
+                'temperature_alpha': self.alpha_train_op
             })
 
         self.alpha = alpha
@@ -373,13 +371,11 @@ class SAC(Algo):
         min_Q_log_target = tf.reduce_min(Q_log_targets, axis=0)
 
         if self.reparameterize:
-            policy_kl_losses = (
-                alpha * log_pis
-                - min_Q_log_target
-                - policy_prior_log_probs)
+            policy_kl_losses = (alpha * log_pis - min_Q_log_target- policy_prior_log_probs)
         else:
             raise NotImplementedError
 
+        policy_kl_losses = tf.expand_dims(policy_kl_losses, axis = 1)
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
         self.policy_losses = policy_kl_losses
@@ -430,8 +426,6 @@ class SAC(Algo):
         """Runs the operations for updating training and target ops."""
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch)
         self.session.run(self.training_ops, feed_dict)
-        print("Test if Q_losses approaches one: prediction: ", self.session.run(self.Q_values, feed_dict))
-        print("Test if Q_losses approaches one: target: ", self.session.run(self.all_ones, feed_dict))
         if iteration % self.target_update_interval == 0:
             self._update_target()
 

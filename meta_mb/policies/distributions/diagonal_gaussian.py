@@ -4,7 +4,7 @@ from meta_mb.policies.distributions.base import Distribution
 
 class DiagonalGaussian(Distribution):
     """
-    General methods for a diagonal gaussian distribution of this size 
+    General methods for a diagonal gaussian distribution of this size
     """
     def __init__(self, dim):
         self._dim = dim
@@ -15,7 +15,7 @@ class DiagonalGaussian(Distribution):
 
     def kl_sym(self, old_dist_info_vars, new_dist_info_vars):
         """
-        Computes the symbolic representation of the KL divergence of two multivariate 
+        Computes the symbolic representation of the KL divergence of two multivariate
         Gaussian distribution with diagonal covariance matrices
 
         Args:

@@ -46,7 +46,6 @@ def run_experiment(**kwargs):
             'type': 'double_feedforward_Q_function',
             'kwargs': {
                 'hidden_layer_sizes': (M, M),
-                'observation_keys': None,
                 'observation_preprocessors_params': {}
             }
         },
@@ -119,8 +118,8 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [1000],
-        # 'max_path_length': [1000],
-        'max_path_length': [200],
+        'max_path_length': [1000],
+        # 'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
@@ -150,7 +149,6 @@ if __name__ == '__main__':
             'type': 'double_feedforward_Q_function',
             'kwargs': {
                 'hidden_layer_sizes': (M, M),
-                'observation_keys': ('observation'),
                 'observation_preprocessors_params': {}
             }
         }

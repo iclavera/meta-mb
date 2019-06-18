@@ -93,9 +93,10 @@ class Trainer(object):
                         paths = self.sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                         samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
                         sample_num = samples_data['observations'].shape[0]
+                        # st()
                         for i in range(sample_num):
                             self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i], samples_data['rewards'][i],
-                             samples_data['dones'][i], samples_data['next_observations'][i])
+                             samples_data['dones'][i], samples_data['next_observations'][i], samples_data['advantages'][i])
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -117,7 +118,7 @@ class Trainer(object):
                 sample_num = samples_data['observations'].shape[0]
                 for i in range(sample_num):
                     self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i], samples_data['rewards'][i],
-                     samples_data['dones'][i], samples_data['next_observations'][i])
+                     samples_data['dones'][i], samples_data['next_observations'][i], samples_data['advantages'][i])
                 proc_samples_time = time.time() - time_proc_samples_start
 
                 if type(paths) is list:
