@@ -8,11 +8,10 @@ from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
 from meta_mb.meta_envs.base import RandomEnv
 
-class FetchJellyEnv(RandomEnv, gym.utils.EzPickle):
+class WalkJellyEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self):
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'jelly.xml')
 
-        self.goal = np.append(np.random.uniform(-5, 5, 2), np.random.uniform(0, 0.15))
         RandomEnv.__init__(self, 0,  xml_file, 2)
         gym.utils.EzPickle.__init__(self)
 
@@ -21,20 +20,17 @@ class FetchJellyEnv(RandomEnv, gym.utils.EzPickle):
             self.sim.data.qpos.flat[1:],
             self.sim.data.qvel.flat,
             self.sim.data.body_xpos.flat[:3],
-            self.get_body_com("base_link") - self.goal
+            self.body_position()
         ])
 
     def step(self, action):
-        self.prev_pos = self.get_body_com("base_link")
+        self.prev_pos = self.body_position()
         self.do_simulation(action, self.frame_skip)
-        self.curr_pos = self.get_body_com("base_link")
+        self.curr_pos = self.body_position()
 
-        vec_to_goal = self.get_body_com("base_link") - self.goal
-
-        self.reward_dist = -(np.linalg.norm(self.curr_pos - self.prev_pos)) / self.dt
+        reward_dist = -(np.linalg.norm(self.curr_pos - self.prev_pos)) / self.dt
         reward_ctrl = -0.5*0.1*np.square(action).sum()
-        reward_fetch = -np.linalg.norm(vec_to_goal)
-        reward = 1.25e-4 * (reward_dist - reward_ctrl + 1) + reward_fetch
+        reward = reward_dist - reward_ctrl + 1
 
         observation = self._get_obs()
         done = False
@@ -45,11 +41,9 @@ class FetchJellyEnv(RandomEnv, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            vec_to_goal = self.get_body_com("base_link") - self.goal
             reward_dist = -(np.linalg.norm(self.curr_pos - self.prev_pos)) / self.dt
-            reward_ctrl = -0.5*0.1*np.square(action).sum()
-            reward_fetch = -np.linalg.norm(vec_to_goal)
-            reward = 1.25e-4 * (forward_progress - cost + 1) + reward_fetch
+            reward_ctrl = -0.5*0.1*np.square(act).sum()
+            reward = reward_dist - reward_ctrl + 1
             return reward
 
         elif obs.ndim == 1:
@@ -69,12 +63,10 @@ class FetchJellyEnv(RandomEnv, gym.utils.EzPickle):
         return self.get_body_com("base_link")
 
 if __name__ == "__main__":
-    env = FetchJellyEnv()
+    env = WalkJellyEnv()
     while True:
         env.reset()
         for _ in range(10000):
             action = env.action_space.sample()
             env.step(action)
             env.render()
-
-
