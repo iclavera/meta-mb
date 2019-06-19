@@ -9,12 +9,14 @@ from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
+from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
 import tensorflow as tf
 
-EXP_NAME = 'mb-mpc-pets-reward'
+EXP_NAME = 'mb-mpc-blue-train'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -102,6 +104,7 @@ def run_experiment(**config):
             n_itr=config['n_itr'],
             initial_random_samples=config['initial_random_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
+            initial_sinusoid_samples=config['initial_sinusoid_samples'],
             sess=sess,
         )
         algo.train()
@@ -114,15 +117,15 @@ if __name__ == '__main__':
                 'seed': [5],
 
                 # Problem
-                'env': [HalfCheetahEnv],  # 'HalfCheetahEnv'
+                'env': [BlueReacherEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [100],
                 'normalize': [False],
                  'n_itr': [50],
                 'discount': [1.],
 
                 # Policy
-                'n_candidates': [2000],
-                'horizon': [30],
+                'n_candidates': [1000], # K
+                'horizon': [10], # Tau
                 'use_cem': [False],
                 'num_cem_iters': [5],
 
@@ -131,7 +134,8 @@ if __name__ == '__main__':
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
                 'rolling_average_persitency': [0.99],
-                'initial_random_samples': [True],
+                'initial_random_samples': [False],
+                'initial_sinusoid_samples': [True],
 
                 # Dynamics Model
                 'recurrent': [False],
