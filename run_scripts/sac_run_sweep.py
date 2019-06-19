@@ -15,10 +15,8 @@ from meta_mb.trainers.sac_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
-from meta_mb.baselines.nn_basline import NNValueFun
 from meta_mb.logger import logger
-from meta_mb.value_functions.utils import get_Q_function_from_variant
+from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 
@@ -40,17 +38,15 @@ def run_experiment(**kwargs):
 
         env = normalize(kwargs['env']())
 
+        Qs = [ValueFunction(name="q_fun_%d" % i,
+                            obs_dim=int(np.prod(env.observation_space.shape)),
+                            action_dim=int(np.prod(env.action_space.shape))
+                            ) for i in range(2)]
 
-        variant = {
-        'Q_params': {
-            'type': 'double_feedforward_Q_function',
-            'kwargs': {
-                'hidden_layer_sizes': (M, M),
-                'observation_preprocessors_params': {}
-            }
-        },
-        }
-        Qs = get_Q_function_from_variant(variant, env)
+        Q_targets = [ValueFunction(name="q_fun_targe_%d" % i,
+                            obs_dim=int(np.prod(env.observation_space.shape)),
+                            action_dim=int(np.prod(env.action_space.shape))
+                            ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -60,7 +56,6 @@ def run_experiment(**kwargs):
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
         )
-        # Load policy here
 
         sampler = Sampler(
             env=env,
@@ -79,11 +74,12 @@ def run_experiment(**kwargs):
         )
 
         algo = SAC(
-            policy = policy,
+            policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            training_environment=env,
+            env=env,
             Qs=Qs,
+            Q_targets=Q_targets,
         )
 
         trainer = Trainer(
@@ -108,51 +104,24 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Policy
-        'policy_hidden_sizes': [(100, 100)],
+        'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
 
         # Env Sampling
-        'num_rollouts': [10],
+        'num_rollouts': [20],
         'n_parallel': [5],
 
         # Problem Conf
         'n_itr': [1000],
-        'max_path_length': [1000],
-        # 'max_path_length': [200],
+        'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
-        #
-        # 'max_path_length': [500],
-        # 'n_parallel': [10],
-        #
-        # 'learn_std': [True],
-        # 'output_nonlinearity': [None],
-        # 'init_std': [1.],
-        #
-        # 'learning_rate': [3e-4, 1e-2],
-        'learning_rate' : [3e-4],
+        'learning_rate': [1e-5],
         'reward_scale': [1.0],
         'sampler_batch_size': [256],
-
-        # 'num_minibatches': [1],
-        # 'clip_eps': [.3],
-        #
-        # 'n_itr': [5000],
-        # 'scope': [None],
-        #
-        # 'exp_tag': ['v0'],
-
-        'Q_params': {
-            'type': 'double_feedforward_Q_function',
-            'kwargs': {
-                'hidden_layer_sizes': (M, M),
-                'observation_preprocessors_params': {}
-            }
         }
-
-    }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

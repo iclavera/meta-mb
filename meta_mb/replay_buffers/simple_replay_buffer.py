@@ -1,6 +1,6 @@
 import numpy as np
 
-from rllab.core.serializable import Serializable
+from meta_mb.utils.serializable import Serializable
 
 from .replay_buffer import ReplayBuffer
 from pdb import set_trace as st
@@ -57,12 +57,12 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         # st()
         indices = np.random.randint(0, self._size, batch_size)
         result = dict([])
-        result[prefix + '_observations'] = self._observations[indices]
-        result[prefix + '_actions'] = self._actions[indices]
-        result[prefix + '_rewards'] = self._rewards[indices]
-        result[prefix + '_dones'] = self._terminals[indices]
-        result[prefix + '_next_observations'] = self._next_obs[indices]
-        result[prefix + '_advantages'] = self._advantages[indices]
+        result[prefix + 'observations'] = self._observations[indices]
+        result[prefix + 'actions'] = self._actions[indices]
+        result[prefix + 'rewards'] = self._rewards[indices]
+        result[prefix + 'dones'] = self._terminals[indices]
+        result[prefix + 'next_observations'] = self._next_obs[indices]
+        result[prefix + 'advantages'] = self._advantages[indices]
         return result
         # return dict(
         #     prefix + observations=self._observations[indices],

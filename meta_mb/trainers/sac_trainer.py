@@ -84,7 +84,7 @@ class Trainer(object):
 
             if self.start_itr ==  0:
                 # INIT TRAINING
-                max_replay_buffer_size = 1000000
+                max_replay_buffer_size = 20 * 100 * 10
                 self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
                 self.sampler.replay_buffer = self.replay_buffer
                 self.algo._update_target(tau=1.0)

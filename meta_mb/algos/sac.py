@@ -3,8 +3,8 @@ from numbers import Number
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
-from flatten_dict import flatten
+# import tensorflow_probability as tfp
+# from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
 from meta_mb.utils import create_feed_dict
@@ -14,53 +14,53 @@ from meta_mb.utils import create_feed_dict
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
-from distutils.version import LooseVersion
+# from distutils.version import LooseVersion
+#
+# if LooseVersion(tf.__version__) > LooseVersion("2.00"):
+#     from tensorflow import nest
+# else:
+#     from tensorflow.contrib.framework import nest
 
-if LooseVersion(tf.__version__) > LooseVersion("2.00"):
-    from tensorflow import nest
-else:
-    from tensorflow.contrib.framework import nest
-
-"""flattern nested sequence, tuple, or dict."""
-def flatten_input_structure(inputs):
-    inputs_flat = nest.flatten(inputs)
-    return inputs_flat
-
-
-def log_pis_fn(inputs):
-    shift, log_scale_diag, actions = inputs
-    base_distribution = tfp.distributions.MultivariateNormalDiag(
-        loc=tf.zeros(output_shape),
-        scale_diag=tf.ones(output_shape))
-    bijector = tfp.bijectors.Chain((
-        squash_bijector,
-        tfp.bijectors.Affine(
-            shift=shift,
-            scale_diag=tf.exp(log_scale_diag)),
-    ))
-    distribution = (
-        tfp.distributions.ConditionalTransformedDistribution(
-            distribution=base_distribution,
-            bijector=bijector))
-
-    log_pis = distribution.log_prob(actions)[:, None]
-    return log_pis
-
-class SquashBijector(tfp.bijectors.Bijector):
-    def __init__(self, validate_args=False, name="tanh"):
-        super(SquashBijector, self).__init__(
-            forward_min_event_ndims=0,
-            validate_args=validate_args,
-            name=name)
-
-    def _forward(self, x):
-        return tf.nn.tanh(x)
-
-    def _inverse(self, y):
-        return tf.atanh(y)
-
-    def _forward_log_det_jacobian(self, x):
-        return 2. * (np.log(2.) - x - tf.nn.softplus(-2. * x))
+# """flattern nested sequence, tuple, or dict."""
+# def flatten_input_structure(inputs):
+#     inputs_flat = nest.flatten(inputs)
+#     return inputs_flat
+#
+#
+# def log_pis_fn(inputs):
+#     shift, log_scale_diag, actions = inputs
+#     base_distribution = tfp.distributions.MultivariateNormalDiag(
+#         loc=tf.zeros(output_shape),
+#         scale_diag=tf.ones(output_shape))
+#     bijector = tfp.bijectors.Chain((
+#         squash_bijector,
+#         tfp.bijectors.Affine(
+#             shift=shift,
+#             scale_diag=tf.exp(log_scale_diag)),
+#     ))
+#     distribution = (
+#         tfp.distributions.ConditionalTransformedDistribution(
+#             distribution=base_distribution,
+#             bijector=bijector))
+#
+#     log_pis = distribution.log_prob(actions)[:, None]
+#     return log_pis
+#
+# class SquashBijector(tfp.bijectors.Bijector):
+#     def __init__(self, validate_args=False, name="tanh"):
+#         super(SquashBijector, self).__init__(
+#             forward_min_event_ndims=0,
+#             validate_args=validate_args,
+#             name=name)
+#
+#     def _forward(self, x):
+#         return tf.nn.tanh(x)
+#
+#     def _inverse(self, y):
+#         return tf.atanh(y)
+#
+#     def _forward_log_det_jacobian(self, x):
+#         return 2. * (np.log(2.) - x - tf.nn.softplus(-2. * x))
 """===============added==========end============"""
 
 def td_target(reward, discount, next_value):
@@ -81,7 +81,8 @@ class SAC(Algo):
             self,
             policy,
             Qs,
-            training_environment,
+            env,
+            Q_targets=None,
             discount=0.99,
             name="sac",
             learning_rate=3e-4,
@@ -142,7 +143,7 @@ class SAC(Algo):
         self.discount = discount
         # self.recurrent = getattr(self.policy, 'recurrent', False)
         self.recurrent = False
-        self.training_environment = training_environment
+        self.training_environment = env
         self.target_entropy = (-np.prod(self.training_environment.action_space.shape) if target_entropy == 'auto' else target_entropy)
         self.learning_rate = learning_rate
         self.policy_lr = learning_rate
@@ -170,7 +171,10 @@ class SAC(Algo):
         # self._num_train_steps = 0
         """===============added==========end============"""
         self.Qs = Qs
-        self.Q_targets = tuple(tf.keras.models.clone_model(Q) for Q in Qs)
+        if Q_targets is None:
+            self.Q_targets = Qs
+        else:
+            self.Q_targets = Q_targets
         self.reward_scale = reward_scale
         self.target_update_interval = target_update_interval
         self.action_prior = action_prior
@@ -180,12 +184,12 @@ class SAC(Algo):
         self.build_graph()
 
     def build_graph(self):
-        self.op_phs_dict = OrderedDict()
         self.training_ops = {}
         self._init_global_step()
-        obs_ph, action_ph, next_obs_ph, ad_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('train', recurrent=False, next_obs=True)
-        self.op_phs_dict.update(all_phs_dict)
-        # distribution_info_vars = self.policy.distribution_info_sym(obs_ph)
+        obs_ph, action_ph, next_obs_ph, ad_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
+                                                                                                         recurrent=False,
+                                                                                                         next_obs=True)
+        self.op_phs_dict = all_phs_dict
         self._init_actor_update()
         self._init_critic_update()
         self._init_diagnostics_ops()
@@ -210,70 +214,62 @@ class SAC(Algo):
 
         # observation ph
         obs_shape = [None, self.policy.obs_dim]
-        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + '_obs')
-        all_phs_dict['%s_%s' % (prefix, 'observations')] = obs_ph
+        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+        all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
 
         # action ph
         action_shape = [None, self.policy.action_dim]
-        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + '_action')
-        all_phs_dict['%s_%s' % (prefix, 'actions')] = action_ph
+        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+        all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
 
         # advantage ph
         adv_shape = [None] if not recurrent else [None, None]
-        adv_ph = tf.placeholder(dtype=tf.float32, shape=adv_shape, name=prefix + '_advantage')
-        all_phs_dict['%s_%s' % (prefix, 'advantages')] = adv_ph
+        adv_ph = tf.placeholder(dtype=tf.float32, shape=adv_shape, name=prefix + 'advantage')
+        all_phs_dict['%s%s' % (prefix, 'advantages')] = adv_ph
 
         """add the placeholder for terminal here"""
         terminal_shape = [None] if not recurrent else [None, None]
-        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + '_dones')
-        all_phs_dict['%s_%s' % (prefix, 'dones')] = terminal_ph
+        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+        all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
 
         rewards_shape = [None] if not recurrent else [None, None]
-        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + '_rewards')
-        all_phs_dict['%s_%s' % (prefix, 'rewards')] = rewards_ph
+        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+        all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
 
         if not next_obs:
             return obs_ph, action_ph, adv_ph, dist_info_ph_dict, all_phs_dict
 
         else:
             obs_shape = [None, self.policy.obs_dim]
-            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + '_obs')
-            all_phs_dict['%s_%s' % (prefix, 'next_observations')] = next_obs_ph
+            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
 
         return obs_ph, action_ph, next_obs_ph, adv_ph, terminal_ph, all_phs_dict
 
+    def _get_q_target(self):
+        next_observations_ph = self.op_phs_dict['next_observations']
+        dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
+        mean, std = dist_info_sym['mean'], tf.exp(dist_info_sym['log_std'])
+        next_actions_var = mean + tf.random.normal(shape=tf.shape(mean)) * std
+        next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+        next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
-    def _get_Q_target(self):
-        prefix = 'train_'
-        policy_inputs = self.op_phs_dict[prefix + 'next_observations']
-        dist = self.policy.distribution_info_sym(policy_inputs)
-        mean = dist['mean']
-        sd = tf.math.exp(dist['log_std'])
-        # next_actions = mean + tf.random.normal(shape=tf.shape(mean), stddev=tf.math.exp(dist['log_std']))
-        distribution = tfp.distributions.MultivariateNormalDiag(loc = mean, scale_diag = sd)
-        next_actions = distribution.sample()
-        next_log_pis = self.policy._dist.log_likelihood_sym(next_actions, dist)
-        next_log_pis = tf.expand_dims(next_log_pis, axis = 1)
+        input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
 
+        min_next_Q = tf.reduce_min(next_q_values, axis=0)
+        next_values_var = min_next_Q - self.alpha * next_log_pis_var
 
-        next_Q_observations = self.op_phs_dict[prefix + 'next_observations']
-        next_Q_inputs = flatten_input_structure({
-            'next_Q_observations':next_Q_observations, 'actions': next_actions})
-        next_Qs_values = tuple(Q(next_Q_inputs) for Q in self.Q_targets)
-
-        min_next_Q = tf.reduce_min(next_Qs_values, axis=0)
-        next_values = min_next_Q - self.alpha * next_log_pis
-
-        terminals = tf.cast(self.op_phs_dict[prefix + 'dones'], next_values.dtype)
-        terminals = tf.expand_dims(terminals, axis = 1)
-        rewards = self.op_phs_dict[prefix + 'rewards']
-        rewards = tf.expand_dims(rewards, axis = 1)
-        Q_target = td_target(
-            reward=self.reward_scale * rewards,
+        dones_ph = tf.cast(self.op_phs_dict['dones'], next_values_var.dtype)
+        dones_ph = tf.expand_dims(dones_ph, axis=-1)
+        rewards_ph = self.op_phs_dict['rewards']
+        rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
+        q_target = td_target(
+            reward=self.reward_scale * rewards_ph,
             discount=self.discount,
-            next_value=(1 - terminals) * next_values)
+            next_value=(1 - dones_ph) * next_values_var)
 
-        return tf.stop_gradient(Q_target)
+        return tf.stop_gradient(q_target)
 
     def _init_critic_update(self):
         """Create minimization operation for critic Q-function.
@@ -283,33 +279,28 @@ class SAC(Algo):
         See Equations (5, 6) in [1], for further information of the
         Q-function update rule.
         """
-        prefix = 'train_'
-        Q_target = self._get_Q_target()
-        assert Q_target.shape.as_list() == [None, 1]
-        Q_observations = self.op_phs_dict[prefix + 'observations']
+        q_target = self._get_q_target()
+        assert q_target.shape.as_list() == [None, 1]
+        observations_ph = self.op_phs_dict['observations']
+        actions_ph = self.op_phs_dict['actions']
+        input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
-        Q_inputs = flatten_input_structure({
-            'Q_observations':Q_observations, 'actions': self.op_phs_dict[prefix + 'actions']})
+        q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
+                                    for q_value in q_values_var]
 
-        Q_values = self.Q_values = tuple(Q(Q_inputs) for Q in self.Qs)
-        Q_losses = self.Q_losses = tuple(
-            tf.losses.mean_squared_error(
-                labels=Q_target, predictions=Q_value, weights=0.5)
-            for Q_value in Q_values)
+        self.q_optimizers = [tf.train.AdamOptimizer(
+                                                    learning_rate=self.Q_lr,
+                                                    name='{}_{}_optimizer'.format(Q.name, i)
+                                                    )
+                             for i, Q in enumerate(self.Qs)]
 
+        q_training_ops = [
+            q_optimizer.minimize(loss=q_loss, var_list=list(Q.vfun_params.values()))
+            for i, (Q, q_loss, q_optimizer)
+            in enumerate(zip(self.Qs, q_losses, self.q_optimizers))]
 
-        self.Q_optimizers = tuple(
-            tf.train.AdamOptimizer(
-                learning_rate=self.Q_lr,
-                name='{}_{}_optimizer'.format(Q._name, i)
-            ) for i, Q in enumerate(self.Qs))
-
-        Q_training_ops = tuple(
-            Q_optimizer.minimize(loss=Q_loss, var_list=Q.trainable_variables)
-            for i, (Q, Q_loss, Q_optimizer)
-            in enumerate(zip(self.Qs, Q_losses, self.Q_optimizers)))
-
-        self.training_ops.update({'Q': tf.group(Q_training_ops)})
+        self.training_ops.update({'Q': tf.group(q_training_ops)})
 
     def _init_actor_update(self):
         """Create minimization operations for policy and entropy.
@@ -319,34 +310,25 @@ class SAC(Algo):
         See Section 4.2 in [1], for further information of the policy update,
         and Section 5 in [1] for further information of the entropy update.
         """
-        prefix = 'train'
-        original_inputs = self.op_phs_dict['%s_%s' % (prefix, 'observations')]
-        dist = self.policy.distribution_info_sym(original_inputs)
-        mean = dist['mean']
-        # actions =  mean + tf.random.normal(shape=tf.shape(mean), stddev=tf.math.exp(dist['log_std']))
-        sd = tf.math.exp(dist['log_std'])
-        distribution = tfp.distributions.MultivariateNormalDiag(loc = mean, scale_diag = sd)
-        actions = distribution.sample()
-        log_pis = self.policy._dist.log_likelihood_sym(actions, dist)
-        log_pis = tf.expand_dims(log_pis, axis = 1)
+        observations_ph = self.op_phs_dict['observations']
+        dist_info_sym = self.policy.distribution_info_sym(observations_ph)
+        mean, std = dist_info_sym['mean'], tf.exp(dist_info_sym['log_std'])
+        actions_var = mean + tf.random.normal(shape=tf.shape(mean)) * std
+        log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
+        log_pis_var = tf.expand_dims(log_pis_var, axis=1)
 
-        assert log_pis.shape.as_list() == [None, 1]
+        assert log_pis_var.shape.as_list() == [None, 1]
 
-        log_alpha = self.log_alpha = tf.compat.v1.get_variable(
-            'log_alpha',
-            dtype=tf.float32,
-            initializer=0.0)
+        log_alpha = self.log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
 
         if isinstance(self.target_entropy, Number):
             alpha_loss = -tf.reduce_mean(
-                log_alpha * tf.stop_gradient(log_pis + self.target_entropy))
-            self.log_pis = log_pis
+                log_alpha * tf.stop_gradient(log_pis_var + self.target_entropy))
+            self.log_pis_var = log_pis_var
 
-            self.alpha_optimizer = tf.compat.v1.train.AdamOptimizer(
-                self.policy_lr, name='alpha_optimizer')
-            self.alpha_train_op = self.alpha_optimizer.minimize(
-                loss=alpha_loss, var_list=[log_alpha])
+            self.alpha_optimizer = tf.train.AdamOptimizer(self.policy_lr, name='alpha_optimizer')
+            self.alpha_train_op = self.alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 
             self.training_ops.update({
                 'temperature_alpha': self.alpha_train_op
@@ -355,33 +337,25 @@ class SAC(Algo):
         self.alpha = alpha
 
         if self.action_prior == 'normal':
-            policy_prior = tfp.distributions.MultivariateNormalDiag(
-                loc=tf.zeros(self.action_shape),
-                scale_diag=tf.ones(self.action_shape))
-            policy_prior_log_probs = policy_prior.log_prob(actions)
+            raise NotImplementedError
         elif self.action_prior == 'uniform':
             policy_prior_log_probs = 0.0
 
-        """check dimension here"""
-        Q_observations = self.op_phs_dict['%s_%s' % (prefix, 'observations')]
-
-        Q_inputs = flatten_input_structure({
-            'Q_observations':Q_observations, 'actions': actions})
-        Q_log_targets = tuple(Q(Q_inputs) for Q in self.Qs)
-        min_Q_log_target = tf.reduce_min(Q_log_targets, axis=0)
+        input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        min_q_val_var = tf.reduce_min(next_q_values, axis=0)
 
         if self.reparameterize:
-            policy_kl_losses = (alpha * log_pis - min_Q_log_target- policy_prior_log_probs)
+            policy_kl_losses = (alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
         else:
             raise NotImplementedError
 
-        policy_kl_losses = tf.expand_dims(policy_kl_losses, axis = 1)
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
         self.policy_losses = policy_kl_losses
         policy_loss = tf.reduce_mean(policy_kl_losses)
 
-        self.policy_optimizer = tf.compat.v1.train.AdamOptimizer(
+        self.policy_optimizer = tf.train.AdamOptimizer(
             learning_rate=self.policy_lr,
             name="policy_optimizer")
 
@@ -393,15 +367,15 @@ class SAC(Algo):
 
     def _init_diagnostics_ops(self):
         diagnosables = OrderedDict((
-            ('Q_value', self.Q_values),
-            ('Q_loss', self.Q_losses),
+            ('Q_value', self.q_values_var),
+            ('Q_loss', self.q_losses),
             ('policy_loss', self.policy_losses),
             ('alpha', self.alpha)
         ))
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s"%(key,metric_name), metric_fn(values))
@@ -409,18 +383,15 @@ class SAC(Algo):
             for metric_name, metric_fn in diagnostic_metrics.items()
         ])
 
-
     def _update_target(self, tau=None):
         tau = tau or self.tau
         for Q, Q_target in zip(self.Qs, self.Q_targets):
-            source_params = Q.get_weights()
-            target_params = Q_target.get_weights()
-            Q_target.set_weights([
-                tau * source + (1.0 - tau) * target
-                for source, target in zip(source_params, target_params)
-            ])
-
-
+            source_params = Q.get_param_values()
+            target_params = Q_target.get_param_values()
+            Q_target.set_params(dict([
+                (param_name, tau * source + (1.0 - tau) * target_params[param_name])
+                for param_name, source in source_params.items()
+            ]))
 
     def _do_training(self, iteration, batch):
         """Runs the operations for updating training and target ops."""
@@ -433,7 +404,7 @@ class SAC(Algo):
     def optimize_policy(self, samples_data, timestep, training_batch, log=True):
         """===============added==========start============"""
         sess = tf.get_default_session()
-        prefix = 'train'
+        prefix = ''
         random_batch = training_batch.random_batch(self.sampler_batch_size, prefix)
         self._do_training(iteration=timestep, batch=random_batch)
         #
