@@ -69,9 +69,10 @@ class MPCController(Serializable):
 
     def get_sinusoid_actions(self, n):
         actions = np.array([])
-        step_size = (2 * np.pi) / n
+        omega = 1
+        t = (self.horizon / self.n_candidates) * 2 * np.pi
         for i in range(n):
-            actions = np.append(actions, np.sin(i * step_size))
+            actions = np.append(actions, 0.5 * np.sin(omega * i * t))
         return actions
 
     def get_cem_action(self, observations):
