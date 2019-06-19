@@ -2,7 +2,6 @@ import os
 import json
 import pickle
 import numpy as np
-from uuid import uuid4
 from tensorflow import tanh, ConfigProto
 from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
@@ -37,7 +36,7 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/parallel' + str(uuid4()) # kwargs.get('exp_name')
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -140,6 +139,7 @@ def run_experiment(**kwargs):
         steps_per_iter=kwargs['steps_per_iter'],
         flags_need_query=kwargs['flags_need_query'],
         config=config,
+        simulation_sleep=kwargs['simulation_sleep'],
     )
 
     trainer.train()
@@ -161,7 +161,7 @@ if __name__ == '__main__':
         'env': [AntEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [100],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -171,8 +171,9 @@ if __name__ == '__main__':
         'steps_per_iter': [(5, 5), (10, 10)],
 
         # Real Env Sampling
-        'num_rollouts': [10, 20],
+        'num_rollouts': [5, 20],
         'n_parallel': [1],
+        'simulation_sleep': [0, 10],
 
         # Dynamics Model
         'num_models': [1, 5],
@@ -197,7 +198,7 @@ if __name__ == '__main__':
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [20, 30],
         'scope': [None],
-        'exp_tag': [''],  # For changes besides hyperparams
+        'exp_tag': ['parallel'],  # For changes besides hyperparams
 
     }
 

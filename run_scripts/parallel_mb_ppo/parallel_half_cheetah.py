@@ -2,7 +2,6 @@ import os
 import json
 import pickle
 import numpy as np
-from uuid import uuid4
 from tensorflow import tanh, ConfigProto
 from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
@@ -37,7 +36,7 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/parallel' + str(uuid4()) #kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- running experiment {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -201,7 +200,7 @@ if __name__ == '__main__':
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [20],
         'scope': [None],
-        'exp_tag': [''],  # For changes besides hyperparams
+        'exp_tag': ['parallel'],  # For changes besides hyperparams
 
     }
 

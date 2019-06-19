@@ -262,8 +262,6 @@ class WorkerData(Worker):
         time.sleep(self.simulation_sleep)
         self.result = samples_data
 
-        # logger.logkv("TimeEnvSampling", time_env_sampling)
-        # logger.logkv("TimeEnvSampProc", time_env_samp_proc)
         self.update_info()
         info = {'Data-Iteration': self.itr_counter,
                 'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
