@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'half_cheetah'
+EXP_NAME = 'half_cheetah_summary'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -151,19 +151,19 @@ if __name__ == '__main__':
 
         'flags_need_query': [
             [False, False, False],
-            [True, True, False], [False, True, True], [True, False, True],
-            [True, False, False], [False, True, False], [False, False, True],
+            #[True, True, False], [False, True, True], [True, False, True],
+            #[True, False, False], [False, True, False], [False, False, True],
             [True, True, True],
         ],
 
-        'seed': [3, 4, 5],
+        'seed': [1, 2, 3],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [41],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -173,17 +173,17 @@ if __name__ == '__main__':
         'steps_per_iter': [(5, 5)],
 
         # Real Env Sampling
-        'num_rollouts': [1, 5, 10],
+        'num_rollouts': [20],
         'n_parallel': [1],
-        'simulation_sleep': [0, 10],
+        'simulation_sleep': [10],
 
         # Dynamics Model
-        'num_models': [1, 5],
+        'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [8e-4],
+        'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
