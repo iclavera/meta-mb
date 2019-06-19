@@ -92,7 +92,7 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [CassieEnv],
+        'env': [An],
 
         'num_rollouts': [100],
         'max_path_length': [200, 300],
