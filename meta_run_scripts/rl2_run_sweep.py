@@ -7,12 +7,11 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DE
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
-
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
-
+from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
@@ -29,7 +28,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'rl2-reach-rand0'
+EXP_NAME = 'rl2-kate-def'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -43,7 +42,9 @@ def run_experiment(**config):
     with sess.as_default() as sess:
 
         baseline = config['baseline']()
-        env = rl2env(normalize(config['env']()))
+        timeskip = config['timeskip']
+        log_rand = config['log_rand']
+        env = rl2env(normalize(config['env'](log_rand=log_rand, timeskip=timeskip)))
         obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
         policy = GaussianRNNPolicy(
                 name="meta-policy",
@@ -114,7 +115,9 @@ if __name__ == '__main__':
         "cell_type": ["lstm"],
         "num_minibatches": [1],
         "n_itr": [1001],
-        'exp_tag': ['v0']
+        'exp_tag': ['v0'],
+        'log_rand': [0],
+        'timeskip': [1, 2, 3, 4]
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
