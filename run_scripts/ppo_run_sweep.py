@@ -16,7 +16,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'cassie-running'
+EXP_NAME = 'cassie-balancing-entropy'
 
 
 def run_experiment(**kwargs):
@@ -70,6 +70,7 @@ def run_experiment(**kwargs):
             learning_rate=kwargs['learning_rate'],
             clip_eps=kwargs['clip_eps'],
             max_epochs=kwargs['num_ppo_steps'],
+            entropy_bonus=kwargs['entropy_bonus'],
         )
 
         trainer = Trainer(
@@ -93,25 +94,26 @@ if __name__ == '__main__':
 
         'env': [CassieEnv],
 
-        'num_rollouts': [20],
-        'max_path_length': [500],
+        'num_rollouts': [100],
+        'max_path_length': [200, 300],
         'n_parallel': [10],
 
         'discount': [0.99],
-        'gae_lambda': [.975],
+        'gae_lambda': [.975, 0.5],
         'normalize_adv': [True],
         'positive_adv': [False],
 
-        'hidden_sizes': [(256, 256, 256)],
+        'hidden_sizes': [(256, 256)],
         'learn_std': [True],
         'hidden_nonlinearity': [tf.nn.tanh],
         'output_nonlinearity': [None],
         'init_std': [1.],
 
-        'learning_rate': [1e-3, 1e-2],
-        'num_ppo_steps': [5],
+        'learning_rate': [1e-3],
+        'num_ppo_steps': [2, 5],
         'num_minibatches': [1],
         'clip_eps': [.3],
+        'entropy_bonus': [1e-2, 1e-3, 1e-4, 1e-5],
 
         'n_itr': [5000],
         'scope': [None],

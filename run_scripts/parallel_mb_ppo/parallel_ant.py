@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'ant'
+EXP_NAME = 'parallel-mb-ant'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -161,28 +161,28 @@ if __name__ == '__main__':
         'env': [AntEnv],
 
         # Problem Conf
-        'n_itr': [100],
-        'max_path_length': [200],
+        'n_itr': [500],
+        'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5), (10, 10)],
+        'steps_per_iter': [(5, 5)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 20],
+        'num_rollouts': [5],
         'n_parallel': [1],
         'simulation_sleep': [0, 10],
 
         # Dynamics Model
         'num_models': [1, 5],
-        'dynamics_hidden_sizes': [(512, 512)],
+        'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3, 5e-4],
-        'dynamics_batch_size': [256],
+        'dynamics_max_epochs': [25, 100],
+        'dynamics_learning_rate': [1e-3, 1e-4],
+        'dynamics_batch_size': [64, 128],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
 
@@ -196,7 +196,7 @@ if __name__ == '__main__':
         'clip_eps': [0.3],
         'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20, 30],
+        'imagined_num_rollouts': [25, 50],
         'scope': [None],
         'exp_tag': ['parallel'],  # For changes besides hyperparams
 

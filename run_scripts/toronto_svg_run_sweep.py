@@ -116,13 +116,13 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2],
 
         'algo': ['svg'],
         'env': [PendulumO01Env, PendulumO001Env],
 
         # Problem Conf
-        'n_itr': [100],
+        'n_itr': [2],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],

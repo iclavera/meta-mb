@@ -93,7 +93,7 @@ if __name__ == '__main__':
         'env': [AntEnv],
 
         'num_rollouts': [20],
-        'max_path_length': [500],
+        'max_path_length': [100],
         'n_parallel': [10],
 
         'discount': [0.99],
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
 
-        'hidden_sizes': [(256, 256, 256)],
+        'hidden_sizes': [(64, 64)],
         'learn_std': [True],
         'hidden_nonlinearity': [tf.nn.tanh],
         'output_nonlinearity': [None],
