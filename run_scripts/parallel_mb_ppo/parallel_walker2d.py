@@ -151,8 +151,7 @@ if __name__ == '__main__':
     sweep_params = {
 
         'flags_need_query': [
-            [False, False, False],
-            [True, True, True],
+            [False, False, False], # > [True, True, True]
         ],
 
         'seed': [1, 2,],
@@ -169,20 +168,20 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5), (10, 10)],
+        'steps_per_iter': [(10, 10)], # (10, 10) > (5, 5)
 
         # Real Env Sampling
-        'num_rollouts': [5, 20],
+        'num_rollouts': [5,], # 5 > 20
         'n_parallel': [1],
         'simulation_sleep': [0, 10],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512, 512)],
+        'dynamics_hidden_sizes': [(512, 512, 512)], #fix
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3],
+        'dynamics_learning_rate': [1e-3], # 1e-3 > 5e-4
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
@@ -194,10 +193,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2, 0.3],
+        'clip_eps': [0.3], # 0.3 > 0.2
         'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20],
+        'imagined_num_rollouts': [30], #  30 > 20
         'scope': [None],
         'exp_tag': ['parallel'],  # For changes besides hyperparams
 

@@ -6,7 +6,7 @@ import os
 
 
 class FullBlueEnv(RandomEnv, utils.EzPickle):
-    def __init__(self, actions=None):
+    def __init__(self, log_rand=0, timeskip=2, actions=None):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
@@ -21,7 +21,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
             self.path_len = 0
             self.max_path_len = len(actions)
 
-        RandomEnv.__init__(self, 0, xml_file, np.random.randint(1, 5))
+        RandomEnv.__init__(self, log_rand, xml_file, timeskip)
 
     def _get_obs(self):
         return np.concatenate([
