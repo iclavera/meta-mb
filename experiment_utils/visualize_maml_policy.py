@@ -9,7 +9,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.samplers.meta_samplers import MAMLSampler
-from meta_mb.samplers.maml_sample_processor import MAMLSampleProcessor
+from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.meta_algos.vpg_maml import VPGMAML
 
 BATCH_SIZE = 80

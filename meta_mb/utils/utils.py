@@ -149,7 +149,7 @@ def _stack_tensor_dict_list(tensor_dict_list):
     return ret
 
 
-def stack_tensor_dict_list(tensor_dict_list, max_path=None):
+def stack_tensor_dict_list(tensor_dict_list, max_path=None, end=None):
     """
     Args:
         tensor_dict_list (list) : list of dicts of tensors

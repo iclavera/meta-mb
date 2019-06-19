@@ -5,6 +5,7 @@ from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
 from collections import OrderedDict
+from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 
 
 class RNNDynamicsModel(Serializable):
@@ -45,9 +46,6 @@ class RNNDynamicsModel(Serializable):
         self.batch_size = batch_size
         self.step_size = step_size
         with tf.variable_scope(name):
-
-
-            # determine dimensionality of state and action space
             self.obs_space_dims = env.observation_space.shape[0]
             self.action_space_dims = env.action_space.shape[0]
 
@@ -112,18 +110,7 @@ class RNNDynamicsModel(Serializable):
 
         sess = tf.get_default_session()
 
-        if (self.normalization is None or compute_normalization) and self.normalize_input:
-            self.compute_normalization(obs, act, obs_next)
-
-        if self.normalize_input:
-            # normalize data
-            obs, act, delta = self._normalize_data(obs, act, obs_next)
-            assert obs.ndim == act.ndim == obs_next.ndim == 3
-        else:
-            delta = obs_next - obs
-
-        # split into valid and test set
-
+        delta = obs_next - obs
         obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                              test_split_ratio=valid_split_ratio)
 
@@ -137,6 +124,21 @@ class RNNDynamicsModel(Serializable):
         next_batch, iterator = self._data_input_fn(obs_train, act_train, delta_train, batch_size=self.batch_size)
 
         valid_loss_rolling_average = None
+
+        if (self.normalization is None or compute_normalization) and self.normalize_input:
+            self.compute_normalization(self._dataset_train['obs'], self._dataset_train['act'],
+                                       self._dataset_train['delta'])
+
+        if self.normalize_input:
+            # normalize data
+            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+                                                                     self._dataset_train['act'],
+                                                                     self._dataset_train['delta'])
+            assert obs_train.ndim == act_train.ndim == delta_train.ndim == 3
+        else:
+            obs_train = self._dataset_train['obs']
+            act_train = self._dataset_train['act']
+            delta_train = self._dataset_train['delta']
 
         # Training loop
         for epoch in range(epochs):
@@ -305,29 +307,5 @@ class RNNDynamicsModel(Serializable):
         self.normalization = state['normalization']
         for i in range(len(self._networks)):
             self._networks[i].__setstate__(state['networks'][i])
-
-
-def normalize(data_array, mean, std):
-    return (data_array - mean) / (std + 1e-10)
-
-
-def denormalize(data_array, mean, std):
-    return data_array * (std + 1e-10) + mean
-
-
-def train_test_split(obs, act, delta, test_split_ratio=0.2):
-    assert obs.shape[0] == act.shape[0] == delta.shape[0]
-    assert obs.shape[1] == act.shape[1] == delta.shape[1]
-    dataset_size = obs.shape[0]
-    indices = np.arange(dataset_size)
-    np.random.shuffle(indices)
-    split_idx = int(dataset_size * (1-test_split_ratio))
-
-    idx_train = indices[:split_idx]
-    idx_test = indices[split_idx:]
-    assert len(idx_train) + len(idx_test) == dataset_size
-
-    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
-           obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
 
 
