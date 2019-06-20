@@ -1,14 +1,14 @@
 import tensorflow as tf
 import numpy as np
 from meta_mb.policies.distributions.base import Distribution
+import tensorflow_probability as tfp
 
-class DiagonalGaussian(Distribution):
+class SquashedDiagonalGaussian(Distribution):
     """
     General methods for a diagonal gaussian distribution of this size
     """
-    def __init__(self, dim, squashed=False):
+    def __init__(self, dim):
         self._dim = dim
-        self._squashed = squashed
 
     @property
     def dim(self):
@@ -26,8 +26,6 @@ class DiagonalGaussian(Distribution):
         Returns:
             (tf.Tensor) : Symbolic representation of kl divergence (tensorflow op)
         """
-        if self._squashed:
-            raise NotImplementedError
         old_means = old_dist_info_vars["mean"]
         old_log_stds = old_dist_info_vars["log_std"]
         new_means = new_dist_info_vars["mean"]
@@ -58,8 +56,6 @@ class DiagonalGaussian(Distribution):
         Returns:
             (numpy array): kl divergence of distributions
         """
-        if self._squashed:
-            raise NotImplementedError
         old_means = old_dist_info["mean"]
         old_log_stds = old_dist_info["log_std"]
         new_means = new_dist_info["mean"]
@@ -108,19 +104,10 @@ class DiagonalGaussian(Distribution):
         # assert ranks
         # tf.assert_rank(x_var, 2), tf.assert_rank(means, 2), tf.assert_rank(log_stds, 2)
 
-        if self._squashed:
-            pre_x_var = tf.math.atanh(x_var)
-            zs = (pre_x_var - means) / tf.exp(log_stds)
-            logli = - tf.reduce_sum(log_stds, reduction_indices=-1) - \
-                0.5 * tf.reduce_sum(tf.square(zs), reduction_indices=-1) - \
-                0.5 * self.dim * np.log(2 * np.pi)
-            return logli - tf.reduce_sum(tf.log(1 - tf.square(x_var) + 1e-6), reduction_indices=-1)
-        else:
-            zs = (x_var - means) / tf.exp(log_stds)
-            logli = - tf.reduce_sum(log_stds, reduction_indices=-1) - \
-                    0.5 * tf.reduce_sum(tf.square(zs), reduction_indices=-1) - \
-                    0.5 * self.dim * np.log(2 * np.pi)
-            return logli
+        zs = (x_var - means) / tf.exp(log_stds)
+        return - tf.reduce_sum(log_stds, reduction_indices=-1) - \
+               0.5 * tf.reduce_sum(tf.square(zs), reduction_indices=-1) - \
+               0.5 * self.dim * np.log(2 * np.pi)
 
     def log_likelihood(self, xs, dist_info):
         """
@@ -135,15 +122,10 @@ class DiagonalGaussian(Distribution):
         """
         means = dist_info["mean"]
         log_stds = dist_info["log_std"]
-        if self._squashed:
-            pre_xs = np.arctanh(xs)
-            zs = (pre_xs - means) / np.exp(log_stds)
-            logli = - np.sum(log_stds, axis=-1) - 0.5 * np.sum(np.square(zs), axis=-1) - 0.5 * self.dim * np.log(2 * np.pi)
-            return logli - np.sum(np.log(1 - np.square(xs) + 1e-6), axis=-1)
-        else:
-            zs = (xs - means) / np.exp(log_stds)
-            logli = - np.sum(log_stds, axis=-1) - 0.5 * np.sum(np.square(zs), axis=-1) - 0.5 * self.dim * np.log(2 * np.pi)
-            return logli
+        zs = (xs - means) / np.exp(log_stds)
+        return - np.sum(log_stds, axis=-1) - \
+               0.5 * np.sum(np.square(zs), axis=-1) - \
+               0.5 * self.dim * np.log(2 * np.pi)
 
     def entropy_sym(self, dist_info_vars):
         """
@@ -155,9 +137,6 @@ class DiagonalGaussian(Distribution):
         Returns:
             (tf.Tensor): entropy
         """
-        if self._squashed:
-            raise NotImplementedError
-
         log_stds = dist_info_vars["log_std"]
         return tf.reduce_sum(log_stds + np.log(np.sqrt(2 * np.pi * np.e)), reduction_indices=-1)
 
@@ -171,9 +150,6 @@ class DiagonalGaussian(Distribution):
         Returns:
           (numpy array): entropy
         """
-        if self._squashed:
-            raise NotImplementedError
-
         log_stds = dist_info["log_std"]
         return np.sum(log_stds + np.log(np.sqrt(2 * np.pi * np.e)), axis=-1)
 
@@ -190,28 +166,7 @@ class DiagonalGaussian(Distribution):
         means = dist_info["mean"]
         log_stds = dist_info["log_std"]
         rnd = np.random.normal(size=means.shape)
-        if self._squashed:
-            return np.tanh(rnd * np.exp(log_stds) + means)
-        else:
-            return rnd * np.exp(log_stds) + means
-
-    def sample_sym(self, dist_info):
-        """
-        Draws a sample from the distribution
-
-        Args:
-           dist_info (dict) : dict of distribution parameter instantiations as numpy array
-
-        Returns:
-           (obj): sample drawn from the corresponding instantiation
-        """
-        means = dist_info["mean"]
-        stds = tf.exp(dist_info["log_std"])
-        rnd = tf.random.normal(shape=tf.shape(means))
-        if self._squashed:
-            return tf.tanh(means + rnd * stds)
-        else:
-            return means + rnd * stds
+        return rnd * np.exp(log_stds) + means
 
     @property
     def dist_info_specs(self):

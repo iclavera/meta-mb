@@ -43,7 +43,7 @@ def run_experiment(**kwargs):
                             action_dim=int(np.prod(env.action_space.shape))
                             ) for i in range(2)]
 
-        Q_targets = [ValueFunction(name="q_fun_targe_%d" % i,
+        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
                             obs_dim=int(np.prod(env.observation_space.shape)),
                             action_dim=int(np.prod(env.action_space.shape))
                             ) for i in range(2)]
@@ -55,6 +55,7 @@ def run_experiment(**kwargs):
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
+            squashed=True
         )
 
         sampler = Sampler(
@@ -80,6 +81,7 @@ def run_experiment(**kwargs):
             env=env,
             Qs=Qs,
             Q_targets=Q_targets,
+            reward_scale=kwargs['reward_scale']
         )
 
         trainer = Trainer(
@@ -95,8 +97,8 @@ def run_experiment(**kwargs):
         trainer.train()
     sess.__exit__()
 
+
 if __name__ == '__main__':
-    M = 256
     sweep_params = {
         'algo': ['sac'],
         'seed': [1, 2],
@@ -104,13 +106,13 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Policy
-        'policy_hidden_sizes': [(64, 64)],
+        'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
 
         # Env Sampling
-        'num_rollouts': [20],
-        'n_parallel': [5],
+        'num_rollouts': [1],
+        'n_parallel': [1],
 
         # Problem Conf
         'n_itr': [1000],
@@ -119,7 +121,7 @@ if __name__ == '__main__':
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'learning_rate': [1e-5],
+        'learning_rate': [3e-4],
         'reward_scale': [1.0],
         'sampler_batch_size': [256],
         }

@@ -3,7 +3,7 @@ from numbers import Number
 
 import numpy as np
 import tensorflow as tf
-# import tensorflow_probability as tfp
+import tensorflow_probability as tfp
 # from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
@@ -11,6 +11,7 @@ from meta_mb.utils import create_feed_dict
 """===============added==========start============"""
 from pdb import set_trace as st
 from meta_mb.utils import create_feed_dict
+from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
@@ -144,7 +145,8 @@ class SAC(Algo):
         # self.recurrent = getattr(self.policy, 'recurrent', False)
         self.recurrent = False
         self.training_environment = env
-        self.target_entropy = (-np.prod(self.training_environment.action_space.shape) if target_entropy == 'auto' else target_entropy)
+        self.target_entropy = (-np.prod(self.training_environment.action_space.shape)
+                               if target_entropy == 'auto' else target_entropy)
         self.learning_rate = learning_rate
         self.policy_lr = learning_rate
         self.Q_lr = learning_rate
@@ -249,8 +251,7 @@ class SAC(Algo):
     def _get_q_target(self):
         next_observations_ph = self.op_phs_dict['next_observations']
         dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
-        mean, std = dist_info_sym['mean'], tf.exp(dist_info_sym['log_std'])
-        next_actions_var = mean + tf.random.normal(shape=tf.shape(mean)) * std
+        next_actions_var = self.policy.distribution.sample_sym(dist_info_sym)
         next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
         next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
@@ -264,7 +265,7 @@ class SAC(Algo):
         dones_ph = tf.expand_dims(dones_ph, axis=-1)
         rewards_ph = self.op_phs_dict['rewards']
         rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
-        q_target = td_target(
+        self.q_target = q_target = td_target(
             reward=self.reward_scale * rewards_ph,
             discount=self.discount,
             next_value=(1 - dones_ph) * next_values_var)
@@ -312,14 +313,13 @@ class SAC(Algo):
         """
         observations_ph = self.op_phs_dict['observations']
         dist_info_sym = self.policy.distribution_info_sym(observations_ph)
-        mean, std = dist_info_sym['mean'], tf.exp(dist_info_sym['log_std'])
-        actions_var = mean + tf.random.normal(shape=tf.shape(mean)) * std
+        actions_var = self.policy.distribution.sample_sym(dist_info_sym)
         log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
         log_pis_var = tf.expand_dims(log_pis_var, axis=1)
 
         assert log_pis_var.shape.as_list() == [None, 1]
 
-        log_alpha = self.log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
 
         if isinstance(self.target_entropy, Number):
@@ -346,7 +346,7 @@ class SAC(Algo):
         min_q_val_var = tf.reduce_min(next_q_values, axis=0)
 
         if self.reparameterize:
-            policy_kl_losses = (alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
+            policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
         else:
             raise NotImplementedError
 
@@ -370,12 +370,15 @@ class SAC(Algo):
             ('Q_value', self.q_values_var),
             ('Q_loss', self.q_losses),
             ('policy_loss', self.policy_losses),
-            ('alpha', self.alpha)
+            ('alpha', self.alpha),
+            ('Q_targets', self.q_target),
+            ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
+            ('log_pis', self.log_pis_var)
         ))
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s"%(key,metric_name), metric_fn(values))
@@ -393,20 +396,22 @@ class SAC(Algo):
                 for param_name, source in source_params.items()
             ]))
 
-    def _do_training(self, iteration, batch):
+    def _do_training(self, iteration, batch, log=False):
         """Runs the operations for updating training and target ops."""
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch)
         self.session.run(self.training_ops, feed_dict)
+        if log:
+            diagnostics = self.session.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv(k, v)
         if iteration % self.target_update_interval == 0:
             self._update_target()
 
-
     def optimize_policy(self, samples_data, timestep, training_batch, log=True):
-        """===============added==========start============"""
-        sess = tf.get_default_session()
-        prefix = ''
-        random_batch = training_batch.random_batch(self.sampler_batch_size, prefix)
-        self._do_training(iteration=timestep, batch=random_batch)
+        for i in range(100):
+            random_batch = training_batch.random_batch(self.sampler_batch_size, '')
+            self._do_training(iteration=timestep, batch=random_batch, log=(i == 99))
+
         #
         # sess = tf.get_default_session()
         # input_dict = self._extract_input_dict(samples_data, self._optimization_keys, prefix)
@@ -423,3 +428,4 @@ class SAC(Algo):
 
         # self._num_train_steps += self._n_train_repeat
         # self._train_steps_this_epoch += self._n_train_repeat
+
