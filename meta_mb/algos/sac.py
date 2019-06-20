@@ -408,7 +408,7 @@ class SAC(Algo):
             self._update_target()
 
     def optimize_policy(self, samples_data, timestep, training_batch, log=True):
-        for i in range(100):
+        for i in range(1000):
             random_batch = training_batch.random_batch(self.sampler_batch_size, '')
             self._do_training(iteration=timestep, batch=random_batch, log=(i == 99))
 

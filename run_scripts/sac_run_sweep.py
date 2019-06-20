@@ -122,7 +122,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1.0],
+        'reward_scale': [30.0],
         'sampler_batch_size': [256],
         }
 
