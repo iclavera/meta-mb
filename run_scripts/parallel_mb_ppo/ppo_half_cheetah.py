@@ -115,7 +115,7 @@ if __name__ == '__main__':
         'n_itr': [5000],
         'scope': [None],
 
-        'exp_tag': ['ppo']
+        'exp_tag': ['ppo_half_cheetah']
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

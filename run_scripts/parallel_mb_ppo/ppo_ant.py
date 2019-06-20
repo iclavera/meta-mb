@@ -107,15 +107,15 @@ if __name__ == '__main__':
         'output_nonlinearity': [None],
         'init_std': [1.],
 
-        'learning_rate': [1e-3, 1e-2],
+        'learning_rate': [1e-3],
         'num_ppo_steps': [5],
         'num_minibatches': [1],
         'clip_eps': [.3],
 
-        'n_itr': [5000],
+        'n_itr': [2000],
         'scope': [None],
 
-        'exp_tag': ['ppo']
+        'exp_tag': ['ppo_ant']
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

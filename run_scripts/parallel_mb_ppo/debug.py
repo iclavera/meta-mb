@@ -7,15 +7,15 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import AntEnv
+from meta_mb.envs.mb_envs import HalfCheetahEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'parallel_ant_summary'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'debug'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -36,13 +36,14 @@ def init_vars(sender, config, policy, dynamics_model):
 
 def run_experiment(**kwargs):
 
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
-    print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
-    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    print("\n---------- running experiment {} ---------------------------".format(exp_dir))
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     # Instantiate classes
     set_seed(kwargs['seed'])
@@ -83,7 +84,7 @@ def run_experiment(**kwargs):
         target=init_vars,
         name="init_vars",
         args=(sender, config, policy, dynamics_model),
-        daemon=False,
+        daemon=True,
     )
     p.start()
     policy_pickle, dynamics_model_pickle = receiver.recv()
@@ -150,35 +151,36 @@ if __name__ == '__main__':
     sweep_params = {
 
         'flags_need_query': [
-            [False, False, False], [True, True, True],
-            [False, True, False], [True, False, False], [False, False, True],
-            [False, True, True], [True, False, True], [True, True, False],
+            [False, False, False],
+            #[True, True, False], [False, True, True], [True, False, True],
+            #[True, False, False], [False, True, False], [False, False, True],
+            # [True, True, True],
         ],
 
         'seed': [1,],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [100],
+        'n_itr': [5],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5),], # > (10, 10)
+        'steps_per_iter': [(5, 5)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 20],
+        'num_rollouts': [20],
         'n_parallel': [1],
-        'simulation_sleep': [10], # 10 > 0
+        'simulation_sleep': [10],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512, 512)],
+        'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
@@ -194,12 +196,12 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2], # 0.2 > 0.3
+        'clip_eps': [0.3],
         'learning_rate': [1e-3],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20],# > 30
+        'imagined_num_rollouts': [20],
         'scope': [None],
-        'exp_tag': ['parallel_ant'],  # For changes besides hyperparams
+        'exp_tag': ['parallel, debug'],  # For changes besides hyperparams
 
     }
 

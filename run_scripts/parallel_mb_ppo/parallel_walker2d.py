@@ -15,8 +15,8 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'walker2d'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'parallel_walker2d_summary'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -36,10 +36,10 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-
+    print()
     exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = ConfigProto()
     config.gpu_options.allow_growth = True
@@ -151,17 +151,18 @@ if __name__ == '__main__':
     sweep_params = {
 
         'flags_need_query': [
+            # [True, False, False], [False, False, True], [False, True, False],
             [False, False, False], # > [True, True, True]
         ],
 
-        'seed': [1, 2,],
+        'seed': [1, 2, 3],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [Walker2dEnv],
 
         # Problem Conf
-        'n_itr': [100],
+        'n_itr': [300],
         'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -171,9 +172,9 @@ if __name__ == '__main__':
         'steps_per_iter': [(10, 10)], # (10, 10) > (5, 5)
 
         # Real Env Sampling
-        'num_rollouts': [5,], # 5 > 20
+        'num_rollouts': [5], # 5 > 20
         'n_parallel': [1],
-        'simulation_sleep': [0, 10],
+        'simulation_sleep': [10],
 
         # Dynamics Model
         'num_models': [5],
@@ -181,24 +182,24 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3], # 1e-3 > 5e-4
+        'dynamics_learning_rate': [5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
 
         # Policy
-        'policy_hidden_sizes': [(64, 64, 64)],
+        'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tanh],
         'policy_output_nonlinearity': [None],
 
         # Algo
         'clip_eps': [0.3], # 0.3 > 0.2
-        'learning_rate': [1e-3, 5e-4],
+        'learning_rate': [5e-4],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [30], #  30 > 20
         'scope': [None],
-        'exp_tag': ['parallel'],  # For changes besides hyperparams
+        'exp_tag': ['parallel_walker2d'],  # For changes besides hyperparams
 
     }
 
