@@ -150,10 +150,10 @@ if __name__ == '__main__':
 
         'flags_need_query': [
             [False, False, False],
-            [True, True, True],
+            # [True, True, True],
         ],
 
-        'seed': [1, 2,],
+        'seed': [1],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
@@ -172,16 +172,16 @@ if __name__ == '__main__':
         # Real Env Sampling
         'num_rollouts': [5],
         'n_parallel': [1],
-        'simulation_sleep': [0, 10],
+        'simulation_sleep': [0],
 
         # Dynamics Model
-        'num_models': [1, 5],
+        'num_models': [1],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [25, 100],
-        'dynamics_learning_rate': [1e-3, 1e-4],
-        'dynamics_batch_size': [64, 128],
+        'dynamics_max_epochs': [25],
+        'dynamics_learning_rate': [1e-3],
+        'dynamics_batch_size': [64],
         'dynamics_buffer_size': [10000],
         'deterministic': [True],
 
@@ -193,9 +193,9 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3, 5e-4],
+        'learning_rate': [1e-3],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [25, 50],
+        'imagined_num_rollouts': [25],
         'scope': [None],
         'exp_tag': ['parallel'],  # For changes besides hyperparams
 
