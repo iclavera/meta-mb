@@ -7,16 +7,12 @@ import abc
 from collections import OrderedDict
 from distutils.version import LooseVersion
 from itertools import count
-# import gtimer as gt
 import math
 import os
 from pdb import set_trace as st
 from meta_mb.replay_buffers import SimpleReplayBuffer
 
 # from tensorflow.python.training import training_util
-
-# from softlearning.samplers import rollouts
-# from softlearning.misc.utils import save_video
 
 
 class Trainer(object):
@@ -84,9 +80,9 @@ class Trainer(object):
 
             if self.start_itr ==  0:
                 # INIT TRAINING
-                max_replay_buffer_size = 1000000
+                max_replay_buffer_size = 1e6
                 self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
-                self.sampler.replay_buffer = self.replay_buffer
+                # self.sampler.replay_buffer = self.replay_buffer
                 self.algo._update_target(tau=1.0)
                 if self.n_initial_exploration_steps > 0:
                     while self.replay_buffer._size < self.n_initial_exploration_steps:

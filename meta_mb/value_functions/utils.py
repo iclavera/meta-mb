@@ -36,6 +36,11 @@ VALUE_FUNCTIONS = {
             vanilla.create_feedforward_Q_function, *args, **kwargs)),
 }
 
+def get_convnet_preprocessor(name='convnet_preprocessor', **kwargs):
+   from meta_mb.models.convnet import convnet_model
+   preprocessor = convnet_model(name=name, **kwargs)
+   return preprocessor
+
 
 def get_Q_function_from_variant(variant, env, *args, **kwargs):
     Q_params = deepcopy(variant['Q_params'])

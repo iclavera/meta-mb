@@ -22,7 +22,6 @@ from meta_mb.value_functions.utils import get_Q_function_from_variant
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 
-
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -45,7 +44,7 @@ def run_experiment(**kwargs):
         'Q_params': {
             'type': 'double_feedforward_Q_function',
             'kwargs': {
-                'hidden_layer_sizes': (M, M),
+                'hidden_layer_sizes': (kwargs['M'], kwargs['M']),
                 'observation_preprocessors_params': {}
             }
         },
@@ -100,58 +99,34 @@ def run_experiment(**kwargs):
     sess.__exit__()
 
 if __name__ == '__main__':
-    M = 256
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1, 2],
+        'seed': [1],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
         # Policy
-        'policy_hidden_sizes': [(100, 100)],
+        'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
 
         # Env Sampling
-        'num_rollouts': [10],
-        'n_parallel': [5],
+        'num_rollouts': [1],
+        'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [1000],
+        'n_itr': [3000],
+        # 'max_path_length': [500],
         'max_path_length': [1000],
-        # 'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
-        #
-        # 'max_path_length': [500],
-        # 'n_parallel': [10],
-        #
-        # 'learn_std': [True],
-        # 'output_nonlinearity': [None],
-        # 'init_std': [1.],
-        #
-        # 'learning_rate': [3e-4, 1e-2],
+
         'learning_rate' : [3e-4],
-        'reward_scale': [1.0],
+        'reward_scale': [5.0],
         'sampler_batch_size': [256],
-
-        # 'num_minibatches': [1],
-        # 'clip_eps': [.3],
-        #
-        # 'n_itr': [5000],
-        # 'scope': [None],
-        #
-        # 'exp_tag': ['v0'],
-
-        'Q_params': {
-            'type': 'double_feedforward_Q_function',
-            'kwargs': {
-                'hidden_layer_sizes': (M, M),
-                'observation_preprocessors_params': {}
-            }
-        }
+        'M': [256],
 
     }
 
