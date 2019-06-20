@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-running'
+EXP_NAME = 'sac-running-test'
 
 
 from meta_mb.algos.sac import SAC
@@ -44,9 +44,9 @@ def run_experiment(**kwargs):
                             ) for i in range(2)]
 
         Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                            obs_dim=int(np.prod(env.observation_space.shape)),
-                            action_dim=int(np.prod(env.action_space.shape))
-                            ) for i in range(2)]
+                                   obs_dim=int(np.prod(env.observation_space.shape)),
+                                   action_dim=int(np.prod(env.action_space.shape))
+                                   ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -122,7 +122,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [30.0],
+        'reward_scale': [1.],
         'sampler_batch_size': [256],
         }
 

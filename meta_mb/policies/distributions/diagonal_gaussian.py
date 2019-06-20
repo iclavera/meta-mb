@@ -109,7 +109,7 @@ class DiagonalGaussian(Distribution):
         # tf.assert_rank(x_var, 2), tf.assert_rank(means, 2), tf.assert_rank(log_stds, 2)
 
         if self._squashed:
-            pre_x_var = tf.math.atanh(x_var)
+            pre_x_var = dist_info_vars["pre_tanh"]
             zs = (pre_x_var - means) / tf.exp(log_stds)
             logli = - tf.reduce_sum(log_stds, reduction_indices=-1) - \
                 0.5 * tf.reduce_sum(tf.square(zs), reduction_indices=-1) - \
@@ -137,7 +137,6 @@ class DiagonalGaussian(Distribution):
         log_stds = dist_info["log_std"]
         if self._squashed:
             pre_xs = dist_info["pre_tanh"]
-            # pre_xs = np.arctanh(xs)
             zs = (pre_xs - means) / np.exp(log_stds)
             logli = - np.sum(log_stds, axis=-1) - 0.5 * np.sum(np.square(zs), axis=-1) - 0.5 * self.dim * np.log(2 * np.pi)
             return logli - np.sum(np.log(1 - np.square(xs) + 1e-6), axis=-1)
@@ -209,10 +208,12 @@ class DiagonalGaussian(Distribution):
         means = dist_info["mean"]
         stds = tf.exp(dist_info["log_std"])
         rnd = tf.random.normal(shape=tf.shape(means))
+        actions = means + rnd * stds
         if self._squashed:
-            return tf.tanh(means + rnd * stds)
+            dist_info['pre_tanh'] = actions
+            return tf.tanh(means + rnd * stds), dist_info
         else:
-            return means + rnd * stds
+            return means + rnd * stds, dist_info
 
     @property
     def dist_info_specs(self):
