@@ -16,9 +16,6 @@ class ValueFunction(Serializable):
     Provides functions for executing and updating policy parameters
     A container for storing the current pre and post update policies
 
-<<<<<<< HEAD
-from meta_mb.utils.serializable import Serializable
-=======
     Args:
         obs_dim (int): dimensionality of the observation space -> specifies the input size of the policy
         action_dim (int): dimensionality of the action space -> specifies the output size of the policy
@@ -29,7 +26,6 @@ from meta_mb.utils.serializable import Serializable
         learn_std (boolean): whether the standard_dev / variance is a trainable or fixed variable
         init_std (float): initial policy standard deviation
         min_std( float): minimal policy standard deviation
->>>>>>> 9ca891017018f5e2d9f4ea610a1610964dbe4971
 
     """
 
@@ -177,6 +173,9 @@ from meta_mb.utils.serializable import Serializable
         Args:
             policy_params (dict): of variable names and corresponding parameter values
         """
+        # from pdb import set_trace as st
+        # print(self.get_params().keys(), vfun_params.keys())
+        # st()
         assert all([k1 == k2 for k1, k2 in zip(self.get_params().keys(), vfun_params.keys())]), \
             "parameter keys must match with variable"
 
@@ -203,81 +202,3 @@ from meta_mb.utils.serializable import Serializable
         Serializable.__setstate__(self, state['init_args'])
         # tf.get_default_session().run(tf.global_variables_initializer())
         self.set_params(state['network_params'])
-
-<<<<<<< HEAD
-        for values, qf in zip(all_values_list, self.q_functions):
-            qf.set_param_values(values)
-
-
-from .mlp import MLPFunction
-
-class NNVFunction(MLPFunction):
-
-    def __init__(self, env_spec, hidden_layer_sizes=(100, 100), name='vf'):
-        Serializable.quick_init(self, locals())
-
-        # self._Do = env_spec.observation_space.flat_dim
-        self._Do = np.prod(env_spec.observation_space.shape)
-        self._obs_pl = tf.placeholder(
-            tf.float32,
-            shape=[None, self._Do],
-            name='observation',
-        )
-
-        super(NNVFunction, self).__init__(
-            name, (self._obs_pl,), hidden_layer_sizes)
-
-
-class NNQFunction(MLPFunction):
-    def __init__(self, env_spec, hidden_layer_sizes=(100, 100), name='qf'):
-        Serializable.quick_init(self, locals())
-
-        # self._Da = env_spec.action_space.flat_dim
-        self._Da = np.prod(env_spec.action_space.shape)
-        # self._Do = env_spec.observation_space.flat_dim
-        self._Do = np.prod(env_spec.observation_space.shape)
-
-        self._obs_pl = tf.placeholder(
-            tf.float32,
-            shape=[None, self._Do],
-            name='observation',
-        )
-
-        self._action_pl = tf.placeholder(
-            tf.float32,
-            shape=[None, self._Da],
-            name='actions',
-        )
-
-        super(NNQFunction, self).__init__(
-            name, (self._obs_pl, self._action_pl), hidden_layer_sizes)
-
-
-class NNDiscriminatorFunction(MLPFunction):
-    def __init__(self, env_spec, hidden_layer_sizes=(100, 100), num_skills=None):
-        assert num_skills is not None
-        Serializable.quick_init(self, locals())
-        Parameterized.__init__(self)
-
-        # self._Da = env_spec.action_space.flat_dim
-        # self._Do = env_spec.observation_space.flat_dim
-        self._Da = np.prod(env_spec.action_space.shape)
-        slef._Do = np.prod(env_spec.observation_space.shape)
-
-        self._obs_pl = tf.placeholder(
-            tf.float32,
-            shape=[None, self._Do],
-            name='observation',
-        )
-        self._action_pl = tf.placeholder(
-            tf.float32,
-            shape=[None, self._Da],
-            name='actions',
-        )
-
-        self._name = 'discriminator'
-        self._input_pls = (self._obs_pl, self._action_pl)
-        self._layer_sizes = list(hidden_layer_sizes) + [num_skills]
-        self._output_t = self.get_output_for(*self._input_pls)
-=======
->>>>>>> 9ca891017018f5e2d9f4ea610a1610964dbe4971

@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-running'
+EXP_NAME = 'sac-running-rs5-2'
 
 
 from meta_mb.algos.sac import SAC
@@ -18,6 +18,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+
 
 
 def run_experiment(**kwargs):
@@ -100,7 +101,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1, 2],
+        'seed': [1],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
@@ -114,14 +115,14 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [1000],
-        'max_path_length': [100],
+        'n_itr': [3000],
+        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1.0],
+        'reward_scale': [5.0],
         'sampler_batch_size': [256],
         }
 

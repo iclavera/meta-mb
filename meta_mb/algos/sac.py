@@ -15,6 +15,7 @@ from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
+import time
 # from distutils.version import LooseVersion
 #
 # if LooseVersion(tf.__version__) > LooseVersion("2.00"):
@@ -390,7 +391,7 @@ class SAC(Algo):
         for Q, Q_target in zip(self.Qs, self.Q_targets):
             source_params = Q.get_param_values()
             target_params = Q_target.get_param_values()
-            Q_target.set_params(dict([
+            Q_target.set_params(OrderedDict([
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
@@ -407,6 +408,23 @@ class SAC(Algo):
             self._update_target()
 
     def optimize_policy(self, samples_data, timestep, training_batch, log=True):
-        for i in range(100):
+        for i in range(1000):
             random_batch = training_batch.random_batch(self.sampler_batch_size, '')
             self._do_training(iteration=timestep, batch=random_batch, log=(i == 99))
+
+        #
+        # sess = tf.get_default_session()
+        # input_dict = self._extract_input_dict(samples_data, self._optimization_keys, prefix)
+        # if self._dataset is None:
+        #     self._dataset = input_dict
+        # else:
+        #     for k, v in input_dict.items():
+        #         n_new_samples = len(v)
+        #         n_max = self.buffer_size - n_new_samples
+        #         self._dataset[k] = np.concatenate([self._dataset[k][-n_max:], v], axis=0)
+        # num_elements = len(list(self._dataset.values())[0])
+        # """===============added==========end=============="""
+        # self._do_training(num_elements, iteration=timestep, batch=input_dict)
+
+        # self._num_train_steps += self._n_train_repeat
+        # self._train_steps_this_epoch += self._n_train_repeat

@@ -15,7 +15,6 @@ class GaussianMLPPolicy(Policy):
     Gaussian multi-layer perceptron policy (diagonal covariance matrix)
     Provides functions for executing and updating policy parameters
     A container for storing the current pre and post update policies
-
     Args:
         obs_dim (int): dimensionality of the observation space -> specifies the input size of the policy
         action_dim (int): dimensionality of the action space -> specifies the output size of the policy
@@ -26,7 +25,6 @@ class GaussianMLPPolicy(Policy):
         learn_std (boolean): whether the standard_dev / variance is a trainable or fixed variable
         init_std (float): initial policy standard deviation
         min_std( float): minimal policy standard deviation
-
     """
 
     def __init__(self, *args, squashed=False, init_std=1., min_std=1e-6, **kwargs):
@@ -93,10 +91,8 @@ class GaussianMLPPolicy(Policy):
     def get_action(self, observation):
         """
         Runs a single observation through the specified policy and samples an action
-
         Args:
             observation (ndarray) : single observation - shape: (obs_dim,)
-
         Returns:
             (ndarray) : single action - shape: (action_dim,)
         """
@@ -108,10 +104,8 @@ class GaussianMLPPolicy(Policy):
     def get_actions(self, observations):
         """
         Runs each set of observations through each task specific policy
-
         Args:
             observations (ndarray) : array of observations - shape: (batch_size, obs_dim)
-
         Returns:
             (ndarray) : array of sampled actions - shape: (batch_size, action_dim)
         """
@@ -145,7 +139,6 @@ class GaussianMLPPolicy(Policy):
     def distribution(self):
         """
         Returns this policy's distribution
-
         Returns:
             (Distribution) : this policy's distribution
         """
@@ -154,11 +147,9 @@ class GaussianMLPPolicy(Policy):
     def distribution_info_sym(self, obs_var, params=None):
         """
         Return the symbolic distribution information about the actions.
-
         Args:
             obs_var (placeholder) : symbolic variable for observations
             params (dict) : a dictionary of placeholders or vars with the parameters of the MLP
-
         Returns:
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
@@ -201,7 +192,6 @@ class GaussianMLPPolicy(Policy):
             obs (placeholder) : symbolic variable for observations
             state_infos (dict) : a dictionary of placeholders that contains information about the
             state of the policy at the time it received the observation
-
         Returns:
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
@@ -215,7 +205,6 @@ class GaussianMLPPolicy(Policy):
         state['init_args'] = Serializable.__getstate__(self)
         state['policy_params'] = self.get_param_values()
         return state
-
     def __setstate__(self, state):
         # LayersPowered.__setstate__(self, state)
         Serializable.__setstate__(self, state['init_args'])
@@ -225,7 +214,6 @@ class GaussianMLPPolicy(Policy):
             sess = tf.Session()
         '''
         tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
-
         self.set_params(state['policy_params'])
     """
 
@@ -236,4 +224,3 @@ class GaussianMLPPolicy(Policy):
 
     def set_shared_params(self, state):
         self.set_params(state['network_params'])
-
