@@ -15,7 +15,6 @@ from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
-import time
 # from distutils.version import LooseVersion
 #
 # if LooseVersion(tf.__version__) > LooseVersion("2.00"):
@@ -391,7 +390,7 @@ class SAC(Algo):
         for Q, Q_target in zip(self.Qs, self.Q_targets):
             source_params = Q.get_param_values()
             target_params = Q_target.get_param_values()
-            Q_target.set_params(OrderedDict([
+            Q_target.set_params(dict([
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
