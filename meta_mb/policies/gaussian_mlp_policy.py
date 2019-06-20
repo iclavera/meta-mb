@@ -184,6 +184,10 @@ class GaussianMLPPolicy(Policy):
                                                )
 
                 mean_var, log_std_var = tf.split(output_var, 2, axis=-1)
+
+                log_std_var = tf.clip_by_value(log_std_var,
+                                               LOG_SIG_MIN,
+                                               LOG_SIG_MAX, name='log_std')
         else:
             obs_var, output_var = forward_mlp(output_dim=2 * self.action_dim,
                                             hidden_sizes=self.hidden_sizes,
@@ -194,6 +198,10 @@ class GaussianMLPPolicy(Policy):
                                             )
 
             mean_var, log_std_var = tf.split(output_var, 2, axis=-1)
+
+            log_std_var = tf.clip_by_value(log_std_var,
+                                           LOG_SIG_MIN,
+                                           LOG_SIG_MAX)
 
         return dict(mean=mean_var, log_std=log_std_var)
 
