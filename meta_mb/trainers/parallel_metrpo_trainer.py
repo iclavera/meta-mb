@@ -147,8 +147,6 @@ class ParallelTrainer(object):
             print(key)
             value = value[:-2]
             do_push, do_step = zip(*value)
-            print('do_push', do_push)
-            print('do_step', do_step)
             logger.logkv('{}-PushPercentage'.format(key), sum(do_push)/len(value))
             logger.logkv('{}-StepPercentage'.format(key), sum(do_step)/len(value))
         logger.log("Training finished")

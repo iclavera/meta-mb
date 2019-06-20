@@ -9,15 +9,18 @@ import time
 class MimicBlueActEnv(FullBlueEnv):
 
 	def __init__(self, max_path_len, parent=None, actions=None):
-		FullBlueEnv.__init__(self)
 
 		self.max_path_len = max_path_len
 		self.path_len = 0
 
 		self.parent = parent
-		self.actions = actions
+		if actions is not None:
+			self.actions = actions
+		print(self.actions)
 
 		self.goal_right = self.parent.goal
+
+		FullBlueEnv.__init__(self)
 
 	def step(self, act):
 		action = self.actions[self.path_len]
@@ -41,7 +44,7 @@ class MimicBlueActEnv(FullBlueEnv):
 		assert frame_skip > 0
 		for _ in range(frame_skip):
 			time.sleep(self.dt)
-			self.set_task(action)
+			#Use normalized full blue env
 
 	def _get_obs(self):
 		return np.concatenate([
