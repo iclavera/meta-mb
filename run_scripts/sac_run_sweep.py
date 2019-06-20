@@ -15,10 +15,8 @@ from meta_mb.trainers.sac_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
-from meta_mb.baselines.nn_basline import NNValueFun
 from meta_mb.logger import logger
-from meta_mb.value_functions.utils import get_Q_function_from_variant
+from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 
@@ -39,17 +37,15 @@ def run_experiment(**kwargs):
 
         env = normalize(kwargs['env']())
 
+        Qs = [ValueFunction(name="q_fun_%d" % i,
+                            obs_dim=int(np.prod(env.observation_space.shape)),
+                            action_dim=int(np.prod(env.action_space.shape))
+                            ) for i in range(2)]
 
-        variant = {
-        'Q_params': {
-            'type': 'double_feedforward_Q_function',
-            'kwargs': {
-                'hidden_layer_sizes': (kwargs['M'], kwargs['M']),
-                'observation_preprocessors_params': {}
-            }
-        },
-        }
-        Qs = get_Q_function_from_variant(variant, env)
+        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
+                            obs_dim=int(np.prod(env.observation_space.shape)),
+                            action_dim=int(np.prod(env.action_space.shape))
+                            ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -58,8 +54,8 @@ def run_experiment(**kwargs):
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
+            squashed=True
         )
-        # Load policy here
 
         sampler = Sampler(
             env=env,
@@ -78,11 +74,13 @@ def run_experiment(**kwargs):
         )
 
         algo = SAC(
-            policy = policy,
+            policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            training_environment=env,
+            env=env,
             Qs=Qs,
+            Q_targets=Q_targets,
+            reward_scale=kwargs['reward_scale']
         )
 
         trainer = Trainer(
@@ -97,6 +95,7 @@ def run_experiment(**kwargs):
 
         trainer.train()
     sess.__exit__()
+
 
 if __name__ == '__main__':
     sweep_params = {
@@ -116,18 +115,14 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [3000],
-        # 'max_path_length': [500],
         'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
-
-        'learning_rate' : [3e-4],
-        'reward_scale': [5.0],
+        'learning_rate': [3e-4],
+        'reward_scale': [1.0],
         'sampler_batch_size': [256],
-        'M': [256],
-
-    }
+        }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -42,7 +42,7 @@ class Trainer(object):
             start_itr=0,
             task=None,
             sess=None,
-            n_initial_exploration_steps = 1e3
+            n_initial_exploration_steps=1e3
             ):
         self.algo = algo
         self.env = env
@@ -78,9 +78,9 @@ class Trainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
 
-            if self.start_itr ==  0:
+            if self.start_itr == 0:
                 # INIT TRAINING
-                max_replay_buffer_size = 1e6
+                max_replay_buffer_size = 1e5
                 self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
                 # self.sampler.replay_buffer = self.replay_buffer
                 self.algo._update_target(tau=1.0)
@@ -89,10 +89,11 @@ class Trainer(object):
                         paths = self.sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                         samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
                         sample_num = samples_data['observations'].shape[0]
-                        # st()
                         for i in range(sample_num):
-                            self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i], samples_data['rewards'][i],
-                             samples_data['dones'][i], samples_data['next_observations'][i], samples_data['advantages'][i])
+                            self.replay_buffer.add_sample(samples_data['observations'][i],
+                                                          samples_data['actions'][i], samples_data['rewards'][i],
+                                                          samples_data['dones'][i], samples_data['next_observations'][i],
+                                                          samples_data['advantages'][i])
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -116,6 +117,9 @@ class Trainer(object):
                     self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i], samples_data['rewards'][i],
                      samples_data['dones'][i], samples_data['next_observations'][i], samples_data['advantages'][i])
                 proc_samples_time = time.time() - time_proc_samples_start
+
+                paths = self.sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
+                _ = samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='eval-')
 
                 if type(paths) is list:
                     self.log_diagnostics(paths, prefix='train-')

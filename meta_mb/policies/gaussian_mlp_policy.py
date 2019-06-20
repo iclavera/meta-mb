@@ -29,7 +29,7 @@ class GaussianMLPPolicy(Policy):
 
     """
 
-    def __init__(self, *args, init_std=1., min_std=1e-6, **kwargs):
+    def __init__(self, *args, squashed=False, init_std=1., min_std=1e-6, **kwargs):
         # store the init args for serialization and call the super constructors
         Serializable.quick_init(self, locals())
         Policy.__init__(self, *args, **kwargs)
@@ -44,6 +44,7 @@ class GaussianMLPPolicy(Policy):
         self.log_std_var = None
         self.action_var = None
         self._dist = None
+        self.squashed = squashed
 
         self.build_graph()
 
@@ -73,7 +74,10 @@ class GaussianMLPPolicy(Policy):
 
             # symbolically define sampled action and distribution
             self.action_var = self.mean_var + tf.random_normal(shape=tf.shape(self.mean_var)) * tf.exp(log_std_var)
-            self._dist = DiagonalGaussian(self.action_dim)
+            if self.squashed:
+                self.action_var = tf.tanh(self.action_var)
+
+            self._dist = DiagonalGaussian(self.action_dim, squashed=self.squashed)
 
             # save the policy's trainable variables in dicts
             # current_scope = tf.get_default_graph().get_name_scope()
@@ -120,32 +124,6 @@ class GaussianMLPPolicy(Policy):
 
         agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
         return actions, agent_infos
-
-    # def get_actions(self, observations):
-    #     """
-    #     Runs each set of observations through each task specific policy
-    #
-    #     Args:
-    #         observations (ndarray) : array of observations - shape: (batch_size, obs_dim)
-    #
-    #     Returns:
-    #         (ndarray) : array of sampled actions - shape: (batch_size, action_dim)
-    #     """
-    #     meta_batch_size = len(observations)
-    #     batch_size = observations[0].shape[0]
-    #     assert all([obs.shape[0] == batch_size for obs in observations])
-    #     observations = np.stack(observations)
-    #     assert observations.ndim == 2 and observations.shape[1] == self.obs_dim
-    #
-    #     sess = tf.get_default_session()
-    #     actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
-    #                                          feed_dict={self.obs_var: observations})
-    #
-    #     assert actions.shape == (observations.shape[0], self.action_dim)
-    #     actions, means = np.split(actions, meta_batch_size, axis=0), np.split(means, meta_batch_size, axis=0)
-    #     agent_infos = [[dict(mean=mean, log_std=log_stds[0]) for mean in means[idx]] for idx in
-    #                    range(meta_batch_size)]
-    #     return actions, agent_infos
 
     def log_diagnostics(self, paths, prefix=''):
         """
