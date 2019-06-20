@@ -34,14 +34,12 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._top = 0
         self._size = 0
 
-    def add_sample(self, observation, action, reward, terminal,
-                   next_observation, advantage, **kwargs):
+    def add_sample(self, observation, action, reward, terminal, next_observation, **kwargs):
         self._observations[self._top] = observation
         self._actions[self._top] = action
         self._rewards[self._top] = reward
         self._terminals[self._top] = terminal
         self._next_obs[self._top] = next_observation
-        self._advantages[self._top] = advantage
 
         self._advance()
 
@@ -54,23 +52,14 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
             self._size += 1
 
     def random_batch(self, batch_size, prefix = ''):
-        # st()
         indices = np.random.randint(0, self._size, batch_size)
-        result = dict([])
+        result = dict()
         result[prefix + 'observations'] = self._observations[indices]
         result[prefix + 'actions'] = self._actions[indices]
         result[prefix + 'rewards'] = self._rewards[indices]
         result[prefix + 'dones'] = self._terminals[indices]
         result[prefix + 'next_observations'] = self._next_obs[indices]
-        result[prefix + 'advantages'] = self._advantages[indices]
         return result
-        # return dict(
-        #     prefix + observations=self._observations[indices],
-        #     prefix + actions=self._actions[indices],
-        #     prefix + rewards=self._rewards[indices],
-        #     prefix + dones=self._terminals[indices],
-        #     prefix + next_observations=self._next_obs[indices],
-        # )
 
     @property
     def size(self):

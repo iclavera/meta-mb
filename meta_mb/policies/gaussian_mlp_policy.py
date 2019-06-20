@@ -74,8 +74,6 @@ class GaussianMLPPolicy(Policy):
 
             # symbolically define sampled action and distribution
             self.action_var = self.mean_var + tf.random_normal(shape=tf.shape(self.mean_var)) * tf.exp(log_std_var)
-            if self.squashed:
-                self.action_var = tf.tanh(self.action_var)
 
             self._dist = DiagonalGaussian(self.action_dim, squashed=self.squashed)
 
@@ -121,8 +119,12 @@ class GaussianMLPPolicy(Policy):
         sess = tf.get_default_session()
         actions, means, log_stds = sess.run([self.action_var, self.mean_var, self.log_std_var],
                                              feed_dict={self.obs_var: observations})
+        if self.squashed:
+            agent_infos = [dict(mean=mean, log_std=log_stds[0], pre_tanh=action) for (action, mean) in zip(means, actions)]
+            actions = np.tanh(actions)
+        else:
+            agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
 
-        agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
         return actions, agent_infos
 
     def log_diagnostics(self, paths, prefix=''):

@@ -136,7 +136,8 @@ class DiagonalGaussian(Distribution):
         means = dist_info["mean"]
         log_stds = dist_info["log_std"]
         if self._squashed:
-            pre_xs = np.arctanh(xs)
+            pre_xs = dist_info["pre_tanh"]
+            # pre_xs = np.arctanh(xs)
             zs = (pre_xs - means) / np.exp(log_stds)
             logli = - np.sum(log_stds, axis=-1) - 0.5 * np.sum(np.square(zs), axis=-1) - 0.5 * self.dim * np.log(2 * np.pi)
             return logli - np.sum(np.log(1 - np.square(xs) + 1e-6), axis=-1)

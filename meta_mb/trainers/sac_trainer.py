@@ -46,7 +46,9 @@ class Trainer(object):
             start_itr=0,
             task=None,
             sess=None,
-            n_initial_exploration_steps=1e3
+            n_initial_exploration_steps=1e3,
+            num_grad_steps=None,
+            max_replay_buffer_size=1e5,
             ):
         self.algo = algo
         self.env = env
@@ -58,10 +60,12 @@ class Trainer(object):
         self.start_itr = start_itr
         self.task = task
         self.n_initial_exploration_steps = n_initial_exploration_steps
+        self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
+        if num_grad_steps is None:
+            self.num_grad_steps = self.sampler.total_samples
         if sess is None:
             sess = tf.Session()
         self.sess = sess
-
 
     def train(self):
         """
@@ -83,10 +87,6 @@ class Trainer(object):
             start_time = time.time()
 
             if self.start_itr == 0:
-                # INIT TRAINING
-                max_replay_buffer_size = 1e5
-                self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
-                self.sampler.replay_buffer = self.replay_buffer
                 self.algo._update_target(tau=1.0)
                 if self.n_initial_exploration_steps > 0:
                     while self.replay_buffer._size < self.n_initial_exploration_steps:
@@ -97,7 +97,7 @@ class Trainer(object):
                             self.replay_buffer.add_sample(samples_data['observations'][i],
                                                           samples_data['actions'][i], samples_data['rewards'][i],
                                                           samples_data['dones'][i], samples_data['next_observations'][i],
-                                                          samples_data['advantages'][i])
+                                                          )
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -118,24 +118,22 @@ class Trainer(object):
                 samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
                 sample_num = samples_data['observations'].shape[0]
                 for i in range(sample_num):
-                    self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i], samples_data['rewards'][i],
-                     samples_data['dones'][i], samples_data['next_observations'][i], samples_data['advantages'][i])
+                    self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i],
+                                                  samples_data['rewards'][i], samples_data['dones'][i],
+                                                  samples_data['next_observations'][i])
                 proc_samples_time = time.time() - time_proc_samples_start
 
                 paths = self.sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
-                _ = samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='eval-')
+                _ = self.sample_processor.process_samples(paths, log='all', log_prefix='eval-')
 
-                if type(paths) is list:
-                    self.log_diagnostics(paths, prefix='train-')
-                else:
-                    self.log_diagnostics(sum(paths.values(), []), prefix='train-')
+                self.log_diagnostics(paths, prefix='train-')
 
                 """ ------------------ Policy Update ---------------------"""
 
                 logger.log("Optimizing policy...")
                 # This needs to take all samples_data so that it can construct graph for meta-optimization.
                 time_optimization_step_start = time.time()
-                self.algo.optimize_policy(samples_data, itr - self.start_itr, self.replay_buffer)
+                self.algo.optimize_policy(self.replay_buffer, itr - self.start_itr, self.num_grad_steps)
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
