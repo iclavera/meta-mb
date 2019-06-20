@@ -14,8 +14,8 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'parallel_ant_summary'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'parallel_ant'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -35,7 +35,6 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-
     exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -150,42 +149,41 @@ if __name__ == '__main__':
     sweep_params = {
 
         'flags_need_query': [
-            [False, False, False], [True, True, True],
-            [False, True, False], [True, False, False], [False, False, True],
-            [False, True, True], [True, False, True], [True, True, False],
+            [False, False, False],
+            [True, True, True],
         ],
 
-        'seed': [1,],
+        'seed': [1, 2],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv],
 
         # Problem Conf
-        'n_itr': [100],
+        'n_itr': [400],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5),], # > (10, 10)
+        'steps_per_iter': [3, 15,],
 
         # Real Env Sampling
-        'num_rollouts': [5, 20],
+        'num_rollouts': [5, 15],
         'n_parallel': [1],
-        'simulation_sleep': [10], # 10 > 0
+        'simulation_sleep': [5, 15], # 10 > 0
 
         # Dynamics Model
         'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [35],
-        'dynamics_learning_rate': [1e-3],
+        'dynamics_max_epochs': [10, 45],
+        'dynamics_learning_rate': [1e-3, 1e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'deterministic': [False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -194,10 +192,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2], # 0.2 > 0.3
+        'clip_eps': [0.15, 0.25], # 0.2 > 0.3
         'learning_rate': [1e-3],
-        'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20],# > 30
+        'num_ppo_steps': [5, 15],
+        'imagined_num_rollouts': [15, 25],# > 30
         'scope': [None],
         'exp_tag': ['parallel_ant'],  # For changes besides hyperparams
 

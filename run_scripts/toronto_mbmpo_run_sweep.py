@@ -6,6 +6,8 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
+from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
+from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
@@ -18,7 +20,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'mbmpo-mujoco-2'
+EXP_NAME = 'mbmpo-blue-2'
 
 
 def run_experiment(**kwargs):
@@ -135,11 +137,11 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [FullBlueEnv],
 
         # Problem Conf
         'n_itr': [201],
-        'max_path_length': [200],
+        'max_path_length': [50],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
@@ -148,7 +150,7 @@ if __name__ == '__main__':
         'meta_steps_per_iter': [(30, 30)],
 
         # Real Env Sampling
-        'real_env_rollouts_per_meta_task': [1],
+        'real_env_rollouts_per_meta_task': [2],
         'parallel': [True],
         'fraction_meta_batch_size': [1.],
 
@@ -159,7 +161,7 @@ if __name__ == '__main__':
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [128],
+        'dynamics_batch_size': [64],
         'dynamics_buffer_size': [5000],
         'deterministic': [True],
 
@@ -169,8 +171,8 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],

@@ -5,7 +5,7 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import HalfCheetahEnv
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.metrpo_trainer import Trainer
@@ -14,11 +14,12 @@ from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
 from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mb-ppo'
+EXP_NAME = 'bppt'
 
 
 def run_experiment(**kwargs):
@@ -45,17 +46,18 @@ def run_experiment(**kwargs):
             learn_std=kwargs['policy_learn_std'],
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
+            # init_std=1e-4,
         )
 
         dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
                                              env=env,
-                                             num_models=kwargs['num_models'],
                                              hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
                                              hidden_sizes=kwargs['dynamics_hidden_sizes'],
                                              output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
                                              learning_rate=kwargs['dynamics_learning_rate'],
                                              batch_size=kwargs['dynamics_batch_size'],
                                              buffer_size=kwargs['dynamics_buffer_size'],
+                                             num_models=kwargs['num_models'],
                                              )
 
         env_sampler = Sampler(
@@ -66,13 +68,12 @@ def run_experiment(**kwargs):
             n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = METRPOSampler(
+        model_sampler = BPTTSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['imagined_num_rollouts'],
             max_path_length=kwargs['max_path_length'],
             dynamics_model=dynamics_model,
-            deterministic=kwargs['deterministic'],
         )
 
         dynamics_sample_processor = ModelSampleProcessor(
@@ -91,12 +92,14 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = PPO(
-            policy=policy,
-            learning_rate=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
-        )
+        # algo = PPO(
+        #     policy=policy,
+        #     learning_rate=kwargs['learning_rate'],
+        #     clip_eps=kwargs['clip_eps'],
+        #     max_epochs=kwargs['num_ppo_steps'],
+        # )
+
+        algo = None
 
         trainer = Trainer(
             algo=algo,
@@ -128,21 +131,21 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
+        'n_itr': [101],
         'max_path_length': [50,],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(10, 10), (50, 50)],
+        'steps_per_iter': [(30, 30)],
 
         # Real Env Sampling
-        'num_rollouts': [5],
-        'n_parallel': [5],
+        'num_rollouts': [10],
+        'n_parallel': [2],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1],
         'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
@@ -156,13 +159,13 @@ if __name__ == '__main__':
         'policy_hidden_sizes': [(64, 64)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
-        'policy_output_nonlinearity': [None],
+        'policy_output_nonlinearity': [tf.tanh],
 
         # Algo
-        'clip_eps': [0.2, 0.3, 0.1],
-        'learning_rate': [1e-3, 5e-4],
+        'clip_eps': [0.2],
+        'learning_rate': [5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20, 50],
+        'imagined_num_rollouts': [50],
         'scope': [None],
         'exp_tag': [''],  # For changes besides hyperparams
     }

@@ -6,7 +6,7 @@ from collections import OrderedDict
 from meta_mb.utils import create_feed_dict
 
 
-class SVG1(Algo):
+class VGModel(Algo):
     """
     Algorithm for PPO MAML
 
@@ -37,7 +37,7 @@ class SVG1(Algo):
             kl_penalty=0.01,
             **kwargs
             ):
-        super(SVG1, self).__init__(policy)
+        super(VGModel, self).__init__(policy)
 
         self.dynamics_model = dynamics_model
         self.value_function = value_function
@@ -85,28 +85,17 @@ class SVG1(Algo):
         self.op_phs_dict.update(all_phs_dict)
 
         distribution_info_vars = self.policy.distribution_info_sym(obs_ph)
+        act_ev = distribution_info_vars['mean']
 
-        likelihood_ratio = tf.clip_by_value(self.policy.distribution.likelihood_ratio_sym(action_ph, dist_info_old_ph,
-                                                                         distribution_info_vars), 0, 5.)
-
-        # Infer action noise
-        action_noise = tf.stop_gradient((action_ph - distribution_info_vars['mean']) /
-                                        (tf.exp(distribution_info_vars['log_std']) + 1e-8))
-        act_ev = distribution_info_vars['mean'] + action_noise * tf.exp(distribution_info_vars['log_std'])
-
-        # Infer observation noise
         model_distribution_info_vars = self.dynamics_model.distribution_info_sym(obs_ph, act_ev)
-        obs_noise = tf.stop_gradient((next_obs_ph - model_distribution_info_vars['mean']) /
-                                     (tf.exp(model_distribution_info_vars['log_std']) + 1e-8))
+        obs_ev = model_distribution_info_vars['mean']
 
-        obs_ev = model_distribution_info_vars['mean'] + obs_noise * tf.stop_gradient(model_distribution_info_vars['log_std'])
         value_fun_dist_info_vars = self.value_function.distribution_info_sym(obs_ev)
+        value_ev = value_fun_dist_info_vars['mean']
 
-        surr_obj = tf.reduce_mean(tf.stop_gradient(likelihood_ratio) * (self.tf_reward(obs_ph, act_ev, next_obs_ph)
-                                  + self.discount * value_fun_dist_info_vars['mean']))
+        surr_obj = tf.reduce_mean(self.tf_reward(obs_ph, act_ev, obs_ev) + value_ev)
 
-        surr_obj = (surr_obj - self.value_function._mean_output_var)/(self.value_function._std_output_var + 1e-8)
-
+        # KL-penalty
         last_policy_info_vars = self.policy.distribution_info_sym(obs_ph, params=self.policy.policy_params_ph)
         surr_obj -= self.kl_penalty * self.policy.distribution.kl_sym(distribution_info_vars, last_policy_info_vars)
 
