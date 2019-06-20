@@ -78,7 +78,7 @@ def forward_mlp(output_dim,
         hidden_nonlinearity (tf): non-linearity for the activations in the hidden layers
         output_nonlinearity (tf or None): output non-linearity. None results in no non-linearity being applied
         input_var (tf.placeholder or tf.Variable): Input of the network as a symbolic variable
-        mlp_params (OrderedDict): OrderedDict of the params of the neural network. 
+        mlp_params (OrderedDict): OrderedDict of the params of the neural network.
 
     Returns:
         input_var (tf.placeholder or tf.Variable): Input of the network as a symbolic variable
@@ -209,4 +209,3 @@ def create_rnn(name,
                                      )
 
     return input_var, state_var,  output_var, next_state_var, cell
-

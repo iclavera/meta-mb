@@ -53,7 +53,7 @@ class ReplayBuffer(object, metaclass=abc.ABCMeta):
             path["actions"],
             path["rewards"],
             path["next_observations"],
-            path["terminals"],
+            path["dones"],
             path["agent_infos"],
             path["env_infos"],
         )):

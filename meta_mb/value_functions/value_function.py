@@ -173,6 +173,9 @@ class ValueFunction(Serializable):
         Args:
             policy_params (dict): of variable names and corresponding parameter values
         """
+        # from pdb import set_trace as st
+        # print(self.get_params().keys(), vfun_params.keys())
+        # st()
         assert all([k1 == k2 for k1, k2 in zip(self.get_params().keys(), vfun_params.keys())]), \
             "parameter keys must match with variable"
 
@@ -199,4 +202,3 @@ class ValueFunction(Serializable):
         Serializable.__setstate__(self, state['init_args'])
         # tf.get_default_session().run(tf.global_variables_initializer())
         self.set_params(state['network_params'])
-

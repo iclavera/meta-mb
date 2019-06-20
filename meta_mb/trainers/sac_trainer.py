@@ -22,7 +22,6 @@ from meta_mb.replay_buffers import SimpleReplayBuffer
 class Trainer(object):
     """
     Performs steps for MAML
-
     Args:
         algo (Algo) :
         env (Env) :
@@ -70,7 +69,6 @@ class Trainer(object):
     def train(self):
         """
         Trains policy on env using algo
-
         Pseudocode:
             for itr in n_itr:
                 for step in num_inner_grad_steps:
@@ -186,5 +184,7 @@ class Trainer(object):
         #
         # if self._plotter:
         #     self._plotter.draw()
+        #
+        # return diagnostics
         #
         # return diagnostics

@@ -15,6 +15,7 @@ from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
+import time
 # from distutils.version import LooseVersion
 #
 # if LooseVersion(tf.__version__) > LooseVersion("2.00"):
@@ -207,7 +208,6 @@ class SAC(Algo):
         """
         Args:
             prefix (str) : a string to prepend to the name of each variable
-
         Returns:
             (tuple) : a tuple containing lists of placeholders for each input type and meta task,
             and for convenience, a list containing all placeholders created
@@ -387,7 +387,7 @@ class SAC(Algo):
         for Q, Q_target in zip(self.Qs, self.Q_targets):
             source_params = Q.get_param_values()
             target_params = Q_target.get_param_values()
-            Q_target.set_params(dict([
+            Q_target.set_params(OrderedDict([
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
@@ -421,4 +421,3 @@ class SAC(Algo):
 
         # self._num_train_steps += self._n_train_repeat
         # self._train_steps_this_epoch += self._n_train_repeat
-

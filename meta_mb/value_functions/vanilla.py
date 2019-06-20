@@ -11,6 +11,7 @@ def create_feedforward_Q_function(input_shapes,
                                   preprocessors=None,
                                   name='feedforward_Q',
                                   **kwargs):
+
     inputs_flat = create_inputs(input_shapes)
     preprocessors_flat = (
         flatten_input_structure(preprocessors)

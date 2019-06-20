@@ -6,7 +6,7 @@ import os
 
 
 class FullBlueEnv(RandomEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, log_rand=0, timeskip=2, actions=None):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
@@ -16,7 +16,12 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         self._low = -max_torques
         self._high = max_torques
 
-        RandomEnv.__init__(self, 0, xml_file, 2)
+        if actions is not None:
+            self.actions = actions
+            self.path_len = 0
+            self.max_path_len = len(actions)
+
+        RandomEnv.__init__(self, log_rand, xml_file, timeskip)
 
     def _get_obs(self):
         return np.concatenate([
@@ -27,13 +32,21 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         ])
 
     def step(self, action):
+        done = False
+
+        if (hasattr(self, "actions")):
+            action = self.actions[self.path_len]
+            self.path_len += 1
+            if(self.path_len == self.max_path_len):
+                done = True
+
         self.do_simulation(action, self.frame_skip)
         vec_right = self.ee_position('right') - self.goal_right
         reward_dist = -np.linalg.norm(vec_right)
         reward_ctrl = -np.square(action/(2* self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         observation = self._get_obs()
-        done = False
+
         info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
         return observation, reward, done, info
 
