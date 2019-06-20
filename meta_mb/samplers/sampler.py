@@ -94,6 +94,8 @@ class Sampler(BaseSampler):
             elif deterministic:
                 actions, agent_infos = policy.get_actions(obses)
                 actions = [a_i['mean'] for a_i in agent_infos]
+                if self.policy.squashed:
+                    actions = np.tanh(actions)
             elif sinusoid:
                 num_actions = self.env.action_space.shape[0]
                 num_envs = self.vec_env.num_envs
