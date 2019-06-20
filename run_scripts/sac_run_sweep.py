@@ -100,7 +100,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1],
+        'seed': [1, 2],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
@@ -114,8 +114,8 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [3000],
-        'max_path_length': [1000],
+        'n_itr': [1000],
+        'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
