@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'parallel_half_cheetah_summary'
+EXP_NAME = 'parallel_half_cheetah'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -153,7 +153,7 @@ if __name__ == '__main__':
             [False, False, False],
             #[True, True, False], [False, True, True], [True, False, True],
             #[True, False, False], [False, True, False], [False, False, True],
-            # [True, True, True],
+            [True, True, True],
         ],
 
         'seed': [1, 2, 3],
@@ -186,7 +186,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [5e-3, 5e-4, 5e-5],
         'dynamics_batch_size': [128, 256],
         'dynamics_buffer_size': [10000],
-        'deterministic': [False],
+        'deterministic': [True],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

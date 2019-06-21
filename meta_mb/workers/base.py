@@ -9,9 +9,14 @@ class Worker(object):
     Abstract class for worker instantiations. 
     """
     def __init__(
-            self, 
+            self,
             verbose=True,
     ):
+        """
+        :param
+            max_num_data_dropped (int): maximum number of data dropped when processing task queue
+        """
+
         self.verbose = verbose
         self.result = None
         self.state_pickle = None
@@ -31,7 +36,7 @@ class Worker(object):
             start_itr,
             n_itr,
             stop_cond,
-            need_query=False, 
+            need_query=False,
             auto_push=True, 
             config=None,
     ):
@@ -45,6 +50,8 @@ class Worker(object):
         self.queue_prev = queue_prev
         self.queue = queue
         self.queue_next = queue_next
+        self.stop_cond = stop_cond
+        # self.switch_mode_cond = switch_mode_cond
 
         import tensorflow as tf
 
@@ -68,6 +75,7 @@ class Worker(object):
             _init_vars()
 
             # warm up
+            # TODO: Add warm up rounds
             self.itr_counter = start_itr
             assert remote.recv() == 'prepare start'
             self.prepare_start()
@@ -81,31 +89,28 @@ class Worker(object):
                     # time_poll = time.time()
                     queue_prev.put('push')
                     # self.info.update({current_process().name+'-TimePoll': time.time() - time_poll})
-                do_push, do_step = self.process_queue()
-                if do_push: # push
-                    self.push()
-                if do_step: # step
+                do_push, do_synch, do_step= self.process_queue()
+                # step
+                if do_step:
                     self.itr_counter += 1
                     self.step()
                     if auto_push:
                         self.push()
 
-                remote.send(((int(do_push), int(do_step)), self.dump_info()))
+                remote.send(((int(do_push), int(do_synch), int(do_step)), self.dump_info()))
                 logger.log("\n========================== {} {} {} ===================".format(
                     current_process().name,
-                    ('push' if do_push else None, 'step' if do_step else 'synch'),
+                    ('push' if do_push else None, 'synch' if do_synch else None, 'step' if do_step else None),
                     self.itr_counter
                 ))
-                if self.set_stop_cond():
-                    stop_cond.set()
+                self.set_stop_cond()
 
             remote.send('loop done')
 
+            # FIXME: evaluate performance with most recent policy?
             # worker_policy push latest policy
             # worker_data synch and step
-
             # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
-            # FIXME
             """
             data = None
             while True:
@@ -140,29 +145,30 @@ class Worker(object):
     def prepare_start(self):
         raise NotImplementedError
 
-    def step(self):
-        raise NotImplementedError
-    
     def process_queue(self):
-        push = False
+        do_push, do_synch = False, False
         data = None
         while True:
             try:
                 new_data = self.queue.get_nowait()
-                if new_data == 'push':
-                    push = True
+                if not do_push and new_data == 'push': # Only push once
+                    do_push = True
+                    self.push()
                 else:
                     data = new_data
             except Empty:
                 break
 
-        # actions is a boolean array
-        # actions[0] = push (True) or not (False)
-        # actions[1] = step (True) or synch (False)
-        actions = [push, data is None]
         if data is not None:
+            do_synch = True
             self._synch(data)
-        return actions
+
+        do_step = not do_synch
+
+        return do_push, do_synch, do_step
+
+    def step(self):
+        raise NotImplementedError
 
     def _synch(self, data):
         raise NotImplementedError
@@ -171,13 +177,13 @@ class Worker(object):
         self.state_pickle = pickle.dumps(self.result)
 
     def push(self):
-        time_push = time.time()
+        # time_push = time.time()
         self.dump_result()
         self.queue_next.put(self.state_pickle)
-        self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+        # self.info.update({current_process().name+'-TimePush': time.time() - time_push})
 
     def set_stop_cond(self):
-        return False
+        pass
 
     def prepare_close(self, args):
         pass

@@ -187,7 +187,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'deterministic': [False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

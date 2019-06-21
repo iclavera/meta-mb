@@ -5,8 +5,8 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, step_per_iter, warm_next=False):
-        super().__init__(warm_next)
+    def __init__(self, step_per_iter):
+        super().__init__()
         self.step_per_iter = step_per_iter
         self.policy = None
         self.baseline = None

@@ -2,7 +2,6 @@ import os
 import json
 import pickle
 import numpy as np
-from uuid import uuid4
 from tensorflow import tanh, ConfigProto
 from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
@@ -15,8 +14,8 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'parallel_walker2d_summary'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'parallel_walker2d'
 
 
 def init_vars(sender, config, policy, dynamics_model):

@@ -1,11 +1,13 @@
 import time, pickle
 from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
+from queue import Empty
+import numpy as np
 
 
 class WorkerModel(Worker):
-    def __init__(self, dynamics_model_max_epochs, warm_next=True):
-        super().__init__(warm_next)
+    def __init__(self, dynamics_model_max_epochs):
+        super().__init__()
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.dynamics_model = None
         self.samples_data = None
@@ -22,9 +24,27 @@ class WorkerModel(Worker):
 
     def prepare_start(self):
         samples_data_pickle = self.queue.get()
-        self._synch(samples_data_pickle)
+        self.samples_data = pickle.loads(samples_data_pickle)
         self.step()
         self.queue_next.put(pickle.dumps(self.result))
+
+    def process_queue(self):
+        do_push, do_synch = False, False
+        while True:
+            try:
+                new_data = self.queue.get_nowait()
+                if not do_push and new_data == 'push':
+                    do_push = True
+                    self.push()
+                else:
+                    do_synch = True
+                    self._synch(new_data)
+            except Empty:
+                break
+
+        do_step = not do_synch
+
+        return do_push, do_synch, do_step
 
     def step(self):
 
@@ -52,7 +72,14 @@ class WorkerModel(Worker):
 
     def _synch(self, samples_data_pickle):
         # time_synch = time.time()
-        self.samples_data = pickle.loads(samples_data_pickle)
+        samples_data = pickle.loads(samples_data_pickle)
+        print(self.samples_data['observations'].shape, samples_data['observations'].shape)
+        self.samples_data['observations'] = np.append(
+            self.samples_data['observations'], samples_data['observations'], axis=0)
+        self.samples_data['actions'] = np.append(
+            self.samples_data['actions'], samples_data['actions'], axis=0)
+        self.samples_data['next_observations'] = np.append(
+            self.samples_data['next_observations'], samples_data['next_observations'], axis=0)
         #time_synch = time.time() - time_synch
         #info = {'Model-TimeSynch': time_synch}
         #self.info.update(info)
