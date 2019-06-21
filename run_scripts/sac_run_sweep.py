@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-running-test'
+EXP_NAME = 'sac-running-test-std-clip'
 
 
 from meta_mb.algos.sac import SAC
