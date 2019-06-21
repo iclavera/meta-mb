@@ -29,6 +29,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
+                 loss_str='MSE',
                  ):
 
         Serializable.quick_init(self, locals())
@@ -43,7 +44,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         self.valid_split_ratio = valid_split_ratio
         self.rolling_average_persitency = rolling_average_persitency
 
-        self.buffer_size = buffer_size
+        self.buffer_size_train = int(buffer_size * (1 - valid_split_ratio))
+        self.buffer_size_test = int(buffer_size * valid_split_ratio)
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.num_models = num_models
@@ -95,7 +97,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
 
             # define loss and train_op
-            self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+            if loss_str == 'L2':
+                self.loss = tf.nn.l2_loss(self.delta_ph[:, :, None] - self.delta_pred)
+            elif loss_str == 'MSE':
+                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+            else:
+                raise NotImplementedError
+
             self.optimizer = optimizer(learning_rate=self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
@@ -175,6 +183,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
             # create data queue
+
+        # If case should be entered exactly once
         if check_init and self._dataset_test is None:
             self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
             self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
@@ -192,10 +202,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                            self._dataset_train['delta'])
         else:
             n_test_new_samples = len(obs_test_batches[0])
-            n_max_test = self.buffer_size - n_test_new_samples # FIXME: Maintain different buffer size for test set?
+            n_max_test = self.buffer_size_test - n_test_new_samples
             n_train_new_samples = len(obs_train_batches[0])
-            n_max_train = self.buffer_size - n_train_new_samples
+            n_max_train = self.buffer_size_train - n_train_new_samples
             for i in range(self.num_models):
+
                 self._dataset_test['obs'][i] = np.concatenate([self._dataset_test['obs'][i][-n_max_test:],
                                                                obs_test_batches[i]])
                 self._dataset_test['act'][i] = np.concatenate([self._dataset_test['act'][i][-n_max_test:],
@@ -210,7 +221,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
-        print("Size Data Set:  ", self._dataset_train['delta'][0].shape[0])
+            print("Size Incoming Data Set:  ", n_train_new_samples)
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
@@ -233,8 +244,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         sess = tf.get_default_session()
 
-        # FIXME: Why is it necessary to compute normalizatino each time?
-        #if (self.normalization is None or compute_normalization) and self.normalize_input:
         if compute_normalization and self.normalize_input:
             self.compute_normalization(self._dataset_train['obs'],
                                        self._dataset_train['act'],
@@ -259,8 +268,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         for epoch in range(epochs):
 
             # initialize data queue
-            # FIXME: If take_size != -1, no need to initialize all
-            #  WHY INITIALIZING AT EVERY EPOCH? INITIALIZE JUST ONCE IS ENOUGH??
             feed_dict = dict(
                 list(zip(self.obs_batches_dataset_ph, obs_train)) +
                 list(zip(self.act_batches_dataset_ph, act_train)) +

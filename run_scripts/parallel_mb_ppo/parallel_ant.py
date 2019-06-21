@@ -70,6 +70,7 @@ def run_experiment(**kwargs):
         learning_rate=kwargs['dynamics_learning_rate'],
         batch_size=kwargs['dynamics_batch_size'],
         buffer_size=kwargs['dynamics_buffer_size'],
+        loss_str=kwargs['loss_str'],
     )
 
     '''-------- dumps and reloads -----------------'''
@@ -153,7 +154,7 @@ if __name__ == '__main__':
             [True, True, True],
         ],
 
-        'seed': [1, 2],
+        'seed': [1],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
@@ -167,7 +168,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [15], #3, 15,],
+        'steps_per_iter': [15, 25], # 5 <,
 
         # Real Env Sampling
         'num_rollouts': [15], #5],
@@ -179,11 +180,12 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [10, 45],
-        'dynamics_learning_rate': [1e-4,],# 1e-3],
+        'dynamics_max_epochs': [1, 5, 10],
+        'dynamics_learning_rate': [5e-5, 5e-4],# 1e-5 <, < 1e-3
         'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [10000],
+        'dynamics_buffer_size': [10000, 15000, 20000],
         'deterministic': [False],
+        'loss_str': ['L2', 'MSE'],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -192,10 +194,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.15],#, 0.25], # 0.2 > 0.3
+        'clip_eps': [0.1, 0.2], # 0.05 <, < 0.3
         'learning_rate': [1e-3],
         'num_ppo_steps': [5],#, 15],
-        'imagined_num_rollouts': [25],#, 15],# > 30
+        'imagined_num_rollouts': [25], # < 30
         'scope': [None],
         'exp_tag': ['parallel_ant'],  # For changes besides hyperparams
 
