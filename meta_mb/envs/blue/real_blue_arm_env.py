@@ -8,17 +8,17 @@ from blue_interface.blue_interface import BlueInterface
 
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='right', ip='127.0.0.1', port=9090):
-        self.goal = np.zeros(3)
+        self.goal = self.goal = np.array([-0.65, -0.2, 0.21])
         max_torques = np.array([10,10, 8, 6, 6, 4, 4]) #control 7 different joints not including the grippers
         self.frame_skip = 1
         self.dt = 0.02
         super(ArmReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
         self._prev_qpos = self.init_qpos.copy()
-        self.action_space = len(max_torques)
-        self.observation_space = len(self._get_obs())
-        self.torque_low = -max_torques
-        self.torque_high = max_torques
+        self.act_dim = len(max_torques)
+        self.obs_dim = len(self._get_obs())
+        self._low = -max_torques
+        self._high = max_torques
         self.positions = {}
         self.actions = {}
         gym.utils.EzPickle.__init__(self)
@@ -29,9 +29,9 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.do_simulation(act, self.frame_skip)
         vec = self.vec_gripper_to_goal
         reward_dist = -np.linalg.norm(vec)
-        reward_ctrl = -np.square(act/(2 * self.torque_high)).sum()
+        reward_ctrl = -np.square(act/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
-        ob = self.get_obs()
+        ob = self._get_obs()
         done = False
 
         if self.actions is not None:
@@ -51,7 +51,7 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.viewer.cam.trackbodyid = 0
 
     def do_simulation(self, action,frame_skip):
-        action = np.clip(action, self.torque_low, self.torque_high)
+        action = np.clip(action, self._low, self._high)
         assert frame_skip > 0
         for _ in range(frame_skip):
             time.sleep(self.dt)
@@ -75,7 +75,8 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def reset(self):
         self.set_joint_positions(np.zeros(7), duration=5)
         while True:
-            self.goal = np.random.uniform(low=-0.2, high=0.2, size=3)
+            #self.goal = np.append(np.random.uniform(low=-0.75, hig-0.25), np.random.uniform(low=-0.2, high=0.2, size=3))
+            self.goal = np.array([-0.65, -0.2, 0.21])
             if np.linalg.norm(self.goal)< 2:
                 break
         return self._get_obs()
@@ -123,6 +124,6 @@ if __name__ == "__main__":
     env = ArmReacherEnv()
     while True:
         env.reset()
-        for _ in range(1000):
+        for _ in range(100):
             env.step(env.action_space.sample())
             env.render()
