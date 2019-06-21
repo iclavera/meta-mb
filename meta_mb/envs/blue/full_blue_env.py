@@ -3,6 +3,7 @@ from gym.envs.mujoco import mujoco_env
 from gym import utils
 from meta_mb.meta_envs.base import RandomEnv
 import os
+import time
 
 
 class FullBlueEnv(RandomEnv, utils.EzPickle):
@@ -20,8 +21,8 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
             self.path_len = 0
             self.max_path_len = len(actions)
 
-        #RandomEnv.__init__(self, log_rand, xml_file, timeskip)
-        RandomEnv.__init__(self, 1, xml_file, 4)
+        RandomEnv.__init__(self, log_rand, xml_file, timeskip)
+        #RandomEnv.__init__(self, 0, xml_file, 4)
         if parent is not None:
             self.goal_right = parent.goal
 
@@ -29,7 +30,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
-            self.sim.data.body_xpos.flat[:3],
+            self.get_body_com("right_gripper_link"),
             self.ee_position('right') - self.goal_right,
         ])
 
@@ -56,7 +57,10 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         #Randomize frameskips
         self.frame_skip = np.random.randint(1, 5)
         #Randomize environment gravity
-        self.model.opt.gravity[2] = np.random.randint(-4, 1)
+        gravity = np.random.randint(-4, 1)
+        self.model.opt.gravity[2] = gravity
+        #couteract gravity on goal
+        self.sim.data.qfrc_applied[-1] = abs(gravity/1.90986)
 
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
@@ -101,7 +105,7 @@ if __name__ == "__main__":
     env = FullBlueEnv()
     while True:
         env.reset()
-        for _ in range(100):
+        for _ in range(200):
             action = env.action_space.sample()
             env.step(action)
             env.render()

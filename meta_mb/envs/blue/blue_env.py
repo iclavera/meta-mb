@@ -57,7 +57,7 @@ class BlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
 
 if __name__ == "__main__":
-    env = BlueEnv('left')
+    env = BlueEnv('right')
     while True:
         env.reset()
         for _ in range(100):
