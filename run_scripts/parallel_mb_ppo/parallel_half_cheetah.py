@@ -175,18 +175,18 @@ if __name__ == '__main__':
         # Real Env Sampling
         'num_rollouts': [5, 10],
         'n_parallel': [1],
-        'simulation_sleep': [5, 10],
+        'simulation_sleep': [10, 20],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512, 512)],
+        'dynamics_hidden_sizes': [(512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [5, 35],
-        'dynamics_learning_rate': [5e-3, 5e-4, 5e-5],
-        'dynamics_batch_size': [128, 256],
+        'dynamics_learning_rate': [8e-3, 2e-4, 2e-3],
+        'dynamics_batch_size': [128,],
         'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'deterministic': [False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

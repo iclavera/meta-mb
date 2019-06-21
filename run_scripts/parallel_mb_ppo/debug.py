@@ -171,7 +171,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(5, 5)],
+        'steps_per_iter': [(10, 10)],
 
         # Real Env Sampling
         'num_rollouts': [20],

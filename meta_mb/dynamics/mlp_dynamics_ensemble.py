@@ -146,30 +146,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         self._networks = mlps
         # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
 
-    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
-            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
-        """
-        Fits the NN dynamics model
-        :param obs: observations - numpy array of shape (n_samples, ndim_obs)
-        :param act: actions - numpy array of shape (n_samples, ndim_act)
-        :param obs_next: observations after taking action - numpy array of shape (n_samples, ndim_obs)
-        :param epochs: number of training epochs
-        :param compute_normalization: boolean indicating whether normalization shall be (re-)computed given the data
-        :param valid_split_ratio: relative size of validation split (float between 0.0 and 1.0)
-        :param (boolean) whether to log training stats in tabular format
-        :param verbose: logging verbosity
-        """
+    def update_buffer(self, obs, act, obs_next, valid_split_ratio=None, check_init=True):
 
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
         if valid_split_ratio is None: valid_split_ratio = self.valid_split_ratio
-        if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
 
         assert 1 > valid_split_ratio >= 0
-
-        sess = tf.get_default_session()
 
         # split into valid and test set
         obs_train_batches = []
@@ -182,7 +167,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         delta = obs_next - obs
         for i in range(self.num_models):
             obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
-                                                                                             test_split_ratio=valid_split_ratio)
+                                                                                                 test_split_ratio=valid_split_ratio)
             obs_train_batches.append(obs_train)
             act_train_batches.append(act_train)
             delta_train_batches.append(delta_train)
@@ -190,12 +175,24 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
             # create data queue
-        if self._dataset_test is None:
+        if check_init and self._dataset_test is None:
             self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
             self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
+
+            assert self.next_batch is None
+            self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
+                                                                 self._dataset_train['act'],
+                                                                 self._dataset_train['delta'],
+                                                                 batch_size=self.batch_size,
+                                                                 take_size=-1)
+            assert self.normalization is None
+            if self.normalize_input:
+                self.compute_normalization(self._dataset_train['obs'],
+                                           self._dataset_train['act'],
+                                           self._dataset_train['delta'])
         else:
             n_test_new_samples = len(obs_test_batches[0])
-            n_max_test = self.buffer_size - n_test_new_samples
+            n_max_test = self.buffer_size - n_test_new_samples # FIXME: Maintain different buffer size for test set?
             n_train_new_samples = len(obs_train_batches[0])
             n_max_train = self.buffer_size - n_train_new_samples
             for i in range(self.num_models):
@@ -213,18 +210,36 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
-            print("Size Data Set:  ", self._dataset_train['delta'][0].shape[0])
+        print("Size Data Set:  ", self._dataset_train['delta'][0].shape[0])
 
-        if self.next_batch is None:
-            self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
-                                                                 self._dataset_train['act'],
-                                                                 self._dataset_train['delta'],
-                                                                 batch_size=self.batch_size)
+    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
+            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
+        """
+        Fits the NN dynamics model
+        :param obs: observations - numpy array of shape (n_samples, ndim_obs)
+        :param act: actions - numpy array of shape (n_samples, ndim_act)
+        :param obs_next: observations after taking action - numpy array of shape (n_samples, ndim_obs)
+        :param epochs: number of training epochs
+        :param compute_normalization: boolean indicating whether normalization shall be (re-)computed given the data
+        :param valid_split_ratio: relative size of validation split (float between 0.0 and 1.0)
+        :param (boolean) whether to log training stats in tabular format
+        :param verbose: logging verbosity
+        """
 
-        if (self.normalization is None or compute_normalization) and self.normalize_input:
+        if obs is not None:
+            self.update_buffer(obs, act, obs_next, valid_split_ratio, compute_normalization)
+
+        if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
+
+        sess = tf.get_default_session()
+
+        # FIXME: Why is it necessary to compute normalizatino each time?
+        #if (self.normalization is None or compute_normalization) and self.normalize_input:
+        if compute_normalization and self.normalize_input:
             self.compute_normalization(self._dataset_train['obs'],
                                        self._dataset_train['act'],
                                        self._dataset_train['delta'])
+
         if self.normalize_input:
             # normalize data
             obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
@@ -244,6 +259,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         for epoch in range(epochs):
 
             # initialize data queue
+            # FIXME: If take_size != -1, no need to initialize all
+            #  WHY INITIALIZING AT EVERY EPOCH? INITIALIZE JUST ONCE IS ENOUGH??
             feed_dict = dict(
                 list(zip(self.obs_batches_dataset_ph, obs_train)) +
                 list(zip(self.act_batches_dataset_ph, act_train)) +
@@ -475,7 +492,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000, take_size=-1):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert len(obs_batches) == len(act_batches) == len(delta_batches)
@@ -492,6 +509,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
+        # dataset = dataset.take(take_size) # if take_size = -1, take all of dataset
         dataset = dataset.shuffle(buffer_size=buffer_size)
         iterator = dataset.make_initializable_iterator()
         next_batch = iterator.get_next()

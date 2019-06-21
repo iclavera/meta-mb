@@ -10,7 +10,7 @@ class Worker(object):
     """
     def __init__(
             self,
-            verbose=True,
+            verbose=False,
     ):
         """
         :param
@@ -100,7 +100,7 @@ class Worker(object):
                 remote.send(((int(do_push), int(do_synch), int(do_step)), self.dump_info()))
                 logger.log("\n========================== {} {} {} ===================".format(
                     current_process().name,
-                    ('push' if do_push else None, 'synch' if do_synch else None, 'step' if do_step else None),
+                    ('push' if do_push else None, do_synch, 'step' if do_step else None),
                     self.itr_counter
                 ))
                 self.set_stop_cond()
@@ -151,9 +151,10 @@ class Worker(object):
         while True:
             try:
                 new_data = self.queue.get_nowait()
-                if not do_push and new_data == 'push': # Only push once
-                    do_push = True
-                    self.push()
+                if new_data == 'push':
+                    if not do_push: # only push once
+                        do_push = True
+                        self.push()
                 else:
                     data = new_data
             except Empty:

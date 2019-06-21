@@ -71,11 +71,10 @@ class WorkerData(Worker):
             logger.log("Processing environment samples...")
         # first processing just for logging purposes
         time_env_samp_proc = time.time()
-        samples_data, avg_return = self.dynamics_sample_processor.process_samples(
+        samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
             log_prefix='Data-EnvTrajs-',
-            return_avg_return=True,
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 

@@ -18,11 +18,11 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mb-ppo'
+EXP_NAME = 'mb_ppo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [Walker2dEnv, AntEnv, HalfCheetahEnv],
 
         # Problem Conf
         'n_itr': [51],
@@ -135,7 +135,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(10, 10), (50, 50)],
+        'steps_per_iter': [(10, 10), ],#(50, 50)],
 
         # Real Env Sampling
         'num_rollouts': [5],
@@ -159,12 +159,12 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2, 0.3, 0.1],
-        'learning_rate': [1e-3, 5e-4],
+        'clip_eps': [0.2,],# 0.3, 0.1],
+        'learning_rate': [1e-3],# 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20, 50],
+        'imagined_num_rollouts': [20], #50],
         'scope': [None],
-        'exp_tag': [''],  # For changes besides hyperparams
+        'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
