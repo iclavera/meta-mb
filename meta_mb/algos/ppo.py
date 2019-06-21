@@ -30,6 +30,7 @@ class PPO(Algo, Serializable):
             learning_rate=1e-3,
             clip_eps=0.2,
             max_epochs=5,
+            entropy_bonus=0.,
             **kwargs
             ):
         Serializable.quick_init(self, locals())
@@ -45,6 +46,7 @@ class PPO(Algo, Serializable):
         self._optimization_keys = ['observations', 'actions', 'advantages', 'agent_infos']
         self.name = name
         self._clip_eps = clip_eps
+        self.entropy_bonus = entropy_bonus
 
         self.build_graph()
 
@@ -86,7 +88,8 @@ class PPO(Algo, Serializable):
                                  tf.clip_by_value(likelihood_ratio,
                                                   1 - self._clip_eps,
                                                   1 + self._clip_eps ) * adv_ph)
-        surr_obj = - tf.reduce_mean(clipped_obj)
+        surr_obj = - tf.reduce_mean(clipped_obj) - self.entropy_bonus * \
+                   tf.reduce_mean(self.policy.distribution.entropy_sym(distribution_info_vars))
 
         self.optimizer.build_graph(
             loss=surr_obj,

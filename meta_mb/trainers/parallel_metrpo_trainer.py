@@ -2,9 +2,9 @@ from collections import defaultdict
 import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe, Queue, Event
-from meta_mb.trainers.workers import WorkerData, WorkerModel, WorkerPolicy
-
-TIMEOUT = 1000
+from meta_mb.workers.worker_data import WorkerData
+from meta_mb.workers.worker_model import WorkerModel
+from meta_mb.workers.worker_policy import WorkerPolicy
 
 
 class ParallelTrainer(object):
@@ -163,6 +163,7 @@ class ParallelTrainer(object):
                 task, info = rcp
                 tasks.append(task)
                 assert isinstance(info, dict)
-                logger.logkvs(info)
-                logger.dumpkvs()
+                if info:
+                    logger.logkvs(info)
+                    logger.dumpkvs()
             self.summary[name].extend(tasks)

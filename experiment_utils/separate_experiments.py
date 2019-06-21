@@ -18,15 +18,17 @@ def valid_experiment(params, lr, rl, env):
     # 'env': [{'$class': 'meta_mb.envs.mujoco.hopper_env.HopperEnv'}]}
     # #
     values = {
-             'env': [{'$class': 'meta_mb.envs.mb_envs.pendulumO001.PendulumO001Env'},
-             {'$class': 'meta_mb.envs.mb_envs.pendulumO01.PendulumO01Env'}
-             ]
-              # 'env': [{'$class': 'meta_mb.envs.mb_envs.' + env}],
-              # 'inner_lr': [lr],
-              # 'rollouts_per_meta_task': [rl],
-              #  'sample_from_buffer': [False],
-              #  'meta_steps_per_iter': [[50, 50]],
-              #  'n_itr': [101],
+             # 'env': [{'$class': 'meta_mb.envs.mb_envs.pendulumO001.PendulumO001Env'},
+             # {'$class': 'meta_mb.envs.mb_envs.pendulumO01.PendulumO01Env'}
+             # ]
+              'env': [{'$class': 'meta_mb.envs.mb_envs.' + env}],
+              'inner_lr': [lr],
+              'rollouts_per_meta_task': [rl],
+              'max_path_length': [1000],
+              'sample_from_buffer': [False],
+              'meta_steps_per_iter': [[50, 50]],
+              'n_itr': [201],
+              'fraction_meta_batch_size': [1.],
               }
 
     for k, v in values.items():
@@ -39,7 +41,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("data", type=str)
     parser.add_argument("--store", type=str,
-            default=os.path.join(os.path.expanduser('~'), 'bench_data'))
+            default=os.path.join(os.path.expanduser('~'), 'bench_data_lasts'))
     parser.add_argument('--lr', type=float)
     parser.add_argument('--rl', type=float)
     parser.add_argument('--env', type=str)

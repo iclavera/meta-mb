@@ -6,13 +6,12 @@ import os
 
 
 class FullBlueEnv(RandomEnv, utils.EzPickle):
-    def __init__(self, log_rand=0, timeskip=2, actions=None):
+    def __init__(self, log_rand=0, timeskip=2, parent=None, actions=None):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
-        self.goal_right = np.zeros((3,))
         max_torques = np.array([10, 10, 8, 6, 6, 4, 4])
-
+        self.goal_right = np.zeros(3)
         self._low = -max_torques
         self._high = max_torques
 
@@ -21,7 +20,10 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
             self.path_len = 0
             self.max_path_len = len(actions)
 
-        RandomEnv.__init__(self, log_rand, xml_file, timeskip)
+        #RandomEnv.__init__(self, log_rand, xml_file, timeskip)
+        RandomEnv.__init__(self, 1, xml_file, 4)
+        if parent is not None:
+            self.goal_right = parent.goal
 
     def _get_obs(self):
         return np.concatenate([
@@ -51,6 +53,11 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         return observation, reward, done, info
 
     def reset_model(self):
+        #Randomize frameskips
+        self.frame_skip = np.random.randint(1, 5)
+        #Randomize environment gravity
+        self.model.opt.gravity[2] = np.random.randint(-4, 1)
+
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
         self.goal_right = np.random.uniform(low=[0.25, -0.75, 0.25], high=[0.75, -0.25, 0.5])

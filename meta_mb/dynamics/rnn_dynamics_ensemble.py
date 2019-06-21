@@ -7,6 +7,8 @@ from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
 from meta_mb.dynamics.rnn_dynamics import RNNDynamicsModel
+from collections import OrderedDict
+from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 import time
 
 
@@ -189,15 +191,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         sess = tf.get_default_session()
 
-        if (self.normalization is None or compute_normalization) and self.normalize_input:
-            self.compute_normalization(obs, act, obs_next)
-
-        if self.normalize_input:
-            # normalize data
-            obs, act, delta = self._normalize_data(obs, act, obs_next)
-            assert obs.ndim == act.ndim == obs_next.ndim == 3
-        else:
-            delta = obs_next - obs
+        delta = obs_next - obs
 
         # split into valid and test set
         obs_train_batches = []
@@ -235,6 +229,19 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                                                                  self._dataset_train['delta'],
                                                                  batch_size=self.batch_size)
 
+        if (self.normalization is None or compute_normalization) and self.normalize_input:
+            self.compute_normalization(self._dataset_train['obs'],
+                                       self._dataset_train['act'],
+                                       self._dataset_train['delta'])
+        if self.normalize_input:
+            # normalize data
+            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+                                                                     self._dataset_train['act'],
+                                                                     self._dataset_train['delta'])
+        else:
+            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
+                                                self._dataset_train['delta']
+
         valid_loss_rolling_average = None
         grads_op_to_do = self._gradients_vars
         train_op_to_do = self.train_op_model_batches
@@ -248,9 +255,9 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
             # initialize data queue
             feed_dict = dict(
-                list(zip(self.obs_batches_dataset_ph, self._dataset_train['obs'])) +
-                list(zip(self.act_batches_dataset_ph, self._dataset_train['act'])) +
-                list(zip(self.delta_batches_dataset_ph, self._dataset_train['delta']))
+                list(zip(self.obs_batches_dataset_ph, obs_train)) +
+                list(zip(self.act_batches_dataset_ph, act_train)) +
+                list(zip(self.delta_batches_dataset_ph, delta_train))
             )
             sess.run(self.iterator.initializer, feed_dict=feed_dict)
 
@@ -495,24 +502,46 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             all_hidden.append(hidden)
         return all_hidden
 
+    def compute_normalization(self, obs, act, delta):
+        assert len(obs) == len(act) == len(delta) == self.num_models
+        assert all([o.shape[0] == d.shape[0] == a.shape[0] for o, a, d in zip(obs, act, delta)])
+        assert all([d.shape[1] == o.shape[1] for d, o in zip(obs, delta)])
 
-def denormalize(data_array, mean, std):
-    if data_array.ndim == 4: # assumed shape (batch_size, ndim_obs, n_models)
-        return data_array * (std[None, None, :, None] + 1e-10) + mean[None, None, :, None]
-    else:
-        raise NotImplementedError
+        # store means and std in dict
+        self.normalization = []
+        for i in range(self.num_models):
+            normalization = OrderedDict()
+            normalization['obs'] = (np.mean(obs[i], axis=0), np.std(obs[i], axis=0))
+            normalization['delta'] = (np.mean(delta[i], axis=0), np.std(delta[i], axis=0))
+            normalization['act'] = (np.mean(act[i], axis=0), np.std(act[i], axis=0))
+            self.normalization.append(normalization)
 
+    def _normalize_data(self, obs, act, delta=None):
+        assert len(obs) == len(act) == self.num_models
+        assert self.normalization is not None
+        norm_obses = []
+        norm_acts = []
+        norm_deltas = []
+        for i in range(self.num_models):
+            norm_obs = normalize(obs[i], self.normalization[i]['obs'][0], self.normalization[i]['obs'][1])
+            norm_act = normalize(act[i], self.normalization[i]['act'][0], self.normalization[i]['act'][1])
+            norm_obses.append(norm_obs)
+            norm_acts.append(norm_act)
+            if delta is not None:
+                assert len(delta) == self.num_models
+                norm_delta = normalize(delta[i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
+                norm_deltas.append(norm_delta)
 
-def train_test_split(obs, act, delta, test_split_ratio=0.2):
-    assert obs.shape[0] == act.shape[0] == delta.shape[0]
-    dataset_size = obs.shape[0]
-    indices = np.arange(dataset_size)
-    np.random.shuffle(indices)
-    split_idx = int(dataset_size * (1-test_split_ratio))
+        if delta is not None:
+            return norm_obses, norm_acts, norm_deltas
 
-    idx_train = indices[:split_idx]
-    idx_test = indices[split_idx:]
-    assert len(idx_train) + len(idx_test) == dataset_size
+        return norm_obses, norm_acts
 
-    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
-           obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
+    def _denormalize_data(self, delta):
+        assert delta.shape[-1] == self.num_models
+        denorm_deltas = []
+        for i in range(self.num_models):
+            denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0],
+                                       self.normalization[i]['delta'][1])
+            denorm_deltas.append(denorm_delta)
+        return np.stack(denorm_deltas, axis=-1)

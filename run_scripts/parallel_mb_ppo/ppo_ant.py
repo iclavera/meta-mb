@@ -15,11 +15,11 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'ppo_ant'
+EXP_NAME = 'ppo-ant'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -92,8 +92,8 @@ if __name__ == '__main__':
 
         'env': [AntEnv],
 
-        'num_rollouts': [20],
-        'max_path_length': [500],
+        'num_rollouts': [25],
+        'max_path_length': [100],
         'n_parallel': [10],
 
         'discount': [0.99],
@@ -101,21 +101,21 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
 
-        'hidden_sizes': [(256, 256, 256)],
+        'hidden_sizes': [(64, 64)],
         'learn_std': [True],
         'hidden_nonlinearity': [tf.nn.tanh],
         'output_nonlinearity': [None],
         'init_std': [1.],
 
-        'learning_rate': [1e-3, 1e-2],
+        'learning_rate': [1e-3],
         'num_ppo_steps': [5],
         'num_minibatches': [1],
         'clip_eps': [.3],
 
-        'n_itr': [5000],
+        'n_itr': [2000],
         'scope': [None],
 
-        'exp_tag': ['ppo']
+        'exp_tag': ['ppo_ant']
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

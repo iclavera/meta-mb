@@ -181,17 +181,16 @@ class SAC(Algo):
         self.target_update_interval = target_update_interval
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self._optimization_keys = ['observations', 'actions',
-                                   'next_observations', 'dones', 'rewards']
+        self._optimization_keys = ['observations', 'actions', 'next_observations', 'dones', 'rewards', 'advantages']
 
         self.build_graph()
 
     def build_graph(self):
         self.training_ops = {}
         self._init_global_step()
-        obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
-                                                                                                  recurrent=False,
-                                                                                                  next_obs=True)
+        obs_ph, action_ph, next_obs_ph, ad_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
+                                                                                                         recurrent=False,
+                                                                                                         next_obs=True)
         self.op_phs_dict = all_phs_dict
         self._init_actor_update()
         self._init_critic_update()
@@ -224,6 +223,11 @@ class SAC(Algo):
         action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
         all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
 
+        # advantage ph
+        adv_shape = [None] if not recurrent else [None, None]
+        adv_ph = tf.placeholder(dtype=tf.float32, shape=adv_shape, name=prefix + 'advantage')
+        all_phs_dict['%s%s' % (prefix, 'advantages')] = adv_ph
+
         """add the placeholder for terminal here"""
         terminal_shape = [None] if not recurrent else [None, None]
         terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
@@ -234,19 +238,19 @@ class SAC(Algo):
         all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
 
         if not next_obs:
-            return obs_ph, action_ph, all_phs_dict
+            return obs_ph, action_ph, adv_ph, dist_info_ph_dict, all_phs_dict
 
         else:
             obs_shape = [None, self.policy.obs_dim]
             next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
             all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
 
-        return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
+        return obs_ph, action_ph, next_obs_ph, adv_ph, terminal_ph, all_phs_dict
 
     def _get_q_target(self):
         next_observations_ph = self.op_phs_dict['next_observations']
         dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
-        next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        next_actions_var = self.policy.distribution.sample_sym(dist_info_sym)
         next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
         next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
@@ -260,12 +264,12 @@ class SAC(Algo):
         dones_ph = tf.expand_dims(dones_ph, axis=-1)
         rewards_ph = self.op_phs_dict['rewards']
         rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
-        self.q_target = td_target(
+        self.q_target = q_target = td_target(
             reward=self.reward_scale * rewards_ph,
             discount=self.discount,
             next_value=(1 - dones_ph) * next_values_var)
 
-        return tf.stop_gradient(self.q_target)
+        return tf.stop_gradient(q_target)
 
     def _init_critic_update(self):
         """Create minimization operation for critic Q-function.
@@ -308,7 +312,7 @@ class SAC(Algo):
         """
         observations_ph = self.op_phs_dict['observations']
         dist_info_sym = self.policy.distribution_info_sym(observations_ph)
-        actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        actions_var = self.policy.distribution.sample_sym(dist_info_sym)
         log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
         log_pis_var = tf.expand_dims(log_pis_var, axis=1)
 
@@ -386,23 +390,26 @@ class SAC(Algo):
         for Q, Q_target in zip(self.Qs, self.Q_targets):
             source_params = Q.get_param_values()
             target_params = Q_target.get_param_values()
-            Q_target.set_params(dict([
+            Q_target.set_params(Orderdict([
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
 
-    def optimize_policy(self, buffer, timestep, grad_steps, log=True):
-        sess = tf.get_default_session()
-        for i in range(grad_steps):
-            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.sampler_batch_size))
-            sess.run(self.training_ops, feed_dict)
-            if log:
-                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
-                for k, v in diagnostics.items():
-                    logger.logkv(k, v)
-            if timestep % self.target_update_interval == 0:
-                self._update_target()
+    def _do_training(self, iteration, batch, log=False):
+        """Runs the operations for updating training and target ops."""
+        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch)
+        self.session.run(self.training_ops, feed_dict)
+        if log:
+            diagnostics = self.session.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv(k, v)
+        if iteration % self.target_update_interval == 0:
+            self._update_target()
+
+    def optimize_policy(self, samples_data, timestep, training_batch, log=True):
+        for i in range(1000):
+            random_batch = training_batch.random_batch(self.sampler_batch_size, '')
+            self._do_training(iteration=timestep, batch=random_batch, log=(i == 99))
 
         #
         # sess = tf.get_default_session()

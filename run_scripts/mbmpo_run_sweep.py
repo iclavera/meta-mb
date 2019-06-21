@@ -6,6 +6,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
+from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv
 from meta_mb.envs.mujoco.hopper_env import HopperEnv
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
@@ -19,12 +20,12 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mbmpo-1'
+EXP_NAME = 'mbmpo_all'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + kwargs.get('exp_name', '')
+    logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -134,11 +135,11 @@ if __name__ == '__main__':
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2DEnv, HopperEnv],
+        'env': [AntEnv, Walker2dEnv, HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [51],
-        'max_path_length': [100],
+        'n_itr': [101],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -153,7 +154,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [tuple()],
+        'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [200],
@@ -180,7 +181,7 @@ if __name__ == '__main__':
         'sample_from_buffer': [True, False],
 
         'scope': [None],
-        'exp_tag': [''], # For changes besides hyperparams
+        'exp_tag': ['mbmpo_all'], # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
