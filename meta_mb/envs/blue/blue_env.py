@@ -26,6 +26,7 @@ class BlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
+        self.correction() # Use for v2 arms
         vec = self.ee_position - self.goal
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(action).sum()
@@ -46,6 +47,19 @@ class BlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         observation = self._get_obs()
         return observation
+
+    def correction(self):
+        try:
+            qpos = self.sim.data.qpos.flat
+            qvel = self.sim.data.qvel.flat[:-3]
+            shoulder_lift_joint = qpos[1]
+            if shoulder_lift_joint > -0.01:
+                correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
+            qpos[1] = correction
+            qvel[1] = qvel[1] * 0.9
+            self.set_state(qpos, qvel)
+        except:
+            pass
 
     @property
     def ee_position(self):
