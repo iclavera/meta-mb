@@ -8,17 +8,14 @@ import time
 
 class MimicBluePosEnv(FullBlueEnv):
 
-	def __init__(self, max_path_len, parent=None, positions=None):
+	def __init__(self, max_path_len, positions=None):
 		self.max_path_len = max_path_len
-		self.parent = parent
 		self.path_len = 0
 		if positions is not None:
 			self.positions = positions
 		FullBlueEnv.__init__(self)
-		self.goal_right = self.parent.goal
 
 	def step(self, action):
-		self.sim.model.body_pos[-1] = self.parent.goal
 		self.do_simulation(action, self.frame_skip)
 		vec_right = self.ee_position('right') - self.goal_right
 		reward_dist = -np.linalg.norm(vec_right)

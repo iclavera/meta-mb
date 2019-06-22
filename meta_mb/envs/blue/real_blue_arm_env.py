@@ -27,6 +27,9 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self._prev_qpos = self.get_joint_positions()
         self._prev_qvel = self.get_joint_velocities()
         self.do_simulation(act, self.frame_skip)
+
+        #self.correction() #FIXME
+
         vec = self.vec_gripper_to_goal
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(act/(2 * self._high)).sum()
@@ -89,6 +92,23 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             self.vec_gripper_to_goal,
             ]).reshape(-1)
 
+    def log_diagnostics(self, paths, prefix=''):
+        dist = [-path["env_infos"]['reward_dist'] for path in paths]
+        final_dist = [-path["env_infos"]['reward_dist'][-1] for path in paths]
+        ctrl_cost = [-path["env_infos"]['reward_ctrl'] for path in paths]
+
+        logger.logkv(prefix + 'AvgDistance', np.mean(dist))
+        logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_dist))
+        logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
+
+    def correction(self):
+        joints = self.get_joint_positions()
+        shoulder_lift_joint = joints[1]
+        if shoulder_lift_joint < 0.1:
+            correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
+        joints[1] = correction
+        self.set_joint_positions(joints)
+
     @property
     def tip_position(self):
         pose = self.get_cartesian_pose()
@@ -99,15 +119,6 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         gripper_pos = self.tip_position
         vec_gripper_to_goal = self.goal - gripper_pos
         return vec_gripper_to_goal
-
-    def log_diagnostics(self, paths, prefix=''):
-        dist = [-path["env_infos"]['reward_dist'] for path in paths]
-        final_dist = [-path["env_infos"]['reward_dist'][-1] for path in paths]
-        ctrl_cost = [-path["env_infos"]['reward_ctrl'] for path in paths]
-
-        logger.logkv(prefix + 'AvgDistance', np.mean(dist))
-        logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_dist))
-        logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
     @property
     def action_space(self):
