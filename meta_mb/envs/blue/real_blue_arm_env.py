@@ -102,12 +102,18 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
     def correction(self):
-        joints = self.get_joint_positions()
-        shoulder_lift_joint = joints[1]
-        if shoulder_lift_joint < 0.1:
-            correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
-        joints[1] = correction
-        self.set_joint_positions(joints)
+        try:
+            joints = self.get_joint_positions()
+            joint_velocities = self.get_joint_velocities()
+            shoulder_lift_joint = joints[1]
+            if shoulder_lift_joint > -0.01:
+                correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
+            joints[1] = correction
+            joint_velocities[1] = joint_velocities[1] * 0.9
+            self.set_joint_positions(joints)
+            self._joint_velocities = joint_velocities
+        except:
+            pass
 
     @property
     def tip_position(self):
