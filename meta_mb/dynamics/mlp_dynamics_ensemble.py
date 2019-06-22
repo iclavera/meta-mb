@@ -98,7 +98,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             # define loss and train_op
             if loss_str == 'L2':
-                self.loss = tf.nn.l2_loss(self.delta_ph[:, :, None] - self.delta_pred)
+                self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
             elif loss_str == 'MSE':
                 self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
             else:
@@ -141,7 +141,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               weight_normalization=weight_normalization)
 
                 delta_preds.append(mlp.output_var)
-                loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+                if loss_str == 'L2':
+                    loss = tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1))
+                elif loss_str == 'MSE':
+                    loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+                else:
+                    raise  NotImplementedError
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
             self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
