@@ -7,7 +7,7 @@ import time
 
 
 class FullBlueEnv(RandomEnv, utils.EzPickle):
-    def __init__(self, log_rand=0, timeskip=2, parent=None, actions=None):
+    def __init__(self, log_rand=0, timeskip=20, actions=None):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_full_v1.xml')
@@ -23,8 +23,6 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
 
         RandomEnv.__init__(self, log_rand, xml_file, timeskip)
         #RandomEnv.__init__(self, 0, xml_file, 4)
-        if parent is not None:
-            self.goal_right = parent.goal
 
     def _get_obs(self):
         return np.concatenate([
@@ -44,6 +42,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
                 done = True
 
         self.do_simulation(action, self.frame_skip)
+        #self.correction() #FIXME
         vec_right = self.ee_position('right') - self.goal_right
         reward_dist = -np.linalg.norm(vec_right)
         reward_ctrl = -np.square(action/(2* self._high)).sum()
@@ -54,18 +53,15 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         return observation, reward, done, info
 
     def reset_model(self):
-        #Randomize frameskips
-        self.frame_skip = np.random.randint(1, 5)
-        #Randomize environment gravity
-        gravity = np.random.randint(-4, 1)
+        self.frame_skip = np.random.randint(1, 5) #randomize frameskips
+        gravity = np.random.randint(-4, 1) #randomize environment gravity
         self.model.opt.gravity[2] = gravity
-        #couteract gravity on goal
-        self.sim.data.qfrc_applied[-1] = abs(gravity/1.90986)
+        self.sim.data.qfrc_applied[-1] = abs(gravity/1.90986) #counteract gravity on goal body
 
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
         self.goal_right = np.random.uniform(low=[0.25, -0.75, 0.25], high=[0.75, -0.25, 0.5])
-        #self.goal_right = np.array([.65, -0.5, .41])
+        #self.goal_right = np.array([.65, -0.5, .41]) #fixed goal
         qpos[-6:-3] = 0
         qpos[-3:] = self.goal_right
         qvel[-6:] = 0
@@ -92,6 +88,15 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
         
         else:
             raise NotImplementedError
+
+    def correction(self):
+        qpos = self.sim.data.qpos.flat
+        qvel = self.sim.data.qvel.flat[:-3]
+        shoulder_lift_joint = qpos[1]
+        if shoulder_lift_joint < 0.1:
+            correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
+        qpos[1] = correction
+        self.set_state(qpos, qvel)
 
 
     def viewer_setup(self):

@@ -41,6 +41,13 @@ if __name__ == "__main__":
         data = joblib.load(pkl_path)
         policy = data['policy']
         env = normalize(BlueReacherEnv(side='right')) 
+        goal = data['env'].goal_right
+        env.goal[0] = -goal[1]
+        env.goal[1] = goal[2]
+        env.goal[2] = goal[0]
+        real_rewards = np.array([])
+        act_rewards = np.array([])
+        pos_rewards = np.array([])
         mujoco_env_mimic_act = data['env'] 
         for _ in range(args.num_rollouts):
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
@@ -51,12 +58,24 @@ if __name__ == "__main__":
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
 
-            mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(max_path_len=args.max_path_length, parent=env, positions=env.positions)))
+            mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(max_path_len=args.max_path_length, positions=env.positions)))
 
             path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
             
-            print(len(path[0]['rewards']))
-            print(len(path_act[0]['rewards']))
-            print(len(path_pos[0]['rewards']))
+            real_rewards = np.append(real_rewards, np.sum(path[0]['rewards']))
+            print("Real Reward Sum", np.sum(path[0]['rewards']))
+            act_rewards = np.append(act_rewards, np.sum(path_act[0]['rewards']))
+            print("Act Reward Sum", np.sum(path_act[0]['rewards']))
+            pos_rewards = np.append(pos_rewards, np.sum(path_pos[0]['rewards']))
+            print("Pos Reward Sum", np.sum(path_pos[0]['rewards']))
+            #print(np.mean(path[0]['rewards']))
+            #print(len(path_act[0]['rewards']))
+            #print(len(path_pos[0]['rewards']))
+        print("Real Reward Avg")
+        print(np.mean(real_rewards))
+        print("Act Reward Avg")
+        print(np.mean(act_rewards))
+        print("Pos Reward Avg")
+        print(np.mean(pos_rewards))

@@ -9,17 +9,17 @@ from blue_interface.blue_interface import BlueInterface
 
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='right', ip='127.0.0.1', port=9090):
-        self.goal = np.array([0.65, -0.5, 0.41])
+        self.goal = np.array([0.5, 0.41, 0.65])  #When setting a goal, (x, y, z) in mujoco is (-y, z, x) in real life
         max_torques = np.array([10, 10, 8, 6, 6, 4, 4]) # Note: Just using the first 5 joints
         self.frame_skip = 1
-        self.dt = 0.02
+        #self.dt = 0.02
+        self.dt = 0.2 #frequency adjustment
         super(BlueReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
         self._prev_qpos = self.init_qpos.copy()
         self.act_dim = len(max_torques)
         self.obs_dim = len(self._get_obs())
         self._low, self._high = -max_torques, max_torques
-        self.goal = np.zeros(3)
         self.positions = {}
         self.actions = {}
         gym.utils.EzPickle.__init__(self)
@@ -76,11 +76,11 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
     def reset(self):
         self.set_joint_positions(np.zeros((7,)), duration=5.)
-        self.goal = np.array([0.65, -0.5, 0.41])
+        self.goal = np.array([0.5, 0.41, 0.65])
         time.sleep(5)
         while True:
             # self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([0.65, -0.5, 0.41]) # Note: this is with fixed goal
+            self.goal = np.array([0.5, 0.41, 0.65]) # Note: this is with fixed goal
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()

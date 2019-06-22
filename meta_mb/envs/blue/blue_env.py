@@ -20,6 +20,7 @@ class BlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
+            self.get_body_com("right_gripper_link"),
             self.ee_position - self.goal,
         ])
 
@@ -38,6 +39,7 @@ class BlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
         self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
+        #self.goal = np.array([-0.65, -0.2, 0.21]) #fixed goal
         qpos[-3:] = self.goal
         qvel[-3:] = 0
 
