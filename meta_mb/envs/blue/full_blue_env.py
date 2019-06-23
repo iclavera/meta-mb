@@ -22,7 +22,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
             self.max_path_len = len(actions)
 
         RandomEnv.__init__(self, log_rand, xml_file, timeskip)
-        #RandomEnv.__init__(self, 0, xml_file, 4)
+        #RandomEnv.__init__(self, 0, xml_file, 2)
 
     def _get_obs(self):
         return np.concatenate([
@@ -42,7 +42,7 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
                 done = True
 
         self.do_simulation(action, self.frame_skip)
-        #self.correction() #FIXME
+        # self.correction() #Use for v2 arms
         vec_right = self.ee_position('right') - self.goal_right
         reward_dist = -np.linalg.norm(vec_right)
         reward_ctrl = -np.square(action/(2* self._high)).sum()
@@ -90,13 +90,17 @@ class FullBlueEnv(RandomEnv, utils.EzPickle):
             raise NotImplementedError
 
     def correction(self):
-        qpos = self.sim.data.qpos.flat
-        qvel = self.sim.data.qvel.flat[:-3]
-        shoulder_lift_joint = qpos[1]
-        if shoulder_lift_joint < 0.1:
-            correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
-        qpos[1] = correction
-        self.set_state(qpos, qvel)
+        try:
+            qpos = self.sim.data.qpos.flat
+            qvel = self.sim.data.qvel.flat[:-3]
+            shoulder_lift_joint = qpos[1]
+            if shoulder_lift_joint > -0.01:
+                correction = 0.5 * abs(shoulder_lift_joint) + shoulder_lift_joint
+            qpos[1] = correction
+            qvel[1] = qvel[1] * 0.9
+            self.set_state(qpos, qvel)
+        except:
+            pass
 
 
     def viewer_setup(self):

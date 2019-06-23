@@ -10,7 +10,8 @@ from blue_interface.blue_interface import BlueInterface
 class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='right', ip='127.0.0.1', port=9090):
         self.goal = np.array([0.5, 0.41, 0.65])  #When setting a goal, (x, y, z) in mujoco is (-y, z, x) in real life
-        max_torques = np.array([10, 10, 8, 6, 6, 4, 4]) # Note: Just using the first 5 joints
+        self.goal_position = np.array([-1.0, -1.5, 1.5, 0, 0, 0, 0])
+        max_torques = np.array([5, 5, 4, 3, 3, 2, 2]) # Note: Just using the first 5 joints
         self.frame_skip = 1
         #self.dt = 0.02
         self.dt = 0.2 #frequency adjustment
@@ -30,7 +31,8 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         if (len(action) == 1):
             action = action[0]
         self.do_simulation(action, self.frame_skip)
-        vec = self.vec_gripper_to_goal
+        #vec = self.vec_gripper_to_goal
+        vec = self.vec_arm_to_goal_pos
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(action/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
@@ -76,12 +78,21 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
     def reset(self):
         self.set_joint_positions(np.zeros((7,)), duration=5.)
-        self.goal = np.array([0.5, 0.41, 0.65])
-        time.sleep(5)
+        #self.goal = np.array([0.5, 0.41, 0.65])
+        #self.goal_position = np.array([
+        #    np.random.uniform(low=-1, high=2),
+        #    np.random.uniform(low=-1.5, high=-2),
+        #    np.random.uniform(low=-1.5, high=1.5),
+        #    0, 0, 0, 0])
         while True:
             # self.goal = np.random.uniform(low=-.2, high=.2, size=3)
-            self.goal = np.array([0.5, 0.41, 0.65]) # Note: this is with fixed goal
-            if np.linalg.norm(self.goal) < 2:
+            #self.goal = np.array([0.5, 0.41, 0.65]) # Note: this is with fixed goal
+            self.goal_position = np.array([
+            np.random.uniform(low=-1, high=2),
+            np.random.uniform(low=-1.5, high=-2),
+            np.random.uniform(low=-1.5, high=1.5),
+            0, 0, 0, 0])
+            if np.linalg.norm(self.goal_position) < 2:
                 break
         return self._get_obs()
 
@@ -103,6 +114,13 @@ class BlueReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         gripper_pos = self.tip_position
         vec_gripper_to_goal = self.goal - gripper_pos
         return vec_gripper_to_goal
+
+    @property
+    def vec_arm_to_goal_pos(self):
+        arm_pos = self.get_joint_positions()
+        vec_arm_to_goal = self.goal_position - arm_pos
+        return vec_arm_to_goal
+    
 
     def log_diagnostics(self, paths, prefix=''):
         dist = [-path["env_infos"]['reward_dist'] for path in paths]

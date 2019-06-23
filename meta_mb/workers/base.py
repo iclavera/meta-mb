@@ -50,8 +50,6 @@ class Worker(object):
         self.queue_prev = queue_prev
         self.queue = queue
         self.queue_next = queue_next
-        self.stop_cond = stop_cond
-        # self.switch_mode_cond = switch_mode_cond
 
         import tensorflow as tf
 
