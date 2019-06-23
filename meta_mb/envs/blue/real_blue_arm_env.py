@@ -9,9 +9,10 @@ from blue_interface.blue_interface import BlueInterface
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self, side='right', ip='127.0.0.1', port=9090):
         self.goal = self.goal = np.array([-0.65, -0.2, 0.21])
-        max_torques = np.array([10,10, 8, 6, 6, 4, 4]) #control 7 different joints not including the grippers
+        self.goal_pos = np.array([1.0, -1.5, 1.5, 0, 0, 0, 0])
+        max_torques = np.array([5, 5, 4, 3, 3, 2, 2]) #control 7 different joints not including the grippers
         self.frame_skip = 1
-        self.dt = 0.02
+        self.dt = 0.2
         super(ArmReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
         self._prev_qpos = self.init_qpos.copy()
@@ -28,9 +29,10 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self._prev_qvel = self.get_joint_velocities()
         self.do_simulation(act, self.frame_skip)
 
-        #self.correction() #FIXME
+        self.correction() #FIXME
 
-        vec = self.vec_gripper_to_goal
+        #vec = self.vec_gripper_to_goal
+        vec = self.vec_arm_to_goal_pos
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(act/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
@@ -79,8 +81,13 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.set_joint_positions(np.zeros(7), duration=5)
         while True:
             #self.goal = np.append(np.random.uniform(low=-0.75, hig-0.25), np.random.uniform(low=-0.2, high=0.2, size=3))
-            self.goal = np.array([-0.65, -0.2, 0.21])
-            if np.linalg.norm(self.goal)< 2:
+            self.goal_pos = np.array([
+                np.random.uniform(low=-2, high=1),
+                np.random.uniform(low=-1.5, high=-0.8),
+                np.random.uniform(low=-1.5, high=1.5),
+                0, 0, 0, 0])
+            #self.goal = np.array([-0.65, -0.2, 0.21])
+            if np.linalg.norm(self.goal_pos)< 2:
                 break
         return self._get_obs()
 
@@ -125,6 +132,13 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         gripper_pos = self.tip_position
         vec_gripper_to_goal = self.goal - gripper_pos
         return vec_gripper_to_goal
+
+    @property
+    def vec_arm_to_goal_pos(self):
+        arm_pos = self.get_joint_positions()
+        vec_arm_to_goal = self.goal_pos - arm_pos
+        return vec_arm_to_goal
+        
 
     @property
     def action_space(self):

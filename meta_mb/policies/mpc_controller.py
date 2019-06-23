@@ -61,6 +61,8 @@ class MPCController(Serializable):
         else:
             actions = self.get_rs_action(observations)
 
+        #for i in range(3, len(actions)): #limit movement to first 3 joints
+        #    actions[i] = 0
         return actions, dict()
 
     def get_random_action(self, n):
@@ -69,8 +71,12 @@ class MPCController(Serializable):
 
     def get_sinusoid_actions(self, action_space, t):
         actions = np.array([])
+        delta = t/action_space
         for i in range(action_space):
+            #actions = np.append(actions, 0.5 * np.sin(i * delta)) #two different ways of sinusoidal sampling
             actions = np.append(actions, 0.5 * np.sin(i * t))
+        #for i in range(3, len(actions)): #limit movement to first 3 joints
+        #    actions[i] = 0
         return actions
 
     def get_cem_action(self, observations):
