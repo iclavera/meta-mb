@@ -9,6 +9,7 @@ from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
 from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
+from meta_mb.envs.blue.blue_env import BlueEnv
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
 from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
@@ -42,9 +43,9 @@ def run_experiment(**config):
     with sess.as_default() as sess:
 
         baseline = config['baseline']()
-        timeskip = config['timeskip']
+        #timeskip = config['timeskip']
         log_rand = config['log_rand']
-        env = rl2env(normalize(config['env'](log_rand=log_rand, timeskip=timeskip)))
+        env = rl2env(normalize(config['env'](log_rand=log_rand)))#timeskip=timeskip)))
         obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
         policy = GaussianRNNPolicy(
                 name="meta-policy",
@@ -99,7 +100,7 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [FullBlueEnv],
+        'env': [BlueEnv],
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [50, 100, 200],
@@ -114,10 +115,10 @@ if __name__ == '__main__':
         "max_epochs": [5],
         "cell_type": ["lstm"],
         "num_minibatches": [1],
-        "n_itr": [1001],
+        "n_itr": [1000],
         'exp_tag': ['v0'],
-        'log_rand': [0],
-        'timeskip': [1, 2, 3, 4]
+        'log_rand': [0, 1, 2, 3],
+        #'timeskip': [1, 2, 3, 4]
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
