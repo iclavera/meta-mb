@@ -7,6 +7,7 @@ from meta_mb.logger import logger
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
 from meta_mb.meta_envs.base import RandomEnv
+from scipy.spatial.transform import Rotation as R
 
 class WalkJellyEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self, log_rand=0, frameskip=2):
@@ -25,7 +26,6 @@ class WalkJellyEnv(RandomEnv, gym.utils.EzPickle):
         return np.concatenate([
             self.sim.data.qpos.flat[1:],
             self.sim.data.qvel.flat,
-            self.sim.data.body_xpos.flat[:3],
             self.body_position()
         ])
 
@@ -34,17 +34,28 @@ class WalkJellyEnv(RandomEnv, gym.utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
         self.curr_pos = self.body_position()[0]
 
-        reward_stand = -self.standing()
-        reward_dist = -(self.curr_pos - self.prev_pos) / self.dt
+        # reward_stand = -self.standing() #first attempt at reward function
+
+        quat = self.sim.data.get_body_xquat("base_link")
+        r = R.from_quat(quat=quat)
+        penalty_roll = r.as_rotvec()[0]
+
+        penalty_acc = np.sum(self.sim.data.qacc[6:])
+
+        reward_dist = self.curr_pos - self.prev_pos
         reward_ctrl = -0.5*np.square(action).sum()
-        reward = reward_dist - reward_ctrl + reward_stand
+        reward = reward_dist - (0.5 * penalty_roll) - (0.05 * penalty_acc) - reward_ctrl
 
         state = self.state_vector()
         notdone = np.isfinite(state).all() and 1.0 >= state[2] >= 0.0
 
         observation = self._get_obs()
         done = not notdone
-        info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
+        info = dict(reward_dist=reward_dist,
+                    reward_ctrl=reward_ctrl,
+                    penalty_roll=penalty_roll,
+                    penalty_acc=penalty_acc)
+
         return observation, reward, done, info
 
     def reward(self, obs, act, obs_next):
@@ -66,8 +77,6 @@ class WalkJellyEnv(RandomEnv, gym.utils.EzPickle):
         neutral_lvl = self.get_body_com("base_link")[2]
         upper_limit = neutral_lvl + int(neutral_lvl/6)
         lower_limit = neutral_lvl - 2*int(neutral_lvl/6)
-
-
 
         hip_heights = self.get_hip_heights()
         for hip in hip_heights:
@@ -97,7 +106,7 @@ if __name__ == "__main__":
     env = WalkJellyEnv()
     while True:
         env.reset()
-        for _ in range(500):
+        for _ in range(800):
             action = env.action_space.sample()
             env.step(action)
             env.render()

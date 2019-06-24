@@ -3,21 +3,21 @@ from gym.envs.mujoco import mujoco_env
 from gym import utils
 from meta_mb.meta_envs.base import RandomEnv
 import os
-from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.envs.blue.blue_env import BlueEnv
 import time
 
-class MimicBluePosEnv(FullBlueEnv):
+class MimicBluePosEnv(BlueEnv):
 
 	def __init__(self, max_path_len, positions=None):
 		self.max_path_len = max_path_len
 		self.path_len = 0
 		if positions is not None:
 			self.positions = positions
-		FullBlueEnv.__init__(self)
+		BlueEnv.__init__(self)
 
 	def step(self, action):
 		self.do_simulation(action, self.frame_skip)
-		vec_right = self.ee_position('right') - self.goal_right
+		vec_right = self.ee_position('right') - self.goal
 		reward_dist = -np.linalg.norm(vec_right)
 		reward_ctrl = -np.square(action/(2* self._high)).sum()
 		reward = reward_dist + 0.5 * 0.1 * reward_ctrl
@@ -36,7 +36,7 @@ class MimicBluePosEnv(FullBlueEnv):
 			position = self.positions[self.path_len]
 		for _ in range(frame_skip):
 			time.sleep(self.dt)
-			qpos = np.concatenate((position[0], self.goal_right))
+			qpos = np.concatenate((position[0], self.goal))
 			qvel = np.concatenate((position[1], np.zeros(3)))
 			self.set_state(qpos, qvel)
 		self.path_len += 1
@@ -45,8 +45,8 @@ class MimicBluePosEnv(FullBlueEnv):
 		return np.concatenate([
 			self.sim.data.qpos.flat,
 			self.sim.data.qvel.flat[:-3],
-			self.sim.data.body_xpos.flat[:3],
-			self.ee_position('right') - self.goal_right,
+			self.ee_position,
+			self.ee_position('right') - self.goal,
 		])
 
 if __name__ == "__main__":
