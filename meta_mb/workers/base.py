@@ -9,9 +9,14 @@ class Worker(object):
     Abstract class for worker instantiations. 
     """
     def __init__(
-            self, 
-            verbose=True,
+            self,
+            verbose=False,
     ):
+        """
+        :param
+            max_num_data_dropped (int): maximum number of data dropped when processing task queue
+        """
+
         self.verbose = verbose
         self.result = None
         self.state_pickle = None
@@ -31,8 +36,8 @@ class Worker(object):
             start_itr,
             n_itr,
             stop_cond,
-            need_query=False, 
-            auto_push=True, 
+            need_query=False,
+            auto_push=True,
             config=None,
     ):
         """
@@ -45,13 +50,15 @@ class Worker(object):
         self.queue_prev = queue_prev
         self.queue = queue
         self.queue_next = queue_next
+        self.stop_cond = stop_cond
 
         import tensorflow as tf
 
         def _init_vars():
             sess = tf.get_default_session()
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.initializers.global_variables())
 
         with tf.Session(config=config).as_default() as sess:
 
@@ -68,7 +75,10 @@ class Worker(object):
             _init_vars()
 
             # warm up
+            # TODO: Add warm up rounds
             self.itr_counter = start_itr
+            if self.verbose:
+                print('working waiting for starting msg from trainer...')
             assert remote.recv() == 'prepare start'
             self.prepare_start()
             remote.send('loop ready')
@@ -76,36 +86,38 @@ class Worker(object):
 
             assert remote.recv() == 'start loop'
             time_start = time.time()
-            while not stop_cond.is_set():
+            while not self.stop_cond.is_set():
+                if self.verbose:
+                    logger.log("\n------------------------- {} starting new loop ------------------".format(current_process().name))
                 if need_query: # poll
                     # time_poll = time.time()
                     queue_prev.put('push')
                     # self.info.update({current_process().name+'-TimePoll': time.time() - time_poll})
-                do_push, do_step = self.process_queue()
-                if do_push: # push
-                    self.push()
-                if do_step: # step
+                do_push, do_synch, do_step= self.process_queue()
+                # step
+                if do_step:
                     self.itr_counter += 1
                     self.step()
                     if auto_push:
                         self.push()
 
-                remote.send(((int(do_push), int(do_step)), self.dump_info()))
+                remote.send(((int(do_push), int(do_synch), int(do_step)), self.dump_info()))
+                # remote.send(((int(do_push), int(do_synch), int(do_step)), None))
+                # logger.logkvs(self.dump_info())
+                # logger.dumpkvs()
                 logger.log("\n========================== {} {} {} ===================".format(
                     current_process().name,
-                    ('push' if do_push else None, 'step' if do_step else 'synch'),
+                    ('push' if do_push else None, do_synch, 'step' if do_step else None),
                     self.itr_counter
                 ))
-                if self.set_stop_cond():
-                    stop_cond.set()
+                self.set_stop_cond()
 
             remote.send('loop done')
 
+            # TODO: evaluate performance with most recent policy?
             # worker_policy push latest policy
             # worker_data synch and step
-
             # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
-            # FIXME
             """
             data = None
             while True:
@@ -140,29 +152,35 @@ class Worker(object):
     def prepare_start(self):
         raise NotImplementedError
 
-    def step(self):
-        raise NotImplementedError
-    
     def process_queue(self):
-        push = False
+        if self.verbose:
+            logger.log('{} start processing queu.................'.format(current_process().name))
+        do_push, do_synch = False, 0
         data = None
         while True:
             try:
                 new_data = self.queue.get_nowait()
                 if new_data == 'push':
-                    push = True
+                    if not do_push: # only push once
+                        do_push = True
+                        self.push()
                 else:
+                    do_synch += 1
                     data = new_data
             except Empty:
                 break
 
-        # actions is a boolean array
-        # actions[0] = push (True) or not (False)
-        # actions[1] = step (True) or synch (False)
-        actions = [push, data is None]
-        if data is not None:
+        if do_synch:
             self._synch(data)
-        return actions
+
+        do_step = not do_synch
+
+        if self.verbose:
+            logger.log('{} finishes processing queue with {}, {}, {}......'.format(current_process().name, do_push, do_synch, do_step))
+        return do_push, do_synch, do_step
+
+    def step(self):
+        raise NotImplementedError
 
     def _synch(self, data):
         raise NotImplementedError
@@ -171,13 +189,13 @@ class Worker(object):
         self.state_pickle = pickle.dumps(self.result)
 
     def push(self):
-        time_push = time.time()
+        # time_push = time.time()
         self.dump_result()
         self.queue_next.put(self.state_pickle)
-        self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+        # self.info.update({current_process().name+'-TimePush': time.time() - time_push})
 
     def set_stop_cond(self):
-        return False
+        pass
 
     def prepare_close(self, args):
         pass

@@ -5,8 +5,8 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, step_per_iter, warm_next=False):
-        super().__init__(warm_next)
+    def __init__(self, step_per_iter):
+        super().__init__()
         self.step_per_iter = step_per_iter
         self.policy = None
         self.baseline = None
@@ -24,8 +24,10 @@ class WorkerPolicy(Worker):
     ):
 
         from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+        from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
         from meta_mb.samplers.base import SampleProcessor
         from meta_mb.algos.ppo import PPO
+        print('start construction...')
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
@@ -34,6 +36,7 @@ class WorkerPolicy(Worker):
         self.policy = policy
         self.baseline = baseline
         self.model_sampler = METRPOSampler(env=env, policy=policy, **feed_dict['model_sampler'])
+        # self.model_sampler = BPTTSampler(env=env, policy=policy, **feed_dict['model_sampler'])
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = PPO(policy=policy, **feed_dict['algo'])
 
@@ -65,6 +68,11 @@ class WorkerPolicy(Worker):
                 logger.log("Obtaining samples from the model...")
             time_sampling = time.time()
             paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
+
+            for path in paths:
+                assert not np.isnan(np.sum(path['observations']))
+                assert not np.isnan(np.sum(path['actions']))
+                assert not np.isnan(np.sum(path['rewards']))
             time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
@@ -107,10 +115,14 @@ class WorkerPolicy(Worker):
 
     def _synch(self, dynamics_model_state_pickle):
         # time_synch = time.time()
+        if self.verbose:
+            logger.log('policy is synchronizing...')
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
         assert isinstance(dynamics_model_state, dict)
         self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
         self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
+        if self.verbose:
+            logger.log('policy quits synch...')
         # time_synch = time.time() - time_synch
         # info = {'Policy-TimeSynch': time_synch}
         # self.info.update(info)

@@ -36,7 +36,7 @@
                 <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" />
                 <body name="right_shoulder_lift_link" pos="-0.012 0 -0.232779" quat="0.707107 -0.707107 0 0">
                     <inertial pos="-1.3238e-05 0.00162984 3.71222e-05" quat="0.714714 -0.00266942 -0.00304239 0.699405" mass="0.415577" diaginertia="0.000846898 0.000835923 0.000571351" />
-                    <joint name="right_shoulder_lift_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2.2944 0" />
+                    <joint name="right_shoulder_lift_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2.2944 0" /> <!--previously range="-2.2944 0: limited range to serve as a "softstop"-->
                     <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" />
                     <body name="right_elbow_roll_link" pos="0 0.0359532 0" quat="0.500704 0.500704 0.499295 -0.499295">
                         <inertial pos="0.00796478 6.88165e-07 -0.101495" quat="0.712797 -0.021542 -0.0203263 0.700745" mass="2.21396" diaginertia="0.00680774 0.00679994 0.00633497" />
@@ -112,13 +112,13 @@
     </worldbody>
 
     <actuator>
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_base_roll_joint" />
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_shoulder_lift_joint" />
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_shoulder_roll_joint" />
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_elbow_lift_joint" />
-        <motor ctrlrange="-20.0 20.0" gear="1.0" joint="right_elbow_roll_joint" />
-        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_lift_joint" />
-        <motor ctrlrange="-10.0 10.0" gear="1.0" joint="right_wrist_roll_joint" />
+        <motor ctrlrange="-5.0 5.0" gear="1.0" joint="right_base_roll_joint" />
+        <motor ctrlrange="-5.0 5.0" gear="1.0" joint="right_shoulder_lift_joint" />
+        <motor ctrlrange="-4.0 4.0" gear="1.0" joint="right_shoulder_roll_joint" />
+        <motor ctrlrange="-4.0 4.0" gear="1.0" joint="right_elbow_lift_joint" />
+        <motor ctrlrange="-3.0 3.0" gear="1.0" joint="right_elbow_roll_joint" />
+        <motor ctrlrange="-2.0 2.0" gear="1.0" joint="right_wrist_lift_joint" />
+        <motor ctrlrange="-2.0 2.0" gear="1.0" joint="right_wrist_roll_joint" />
     </actuator>
 
 </mujoco>

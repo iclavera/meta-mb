@@ -27,10 +27,11 @@ class BPTTSampler(BaseSampler):
             max_path_length,
             parallel=False,
             deterministic_policy=False,
-            deterministic_dynamics=False,
+            deterministic_dynamics=True,
             optimize_actions=False,
             max_epochs=2,
-            learning_rate=1e-4
+            learning_rate=1e-4,
+            **kwargs,
     ):
         super(BPTTSampler, self).__init__(env, policy, num_rollouts, max_path_length)
         assert not parallel
@@ -86,10 +87,10 @@ class BPTTSampler(BaseSampler):
 
             obs = next_obs
 
-        rewards = tf.stack(tf.split(tf.transpose(tf.stack(rewards, axis=0)), self.num_models))
-        random_weights = tf.random.uniform(shape=(self.num_models, self.num_rollouts, self.max_path_length))
-        rewards = rewards * random_weights / tf.reduce_sum(random_weights, axis=0)
-        self._returns_var = tf.reduce_sum(rewards, axis=-1)
+        # rewards = tf.stack(tf.split(tf.transpose(tf.stack(rewards, axis=0)), self.num_models))
+        # random_weights = tf.random.uniform(shape=(self.num_models, self.num_rollouts, self.max_path_length))
+        # rewards = rewards * random_weights / tf.reduce_sum(random_weights, axis=0)
+        self._returns_var = tf.reduce_sum(rewards, axis=0)
         self._rewards_var = rewards
         self._actions_var = acts
         self._observations_var = obses
@@ -128,9 +129,9 @@ class BPTTSampler(BaseSampler):
 
         sess = tf.get_default_session()
         observations, actions, agent_infos, rewards = sess.run([self._observations_var,
-                                                                         self._actions_var,
-                                                                         self._agent_infos_var,
-                                                                         self._rewards_var,
+                                                                self._actions_var,
+                                                                self._agent_infos_var,
+                                                                self._rewards_var,
                                                                ],
                                                                feed_dict={self._initial_obs_ph: init_obses}
                                                                )

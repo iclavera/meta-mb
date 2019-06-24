@@ -227,7 +227,7 @@ class SampleProcessor(object):
 
         return samples_data, paths
 
-    def _log_path_stats(self, paths, log=False, log_prefix=''):
+    def _log_path_stats(self, paths, log=False, log_prefix='', return_avg_return=False):
         # compute log stats
         average_discounted_return = np.mean([path["returns"][0] for path in paths])
         undiscounted_returns = [sum(path["rewards"]) for path in paths]
@@ -242,6 +242,8 @@ class SampleProcessor(object):
             logger.logkv(log_prefix + 'StdReturn', np.std(undiscounted_returns))
             logger.logkv(log_prefix + 'MaxReturn', np.max(undiscounted_returns))
             logger.logkv(log_prefix + 'MinReturn', np.min(undiscounted_returns))
+
+        return np.mean(undiscounted_returns)
 
     def _compute_advantages(self, paths, all_path_baselines):
         assert len(paths) == len(all_path_baselines)

@@ -50,7 +50,11 @@ class ParallelTrainer(object):
             step_per_iter = steps_per_iter
         assert step_per_iter > 0
 
-        worker_instances = [WorkerData(simulation_sleep), WorkerModel(dynamics_model_max_epochs), WorkerPolicy(step_per_iter)]
+        worker_instances = [
+            WorkerData(simulation_sleep),
+            WorkerModel(dynamics_model_max_epochs),
+            WorkerPolicy(step_per_iter),
+        ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
         queues = [Queue() for _ in range(3)]
@@ -146,8 +150,9 @@ class ParallelTrainer(object):
         for key, value in self.summary.items():
             print(key)
             value = value[:-2]
-            do_push, do_step = zip(*value)
+            do_push, do_synch, do_step = zip(*value)
             logger.logkv('{}-PushPercentage'.format(key), sum(do_push)/len(value))
+            logger.logkv('{}-SynchPercentage'.format(key), sum(do_synch)/len(value))
             logger.logkv('{}-StepPercentage'.format(key), sum(do_step)/len(value))
         logger.log("Training finished")
         logger.dumpkvs()

@@ -97,9 +97,9 @@ class Sampler(BaseSampler):
                 if self.policy.squashed:
                     actions = np.tanh(actions)
             elif sinusoid:
-                num_actions = self.env.action_space.shape[0]
+                action_space = self.env.action_space.shape[0]
                 num_envs = self.vec_env.num_envs
-                actions = np.stack([policy.get_sinusoid_actions(num_actions) for _ in range(num_envs)], axis=0)
+                actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
                 agent_infos = dict()
             else:
                 actions, agent_infos = policy.get_actions(obses)

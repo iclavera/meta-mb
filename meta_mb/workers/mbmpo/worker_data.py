@@ -1,10 +1,12 @@
 import time, pickle
+import numpy as np
 from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
 
 class WorkerData(Worker):
-    def __init__(self, simulation_sleep):
+    def __init__(self, fraction_meta_batch_size, simulation_sleep):
         super().__init__()
+        self.fraction_meta_batch_size = fraction_meta_batch_size
         self.simulation_sleep = simulation_sleep
         self.env = None
         self.env_sampler = None
@@ -19,7 +21,7 @@ class WorkerData(Worker):
             feed_dict
     ):
 
-        from meta_mb.samplers.sampler import Sampler
+        from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
         from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
         env = pickle.loads(env_pickle)
@@ -27,7 +29,7 @@ class WorkerData(Worker):
         baseline = pickle.loads(baseline_pickle)
 
         self.env = env
-        self.env_sampler = Sampler(env=env, policy=policy, **feed_dict['env_sampler'])
+        self.env_sampler = MetaSampler(env=env, policy=policy, **feed_dict['env_sampler'])
         self.dynamics_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             **feed_dict['dynamics_sample_processor']
@@ -61,10 +63,17 @@ class WorkerData(Worker):
             logger.log("Processing environment samples...")
         # first processing just for logging purposes
         time_env_samp_proc = time.time()
+        env_paths = list(env_paths.values())
+        idxs = np.random.choice(
+            range(len(env_paths)),
+            size=int(len(env_paths)* self.fraction_meta_batch_size),
+            replace=False,
+        )
+        env_paths = sum([env_paths[idx] for idx in idxs], [])
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
-            log_prefix='Data-EnvTrajs-'
+            log_prefix='Data-EnvTrajs-',
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
@@ -77,16 +86,30 @@ class WorkerData(Worker):
         self.info.update(info)
 
     def _synch(self, policy_state_pickle):
-        time_synch = time.time()
+        # time_synch = time.time()
         policy_state = pickle.loads(policy_state_pickle)
         assert isinstance(policy_state, dict)
         self.env_sampler.policy.set_shared_params(policy_state)
-        time_synch = time.time() - time_synch
+        # time_synch = time.time() - time_synch
         # info = {'Data-TimeSynch': time_synch}
         # self.info.update(info)
 
     def set_stop_cond(self):
-        return self.itr_counter >= self.n_itr
+        if self.itr_counter >= self.n_itr:
+            self.stop_cond.set()
+
+    """
+    def set_switch_mode_cond(self, avg_return):
+        self.window_counter += 1
+        self.window_sum += avg_return
+        if self.window_counter == self.window_size:
+            curr_window_avg = self.window_sum / self.window_size
+            if curr_window_avg < self.prev_window_avg * self.switch_mode_threshold:
+                self.switch_mode_cond.set()
+            self.window_counter = 0
+            self.window_sum = 0
+            self.prev_window_avg = curr_window_avg
+    """
 
     def prepare_close(self, data):
         # step one more time with most updated policy to measure performance
