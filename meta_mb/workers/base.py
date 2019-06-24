@@ -37,7 +37,7 @@ class Worker(object):
             n_itr,
             stop_cond,
             need_query=False,
-            auto_push=True, 
+            auto_push=True,
             config=None,
     ):
         """
@@ -50,13 +50,15 @@ class Worker(object):
         self.queue_prev = queue_prev
         self.queue = queue
         self.queue_next = queue_next
+        self.stop_cond = stop_cond
 
         import tensorflow as tf
 
         def _init_vars():
             sess = tf.get_default_session()
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.initializers.global_variables())
 
         with tf.Session(config=config).as_default() as sess:
 
@@ -75,6 +77,8 @@ class Worker(object):
             # warm up
             # TODO: Add warm up rounds
             self.itr_counter = start_itr
+            if self.verbose:
+                print('working waiting for starting msg from trainer...')
             assert remote.recv() == 'prepare start'
             self.prepare_start()
             remote.send('loop ready')
@@ -82,7 +86,9 @@ class Worker(object):
 
             assert remote.recv() == 'start loop'
             time_start = time.time()
-            while not stop_cond.is_set():
+            while not self.stop_cond.is_set():
+                if self.verbose:
+                    logger.log("\n------------------------- {} starting new loop ------------------".format(current_process().name))
                 if need_query: # poll
                     # time_poll = time.time()
                     queue_prev.put('push')
@@ -96,6 +102,9 @@ class Worker(object):
                         self.push()
 
                 remote.send(((int(do_push), int(do_synch), int(do_step)), self.dump_info()))
+                # remote.send(((int(do_push), int(do_synch), int(do_step)), None))
+                # logger.logkvs(self.dump_info())
+                # logger.dumpkvs()
                 logger.log("\n========================== {} {} {} ===================".format(
                     current_process().name,
                     ('push' if do_push else None, do_synch, 'step' if do_step else None),
@@ -105,7 +114,7 @@ class Worker(object):
 
             remote.send('loop done')
 
-            # FIXME: evaluate performance with most recent policy?
+            # TODO: evaluate performance with most recent policy?
             # worker_policy push latest policy
             # worker_data synch and step
             # Alternatively, to avoid repetitive code chunk, let scheduler send latest data
@@ -144,7 +153,9 @@ class Worker(object):
         raise NotImplementedError
 
     def process_queue(self):
-        do_push, do_synch = False, False
+        if self.verbose:
+            logger.log('{} start processing queu.................'.format(current_process().name))
+        do_push, do_synch = False, 0
         data = None
         while True:
             try:
@@ -154,16 +165,18 @@ class Worker(object):
                         do_push = True
                         self.push()
                 else:
+                    do_synch += 1
                     data = new_data
             except Empty:
                 break
 
-        if data is not None:
-            do_synch = True
+        if do_synch:
             self._synch(data)
 
         do_step = not do_synch
 
+        if self.verbose:
+            logger.log('{} finishes processing queue with {}, {}, {}......'.format(current_process().name, do_push, do_synch, do_step))
         return do_push, do_synch, do_step
 
     def step(self):

@@ -32,9 +32,7 @@ class WorkerModel(Worker):
         self.queue_next.put(pickle.dumps(self.dynamics_model))
 
     def process_queue(self):
-
         do_push, do_synch = False, 0
-
         while True:
             try:
                 new_data = self.queue.get_nowait()

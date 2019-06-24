@@ -88,6 +88,8 @@ class WorkerData(Worker):
                 'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
         self.info.update(info)
 
+        # self.set_switch_mode_cond(avg_return)
+
     def _synch(self, policy_state_pickle):
         # time_synch = time.time()
         policy_state = pickle.loads(policy_state_pickle)
