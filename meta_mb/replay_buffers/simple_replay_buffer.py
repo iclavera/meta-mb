@@ -43,6 +43,12 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
 
         self._advance()
 
+    def add_sample_simple(self, observation, **kwargs):
+        self._observations[self._top] = observation
+        # self._actions[self._top] = action
+        # self._next_obs[self._top] = next_observation
+        self._advance()
+
     def terminate_episode(self):
         pass
 
@@ -60,6 +66,14 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         result[prefix + 'dones'] = self._terminals[indices]
         result[prefix + 'next_observations'] = self._next_obs[indices]
         return result
+    # 
+    # def random_batch_simple(self, batch_size, prefix = ''):
+    #     indices = np.random.randint(0, self._size, batch_size)
+    #     result = dict()
+    #     result[prefix + 'observations'] = self._observations[indices]
+    #     # result[prefix + 'actions'] = self._actions[indices]
+    #     # result[prefix + 'next_observations'] = self._next_obs[indices]
+    #     return result
 
     @property
     def size(self):

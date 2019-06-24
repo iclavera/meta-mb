@@ -2,22 +2,25 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-running-test-std-clip_ant'
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'sac-edit-running-loop'
 
 
-from meta_mb.algos.sac import SAC
+from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_trainer import Trainer
+from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+
+
 
 
 
@@ -58,7 +61,7 @@ def run_experiment(**kwargs):
             squashed=True
         )
 
-        sampler = Sampler(
+        env_sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
@@ -66,7 +69,7 @@ def run_experiment(**kwargs):
             n_parallel=kwargs['n_parallel'],
         )
 
-        sample_processor = ModelSampleProcessor(
+        env_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             discount=kwargs['discount'],
             gae_lambda=kwargs['gae_lambda'],
@@ -74,24 +77,49 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = SAC(
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                             env=env,
+                                             num_models=kwargs['num_models'],
+                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                             learning_rate=kwargs['dynamics_learning_rate'],
+                                             batch_size=kwargs['dynamics_batch_size'],
+                                             buffer_size=kwargs['dynamics_buffer_size'],
+                                             )
+
+        dynamics_sample_processor = ModelSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
+
+        algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
             env=env,
             Qs=Qs,
             Q_targets=Q_targets,
-            reward_scale=kwargs['reward_scale']
+            reward_scale=kwargs['reward_scale'],
+            sampler_batch_size=kwargs['sampler_batch_size']
         )
 
         trainer = Trainer(
             algo=algo,
-            policy=policy,
             env=env,
-            sampler=sampler,
-            sample_processor=sample_processor,
+            env_sampler=env_sampler,
+            env_sample_processor=env_sample_processor,
+            model_sample_processor = dynamics_sample_processor,
+            dynamics_model=dynamics_model,
+            policy=policy,
             n_itr=kwargs['n_itr'],
-            sess=sess,
+            # dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+            policy_update_per_iteration=kwargs['policy_update_per_iteration'],
+            # num_rollouts=kwargs['num_rollouts'],
+            sess=sess
         )
 
         trainer.train()
@@ -103,27 +131,39 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],
         'baseline': [LinearFeatureBaseline],
-        # 'env': [HalfCheetahEnv],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
+
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
+        'policy_update_per_iteration': [40],
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [3000],
+        'n_itr': [400],
         'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1.],
+        'reward_scale': [1],
         'sampler_batch_size': [256],
+
+        # Dynamics Model
+        'num_models': [7],
+        'dynamics_hidden_sizes': [(200, 200, 200, 200)],
+        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_output_nonlinearity': [None],
+        'dynamics_learning_rate': [1e-3],
+        'dynamics_batch_size': [256],
+        'dynamics_buffer_size': [10000]
+        # 'dynamics_model_max_epochs': [50]
+
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

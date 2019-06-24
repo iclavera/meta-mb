@@ -30,7 +30,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  ):
-
+ 
         Serializable.quick_init(self, locals())
 
         max_logvar = 1
@@ -585,10 +585,3 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
-
-
-
-
-
-
-
