@@ -20,13 +20,14 @@ class WorkerPolicy(Worker):
             env_pickle,
             baseline_pickle,
             dynamics_model_pickle,
-            feed_dict,
+            feed_dict
     ):
 
         from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
         from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
         from meta_mb.samplers.base import SampleProcessor
         from meta_mb.algos.ppo import PPO
+        print('start construction...')
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
@@ -67,12 +68,12 @@ class WorkerPolicy(Worker):
                 logger.log("Obtaining samples from the model...")
             time_sampling = time.time()
             paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
-            time_sampling = time.time() - time_sampling
 
             for path in paths:
                 assert not np.isnan(np.sum(path['observations']))
                 assert not np.isnan(np.sum(path['actions']))
                 assert not np.isnan(np.sum(path['rewards']))
+            time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
 

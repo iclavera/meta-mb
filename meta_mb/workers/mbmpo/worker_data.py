@@ -4,16 +4,10 @@ from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
 
 class WorkerData(Worker):
-    def __init__(self, simulation_sleep):
+    def __init__(self, fraction_meta_batch_size, simulation_sleep):
         super().__init__()
+        self.fraction_meta_batch_size = fraction_meta_batch_size
         self.simulation_sleep = simulation_sleep
-        """
-        self.window_size = window_size # in terms of number of data points
-        self.switch_mode_threshold = switch_mode_threshold
-        self.window_counter = 0
-        self.window_sum = 0
-        self.prev_window_avg = 0
-        """
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
@@ -27,7 +21,7 @@ class WorkerData(Worker):
             feed_dict
     ):
 
-        from meta_mb.samplers.sampler import Sampler
+        from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
         from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
         env = pickle.loads(env_pickle)
@@ -35,20 +29,16 @@ class WorkerData(Worker):
         baseline = pickle.loads(baseline_pickle)
 
         self.env = env
-        self.env_sampler = Sampler(env=env, policy=policy, **feed_dict['env_sampler'])
+        self.env_sampler = MetaSampler(env=env, policy=policy, **feed_dict['env_sampler'])
         self.dynamics_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             **feed_dict['dynamics_sample_processor']
         )
-        # compute window size in terms of number of steps
-        # self.window_size = np.ceil(self.window_size / np.prod(feed_dict['env_sampler'].values()))
 
     def prepare_start(self):
         initial_random_samples = self.queue.get()
-        self.simulation_sleep = 0 # FIXME
         self.step(initial_random_samples)
         self.queue_next.put(pickle.dumps(self.result))
-        self.simulation_sleep = 200 # FIXME: CHANGE LATER!!!
 
     def step(self, random=False):
         """
@@ -73,6 +63,13 @@ class WorkerData(Worker):
             logger.log("Processing environment samples...")
         # first processing just for logging purposes
         time_env_samp_proc = time.time()
+        env_paths = list(env_paths.values())
+        idxs = np.random.choice(
+            range(len(env_paths)),
+            size=int(len(env_paths)* self.fraction_meta_batch_size),
+            replace=False,
+        )
+        env_paths = sum([env_paths[idx] for idx in idxs], [])
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,

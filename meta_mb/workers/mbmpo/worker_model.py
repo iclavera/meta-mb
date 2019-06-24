@@ -66,6 +66,20 @@ class WorkerModel(Worker):
 
         self.result = self.dynamics_model
 
+        ''' ------------ log real performance --------------- '''
+
+        """
+        if self.log_real_performance:
+            logger.log("Evaluating the performance of the real policy")
+            self.policy.switch_to_pre_update()
+            env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='PrePolicy-')
+            samples_data = self.model_sample_processor.process_samples(env_paths, log='all',
+                                                                       log_prefix='PrePolicy-')
+            self.algo._adapt(samples_data)
+            env_paths = self.env_sampler.obtain_samples(log=True, log_prefix='PostPolicy-')
+            self.model_sample_processor.process_samples(env_paths, log='all', log_prefix='PostPolicy-')
+        """
+
         self.update_info()
         info = {'Model-Iteration': self.itr_counter,
                 "Model-TimeModelFit": time_model_fit}
