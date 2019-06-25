@@ -1,10 +1,10 @@
 from collections import defaultdict
 import time
+from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.logger import logger
-from multiprocessing import Process, Pipe, Queue, Event, active_children
-from meta_mb.workers.metrpo.worker_data import WorkerData
-from meta_mb.workers.metrpo.worker_model import WorkerModel
-from meta_mb.workers.metrpo.worker_policy import WorkerPolicy
+from meta_mb.workers.mbmpo.worker_data import WorkerData
+from meta_mb.workers.mbmpo.worker_model import WorkerModel
+from meta_mb.workers.mbmpo.worker_policy import WorkerPolicy
 
 
 class ParallelTrainer(object):
@@ -32,28 +32,31 @@ class ParallelTrainer(object):
             feed_dicts,
             n_itr,
             start_itr=0,
-            steps_per_iter=30,
+            num_inner_grad_steps=1,
+            meta_steps_per_iter=30,
             initial_random_samples=True,
             dynamics_model_max_epochs=200,
             log_real_performance=True,
-            flags_need_query=(True, False, True),
+            flags_need_query=(False, False, False,),
+            sample_from_buffer=False,
+            fraction_meta_batch_size=1,
             config=None,
             simulation_sleep=10,
             ):
+
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
         self.summary = defaultdict(list)
 
-        if type(steps_per_iter) is tuple:
-            step_per_iter = int((steps_per_iter[1] + steps_per_iter[0])/2)
+        if type(meta_steps_per_iter) is tuple:
+            meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
         else:
-            step_per_iter = steps_per_iter
-        assert step_per_iter > 0
+            meta_step_per_iter = meta_steps_per_iter
 
         worker_instances = [
-            WorkerData(simulation_sleep),
+            WorkerData(fraction_meta_batch_size, simulation_sleep),
             WorkerModel(dynamics_model_max_epochs),
-            WorkerPolicy(step_per_iter),
+            WorkerPolicy(sample_from_buffer, meta_step_per_iter, num_inner_grad_steps),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
@@ -94,7 +97,7 @@ class ParallelTrainer(object):
                 worker_instances, names, feed_dicts,
                 queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
                 worker_remotes, flags_need_query, flags_auto_push,
-            )
+                )
         ]
 
         # central scheduler sends command and receives receipts
@@ -170,3 +173,4 @@ class ParallelTrainer(object):
                     logger.logkvs(info)
                     logger.dumpkvs()
             self.summary[name].extend(tasks)
+
