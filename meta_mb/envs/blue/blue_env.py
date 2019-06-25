@@ -3,6 +3,7 @@ from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import RandomEnv
 from gym import utils
 import os
+import pickle
 
 
 class BlueEnv(RandomEnv, utils.EzPickle): 
@@ -12,35 +13,52 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         assert arm in ['left', 'right']
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_' + arm + '_v2.xml')
 
+        self.actions = {}
+
         self.goal = np.zeros((3,))
         self._arm = arm
+        self.iters = 0
 
         if actions is not None:
             self.actions = actions
             self.path_len = 0
             self.max_path_len = len(actions)
 
-        max_torques = np.array([5, 5, 4, 4, 3, 2, 1])
+        max_torques = np.array([5, 5, 4, 4, 3, 2, 2])
         self._low = -max_torques
         self._high = max_torques
 
-        RandomEnv.__init__(self, log_rand, xml_file, 20)
+        RandomEnv.__init__(self, log_rand, xml_file, 2)
 
     def _get_obs(self):
         return np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat[:-3],
             self.get_body_com("right_gripper_link"),
-            self.ee_position - self.goal,
+            self.ee_position - self.goal
         ])
 
-    def step(self, action):
+    def step(self, act):
+        if self.iters==0:
+            action = np.array([-2.5, -3.2, 1.2, -3.5])
+            action = np.append(action, act[4:])
+        else:
+            action = act
+        #if self.iters < 10 and self.iters != 0:
+        #    for i in range(7):
+        #        action[i] *= 1.1
+        if hasattr(self, "actions"):
+            self.actions.update({len(self.actions) : action})
+            if (len(self.actions) == 100):
+                pickle.dump(self.actions, open("actions_sim_0.pkl", "wb"))
         done = False
+        """
         if (hasattr(self, "actions")):
             action = self.actions[self.path_len]
             self.path_len += 1
             if(self.path_len == self.max_path_len):
                 done = True
+        """
 
         self.do_simulation(action, self.frame_skip)
         #self.correction() # Use for v2 arms
@@ -50,6 +68,7 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         observation = self._get_obs()
         info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
+        self.iters += 1
         return observation, reward, done, info
 
     def reward(self, obs, act, obs_next):
@@ -68,6 +87,9 @@ class BlueEnv(RandomEnv, utils.EzPickle):
             raise NotImplementedError
 
     def reset_model(self):
+        gravity = np.random.randint(-4, 1) #randomize environment gravity
+        self.model.opt.gravity[2] = gravity
+        self.sim.data.qfrc_applied[-1] = abs(gravity/1.90986) #counteract gravity on goal body
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
         #self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
@@ -108,7 +130,7 @@ if __name__ == "__main__":
     env = BlueEnv('right')
     while True:
         env.reset()
-        for _ in range(200):
+        for _ in range(10000):
             action = env.action_space.sample()
             env.step(action)
             env.render()
