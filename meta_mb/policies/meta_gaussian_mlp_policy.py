@@ -17,8 +17,12 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         self.post_update_action_var = None
         self.post_update_mean_var = None
         self.post_update_log_std_var = None
-
         super(MetaGaussianMLPPolicy, self).__init__(*args, **kwargs)
+        # super does not call MetaPolicy.__init__()
+        self._pre_update_mode = True
+        # super().__init__(*args, **kwargs)
+        # GaussianMLPPolicy.__init__(self, *args, **kwargs)
+        # MetaPolicy.__init__(self, *args, **kwargs)
 
     def build_graph(self):
         """

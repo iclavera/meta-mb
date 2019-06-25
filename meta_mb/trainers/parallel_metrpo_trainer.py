@@ -1,10 +1,10 @@
 from collections import defaultdict
 import time
 from meta_mb.logger import logger
-from multiprocessing import Process, Pipe, Queue, Event
-from meta_mb.workers.worker_data import WorkerData
-from meta_mb.workers.worker_model import WorkerModel
-from meta_mb.workers.worker_policy import WorkerPolicy
+from multiprocessing import Process, Pipe, Queue, Event, active_children
+from meta_mb.workers.metrpo.worker_data import WorkerData
+from meta_mb.workers.metrpo.worker_model import WorkerModel
+from meta_mb.workers.metrpo.worker_policy import WorkerPolicy
 
 
 class ParallelTrainer(object):
@@ -108,8 +108,6 @@ class ParallelTrainer(object):
         """
         worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
         worker_data_remote, worker_model_remote, worker_policy_remote = self.remotes
-
-        print("\ntrainer start training...")
 
         for p in self.ps:
             p.start()
