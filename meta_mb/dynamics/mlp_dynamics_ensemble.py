@@ -31,7 +31,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  buffer_size=50000,
                  loss_str='MSE',
                  ):
- 
+
         Serializable.quick_init(self, locals())
 
         max_logvar = 1

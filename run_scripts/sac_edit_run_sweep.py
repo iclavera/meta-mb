@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'sac-edit-running-loop'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'sac-edit'
 
 
 from meta_mb.algos.sac_edit import SAC_MB
@@ -19,9 +19,6 @@ from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-
-
-
 
 
 def run_experiment(**kwargs):
@@ -116,10 +113,10 @@ def run_experiment(**kwargs):
             dynamics_model=dynamics_model,
             policy=policy,
             n_itr=kwargs['n_itr'],
-            # dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+            dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
             policy_update_per_iteration=kwargs['policy_update_per_iteration'],
-            # num_rollouts=kwargs['num_rollouts'],
-            sess=sess
+            sess=sess,
+            speed_up_factor=kwargs['speed_up_factor']
         )
 
         trainer.train()
@@ -138,6 +135,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
         'policy_update_per_iteration': [40],
+        'speed_up_factor': [1000],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -155,14 +153,14 @@ if __name__ == '__main__':
         'sampler_batch_size': [256],
 
         # Dynamics Model
-        'num_models': [7],
+        'num_models': [4],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [10000]
-        # 'dynamics_model_max_epochs': [50]
+        'dynamics_buffer_size': [10000],
+        'dynamics_model_max_epochs': [50]
 
         }
 
