@@ -162,6 +162,31 @@ class SAC_MB(Algo):
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def _get_q_target(self):
+        """===============MBPO===========start================"""
+        # next_observations_ph = self.op_phs_dict['next_observations']
+        # dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
+        # next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        # next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+        # next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
+        #
+        # input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
+        # next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+        #
+        # min_next_Q = tf.reduce_min(next_q_values, axis=0)
+        # next_values_var = min_next_Q - self.alpha * next_log_pis_var
+        #
+        # dones_ph = tf.cast(self.op_phs_dict['dones'], next_values_var.dtype)
+        # dones_ph = tf.expand_dims(dones_ph, axis=-1)
+        # rewards_ph = self.op_phs_dict['rewards']
+        # rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
+        # self.q_target = td_target(
+        #     reward=self.reward_scale * rewards_ph,
+        #     discount=self.discount,
+        #     next_value=(1 - dones_ph) * next_values_var)
+
+        """===============MBPO=============end================"""
+
+        """===============change===========start================"""
         next_observations_ph = self.op_phs_dict['next_observations']
         dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
         next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
@@ -182,6 +207,7 @@ class SAC_MB(Algo):
             reward=self.reward_scale * rewards_ph,
             discount=self.discount,
             next_value=(1 - dones_ph) * next_values_var)
+        """===============change===========end=================="""
 
         return tf.stop_gradient(self.q_target)
 
@@ -193,6 +219,7 @@ class SAC_MB(Algo):
         See Equations (5, 6) in [1], for further information of the
         Q-function update rule.
         """
+
         q_target = self._get_q_target()
         assert q_target.shape.as_list() == [None, 1]
         observations_ph = self.op_phs_dict['observations']
@@ -215,6 +242,8 @@ class SAC_MB(Algo):
             in enumerate(zip(self.Qs, q_losses, self.q_optimizers))]
 
         self.training_ops.update({'Q': tf.group(q_training_ops)})
+
+
 
     def _init_actor_update(self):
         """Create minimization operations for policy and entropy.

@@ -135,7 +135,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
         'policy_update_per_iteration': [40],
-        'speed_up_factor': [1000],
+        'speed_up_factor': [100],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -153,14 +153,14 @@ if __name__ == '__main__':
         'sampler_batch_size': [256],
 
         # Dynamics Model
-        'num_models': [4],
+        'num_models': [7],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [50]
+        'dynamics_model_max_epochs': [200]
 
         }
 
