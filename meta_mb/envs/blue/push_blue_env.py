@@ -9,13 +9,13 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 		utils.EzPickle.__init__(**locals())
 
 		self.goal_obj = np.zeros((3,)) #object to be grabbed
-		self.goal_dest = np.zeros((3,)) #destionation to push object
+		self.goal_dest = np.zeros((3,)) #destination to push object
 
 		self._arm = arm
 
 		self.holding_obj = False
 
-		max_torques = np.array([5, 5, 4, 4, 3, 2, 1])
+		max_torques = np.array([5, 5, 4, 4, 3, 2, 2])
 		self._low = -max_torques
 		self._high = max_torques
 
@@ -27,9 +27,10 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 	def _get_obs(self):
 		return np.concatenate([
 			self.sim.data.qpos.flat,
-			self.sim.data.qvel.flat[:-3],
+			self.sim.data.qvel.flat[:-6],
 			self.get_body_com("right_gripper_link"),
-			self.ee_position - self.goal_obj])
+			self.ee_position - self.goal_obj,
+			self.ee_position - self.goal_dest])
 
 	def step(self, act):
 		done = False
@@ -41,6 +42,10 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
 		self.do_simulation(act, self.frame_skip)
 		#self.correction() # Use for v2 arms
+		if not self.holding_obj:
+			vec = self.ee_position - self.goal_obj
+		else:
+			vec = self.ee_position - self.goal_dest
 		vec = self.ee_position - self.goal_obj
 		reward_dist = -np.linalg.norm(vec)
 		reward_ctrl = -np.square(act/(2 * self._high)).sum()
@@ -48,12 +53,6 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 		observation = self._get_obs()
 		info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
 		return observation, reward, done, info
-		"""
-		if not self.holding_obj:
-						return
-		else:
-						return 
-		"""
 
 	def reward(self, obs, act, obs_next):
 		assert obs.ndim == act.ndim == obs_next.ndim
@@ -68,21 +67,18 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 			return self.reward(obs[None], act[None], obs_next[None])[0]
 
 		else:
-			raise NotImplementedError
-		"""
-		if not self.holding_obj:
-			return
-		else:
-			return 
-		"""
+			return NotImplementedError
 
 	def reset_model(self):
 		qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
 		qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
-		self.goal_obj = np.random.uniform(low=[-0.75, -0.25, 0.05], high=[-0.25, 0.25, 0.05])
-		#self.goal = np.array([-0.65, -0.2, 0.21]) #fixed goal
-		qpos[-3:] = self.goal_obj
-		qvel[-3:] = 0
+		self.goal_obj = self.random_pos()
+		self.sim.model.body_pos[-2] = self.goal_obj
+		self.goal_dest = self.random_pos()
+		self.sim.model.body_pos[-1] = self.goal_dest
+		qpos[-6:-3] = self.goal_obj
+		qpos[-3:] = self.goal_dest
+		qvel[-6:] = 0
 
 		self.set_state(qpos, qvel)
 		observation = self._get_obs()
@@ -92,6 +88,17 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 	def ee_position(self):
 		return (self.get_body_com(self._arm + '_r_finger_tip_link')
 				+ self.get_body_com(self._arm + '_l_finger_tip_link'))/2
+
+	def random_pos(self):
+		x = np.random.uniform(low=-0.3, high=0.3)
+		y = np.random.uniform(low=-0.25, high=0.25)
+		if abs(x) < 0.1:
+			sign = x / abs(x)
+			x += 0.05 * sign
+		if abs(y) < 0.1:
+			sign = y / abs(y)
+			y += 0.05 * sign
+		return np.array([x, y, 0.05])
 		
 
 	def viewer_setup(self):

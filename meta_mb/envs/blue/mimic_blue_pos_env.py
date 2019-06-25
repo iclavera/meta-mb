@@ -17,7 +17,7 @@ class MimicBluePosEnv(BlueEnv):
 
 	def step(self, action):
 		self.do_simulation(action, self.frame_skip)
-		vec_right = self.ee_position('right') - self.goal
+		vec_right = self.ee_position - self.goal
 		reward_dist = -np.linalg.norm(vec_right)
 		reward_ctrl = -np.square(action/(2* self._high)).sum()
 		reward = reward_dist + 0.5 * 0.1 * reward_ctrl
@@ -35,7 +35,7 @@ class MimicBluePosEnv(BlueEnv):
 		if len(self.positions) != 0:
 			position = self.positions[self.path_len]
 		for _ in range(frame_skip):
-			time.sleep(self.dt)
+			#time.sleep(self.dt)
 			qpos = np.concatenate((position[0], self.goal))
 			qvel = np.concatenate((position[1], np.zeros(3)))
 			self.set_state(qpos, qvel)
@@ -46,7 +46,7 @@ class MimicBluePosEnv(BlueEnv):
 			self.sim.data.qpos.flat,
 			self.sim.data.qvel.flat[:-3],
 			self.ee_position,
-			self.ee_position('right') - self.goal,
+			self.ee_position - self.goal,
 		])
 
 if __name__ == "__main__":
