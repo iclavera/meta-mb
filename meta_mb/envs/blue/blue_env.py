@@ -28,7 +28,7 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         self._low = -max_torques
         self._high = max_torques
 
-        RandomEnv.__init__(self, log_rand, xml_file, 2)
+        RandomEnv.__init__(self, log_rand, xml_file, 20)
 
     def _get_obs(self):
         return np.concatenate([
@@ -40,17 +40,17 @@ class BlueEnv(RandomEnv, utils.EzPickle):
 
     def step(self, act):
         if self.iters==0:
-            action = np.array([-2.5, -3.2, 1.2, -3.5])
+            action = np.array([0.52, -3.2, 1.2, -3.5])
             action = np.append(action, act[4:])
         else:
             action = act
         #if self.iters < 10 and self.iters != 0:
         #    for i in range(7):
         #        action[i] *= 1.1
-        if hasattr(self, "actions"):
-            self.actions.update({len(self.actions) : action})
-            if (len(self.actions) == 100):
-                pickle.dump(self.actions, open("actions_sim_0.pkl", "wb"))
+        #if hasattr(self, "actions"):
+        #    self.actions.update({len(self.actions) : action})
+        #    if (len(self.actions) == 100):
+        #        pickle.dump(self.actions, open("actions_sim_0.pkl", "wb"))
         done = False
         """
         if (hasattr(self, "actions")):
@@ -62,9 +62,12 @@ class BlueEnv(RandomEnv, utils.EzPickle):
 
         self.do_simulation(action, self.frame_skip)
         #self.correction() # Use for v2 arms
-        vec = self.ee_position - self.goal
-        reward_dist = -np.linalg.norm(vec)
-        reward_ctrl = -np.square(action/(2 * self._high)).sum()
+        vec_to_goal = self.ee_position - self.goal
+        joint_velocities = self.sim.data.qvel[:-3]
+
+
+        reward_dist = -np.linalg.norm(vec_to_goal)
+        reward_ctrl = -np.square(joint_velocities/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         observation = self._get_obs()
         info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
@@ -92,8 +95,8 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         self.sim.data.qfrc_applied[-1] = abs(gravity/1.90986) #counteract gravity on goal body
         qpos = self.init_qpos + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nq)
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
-        #self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
-        self.goal = np.array([-0.55, -0.1, 0.21]) #fixed goal
+        self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
+        #self.goal = np.array([-0.55, -0.1, 0.21]) #fixed goal
         qpos[-3:] = self.goal
         qvel[-3:] = 0
 
