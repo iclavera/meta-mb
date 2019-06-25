@@ -10,7 +10,7 @@ class Worker(object):
     """
     def __init__(
             self,
-            verbose=False,
+            verbose=True,
     ):
         """
         :param
@@ -18,9 +18,9 @@ class Worker(object):
         """
 
         self.verbose = verbose
+        self.block_wait = False
         self.result = None
         self.state_pickle = None
-        self.info = {}
 
     def __call__(
             self,
@@ -60,7 +60,7 @@ class Worker(object):
             # sess.run(tf.variables_initializer(uninit_vars))
             sess.run(tf.initializers.global_variables())
 
-        with tf.Session(config=config).as_default() as sess:
+        with tf.Session(config=config).as_default():
 
             self.construct_from_feed_dict(
                 policy_pickle,
@@ -82,33 +82,44 @@ class Worker(object):
             assert remote.recv() == 'prepare start'
             self.prepare_start()
             remote.send('loop ready')
+            logger.dumpkvs()
             logger.log("\n============== {} is ready =============".format(current_process().name))
 
             assert remote.recv() == 'start loop'
             time_start = time.time()
+            total_push, total_synch, total_step = 0, 0, 0
             while not self.stop_cond.is_set():
                 if self.verbose:
                     logger.log("\n------------------------- {} starting new loop ------------------".format(current_process().name))
                 if need_query: # poll
-                    # time_poll = time.time()
+                    time_poll = time.time()
                     queue_prev.put('push')
-                    # self.info.update({current_process().name+'-TimePoll': time.time() - time_poll})
-                do_push, do_synch, do_step= self.process_queue()
+                    time_poll = time.time() - time_poll
+                    logger.logkv('{}-TimePoll'.format(current_process().name), time_poll)
+                do_push, do_synch, do_step = self.process_queue()
                 # step
                 if do_step:
                     self.itr_counter += 1
                     self.step()
                     if auto_push:
+                        do_push += 1
                         self.push()
+                    # Assuming doing autopush for all
+                    assert do_push == 1
+                    assert do_step == 1
 
-                remote.send(((int(do_push), int(do_synch), int(do_step)), self.dump_info()))
-                # remote.send(((int(do_push), int(do_synch), int(do_step)), None))
-                # logger.logkvs(self.dump_info())
-                # logger.dumpkvs()
-                logger.log("\n========================== {} {} {} ===================".format(
+                time_remote = time.time()
+                # remote.send(((do_push, do_synch, do_step), None)) #, logger.getkvs()))
+                time_remote = time.time() - time_remote
+                logger.logkv('{}-TimeRemote'.format(current_process().name), time_remote)
+                logger.dumpkvs()
+                total_push += do_push
+                total_synch += do_synch
+                total_step += do_step
+                logger.log("\n========================== {} {}, total {} ===================".format(
                     current_process().name,
-                    ('push' if do_push else None, do_synch, 'step' if do_step else None),
-                    self.itr_counter
+                    (do_push, do_synch, do_step),
+                    (total_push, total_synch, total_step),
                 ))
                 self.set_stop_cond()
 
@@ -153,19 +164,19 @@ class Worker(object):
         raise NotImplementedError
 
     def process_queue(self):
-        if self.verbose:
-            logger.log('{} start processing queu.................'.format(current_process().name))
-        do_push, do_synch = False, 0
+        do_push, do_synch = 0, 0
         data = None
         while True:
             try:
+                if self.verbose:
+                    logger.log('{} try'.format(current_process().name))
                 new_data = self.queue.get_nowait()
                 if new_data == 'push':
-                    if not do_push: # only push once
-                        do_push = True
+                    if do_push == 0: # only push once
+                        do_push += 1
                         self.push()
                 else:
-                    do_synch += 1
+                    do_synch = 1
                     data = new_data
             except Empty:
                 break
@@ -173,39 +184,31 @@ class Worker(object):
         if do_synch:
             self._synch(data)
 
-        do_step = not do_synch
+        do_step = 1# - do_synch
 
         if self.verbose:
             logger.log('{} finishes processing queue with {}, {}, {}......'.format(current_process().name, do_push, do_synch, do_step))
         return do_push, do_synch, do_step
 
-    def step(self):
+    def step(self, *args, **kwargs):
         raise NotImplementedError
 
-    def _synch(self, data):
+    def _synch(self,  data, *args, **kwargs):
         raise NotImplementedError
 
     def dump_result(self):
         self.state_pickle = pickle.dumps(self.result)
 
     def push(self):
-        # time_push = time.time()
+        time_push = time.time()
         self.dump_result()
         self.queue_next.put(self.state_pickle)
-        # self.info.update({current_process().name+'-TimePush': time.time() - time_push})
+        time_push = time.time() - time_push
+        logger.logkv('{}-TimePush'.format(current_process().name), time_push)
 
     def set_stop_cond(self):
         pass
 
     def prepare_close(self, args):
         pass
-
-    def update_info(self):
-        self.info.update(logger.getkvs())
-        logger.reset()
-
-    def dump_info(self):
-        info = self.info
-        self.info = {}
-        return info
 

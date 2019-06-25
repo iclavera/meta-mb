@@ -239,7 +239,7 @@ class ConjugateGradientOptimizer(Optimizer):
         gradient = sess.run(self._gradient, feed_dict)
         return gradient
 
-    def optimize(self, input_val_dict):
+    def optimize(self, input_val_dict, verbose=False):
         """
         Carries out the optimization step
 
@@ -249,18 +249,19 @@ class ConjugateGradientOptimizer(Optimizer):
             subsample_grouped_inputs (None or list): subsample data from each element of the list
 
         """
-        logger.log("Start CG optimization")
+        if verbose:
+            logger.log("Start CG optimization")
+            logger.log("computing loss before")
 
-        logger.log("computing loss before")
         loss_before = self.loss(input_val_dict)
 
-        logger.log("performing update")
-
-        logger.log("computing gradient")
+        if verbose:
+            logger.log("performing update")
+            logger.log("computing gradient")
         gradient = self.gradient(input_val_dict)
-        logger.log("gradient computed")
-
-        logger.log("computing descent direction")
+        if verbose:
+            logger.log("gradient computed")
+            logger.log("computing descent direction")
         Hx = self._hvp_approach.build_eval(input_val_dict)
         descent_direction = conjugate_gradients(Hx, gradient, cg_iters=self._cg_iters)
 
@@ -271,7 +272,8 @@ class ConjugateGradientOptimizer(Optimizer):
             return
 
         initial_descent_step = initial_step_size * descent_direction
-        logger.log("descent direction computed")
+        if verbose:
+            logger.log("descent direction computed")
 
         prev_params = self._target.get_param_values()
         prev_params_values = _flatten_params(prev_params)
@@ -305,9 +307,10 @@ class ConjugateGradientOptimizer(Optimizer):
             logger.log("Line search condition violated. Rejecting the step!")
             self._target.set_params(prev_params)
 
-        logger.log("backtrack iters: %d" % n_iter)
-        logger.log("computing loss after")
-        logger.log("optimization finished")
+        if verbose:
+            logger.log("backtrack iters: %d" % n_iter)
+            logger.log("computing loss after")
+            logger.log("optimization finished")
 
 
 def _unflatten_params(flat_params, params_example):
