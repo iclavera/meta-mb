@@ -60,7 +60,7 @@ class ParallelTrainer(object):
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
-        queues = [Queue() for _ in range(3)]
+        queues = [Queue(-1) for _ in range(3)]
         # worker sends task-completed notification and time info to scheduler
         worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
         # stop condition
@@ -152,13 +152,28 @@ class ParallelTrainer(object):
             print(key)
             value = value[:-2]
             do_push, do_synch, do_step = zip(*value)
-            logger.logkv('{}-PushPercentage'.format(key), sum(do_push)/len(value))
-            logger.logkv('{}-SynchPercentage'.format(key), sum(do_synch)/len(value))
-            logger.logkv('{}-StepPercentage'.format(key), sum(do_step)/len(value))
+            logger.logkv('{}-Push'.format(key), sum(do_push))
+            logger.logkv('{}-Synch'.format(key), sum(do_synch))
+            logger.logkv('{}-Step'.format(key), sum(do_step))
         logger.log("Training finished")
         logger.dumpkvs()
 
     def collect_summary(self, stop_rcp):
+        """
+        workers_idx = [0, 1, 2]
+        while not workers_idx:
+            for worker_idx in workers_idx:
+                rcp = self.remotes[worker_idx].recv()
+                if rcp == stop_rcp:
+                    print('receiving stop_rcp')
+                    workers_idx.remove(worker_idx)
+                else:
+                    task, info = rcp
+                    if False: #info:
+                        logger.logkvs(info)
+                        logger.dumpkvs()
+                    self.summary[self.names[worker_idx]].extend(task)
+        """
         for name, remote in zip(self.names, self.remotes):
             tasks = []
             while True:
@@ -169,8 +184,7 @@ class ParallelTrainer(object):
                 task, info = rcp
                 tasks.append(task)
                 assert isinstance(info, dict)
-                if info:
+                if False: #info:
                     logger.logkvs(info)
                     logger.dumpkvs()
             self.summary[name].extend(tasks)
-

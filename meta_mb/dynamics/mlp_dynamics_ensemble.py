@@ -228,6 +228,133 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             print("Size Incoming Data Set:  ", n_train_new_samples)
 
+    def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
+                      compute_normalization=True, rolling_average_persitency=None,
+                      verbose=False, log_tabular=False, prefix=''):
+
+        if rolling_average_persitency is None:
+            rolling_average_persitency = self.rolling_average_persitency
+
+        sess = tf.get_default_session()
+
+        time_compute_normalization = time.time()
+        if with_new_data:
+            if compute_normalization and self.normalize_input:
+                self.compute_normalization(self._dataset_train['obs'],
+                                           self._dataset_train['act'],
+                                           self._dataset_train['delta'])
+        time_compute_normalization = time.time() - time_compute_normalization
+
+        time_normalize_input = time.time()
+        if self.normalize_input:
+            # TODO: store normalied data so that if not with_new_data, don't recompute?
+            # normalize data
+            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+                                                                     self._dataset_train['act'],
+                                                                     self._dataset_train['delta'])
+        else:
+            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
+                                                self._dataset_train['delta']
+        time_normalize_input = time.time() - time_normalize_input
+
+        valid_loss_rolling_average = valid_loss_rolling_average_prev
+        assert remaining_model_idx is not None
+        train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx in remaining_model_idx]
+
+        # initialize data queue
+        feed_dict = dict(
+            list(zip(self.obs_batches_dataset_ph, obs_train)) +
+            list(zip(self.act_batches_dataset_ph, act_train)) +
+            list(zip(self.delta_batches_dataset_ph, delta_train))
+        )
+        sess.run(self.iterator.initializer, feed_dict=feed_dict)
+
+        # preparations for recording training stats
+        time_epoch = time.time()
+        batch_losses = []
+
+        """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
+        while True:
+            try:
+                obs_act_delta = sess.run(self.next_batch)
+                obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
+                act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
+                delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
+
+                # run train op
+                batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
+                                                feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
+                                                           self.act_model_batches_stack_ph: act_batch_stack,
+                                                           self.delta_model_batches_stack_ph: delta_batch_stack})
+
+                batch_loss = np.array(batch_loss_train_ops[:self.num_models])
+                batch_losses.append(batch_loss)
+
+            except tf.errors.OutOfRangeError:
+                if self.normalize_input:
+                    # TODO: if not with_new_data, don't recompute
+                    # normalize data
+                    obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
+                                                                          self._dataset_test['act'],
+                                                                          self._dataset_test['delta'])
+
+                else:
+                    obs_test, act_test, delta_test = self._dataset_test['obs'], self._dataset_test['act'], \
+                                                     self._dataset_test['delta']
+
+                obs_test_stack = np.concatenate(obs_test, axis=0)
+                act_test_stack = np.concatenate(act_test, axis=0)
+                delta_test_stack = np.concatenate(delta_test, axis=0)
+
+                # compute validation loss
+                valid_loss = sess.run(self.loss_model_batches,
+                                      feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
+                                                 self.act_model_batches_stack_ph: act_test_stack,
+                                                 self.delta_model_batches_stack_ph: delta_test_stack})
+                valid_loss = np.array(valid_loss)
+
+                if valid_loss_rolling_average is None:
+                    valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
+                    valid_loss_rolling_average_prev = 2.0 * valid_loss
+                    for i in range(len(valid_loss)):
+                        if valid_loss[i] < 0:
+                            valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
+                            valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
+
+                valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
+                                             + (1.0-rolling_average_persitency)*valid_loss
+
+                if verbose:
+                    str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
+                    str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
+                    str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
+                    logger.log(
+                        "Training NNDynamicsModel - finished one epoch\n"
+                        "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
+                        %(str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+                    )
+                break
+
+        for i in range(self.num_models):
+            # TODO: is this condition reasonable with avg_prev inherited from previous epoch
+            if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]) and i in remaining_model_idx:
+                remaining_model_idx.remove(i)
+                logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
+
+        time_epoch = time.time() - time_epoch
+
+        """ ------- Tabular Logging ------- """
+        if log_tabular:
+            logger.logkv(prefix+'EpochTime', time_epoch)
+            logger.logkv(prefix+'TimeComputeNorm', time_compute_normalization)
+            logger.logkv(prefix+'TimeNormInput', time_normalize_input)
+            logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
+            logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
+            logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
+            logger.logkv(prefix+'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
+
+        return remaining_model_idx, valid_loss_rolling_average
+
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
@@ -337,24 +464,27 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                         str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
                         str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
                         str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-                        logger.log("Training NNDynamicsModel - finished epoch %i --"
-                                   "train loss: %s  valid loss: %s  valid_loss_mov_avg: %s"
-                                   %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge))
+                        logger.log(
+                            "Training NNDynamicsModel - finished epoch %i --\n"
+                            "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
+                            %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+                        )
                     break
 
             for i in range(self.num_models):
                 if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
                     idx_to_remove.append(i)
                     epochs_per_model.append(epoch)
-                    logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
+                    if epoch < epochs - 1:
+                        logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
 
             train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
 
             if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
 
             if not train_op_to_do:
-                if verbose:
-                    logger.log('Stopping DynamicsEnsemble Training since valid_loss_rolling_average decreased')
+                if verbose and epoch < epochs - 1:
+                    logger.log('Stopping all DynamicsEnsemble Training before reaching max_num_epochs')
                 break
             valid_loss_rolling_average_prev = valid_loss_rolling_average
 
@@ -363,10 +493,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
             assert len(epochs_per_model) == self.num_models
             logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
-            logger.logkv(prefix+'StdEpochsl', np.std(epochs_per_model))
+            logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
+            logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
+            logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
             logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss_rolling_average))
+            logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
     def predict(self, obs, act, pred_type='rand', **kwargs):
         """
