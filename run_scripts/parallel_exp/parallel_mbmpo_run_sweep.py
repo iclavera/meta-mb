@@ -18,7 +18,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'timing-parallel-mbmpo-all'
+EXP_NAME = 'timing-parallel-mbmpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -153,7 +153,6 @@ def run_experiment(**kwargs):
         n_itr=kwargs['n_itr'],
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         meta_steps_per_iter=kwargs['meta_steps_per_iter'],
-        dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
         log_real_performance=kwargs['log_real_performance'],
         flags_need_query=kwargs['flags_need_query'],
         sample_from_buffer=kwargs['sample_from_buffer'],
@@ -174,37 +173,37 @@ if __name__ == '__main__':
             # [True, True, True],
         ],
 
-        'seed': [1, ],
+        'seed': [1, 2,],
 
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv, Walker2dEnv, HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [201],#[101],
+        'n_itr': [21],#[501],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],  # not implemented
-        'meta_steps_per_iter': [1],  # Get rid of outer loop in effect
+        'meta_steps_per_iter': [1],  # 30 # Get rid of outer loop in effect
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [False],
         'fraction_meta_batch_size': [1.],
-        'simulation_sleep': [30,],
+        'simulation_sleep': [50, 200],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512, 512)],
+        'dynamics_hidden_sizes': [(500, 500, 500)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [25,],  # UNUSED
+        'dynamics_max_epochs': [50,],  # UNUSED
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [20000],
+        'dynamics_batch_size': [128],
+        'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['L2'],
 
@@ -216,8 +215,8 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10, 30],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20, 80],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [20,],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],
@@ -226,7 +225,7 @@ if __name__ == '__main__':
         'sample_from_buffer': [False],  #[True, False],# not implemented
 
         'scope': [None],
-        'exp_tag': ['timing-parallel-mbmpo-all'],  # For changes besides hyperparams
+        'exp_tag': ['timing-parallel-mbmpo'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -63,7 +63,8 @@ class WorkerPolicy(Worker):
             all_samples_data = []
 
             for step in range(self.num_inner_grad_steps+1):
-                logger.log("Policy Adaptation-Step %d **" % step)
+                if self.verbose:
+                    logger.log("Policy Adaptation-Step %d **" % step)
 
                 """ -------------------- Sampling --------------------------"""
 

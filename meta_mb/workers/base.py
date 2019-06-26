@@ -115,10 +115,13 @@ class Worker(object):
                 # remote.send(((do_push, do_synch, do_step), None)) #, logger.getkvs()))
                 # time_remote = time.time() - time_remote
                 # logger.logkv('{}-TimeRemote'.format(current_process().name), time_remote)
-                logger.dumpkvs()
                 total_push += do_push
                 total_synch += do_synch
                 total_step += do_step
+                logger.logkv(current_process().name+'-TotalPush', total_push)
+                logger.logkv(current_process().name+'-TotalSynch', total_synch)
+                logger.logkv(current_process().name+'-TotalStep', total_step)
+                logger.dumpkvs()
                 logger.log("\n========================== {} {}, total {} ===================".format(
                     current_process().name,
                     (do_push, do_synch, do_step),

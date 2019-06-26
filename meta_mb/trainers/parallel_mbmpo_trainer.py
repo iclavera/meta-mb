@@ -1,4 +1,3 @@
-from collections import defaultdict
 import time
 from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.logger import logger
@@ -36,7 +35,6 @@ class ParallelTrainer(object):
             num_inner_grad_steps=1,
             meta_steps_per_iter=30,
             initial_random_samples=True,
-            dynamics_model_max_epochs=200,
             log_real_performance=True,
             flags_need_query=(False, False, False,),
             sample_from_buffer=False,
@@ -47,7 +45,6 @@ class ParallelTrainer(object):
 
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
-        # self.summary = defaultdict(list)
 
         if type(meta_steps_per_iter) is tuple:
             meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
@@ -56,7 +53,7 @@ class ParallelTrainer(object):
 
         worker_instances = [
             WorkerData(fraction_meta_batch_size, simulation_sleep),
-            WorkerModel(dynamics_model_max_epochs),
+            WorkerModel(),
             WorkerPolicy(sample_from_buffer, meta_step_per_iter, num_inner_grad_steps),
         ]
         names = ["Data", "Model", "Policy"]
@@ -68,7 +65,6 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_need_query = flags_need_query
         flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
@@ -146,53 +142,13 @@ class ParallelTrainer(object):
 
         for remote in self.remotes:
             assert remote.recv() == 'loop done'
-        # self.collect_summary('loop done')
         logger.log('\n------------all workers exit loops -------------')
         for remote in self.remotes:
             assert remote.recv() == 'worker closed'
-        # self.collect_summary('worker closed')
-        [p.terminate() for p in self.ps]
+
+        for p in self.ps:
+            p.terminate()
+
         logger.logkv('Trainer-TimeTotal', time.time() - time_total)
-
-        '''
-        for key, value in self.summary.items():
-            print(key)
-            value = value[:-2]
-            do_push, do_synch, do_step = zip(*value)
-            logger.logkv('{}-Push'.format(key), sum(do_push))
-            logger.logkv('{}-Synch'.format(key), sum(do_synch))
-            logger.logkv('{}-Step'.format(key), sum(do_step))
-        '''
-        logger.log("Training finished")
         logger.dumpkvs()
-
-    def collect_summary(self, stop_rcp):
-        """
-        workers_idx = [0, 1, 2]
-        while not workers_idx:
-            for worker_idx in workers_idx:
-                rcp = self.remotes[worker_idx].recv()
-                if rcp == stop_rcp:
-                    print('receiving stop_rcp')
-                    workers_idx.remove(worker_idx)
-                else:
-                    task, info = rcp
-                    if False: #info:
-                        logger.logkvs(info)
-                        logger.dumpkvs()
-                    self.summary[self.names[worker_idx]].extend(task)
-        """
-        for name, remote in zip(self.names, self.remotes):
-            tasks = []
-            while True:
-                rcp = remote.recv()
-                if rcp == stop_rcp:
-                    print('receiving stop rcp {}'.format(rcp))
-                    break
-                task, info = rcp
-                tasks.append(task)
-                assert isinstance(info, dict)
-                if info:
-                    logger.logkvs(info)
-                    logger.dumpkvs()
-            # self.summary[name].extend(tasks)
+        logger.log("*****Training finished")

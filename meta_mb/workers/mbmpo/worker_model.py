@@ -5,9 +5,8 @@ from queue import Empty
 
 
 class WorkerModel(Worker):
-    def __init__(self, dynamics_model_max_epochs):
+    def __init__(self):
         super().__init__()
-        # self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.with_new_data = None
         self.remaining_model_idx = None
         self.valid_loss_rolling_average = None

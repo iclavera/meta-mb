@@ -1,4 +1,3 @@
-from collections import defaultdict
 import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe, Queue, Event, active_children
@@ -25,6 +24,7 @@ class ParallelTrainer(object):
     """
     def __init__(
             self,
+            exp_dir,
             policy_pickle,
             env_pickle,
             baseline_pickle,
@@ -34,7 +34,6 @@ class ParallelTrainer(object):
             start_itr=0,
             steps_per_iter=30,
             initial_random_samples=True,
-            dynamics_model_max_epochs=200,
             log_real_performance=True,
             flags_need_query=(True, False, True),
             config=None,
@@ -42,7 +41,6 @@ class ParallelTrainer(object):
             ):
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
-        self.summary = defaultdict(list)
 
         if type(steps_per_iter) is tuple:
             step_per_iter = int((steps_per_iter[1] + steps_per_iter[0])/2)
@@ -52,19 +50,18 @@ class ParallelTrainer(object):
 
         worker_instances = [
             WorkerData(simulation_sleep),
-            WorkerModel(dynamics_model_max_epochs),
+            WorkerModel(),
             WorkerPolicy(step_per_iter),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
-        queues = [Queue() for _ in range(3)]
+        queues = [Queue(-1) for _ in range(3)]
         # worker sends task-completed notification and time info to scheduler
         worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
         # stop condition
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_need_query = flags_need_query
         flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
@@ -72,6 +69,7 @@ class ParallelTrainer(object):
                 target=worker_instance,
                 name=name,
                 args=(
+                    exp_dir,
                     policy_pickle,
                     env_pickle,
                     baseline_pickle,
@@ -139,34 +137,15 @@ class ParallelTrainer(object):
 
         ''' --------------- collect info --------------- '''
 
-        self.collect_summary('loop done')
+        for remote in self.remotes:
+            assert remote.recv() == 'loop done'
         logger.log('\n------------all workers exit loops -------------')
-        self.collect_summary('worker closed')
-        [p.terminate() for p in self.ps]
+        for remote in self.remotes:
+            assert remote.recv() == 'worker closed'
+
+        for p in self.ps:
+            p.terminate()
+
         logger.logkv('Trainer-TimeTotal', time.time() - time_total)
-
-        for key, value in self.summary.items():
-            print(key)
-            value = value[:-2]
-            do_push, do_synch, do_step = zip(*value)
-            logger.logkv('{}-PushPercentage'.format(key), sum(do_push)/len(value))
-            logger.logkv('{}-SynchPercentage'.format(key), sum(do_synch)/len(value))
-            logger.logkv('{}-StepPercentage'.format(key), sum(do_step)/len(value))
-        logger.log("Training finished")
         logger.dumpkvs()
-
-    def collect_summary(self, stop_rcp):
-        for name, remote in zip(self.names, self.remotes):
-            tasks = []
-            while True:
-                rcp = remote.recv()
-                if rcp == stop_rcp:
-                    print('receiving stop rcp {}'.format(rcp))
-                    break
-                task, info = rcp
-                tasks.append(task)
-                assert isinstance(info, dict)
-                if info:
-                    logger.logkvs(info)
-                    logger.dumpkvs()
-            self.summary[name].extend(tasks)
+        logger.log('*****Training finished')
