@@ -18,7 +18,7 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         self.peg_table = np.zeros(3)
         self.goal_dist = goal_dist  # permissible distance from goal
 
-        RandomEnv.__init__(self, 2, xml_file, 2)
+        RandomEnv.__init__(self, 2, xml_file, 20)
 
 
     def _get_obs(self):
@@ -47,10 +47,14 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         qvel = self.init_qvel + self.np_random.uniform(low=-0.01, high=0.01, size=self.model.nv)
 
         self.peg_table = self.random_pos()
-        self.sim.model.body_pos[-1] = self.peg_table
+        self.sim.model.body_pos[-3] = self.peg_table
+        self.sim.model.body_pos[-2] = np.array([0.092, 0, 0.065])
+        self.sim.model.body_pos[-1] = np.array([0.092, 0, 0])
 
-        qpos[-3:] = self.peg_table
-        qvel[-3:] = 0
+        qpos[-3:] = self.peg_table + np.array([0.092, 0, 0.040])
+        qpos[-6:-3] = self.peg_table
+
+        qvel[-6:] = 0
 
         self.set_state(qpos, qvel)
         observation = self._get_obs()
@@ -78,11 +82,11 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         y = np.random.uniform(low=-0.25, high=0.25)
         if abs(x) < 0.1:
             sign = x / abs(x)
-            x += 0.05 * sign
+            x += 0.2 * sign
         if abs(y) < 0.1:
             sign = y / abs(y)
-            y += 0.05 * sign
-        return np.array([x, y, 0.0])
+            y += 0.2 * sign
+        return np.array([x, y, 0.01])
 
     def peg_location(self):
         return self.get_body_com("peg")
@@ -94,13 +98,13 @@ class PegFullBlueEnv(RandomEnv, utils.EzPickle):
         return 2
 
     def top(self, center):
-        x = center[0]
-        y = center[1] + 0.3
-        z = center[2] - 0.4
+        x = center[0] + 0.092
+        y = center[1] 
+        z = center[2] + 0.075
         return np.array([x, y, z])
 
     def center(self, center):
-        x = center[0]
+        x = center[0] 
         y = center[1] + 0.3
         z = center[2] - 0.55
         return np.array([x, y, z])

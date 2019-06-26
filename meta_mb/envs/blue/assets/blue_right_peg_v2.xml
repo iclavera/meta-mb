@@ -16,13 +16,13 @@
         <mesh name="finger_limb_link" file="finger_limb_link.STL" />
         <mesh name="finger_tip_link" file="finger_tip_link.STL" />
 
-        <mesh name="base_plate" file="./peg_task/base_plate.stl" scale="0.03 0.03 0.03"/>
+        <mesh name="base_plate" file="./peg_task/base_plate.stl" scale="0.02 0.02 0.02"/>
         <mesh name="compound_gear" file="./peg_task/compound_gear.stl" scale="0.03 0.03 0.03"/>
         <mesh name="gear1" file="./peg_task/gear1.stl"/>
         <mesh name="gear2" file="./peg_task/gear2.stl"/>
         <mesh name="gear2_1" file="./peg_task/gear2_1.stl"/>
         <mesh name="shaft1" file="./peg_task/shaft1.stl" scale="0.03 0.03 0.03"/>
-        <mesh name="shaft2" file="./peg_task/shaft2.stl" scale="0.03 0.03 0.03"/>
+        <mesh name="shaft2" file="./peg_task/shaft2.stl" scale="0.02 0.02 0.02"/>
 
         <texture name="skybox" type="skybox" builtin="gradient" rgb1=".4 .6 .8" rgb2="0 0 0" width="1024" height="1024" mark="random" markrgb="1 1 1"/>
         <texture name="texplane" type="2d" builtin="checker" rgb1="0.5961 0.5647 0.4784" rgb2="0.3843 0.32941 0.19215" width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
@@ -69,8 +69,17 @@
                                         <body name="right_gripper_link" pos="0 0 -0.1" quat="0.535369 0.498747 0.498747 -0.464631">
                                             <inertial pos="-7.00549e-05 2.51272e-05 -0.0523671" quat="1 5.54202e-05 -0.000544908 -0.000762021" mass="0.00471098" diaginertia="0.000916889 0.000877269 0.000293332" />
                                             <!--<joint name="right_gripper_joint" pos="0 0 0" axis="0 0 1" limited="true" range="0 1.05" />-->
-                                            <body name="peg" pos="0 0 0">
-                                                <geom type="mesh" mesh="shaft2" rgba="0 1 0 1" quat="0.2 0.2 0 0" conaffinity="1" contype="1"/>
+                                            <body name="peg" pos="0.05 0 0">
+                                                <geom type="mesh" mesh="shaft2" rgba="0 1 0 0.1" quat="0.2 0.2 0 0" conaffinity="1" contype="1"/>
+                                                <body name="top" pos="0 0 0">
+                                                    <geom type="sphere" size="0.01" rgba="1 0 0 1" quat="0 0 1 0"/>
+                                                </body>
+                                                <body name="center" pos="0 -0.025 0">
+                                                    <geom type="sphere" size="0.01" rgba="0 1 0 1" quat="0 0 1 0"/>
+                                                </body>
+                                                <body name="bottom" pos="0 -0.078 0">
+                                                    <geom type="sphere" size="0.01" rgba="0 0 1 1" quat="0 0 1 0"/>
+                                                </body>
                                             </body>
                                         </body>
                                         <body name="right_r_finger_link" pos="0 0.030703 -0.071979" quat="0.631851 -0.317432 -0.631853 0.317432">
@@ -116,6 +125,13 @@
 
         <body name="plate" pos="0 0 0">
             <geom type="mesh" rgba="1 0 0 1" mesh="base_plate" conaffinity="1" contype="1"/>
+            <body name="g1" pos="0.0 0.3 -0.7">
+                <geom name="goal-top" type="sphere" rgba="1.0 0.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
+            </body>
+
+            <body name="g3" pos="0.0 0.3 -0.7">
+                <geom name="goal-bottom" type="sphere" rgba="0.0 0.0 1.0 1" pos="0.0 0.0 0.0" size="0.01" />
+            </body>
         </body>
 
         <!--body name="goal_right" pos="0 0 0">
