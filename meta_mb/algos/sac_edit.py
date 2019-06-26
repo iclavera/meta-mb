@@ -9,6 +9,7 @@ from meta_mb.utils import create_feed_dict
 from pdb import set_trace as st
 from meta_mb.logger import logger
 from tensorflow.python.training import training_util
+from random import randint
 
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
@@ -29,6 +30,7 @@ class SAC_MB(Algo):
             policy,
             Qs,
             env,
+            dynamics_model,
             Q_targets=None,
             discount=0.99,
             name="sac",
@@ -72,6 +74,7 @@ class SAC_MB(Algo):
         self.name = name
         self.policy = policy
         self.discount = discount
+        self.dynamics_model = dynamics_model
         # self.recurrent = getattr(self.policy, 'recurrent', False)
         self.recurrent = False
         self.training_environment = env
@@ -187,26 +190,29 @@ class SAC_MB(Algo):
         """===============MBPO=============end================"""
 
         """===============change===========start================"""
-        next_observations_ph = self.op_phs_dict['next_observations']
-        dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
+        observation_ph = self.op_phs_dict['observations']
+        action_ph = self.op_phs_dict['actions']
+        dist_info_sym = self.dynamics_model.distribution_info_sym(observation_ph, action_ph)
+
+        # random_model_index = randint(0, self.dynamics_model.num_models-1)
+        means = dist_info_sym['mean']
+        # interval = tf.shape(means)[0]//self.dynamics_model.num_models
+        # next_observation = means[interval*random_model_index:interval*(random_model_index+1)]
+        next_observation = means
+        dist_info_sym = self.policy.distribution_info_sym(next_observation)
         next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-        next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-
-        input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
+        input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
         next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
-
         min_next_Q = tf.reduce_min(next_q_values, axis=0)
-        next_values_var = min_next_Q - self.alpha * next_log_pis_var
+        rewards = self.training_environment.tf_reward(observation_ph, action_ph, next_observation)
+        rewards = tf.expand_dims(rewards, axis=-1)
 
-        dones_ph = tf.cast(self.op_phs_dict['dones'], next_values_var.dtype)
+        dones_ph = tf.cast(self.op_phs_dict['dones'], min_next_Q.dtype)
         dones_ph = tf.expand_dims(dones_ph, axis=-1)
-        rewards_ph = self.op_phs_dict['rewards']
-        rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
         self.q_target = td_target(
-            reward=self.reward_scale * rewards_ph,
+            reward=self.reward_scale * rewards,
             discount=self.discount,
-            next_value=(1 - dones_ph) * next_values_var)
+            next_value=(1 - dones_ph) * min_next_Q)
         """===============change===========end=================="""
 
         return tf.stop_gradient(self.q_target)
@@ -341,8 +347,7 @@ class SAC_MB(Algo):
     def train_critic(self, buffer, timestep, grad_steps, log=True):
         sess = tf.get_default_session()
         for i in range(grad_steps):
-            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.sampler_batch_size))
+            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
@@ -353,9 +358,9 @@ class SAC_MB(Algo):
 
 
     def train_actor(self, buffer, grad_steps, log=True):
-
         sess = tf.get_default_session()
         for i in range(grad_steps):
-            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.sampler_batch_size))
+            value_dict=buffer.random_batch_simple(self.sampler_batch_size)
+            placeholder=self.op_phs_dict['observations']
+            feed_dict = dict([(placeholder, value_dict[key]) for key in value_dict.keys()])
             sess.run(self.actor_ops, feed_dict)

@@ -408,6 +408,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             # randomly selecting the prediction of one model in each row
             idx = np.random.randint(0, self.num_models, size=batch_size)
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
+            self.model_used = idx
         elif pred_type == 'mean':
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':

@@ -11,6 +11,7 @@ import math
 import os
 from pdb import set_trace as st
 from meta_mb.replay_buffers import SimpleReplayBuffer
+from random import randint
 
 
 
@@ -48,7 +49,8 @@ class Trainer(object):
             n_initial_exploration_steps=1e3,
             env_num_grad_steps=None,
             model_num_grad_steps=None,
-            max_replay_buffer_size=1e5,
+            env_max_replay_buffer_size=1e6,
+            model_max_replay_buffer_size=4*1e7,
             speed_up_factor=100
             ):
         self.algo = algo
@@ -64,8 +66,8 @@ class Trainer(object):
         self.num_model_rollouts = num_model_rollouts
         self.task = task
         self.n_initial_exploration_steps = n_initial_exploration_steps
-        self.env_replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
-        self.model_replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
+        self.env_replay_buffer = SimpleReplayBuffer(self.env, env_max_replay_buffer_size)
+        self.model_replay_buffer = SimpleReplayBuffer(self.env, model_max_replay_buffer_size)
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.env_num_grad_steps = env_num_grad_steps
         self.model_num_grad_steps = model_num_grad_steps
@@ -104,12 +106,8 @@ class Trainer(object):
                     while self.env_replay_buffer._size < self.n_initial_exploration_steps:
                         paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                         samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                        sample_num = samples_data['observations'].shape[0]
-                        for i in range(sample_num):
-                            self.env_replay_buffer.add_sample(samples_data['observations'][i],
-                                                          samples_data['actions'][i], samples_data['rewards'][i],
-                                                          samples_data['dones'][i], samples_data['next_observations'][i],
-                                                          )
+                        self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
+                                                            samples_data['dones'], samples_data['next_observations'])
                         self.dynamics_model.fit(samples_data['observations'],
                                                 samples_data['actions'],
                                                 samples_data['next_observations'],
@@ -156,21 +154,17 @@ class Trainer(object):
                 self.algo.train_critic(self.env_replay_buffer, itr - self.start_itr, self.env_num_grad_steps)
                 critic_end = time.time()
                 # this one should be 40000
-                train_actor_start = time.time()
                 grad_steps = self.model_num_grad_steps//self.speed_up_factor
+                predict_start = time.time()
                 for _ in range(grad_steps):
-                    # for _ in range(self.num_model_rollouts):
-                    # random_batch = self.env_replay_buffer.random_batch(self.algo.sampler_batch_size*self.model_num_grad_steps)
                     random_batch = self.env_replay_buffer.random_batch(self.algo.sampler_batch_size * self.num_model_rollouts * self.speed_up_factor)
                     random_states = random_batch['observations']
                     actions_from_policy = self.policy.get_actions(random_states)[0]
                     predictions = self.dynamics_model.predict(random_states, actions_from_policy)
                     all_obs = np.concatenate([random_states, predictions])
-                    for obs in all_obs:
-                        self.model_replay_buffer.add_sample_simple(obs)
-
-                self.algo.train_actor(self.model_replay_buffer, grad_steps)
-                    # self.algo.train_actor(self.model_replay_buffer, 1)
+                    self.model_replay_buffer.add_samples_simple(all_obs)
+                train_actor_start = time.time()
+                self.algo.train_actor(self.model_replay_buffer, self.model_num_grad_steps)
                 actor_end = time.time()
 
                 """ ------------------- Logging Stuff --------------------------"""
@@ -179,6 +173,7 @@ class Trainer(object):
                 logger.logkv('fit_model_time', model_end - model_start)
                 logger.logkv('train_critic_time', critic_end - time_optimization_step_start)
                 logger.logkv('train_actor_time', actor_end - train_actor_start)
+                logger.logkv('predict_time', train_actor_start - predict_start)
 
                 logger.logkv('Time-Optimization', time.time() - time_optimization_step_start)
                 logger.logkv('Time-SampleProc', np.sum(proc_samples_time))

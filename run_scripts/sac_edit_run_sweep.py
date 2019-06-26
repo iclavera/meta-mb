@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-edit'
+EXP_NAME = 'sac-edit-plus2'
 
 
 from meta_mb.algos.sac_edit import SAC_MB
@@ -98,6 +98,7 @@ def run_experiment(**kwargs):
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
             env=env,
+            dynamics_model=dynamics_model,
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
@@ -116,6 +117,8 @@ def run_experiment(**kwargs):
             dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
             policy_update_per_iteration=kwargs['policy_update_per_iteration'],
             sess=sess,
+            env_max_replay_buffer_size=kwargs['env_replay_buffer_max_size'],
+            model_max_replay_buffer_size=kwargs['model_replay_buffer_max_size'],
             speed_up_factor=kwargs['speed_up_factor']
         )
 
@@ -141,6 +144,10 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'n_parallel': [1],
 
+        # replay_buffer
+        'env_replay_buffer_max_size': [1e6],
+        'model_replay_buffer_max_size': [4*1e7],
+
         # Problem Conf
         'n_itr': [400],
         'max_path_length': [1000],
@@ -153,14 +160,14 @@ if __name__ == '__main__':
         'sampler_batch_size': [256],
 
         # Dynamics Model
-        'num_models': [7],
+        'num_models': [4],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [256],
+        'dynamics_batch_size': [512],
         'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [200]
+        'dynamics_model_max_epochs': [50]
 
         }
 

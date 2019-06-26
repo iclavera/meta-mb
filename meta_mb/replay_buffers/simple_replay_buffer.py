@@ -13,7 +13,6 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         max_replay_buffer_size = int(max_replay_buffer_size)
 
         self._env_spec = env_spec
-        # st()
         # self._observation_dim = env_spec.observation_space.flat_dim
         # self._action_dim = env_spec.action_space.flat_dim
         self._observation_dim = int(np.prod(env_spec.observation_space.shape))
@@ -43,12 +42,70 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
 
         self._advance()
 
+    def add_samples(self, observations, actions, rewards, terminals, next_observations, **kwargs):
+        total_num = observations.shape[0]
+        if self._top + total_num <= self._max_buffer_size:
+            self._observations[self._top: self._top + total_num] = observations
+            self._actions[self._top: self._top + total_num] = actions
+            self._rewards[self._top: self._top + total_num] = rewards
+            self._terminals[self._top: self._top + total_num] = terminals
+            self._next_obs[self._top: self._top + total_num] = next_observations
+        else:
+            back_size = self._max_buffer_size - self._top
+            redundant = (total_num - back_size) // self._max_buffer_size
+            remaining = (total_num - back_size) % self._max_buffer_size
+            if redundant == 0:
+                self._observations[self._top:] = observations[:back_size]
+                self._actions[self._top:] = actions[:back_size]
+                self._rewards[self._top:] = rewards[:back_size]
+                self._terminals[self._top:] = terminals[:back_size]
+                self._next_obs[self._top:] = next_observations[:back_size]
+                self._observations[:total_num - back_size] = observations[back_size:]
+                self._actions[:total_num - back_size] = actions[back_size:]
+                self._rewards[:total_num - back_size] = rewards[back_size:]
+                self._terminals[:total_num - back_size] = terminals[back_size:]
+                self._next_obs[:total_num - back_size] = next_observations[back_size:]
+            else:
+                print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
+                self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._actions[:] = actions[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._rewards[:] = rewards[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._terminals[:] = terminals[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._next_obs[:] = next_observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._observations[:remaining] = observations[back_size + redundant * self._max_buffer_size:]
+                self._actions[:remaining] = actions[back_size + redundant * self._max_buffer_size:]
+                self._rewards[:remaining] = rewards[back_size + redundant * self._max_buffer_size:]
+                self._terminals[:remaining] = terminals[back_size + redundant * self._max_buffer_size:]
+                self._next_obs[:remaining] = next_observations[back_size + redundant * self._max_buffer_size:]
+
+        for _ in range(total_num):
+            self._advance()
+
+
+
     def add_sample_simple(self, observation, **kwargs):
         self._observations[self._top] = observation
-        # self._actions[self._top] = action
-        # self._next_obs[self._top] = next_observation
         self._advance()
 
+
+    def add_samples_simple(self, observations, **kwargs):
+        total_num = observations.shape[0]
+        if self._top + total_num <= self._max_buffer_size:
+            self._observations[self._top: self._top + total_num] = observations
+        else:
+            back_size = self._max_buffer_size - self._top
+            redundant = (total_num - back_size) // self._max_buffer_size
+            remaining = (total_num - back_size) % self._max_buffer_size
+            if redundant == 0:
+                self._observations[self._top:] = observations[:back_size]
+                self._observations[:total_num - back_size] = observations[back_size:]
+            else:
+                print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
+                self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                self._observations[:remaining] = observations[back_size + redundant * self._max_buffer_size:]
+
+        for _ in range(total_num):
+            self._advance()
     def terminate_episode(self):
         pass
 
@@ -66,14 +123,12 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         result[prefix + 'dones'] = self._terminals[indices]
         result[prefix + 'next_observations'] = self._next_obs[indices]
         return result
-    # 
-    # def random_batch_simple(self, batch_size, prefix = ''):
-    #     indices = np.random.randint(0, self._size, batch_size)
-    #     result = dict()
-    #     result[prefix + 'observations'] = self._observations[indices]
-    #     # result[prefix + 'actions'] = self._actions[indices]
-    #     # result[prefix + 'next_observations'] = self._next_obs[indices]
-    #     return result
+
+    def random_batch_simple(self, batch_size, prefix = ''):
+        indices = np.random.randint(0, self._size, batch_size)
+        result = dict()
+        result[prefix + 'observations'] = self._observations[indices]
+        return result
 
     @property
     def size(self):
