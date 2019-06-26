@@ -25,6 +25,7 @@ class ParallelTrainer(object):
     """
     def __init__(
             self,
+            exp_dir,
             policy_pickle,
             env_pickle,
             baseline_pickle,
@@ -46,7 +47,7 @@ class ParallelTrainer(object):
 
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
-        self.summary = defaultdict(list)
+        # self.summary = defaultdict(list)
 
         if type(meta_steps_per_iter) is tuple:
             meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
@@ -75,6 +76,7 @@ class ParallelTrainer(object):
                 target=worker_instance,
                 name=name,
                 args=(
+                    exp_dir,
                     policy_pickle,
                     env_pickle,
                     baseline_pickle,
@@ -142,12 +144,17 @@ class ParallelTrainer(object):
 
         ''' --------------- collect info --------------- '''
 
-        self.collect_summary('loop done')
+        for remote in self.remotes:
+            assert remote.recv() == 'loop done'
+        # self.collect_summary('loop done')
         logger.log('\n------------all workers exit loops -------------')
-        self.collect_summary('worker closed')
+        for remote in self.remotes:
+            assert remote.recv() == 'worker closed'
+        # self.collect_summary('worker closed')
         [p.terminate() for p in self.ps]
         logger.logkv('Trainer-TimeTotal', time.time() - time_total)
 
+        '''
         for key, value in self.summary.items():
             print(key)
             value = value[:-2]
@@ -155,6 +162,7 @@ class ParallelTrainer(object):
             logger.logkv('{}-Push'.format(key), sum(do_push))
             logger.logkv('{}-Synch'.format(key), sum(do_synch))
             logger.logkv('{}-Step'.format(key), sum(do_step))
+        '''
         logger.log("Training finished")
         logger.dumpkvs()
 
@@ -184,7 +192,7 @@ class ParallelTrainer(object):
                 task, info = rcp
                 tasks.append(task)
                 assert isinstance(info, dict)
-                if False: #info:
+                if info:
                     logger.logkvs(info)
                     logger.dumpkvs()
-            self.summary[name].extend(tasks)
+            # self.summary[name].extend(tasks)

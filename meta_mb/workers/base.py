@@ -24,6 +24,7 @@ class Worker(object):
 
     def __call__(
             self,
+            exp_dir,
             policy_pickle,
             env_pickle,
             baseline_pickle,
@@ -46,6 +47,8 @@ class Worker(object):
             queue_next (multiprocessing.Queue): queue for next worker
             rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
+        logger.configure(dir=exp_dir + '/' + current_process().name, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
+
         self.n_itr = n_itr
         self.queue_prev = queue_prev
         self.queue = queue
@@ -108,10 +111,10 @@ class Worker(object):
                     assert do_push == 1
                     assert do_step == 1
 
-                time_remote = time.time()
+                # time_remote = time.time()
                 # remote.send(((do_push, do_synch, do_step), None)) #, logger.getkvs()))
-                time_remote = time.time() - time_remote
-                logger.logkv('{}-TimeRemote'.format(current_process().name), time_remote)
+                # time_remote = time.time() - time_remote
+                # logger.logkv('{}-TimeRemote'.format(current_process().name), time_remote)
                 logger.dumpkvs()
                 total_push += do_push
                 total_synch += do_synch
@@ -143,10 +146,15 @@ class Worker(object):
             # remote.send('worker closed')
 
         logger.logkv(current_process().name+'-TimeTotal', time.time() - time_start)
+        logger.logkv(current_process().name+'-TotalPush', total_push)
+        logger.logkv(current_process().name+'-TotalSynch', total_synch)
+        logger.logkv(current_process().name+'-TotalStep', total_step)
         logger.dumpkvs()
         logger.log("\n================== {} closed ===================".format(
             current_process().name
         ))
+
+        # TODO: Does logger write to file before p.terminate() from trainer?
 
         remote.send('worker closed')
 
@@ -184,7 +192,7 @@ class Worker(object):
         if do_synch:
             self._synch(data)
 
-        do_step = 1# - do_synch
+        do_step = 1 # - do_synch
 
         if self.verbose:
             logger.log('{} finishes processing queue with {}, {}, {}......'.format(current_process().name, do_push, do_synch, do_step))
