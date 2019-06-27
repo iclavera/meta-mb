@@ -37,7 +37,7 @@ def create_mlp(name,
 
     if input_var is None:
         input_var = tf.placeholder(dtype=tf.float32, shape=input_dim, name='input')
-    with tf.variable_scope(name):
+    with tf.variable_scope(name, reuse=reuse):
         x = input_var
 
         for idx, hidden_size in enumerate(hidden_sizes):

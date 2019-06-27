@@ -213,7 +213,6 @@ def create_mlp(name,
                w_init=tf.contrib.layers.xavier_initializer(),
                b_init=tf.zeros_initializer(),
                batch_normalization=False,
-               reuse=False,
                ):
     """
     Creates a MLP network
@@ -253,7 +252,6 @@ def create_mlp(name,
                             activation=hidden_nonlinearity,
                             kernel_initializer=w_init,
                             bias_initializer=b_init,
-                            reuse=reuse,
                             )
 
     if batch_normalization == 'traning':
@@ -267,7 +265,6 @@ def create_mlp(name,
                                  activation=output_nonlinearity,
                                  kernel_initializer=w_init,
                                  bias_initializer=b_init,
-                                 reuse=reuse,
                                  )
 
     return input_var, output_var
@@ -284,7 +281,6 @@ def create_rnn(name,
                state_var=None,
                w_init=tf.contrib.layers.xavier_initializer(),
                b_init=tf.zeros_initializer(),
-               reuse=False,
                ):
     """
     Creates a MLP network
