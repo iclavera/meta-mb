@@ -243,7 +243,7 @@ class MLPDynamicsModel(Serializable):
         return pred_obs
 
     def distribution_info_sym(self, obs_var, act_var):
-        with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
+        with tf.variable_scope(self.name, reuse=True):
             in_obs_var = (obs_var - self._mean_obs_var)/(self._std_obs_var + 1e-8)
             in_act_var = (act_var - self._mean_act_var) / (self._std_act_var + 1e-8)
             input_var = tf.concat([in_obs_var, in_act_var], axis=1)
@@ -388,7 +388,6 @@ class MLPDynamicsModel(Serializable):
         return state
 
     def set_shared_params(self, state):
-        # LayersPowered.__setstate__(self, state)
         self.normalization = state['normalization']
         for i in range(len(self._networks)):
             self._networks[i].set_params(state['networks_params'][i])
