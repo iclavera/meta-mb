@@ -70,15 +70,15 @@
                                             <inertial pos="-7.00549e-05 2.51272e-05 -0.0523671" quat="1 5.54202e-05 -0.000544908 -0.000762021" mass="0.00471098" diaginertia="0.000916889 0.000877269 0.000293332" />
                                             <!--<joint name="right_gripper_joint" pos="0 0 0" axis="0 0 1" limited="true" range="0 1.05" />-->
                                             <body name="peg" pos="0.05 0 0">
-                                                <geom type="mesh" mesh="shaft2" rgba="0 1 0 0.1" quat="0.2 0.2 0 0" conaffinity="1" contype="1"/>
+                                                <geom type="mesh" mesh="shaft2" rgba="0 1 0 1" quat="0.7071 0 0.7071 0" conaffinity="1" contype="1"/>
                                                 <body name="top" pos="0 0 0">
-                                                    <geom type="sphere" size="0.01" rgba="1 0 0 1" quat="0 0 1 0"/>
+                                                    <geom type="sphere" size="0.01" rgba="1 0 0 1" quat="0.7071 0 0.7071 0"/>
                                                 </body>
-                                                <body name="center" pos="0 -0.025 0">
-                                                    <geom type="sphere" size="0.01" rgba="0 1 0 1" quat="0 0 1 0"/>
+                                                <body name="center" pos="0.025 0 0">
+                                                    <geom type="sphere" size="0.01" rgba="0 1 0 1" quat="0.7071 0 0.7071 0"/>
                                                 </body>
-                                                <body name="bottom" pos="0 -0.078 0">
-                                                    <geom type="sphere" size="0.01" rgba="0 0 1 1" quat="0 0 1 0"/>
+                                                <body name="bottom" pos="0.078 0 0">
+                                                    <geom type="sphere" size="0.01" rgba="0 0 1 1" quat="0.7071 0 0.7071 0"/>
                                                 </body>
                                             </body>
                                         </body>
@@ -125,7 +125,12 @@
 
         <body name="plate" pos="0 0 0">
             <geom type="mesh" rgba="1 0 0 1" mesh="base_plate" conaffinity="1" contype="1"/>
-            <body name="g1" pos="0.0 0.3 -0.7">
+
+            <body name="g1" pos="0 0 0">
+                <geom name="g1" type="sphere" rgba="0.0 1.0 0.0 1.0" pos="0 0 0" size="0.01"/>
+            </body>
+
+            <body name="g2" pos="0.0 0.3 -0.7">
                 <geom name="goal-top" type="sphere" rgba="1.0 0.0 0.0 1" pos="0.0 0.0 0.0" size="0.01" />
             </body>
 
