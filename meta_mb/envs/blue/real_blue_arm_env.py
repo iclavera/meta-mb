@@ -7,8 +7,10 @@ from meta_mb.meta_envs.base import MetaEnv
 from blue_interface.blue_interface import BlueInterface
 
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
-    def __init__(self, side='right', ip='127.0.0.1', port=9090):
+    def __init__(self, match_joints=False, side='right', ip='127.0.0.1', port=9090):
         self.goal = np.array([0.1, 0.21, -0.55])
+        self.joint_goal_pos = np.zeros(7) # joint position control vs torque control
+        self.match_joints = match_joints
         max_torques = np.array([5, 5, 4, 4, 3, 2, 2]) #control 7 different joints not including the grippers
         self.frame_skip = 1
         self.dt = 0.2
@@ -23,15 +25,25 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.actions = {}
         gym.utils.EzPickle.__init__(self)
 
+    def _get_obs(self):
+        return np.concatenate([
+            np.concatenate((self.get_joint_positions(), self.goal)),
+            self.get_joint_velocities(),
+            self.tip_position,
+            self.vec_gripper_to_goal,
+            ]).reshape(-1)
+
     def step(self, act):
         self._prev_qpos = self.get_joint_positions()
         self._prev_qvel = self.get_joint_velocities()
         self.do_simulation(act, self.frame_skip)
 
         #self.correction() #FIXME
+        if not self.match_joints
+            vec = self.vec_gripper_to_goal
+        else:
+            vec = self.joint_goal()
 
-        vec = self.vec_gripper_to_goal
-        #vec = self.vec_arm_to_goal_pos
         reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(act/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
@@ -80,33 +92,34 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.set_joint_positions(np.zeros(7), duration=5)
         while True:
             #self.goal = np.append(np.random.uniform(low=-0.75, hig-0.25), np.random.uniform(low=-0.2, high=0.2, size=3))
-            #self.goal_pos = np.array([
-            #    np.random.uniform(low=-2, high=1),
-            #    np.random.uniform(low=-1.5, high=-0.8),
-            #    np.random.uniform(low=-1.5, high=1.5),
-            #    0, 0, 0, 0])
-            #self.goal = np.array([-0.65, -0.2, 0.21])
+            self.joint_goal_pos = self.joint_goal()
             self.goal = np.array([0.1, 0.21, -0.55])
-            if np.linalg.norm(self.goal)< 2:
+            if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
 
-    def _get_obs(self):
-        return np.concatenate([
-            np.concatenate((self.get_joint_positions(), self.goal)),
-            self.get_joint_velocities(),
-            self.tip_position,
-            self.vec_gripper_to_goal,
-            ]).reshape(-1)
+    def joint_goal(self):
+        base_roll = np.random.uniform(low=-(np.pi/4.0), high=np.pi/4.0)
+        right_shoulder_lift = np.random.uniform(low=-2.2944, high=-np.pi/4.0)
+        right_shoulder_roll = np.random.uniform(low=-(np.pi/4.0), high=np.pi/4.0)
+        right_elbow_lift = np.random.uniform(low=0, high=0)
+        right_elbow_roll = np.random.uniform(low=0, high=0)
+        right_wrist_lift = np.random.uniform(low=0, high=0)
+        right_wrist_roll = np.random.uniform(low=0, high=0)
+        return np.array([
+            base_roll,
+            right_shoulder_lift,
+            right_shoulder_roll,
+            right_elbow_lift,
+            right_elbow_roll,
+            right_wrist_lift,
+            right_wrist_roll
+        ])
 
-    def log_diagnostics(self, paths, prefix=''):
-        dist = [-path["env_infos"]['reward_dist'] for path in paths]
-        final_dist = [-path["env_infos"]['reward_dist'][-1] for path in paths]
-        ctrl_cost = [-path["env_infos"]['reward_ctrl'] for path in paths]
+    def joint_match(self):
+        real_joint_positions = self.get_joint_positions()
 
-        logger.logkv(prefix + 'AvgDistance', np.mean(dist))
-        logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_dist))
-        logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
+        return -np.linalg.norm(real_joint_positions, self.joint_goal_pos)
 
     def correction(self):
         try:
@@ -151,6 +164,15 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         low = np.ones(self.obs_dim) * -1e6
         high = np.ones(self.obs_dim) * 1e6
         return spaces.Box(low=low, high=high, dtype=np.float32)
+
+    def log_diagnostics(self, paths, prefix=''):
+        dist = [-path["env_infos"]['reward_dist'] for path in paths]
+        final_dist = [-path["env_infos"]['reward_dist'][-1] for path in paths]
+        ctrl_cost = [-path["env_infos"]['reward_ctrl'] for path in paths]
+
+        logger.logkv(prefix + 'AvgDistance', np.mean(dist))
+        logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_dist))
+        logger.logkv(prefix + 'AvgCtrlCost', np.mean(ctrl_cost))
 
 
 if __name__ == "__main__":
