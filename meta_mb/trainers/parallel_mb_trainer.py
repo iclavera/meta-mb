@@ -1,9 +1,9 @@
+import tensorflow as tf
+from multiprocessing import Pipe, Process, Event, Queue, active_children
 import time
-from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.logger import logger
-from meta_mb.workers.mbmpo.worker_data import WorkerData
-from meta_mb.workers.mbmpo.worker_model import WorkerModel
-from meta_mb.workers.mbmpo.worker_policy import WorkerPolicy
+from meta_mb.workers.mbmpc.worker_data import WorkerData
+from meta_mb.workers.mbmpc.worker_model import WorkerModel
 
 
 class ParallelTrainer(object):
@@ -25,47 +25,38 @@ class ParallelTrainer(object):
     def __init__(
             self,
             exp_dir,
-            policy_pickle,
             env_pickle,
+            policy_pickle,
             baseline_pickle,
             dynamics_model_pickle,
             feed_dicts,
             n_itr,
             start_itr=0,
-            num_inner_grad_steps=1,
-            meta_steps_per_iter=30,
             initial_random_samples=True,
-            log_real_performance=True,
-            flags_need_query=(False, False, False,),
-            sample_from_buffer=False,
-            fraction_meta_batch_size=1,
+            initial_sinusoid_samples=False,
+            flags_need_query=(False, False, False),
             config=None,
             simulation_sleep=10,
             ):
 
-        self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
-
-        if type(meta_steps_per_iter) is tuple:
-            meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
-        else:
-            meta_step_per_iter = meta_steps_per_iter
+        self.initial_sinusoid_samples = initial_sinusoid_samples
 
         worker_instances = [
-            WorkerData(fraction_meta_batch_size, simulation_sleep),
+            WorkerData(simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(sample_from_buffer, meta_step_per_iter, num_inner_grad_steps),
         ]
-        names = ["Data", "Model", "Policy"]
+
+        names = ["Data", "Model"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
-        queues = [Queue(-1) for _ in range(3)]
+        queues = [Queue(-1) for _ in range(2)]
         # worker sends task-completed notification and time info to scheduler
-        worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
+        worker_remotes, remotes = zip(*[Pipe() for _ in range(2)])
         # stop condition
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
+        flags_auto_push = [not flags_need_query[1], not flags_need_query[0]]
 
         self.ps = [
             Process(
@@ -93,7 +84,7 @@ class ParallelTrainer(object):
                    queue_prev, queue, queue_next,
                    worker_remote, need_query, auto_push) in zip(
                 worker_instances, names, feed_dicts,
-                queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
+                [queues[1], queues[0]], queues, [queues[1], queues[0]],
                 worker_remotes, flags_need_query, flags_auto_push,
                 )
         ]
@@ -107,25 +98,24 @@ class ParallelTrainer(object):
         """
         Trains policy on env using algo
         """
-        worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
-        worker_data_remote, worker_model_remote, worker_policy_remote = self.remotes
+        worker_data_queue, worker_model_queue = self.queues
+        worker_data_remote, worker_model_remote = self.remotes
 
         for p in self.ps:
             p.start()
+
+        print(active_children())
 
         ''' --------------- worker warm-up --------------- '''
 
         logger.log('Prepare start...')
 
         worker_data_remote.send('prepare start')
-        worker_data_queue.put(self.initial_random_samples)
+        worker_data_queue.put((self.initial_random_samples, self.initial_sinusoid_samples))
         assert worker_data_remote.recv() == 'loop ready'
 
         worker_model_remote.send('prepare start')
         assert worker_model_remote.recv() == 'loop ready'
-
-        worker_policy_remote.send('prepare start')
-        assert worker_policy_remote.recv() == 'loop ready'
 
         time_total = time.time()
 
@@ -149,3 +139,4 @@ class ParallelTrainer(object):
         logger.logkv('Trainer-TimeTotal', time.time() - time_total)
         logger.dumpkvs()
         logger.log("*****Training finished")
+

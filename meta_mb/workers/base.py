@@ -47,6 +47,7 @@ class Worker(object):
             queue_next (multiprocessing.Queue): queue for next worker
             rcp_sender (multiprocessing.Connection): notify scheduler after task completed
         """
+        time_start = time.time()
         logger.configure(dir=exp_dir + '/' + current_process().name, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
 
         self.n_itr = n_itr
@@ -121,6 +122,7 @@ class Worker(object):
                 logger.logkv(current_process().name+'-TotalPush', total_push)
                 logger.logkv(current_process().name+'-TotalSynch', total_synch)
                 logger.logkv(current_process().name+'-TotalStep', total_step)
+                logger.logkv(current_process().name+'-TimeSoFar', time.time()-time_start)
                 logger.dumpkvs()
                 logger.log("\n========================== {} {}, total {} ===================".format(
                     current_process().name,
@@ -167,7 +169,7 @@ class Worker(object):
             env_pickle,
             baseline_pickle,
             dynamics_model_pickle,
-            feed_dict
+            feed_dict,
     ):
         raise NotImplementedError
 

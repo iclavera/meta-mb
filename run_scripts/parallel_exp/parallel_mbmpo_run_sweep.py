@@ -17,6 +17,7 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
+
 INSTANCE_TYPE = 'c4.xlarge'
 EXP_NAME = 'timing-parallel-mbmpo'
 
