@@ -180,7 +180,7 @@ if __name__ == '__main__':
         'env': [AntEnv, Walker2dEnv, HalfCheetahEnv],
 
         # Problem Conf
-        'n_itr': [21],#[501],
+        'n_itr': [501],#[501],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
