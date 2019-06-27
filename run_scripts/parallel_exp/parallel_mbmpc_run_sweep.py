@@ -162,7 +162,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv, AntEnv, Walker2dEnv,],  # 'HalfCheetahEnv'
         'max_path_length': [200],
         'normalize': [False],
-         'n_itr': [5],
+         'n_itr': [100],
         'discount': [1.],
         'simulation_sleep': [0],# 50, 200],
 
@@ -176,7 +176,7 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.99],
+        'rolling_average_persitency': [0.99, 0.9, 0.6],
         'initial_random_samples': [False],
         'initial_sinusoid_samples': [True],
 

@@ -83,7 +83,7 @@ class TRPO(Algo):
             leq_constraint=(mean_outer_kl, self.step_size),
         )
 
-    def optimize_policy(self, samples_data, log=True):
+    def optimize_policy(self, samples_data, log=True, prefix='', verbose=False):
         """
         Performs MAML outer step
 
@@ -97,22 +97,27 @@ class TRPO(Algo):
         """
         input_dict = self._extract_input_dict(samples_data, self._optimization_keys, prefix='train')
 
-        logger.log("Computing KL before")
+        if verbose:
+            logger.log("Computing KL before")
         mean_kl_before = self.optimizer.constraint_val(input_val_dict=input_dict)
 
-        logger.log("Computing loss before")
+        if verbose:
+            logger.log("Computing loss before")
         loss_before = self.optimizer.loss(input_val_dict=input_dict)
-        logger.log("Optimizing")
+        if verbose:
+            logger.log("Optimizing")
         self.optimizer.optimize(input_val_dict=input_dict)
-        logger.log("Computing loss after")
+        if verbose:
+            logger.log("Computing loss after")
         loss_after = self.optimizer.loss(input_val_dict=input_dict)
 
-        logger.log("Computing KL after")
+        if verbose:
+            logger.log("Computing KL after")
         mean_kl = self.optimizer.constraint_val(input_val_dict=input_dict)
         if log:
-            logger.logkv('MeanKLBefore', mean_kl_before)
-            logger.logkv('MeanKL', mean_kl)
+            logger.logkv(prefix+'MeanKLBefore', mean_kl_before)
+            logger.logkv(prefix+'MeanKL', mean_kl)
 
-            logger.logkv('LossBefore', loss_before)
-            logger.logkv('LossAfter', loss_after)
-            logger.logkv('dLoss', loss_before - loss_after)
+            logger.logkv(prefix+'LossBefore', loss_before)
+            logger.logkv(prefix+'LossAfter', loss_after)
+            logger.logkv(prefix+'dLoss', loss_before - loss_after)

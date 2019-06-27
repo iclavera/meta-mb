@@ -213,11 +213,7 @@ class Worker(object):
         self.state_pickle = pickle.dumps(self.result)
 
     def push(self):
-        time_push = time.time()
-        self.dump_result()
-        self.queue_next.put(self.state_pickle)
-        time_push = time.time() - time_push
-        logger.logkv('{}-TimePush'.format(current_process().name), time_push)
+        raise NotImplementedError
 
     def set_stop_cond(self):
         pass

@@ -108,3 +108,21 @@ class WorkerModel(Worker):
     def dump_result(self):
         self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
 
+    def push(self):
+        time_push = time.time()
+        self.dump_result()
+        # FIXME: only works when all workers do autopush, because it removes "push" message.
+        #  To support autopush = False, set two different queues for data and "push" message.
+        #  5 is arbitrary.
+        # TODO: push_frequency could be adjusted according tu self.queue_next.qsize()
+        #  when qsize is large, decrease push_frequency to avoid unnecessary pushing and offloading
+        while self.queue_next.qsize() > 3:
+            try:
+                logger.log('Model is off loading data from queue_next...')
+                self.queue_next.get_nowait()
+            except Empty:
+                break
+        self.queue_next.put(self.state_pickle)
+        time_push = time.time() - time_push
+        logger.logkv('Policy-TimePush', time_push)
+

@@ -18,7 +18,7 @@ class WorkerModel(Worker):
             env_pickle,
             baseline_pickle,
             dynamics_model_pickle,
-            feed_dict
+            feed_dict,
     ):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 

@@ -153,7 +153,7 @@ class WorkerPolicy(Worker):
                 break
         self.queue_next.put(self.state_pickle)
         time_push = time.time() - time_push
-        logger.logkv('Model-TimePush', time_push)
+        logger.logkv('Policy-TimePush', time_push)
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)

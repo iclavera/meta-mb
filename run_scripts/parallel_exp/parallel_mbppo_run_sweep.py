@@ -12,6 +12,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
@@ -67,17 +68,30 @@ def run_experiment(**kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    dynamics_model = MLPDynamicsEnsemble(
-        'dynamics-ensemble',
-        env=env,
-        num_models=kwargs['num_models'],
-        hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-        hidden_sizes=kwargs['dynamics_hidden_sizes'],
-        output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-        learning_rate=kwargs['dynamics_learning_rate'],
-        batch_size=kwargs['dynamics_batch_size'],
-        buffer_size=kwargs['dynamics_buffer_size'],
-    )
+    if kwargs['probabilistic_dynamics']:
+        dynamics_model = ProbMLPDynamicsEnsemble(
+            'prob-dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+        )
+    else:
+        dynamics_model = MLPDynamicsEnsemble(
+            'dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+        )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -135,6 +149,7 @@ def run_experiment(**kwargs):
 
     trainer = ParallelTrainer(
         exp_dir=exp_dir,
+        algo_str=kwargs['algo'],
         policy_pickle=policy_pickle,
         env_pickle=env_pickle,
         baseline_pickle=baseline_pickle,
@@ -178,7 +193,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'num_rollouts': [20],
         'n_parallel': [1],
-        'simulation_sleep': [10, 50, 200],
+        'simulation_sleep': [5],#10, 50, 200],
 
         # Dynamics Model
         'num_models': [5],
@@ -191,6 +206,8 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
         'loss_str': ['MSE'],
+        'probabilistic_dynamics': [True], #,False]
+        'rolling_average_persitency': [0.9], # 0.99
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

@@ -87,6 +87,13 @@ class WorkerData(Worker):
 
         logger.logkv('Data-TimeSynch', time_synch)
 
+    def push(self):
+        time_push = time.time()
+        self.dump_result()
+        self.queue_next.put(self.state_pickle)
+        time_push = time.time() - time_push
+        logger.logkv('Data-TimePush', time_push)
+
     def set_stop_cond(self):
         if self.itr_counter >= self.n_itr:
             self.stop_cond.set()

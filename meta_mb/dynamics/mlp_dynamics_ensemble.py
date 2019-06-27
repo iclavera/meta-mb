@@ -226,7 +226,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
-            print("Size Incoming Data Set:  ", n_train_new_samples)
+        logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]), len(self._dataset_train['obs'][0])))
 
     def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
                       compute_normalization=True, rolling_average_persitency=None,

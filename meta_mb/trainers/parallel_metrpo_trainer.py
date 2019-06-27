@@ -25,6 +25,7 @@ class ParallelTrainer(object):
     def __init__(
             self,
             exp_dir,
+            algo_str,
             policy_pickle,
             env_pickle,
             baseline_pickle,
@@ -51,7 +52,7 @@ class ParallelTrainer(object):
         worker_instances = [
             WorkerData(simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(step_per_iter),
+            WorkerPolicy(algo_str, step_per_iter),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
