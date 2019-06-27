@@ -68,7 +68,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             self.min_logvar = tf.Variable(np.ones([1, obs_space_dims]) * min_logvar, dtype=tf.float32,
                                           trainable=True,
                                           name="min_logvar")
-
+            self._create_assign_ph()
 
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
@@ -89,7 +89,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             self.obs_next_pred = []
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i)):
-                    mlp = MLP(name,
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
@@ -149,7 +149,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
-                    mlp = MLP(name,
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
@@ -278,6 +278,26 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         pred_obs_batches = obs_batches_original + delta_batches
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
+
+    def _create_assign_ph(self):
+        self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")
+        self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="max_logvar_ph")
+        self._assign_ops_var = [tf.assign(self.min_logvar, self._min_log_var_ph), tf.assign(self.max_logvar,
+                                                                                            self._max_log_var_ph)]
+
+    def __getstate__(self):
+        state = MLPDynamicsEnsemble.__getstate__(self)
+        sess = tf.get_default_session()
+        state['min_log_var'] = sess.run(self.min_logvar)
+        state['max_log_var'] = sess.run(self.max_logvar)
+        return state
+
+    def __setstate__(self, state):
+        MLPDynamicsEnsemble.__setstate__(self, state)
+        sess = tf.get_default_session()
+        sess.run(self._assign_ops_var, feed_dict={self._min_log_var_ph: state['min_log_var'],
+                                                  self._max_log_var_ph: state['max_log_var']
+                                                  })
 
 
 def denormalize(data_array, mean, std):
