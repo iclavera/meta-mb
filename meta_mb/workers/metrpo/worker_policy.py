@@ -27,7 +27,6 @@ class WorkerPolicy(Worker):
         from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
         from meta_mb.samplers.base import SampleProcessor
         from meta_mb.algos.ppo import PPO
-        print('start construction...')
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
@@ -65,20 +64,20 @@ class WorkerPolicy(Worker):
             """ -------------------- Sampling --------------------------"""
 
             if self.verbose:
-                logger.log("Obtaining samples from the model...")
+                logger.log("Policy is obtaining samples ...")
             time_sampling = time.time()
             paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
+            time_sampling = time.time() - time_sampling
 
             for path in paths:
                 assert not np.isnan(np.sum(path['observations']))
                 assert not np.isnan(np.sum(path['actions']))
                 assert not np.isnan(np.sum(path['rewards']))
-            time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
 
             if self.verbose:
-                logger.log("Processing samples from the model...")
+                logger.log("Policy is processing samples ...")
             time_sample_proc = time.time()
             samples_data = self.model_sample_processor.process_samples(
                 paths,
@@ -95,7 +94,7 @@ class WorkerPolicy(Worker):
             """ ------------------ Policy Update ---------------------"""
 
             if self.verbose:
-                logger.log("Optimizing policy...")
+                logger.log("Policy optimization...")
             # This needs to take all samples_data so that it can construct graph for meta-optimization.
             time_algo_opt = time.time()
             self.algo.optimize_policy(samples_data, log=True, verbose=self.verbose)
@@ -107,14 +106,13 @@ class WorkerPolicy(Worker):
         self.result = self.model_sampler.policy
         self.policy = self.result
 
-        self.update_info()
         info = {'Policy-Iteration': self.itr_counter,
                 'Policy-TimeStep': time_maml[0], 'Policy-TimeSampling': time_maml[1],
                 'Policy-TimeSampleProc': time_maml[2], 'Policy-TimeAlgoOpt': time_maml[3], }
-        self.info.update(info)
+        logger.logkvs(info)
 
     def _synch(self, dynamics_model_state_pickle):
-        # time_synch = time.time()
+        time_synch = time.time()
         if self.verbose:
             logger.log('policy is synchronizing...')
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
@@ -123,9 +121,9 @@ class WorkerPolicy(Worker):
         self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
         if self.verbose:
             logger.log('policy quits synch...')
-        # time_synch = time.time() - time_synch
-        # info = {'Policy-TimeSynch': time_synch}
-        # self.info.update(info)
+        time_synch = time.time() - time_synch
+
+        logger.logkv('Policy-TimeSynch', time_synch)
 
     def dump_result(self):
         self.state_pickle = pickle.dumps(self.result.get_shared_param_values())

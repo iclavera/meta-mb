@@ -48,7 +48,7 @@ class WorkerData(Worker):
         '''------------- Obtaining samples from the environment -----------'''
 
         if self.verbose:
-            logger.log("Obtaining samples from the environment...")
+            logger.log("Data is obtaining samples...")
         time_env_sampling = time.time()
         env_paths = self.env_sampler.obtain_samples(
             log=True,
@@ -60,7 +60,7 @@ class WorkerData(Worker):
         '''-------------- Processing environment samples -------------------'''
 
         if self.verbose:
-            logger.log("Processing environment samples...")
+            logger.log("Data is processing samples...")
         # first processing just for logging purposes
         time_env_samp_proc = time.time()
         env_paths = list(env_paths.values())
@@ -80,19 +80,25 @@ class WorkerData(Worker):
         time.sleep(self.simulation_sleep)
         self.result = samples_data
 
-        self.update_info()
         info = {'Data-Iteration': self.itr_counter,
                 'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
-        self.info.update(info)
+        logger.logkvs(info)
 
     def _synch(self, policy_state_pickle):
-        # time_synch = time.time()
+        time_synch = time.time()
         policy_state = pickle.loads(policy_state_pickle)
         assert isinstance(policy_state, dict)
         self.env_sampler.policy.set_shared_params(policy_state)
-        # time_synch = time.time() - time_synch
-        # info = {'Data-TimeSynch': time_synch}
-        # self.info.update(info)
+        time_synch = time.time() - time_synch
+
+        logger.logkv('Data-TimeSynch', time_synch)
+
+    def push(self):
+        time_push = time.time()
+        self.dump_result()
+        self.queue_next.put(self.state_pickle)
+        time_push = time.time() - time_push
+        logger.logkv('Data-TimePush', time_push)
 
     def set_stop_cond(self):
         if self.itr_counter >= self.n_itr:

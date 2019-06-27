@@ -23,17 +23,19 @@ class Serializable(object):
             spec = inspect.getfullargspec(self.__init__)
             # Exclude the first "self" parameter
             if spec.varkw:
-                kwargs = locals_[spec.varkw]
+                kwargs = locals_.get(spec.varkw)
             else:
                 kwargs = dict()
         else:
             spec = inspect.getargspec(self.__init__)
             if spec.keywords:
-                kwargs = locals_[spec.keywords]
+                kwargs = locals_.get(spec.keywords)
             else:
                 kwargs = dict()
         if spec.varargs:
-            varargs = locals_[spec.varargs]
+            varargs = locals_.get(spec.varargs)
+            if varargs is None:
+                varargs = ()
         else:
             varargs = tuple()
         in_order_args = [locals_[arg] for arg in spec.args][1:]

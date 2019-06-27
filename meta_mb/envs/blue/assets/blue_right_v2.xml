@@ -29,31 +29,31 @@
 
         <body name="right_base_link" pos="0 0 0">
             <inertial pos="0.107964 -0.000118075 0.0740607" quat="-0.00144458 0.606987 0.000927747 0.79471" mass="3.45161" diaginertia="0.0175534 0.0157386 0.00730286" />
-            <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="arm_base_link_v2" />
+            <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="arm_base_link_v2" conaffinity="1"/>
             <body name="right_shoulder_roll_link" pos="0 0 0.083499" quat="0 1 0 0">
                 <inertial pos="0.00796478 6.88165e-07 -0.101495" quat="0.712797 -0.021542 -0.0203263 0.700745" mass="2.21396" diaginertia="0.00680774 0.00679994 0.00633497" />
                 <joint name="right_base_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-3.3999 2.3412" />
-                <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" />
+                <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" conaffinity="1"/>
                 <body name="right_shoulder_lift_link" pos="-0.012 0 -0.232779" quat="0.707107 -0.707107 0 0">
                     <inertial pos="-1.3238e-05 0.00162984 3.71222e-05" quat="0.714714 -0.00266942 -0.00304239 0.699405" mass="0.415577" diaginertia="0.000846898 0.000835923 0.000571351" />
                     <joint name="right_shoulder_lift_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2.2944 0" /> <!--previously range="-2.2944 0: limited range to serve as a "softstop"-->
-                    <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" />
+                    <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" conaffinity="1"/>
                     <body name="right_elbow_roll_link" pos="0 0.0359532 0" quat="0.500704 0.500704 0.499295 -0.499295">
                         <inertial pos="0.00796478 6.88165e-07 -0.101495" quat="0.712797 -0.021542 -0.0203263 0.700745" mass="2.21396" diaginertia="0.00680774 0.00679994 0.00633497" />
                         <joint name="right_shoulder_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />
-                        <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" />
+                        <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" conaffinity="1"/>
                         <body name="right_elbow_lift_link" pos="-0.012 0 -0.232779" quat="0.707107 -0.707107 0 0">
                             <inertial pos="-1.3238e-05 0.00162984 3.71222e-05" quat="0.714714 -0.00266942 -0.00304239 0.699405" mass="0.415577" diaginertia="0.000846898 0.000835923 0.000571351" />
                             <joint name="right_elbow_lift_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2.2944 0" />
-                            <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" />
+                            <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" conaffinity="1"/>
                             <body name="right_wrist_roll_link" pos="0 0.0359532 0" quat="0.500704 0.500704 -0.499295 0.499295">
                                 <inertial pos="0.00796478 6.88165e-07 -0.101495" quat="0.712797 -0.021542 -0.0203263 0.700745" mass="1.71368" diaginertia="0.00680774 0.00679994 0.00633497" />
                                 <joint name="right_elbow_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />
-                                <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" />
+                                <geom type="mesh" rgba="0.2784 0.2784 0.2784 1" mesh="roll_link_v2" conaffinity="1"/>
                                 <body name="right_wrist_lift_link" pos="-0.012 0 -0.232779" quat="0.707107 -0.707107 0 0">
                                     <inertial pos="-1.3238e-05 0.00162984 3.71222e-05" quat="0.714714 -0.00266942 -0.00304239 0.699405" mass="0.415577" diaginertia="0.000846898 0.000835923 0.000571351" />
                                     <joint name="right_wrist_lift_joint" pos="0 0 0" axis="0 0 -1" limited="true" range="-2.2944 0" />
-                                    <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" />
+                                    <geom type="mesh" rgba="0.116747 0.862745 1 1" mesh="lift_link_v2" conaffinity="1"/>
                                     <body name="right_end_roll_link" pos="0 0.0701432 0" quat="0.707107 0.707107 0 0">
                                         <inertial pos="0.00526386 2.70692e-05 -0.0641638" quat="0.99991 0.000246685 0.0133803 0.00035395" mass="0.65711" diaginertia="0.00578835 0.00530224 0.0034223" />
                                         <joint name="right_wrist_roll_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-2.6761 2.6761" />

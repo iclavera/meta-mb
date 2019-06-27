@@ -2,6 +2,7 @@ import time, pickle
 import numpy as np
 from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
+from queue import Empty
 
 
 class WorkerPolicy(Worker):
@@ -63,12 +64,13 @@ class WorkerPolicy(Worker):
             all_samples_data = []
 
             for step in range(self.num_inner_grad_steps+1):
-                logger.log("\n ** Adaptation-Step %d **" % step)
+                if self.verbose:
+                    logger.log("Policy Adaptation-Step %d **" % step)
 
                 """ -------------------- Sampling --------------------------"""
 
-                if self.verbose:
-                    logger.log("Obtaining samples from the model...")
+                # if self.verbose:
+                #     logger.log("Policy is obtaining samples")
                 time_sampling = time.time()
                 # TODO: buffer = None if not self.sample_from_buffer else samples_data
                 buffer = None
@@ -78,8 +80,8 @@ class WorkerPolicy(Worker):
 
                 """ ----------------- Processing Samples ---------------------"""
 
-                if self.verbose:
-                    logger.log("Processing samples from the model...")
+                # if self.verbose:
+                #     logger.log("Policy is processing samples")
                 time_sample_proc = time.time()
                 samples_data = self.model_sample_processor.process_samples(
                     paths,
@@ -95,7 +97,7 @@ class WorkerPolicy(Worker):
 
                 time_algo_adapt = time.time()
                 if step < self.num_inner_grad_steps:
-                    logger.log("Computing inner policy updates...")
+                    # logger.log("Policy inner update...")
                     self.algo._adapt(samples_data)
 
                 time_algo_adapt = time.time() - time_algo_adapt
@@ -105,42 +107,53 @@ class WorkerPolicy(Worker):
             """ ------------------ Outer Policy Update ---------------------"""
 
             if self.verbose:
-                logger.log("Optimizing policy...")
+                logger.log("Policy is optimizing...")
             # This needs to take all samples_data so that it can construct graph for meta-optimization.
             time_algo_opt = time.time()
-            self.algo.optimize_policy(all_samples_data)
+            self.algo.optimize_policy(all_samples_data, prefix='Policy-')
             time_algo_opt = time.time() - time_algo_opt
             time_maml += [0, 0, 0, time_algo_opt]
 
         self.result = self.model_sampler.policy
         self.policy = self.result
 
-        self.update_info()
         info = {
             'Policy-Iteration': self.itr_counter,
-            'Policy-TimeSampling': time_maml[0],
-            'Policy-TimeSampleProc': time_maml[1],
-            'Policy-TimeAlgoAdapt': time_maml[2],
-            'Policy-TimeAlgoOpt': time_maml[3],
+            'Policy-TimeInnerSampling': time_maml[0],
+            'Policy-TimeInnerSampleProc': time_maml[1],
+            'Policy-TimeInnerAlgoAdapt': time_maml[2],
+            'Policy-TimeOuterAlgoOpt': time_maml[3],
         }
-        self.info.update(info)
+        logger.logkvs(info)
 
     def _synch(self, dynamics_model_state_pickle):
-        # time_synch = time.time()
-        if self.verbose:
-            logger.log('policy is synchronizing...')
+        time_synch = time.time()
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
         assert isinstance(dynamics_model_state, dict)
         self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
         self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
-        if self.verbose:
-            logger.log('policy quits synch...')
-        # time_synch = time.time() - time_synch
-        # info = {'Policy-TimeSynch': time_synch}
-        # self.info.update(info)
+        time_synch = time.time() - time_synch
+
+        logger.logkv('Policy-TimeSynch', time_synch)
 
     def dump_result(self):
         self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
+
+    def push(self):
+        time_push = time.time()
+        self.dump_result()
+        # FIXME: only works when all workers do autopush, because it removes "push" message.
+        #  To support autopush = False, set two different queues for data and "push" message.
+        #  5 is arbitrary.
+        while self.queue_next.qsize() > 3:
+            try:
+                logger.log('Policy is off loading data from queue_next...')
+                self.queue_next.get_nowait()
+            except Empty:
+                break
+        self.queue_next.put(self.state_pickle)
+        time_push = time.time() - time_push
+        logger.logkv('Model-TimePush', time_push)
 
     def log_diagnostics(self, paths, prefix):
         self.policy.log_diagnostics(paths, prefix)
