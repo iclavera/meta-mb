@@ -47,8 +47,9 @@ class PushArmBlueEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 		else:
 			vec = self.ee_position - self.goal_dest
 		vec = self.ee_position - self.goal_obj
+		joint_velocities = self.sim.data.qvel
 		reward_dist = -np.linalg.norm(vec)
-		reward_ctrl = -np.square(act/(2 * self._high)).sum()
+		reward_ctrl = -np.square(joint_velocities/(2 * self._high)).sum()
 		reward = reward_dist + 0.5 * 0.1 * reward_ctrl
 		observation = self._get_obs()
 		info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
