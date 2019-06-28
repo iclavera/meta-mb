@@ -12,10 +12,11 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'timing-parallel-metrpo'
+EXP_NAME = 'parallel-metrpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -35,7 +36,6 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -67,18 +67,32 @@ def run_experiment(**kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    dynamics_model = MLPDynamicsEnsemble(
-        'dynamics-ensemble',
-        env=env,
-        num_models=kwargs['num_models'],
-        hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-        hidden_sizes=kwargs['dynamics_hidden_sizes'],
-        output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-        learning_rate=kwargs['dynamics_learning_rate'],
-        batch_size=kwargs['dynamics_batch_size'],
-        buffer_size=kwargs['dynamics_buffer_size'],
-        rolling_average_persitency=kwargs['rolling_average_persitency'],
-    )
+    if kwargs['probabilistic_dynamics']:
+        dynamics_model = ProbMLPDynamicsEnsemble(
+            'prob-dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+            rolling_average_persitency=kwargs['rolling_average_persitency']
+        )
+    else:
+        dynamics_model = MLPDynamicsEnsemble(
+            'dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+            rolling_average_persitency=kwargs['rolling_average_persitency']
+        )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -157,28 +171,28 @@ if __name__ == '__main__':
 
         'flags_need_query': [
             [False, False, False],
+            # [True, True, True],
         ],
+        'seed': [1, 2],
+        'simulation_sleep': [10, 50, 200],
+        'rolling_average_persitency': [0.1, 0.4],
 
-        'seed': [1, 2,],
-
+        # Problem Conf
         'algo': ['metrpo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv, Walker2dEnv, AntEnv],
-
-        # Problem Conf
-        'n_itr': [401],
+        'n_itr': [501],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [1], # No outer loop in effect
+        'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
         'num_rollouts': [20],
         'n_parallel': [1],
-        'simulation_sleep': [10, 50, 200],
 
         # Dynamics Model
         'num_models': [5],
@@ -191,7 +205,7 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
         'loss_str': ['MSE'],
-        'rolling_average_persitency': [0.99, 0.9, 0.5],
+        'probabilistic_dynamics': [True, False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -205,7 +219,7 @@ if __name__ == '__main__':
         'step_size': [0.001],
         'imagined_num_rollouts': [50,],
         'scope': [None],
-        'exp_tag': ['timing-parallel-metrpo'],  # For changes besides hyperparams
+        'exp_tag': ['parallel-metrpo'],  # For changes besides hyperparams
 
     }
 

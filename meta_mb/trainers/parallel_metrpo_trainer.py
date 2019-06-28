@@ -43,16 +43,10 @@ class ParallelTrainer(object):
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
-        if type(steps_per_iter) is tuple:
-            step_per_iter = int((steps_per_iter[1] + steps_per_iter[0])/2)
-        else:
-            step_per_iter = steps_per_iter
-        assert step_per_iter > 0
-
         worker_instances = [
             WorkerData(simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(algo_str, step_per_iter),
+            WorkerPolicy(algo_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker

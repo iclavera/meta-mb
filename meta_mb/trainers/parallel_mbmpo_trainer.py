@@ -46,15 +46,10 @@ class ParallelTrainer(object):
         self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
-        if type(meta_steps_per_iter) is tuple:
-            meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
-        else:
-            meta_step_per_iter = meta_steps_per_iter
-
         worker_instances = [
             WorkerData(fraction_meta_batch_size, simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(sample_from_buffer, meta_step_per_iter, num_inner_grad_steps),
+            WorkerPolicy(sample_from_buffer, num_inner_grad_steps),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker

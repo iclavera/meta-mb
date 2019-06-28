@@ -1,14 +1,11 @@
 import time, pickle
 from meta_mb.logger import logger
-from meta_mb.workers.base import Worker
+from meta_mb.workers.worker_data_base import WorkerDataBase
 
-class WorkerData(Worker):
+
+class WorkerData(WorkerDataBase):
     def __init__(self, simulation_sleep):
-        super().__init__()
-        self.simulation_sleep = simulation_sleep
-        self.env = None
-        self.env_sampler = None
-        self.dynamics_sample_processor = None
+        super().__init__(simulation_sleep)
 
     def construct_from_feed_dict(
             self,
@@ -31,12 +28,9 @@ class WorkerData(Worker):
             **feed_dict['sample_processor']
         )
 
-    def prepare_start(self):
-        initial_random_samples, initial_sinusoid_samples = self.queue.get()
-        self.step(initial_random_samples, initial_sinusoid_samples)
-        self.queue_next.put(pickle.dumps(self.result))
+    def step(self, random_sinusoid=(False, False)):
 
-    def step(self, random=False, sinusoid=False):
+        time_step = time.time()
 
         if self.itr_counter == 1 and self.env_sampler.policy.dynamics_model.normalization is None:
             if self.verbose:
@@ -52,8 +46,8 @@ class WorkerData(Worker):
         time_env_sampling = time.time()
         env_paths = self.env_sampler.obtain_samples(
             log=True,
-            random=random,
-            sinusoid=sinusoid,
+            random=random_sinusoid[0],
+            sinusoid=random_sinusoid[1],
             log_prefix='Data-EnvSampler-',
         )
         time_env_sampling = time.time() - time_env_sampling
@@ -62,7 +56,6 @@ class WorkerData(Worker):
 
         if self.verbose:
             logger.log("Data is processing samples...")
-        # first processing just for logging purposes
         time_env_samp_proc = time.time()
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
@@ -71,12 +64,13 @@ class WorkerData(Worker):
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
+        time_step = time.time() - time_step
         time.sleep(self.simulation_sleep)
         self.result = samples_data
 
-        info = {'Data-Iteration': self.itr_counter,
-                'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
-        logger.logkvs(info)
+        logger.logkv('Data-TimeStep', time_step)
+        logger.logkv('Data-TimeEnvSampling', time_env_sampling)
+        logger.logkv('Data-TimeEnvSampProc', time_env_samp_proc)
 
     def _synch(self, dynamics_model_state_pickle):
         time_synch = time.time()
@@ -87,19 +81,3 @@ class WorkerData(Worker):
 
         logger.logkv('Data-TimeSynch', time_synch)
 
-    def push(self):
-        time_push = time.time()
-        self.dump_result()
-        self.queue_next.put(self.state_pickle)
-        time_push = time.time() - time_push
-        logger.logkv('Data-TimePush', time_push)
-
-    def set_stop_cond(self):
-        if self.itr_counter >= self.n_itr:
-            self.stop_cond.set()
-
-    # similar to log_real_performance
-    def prepare_close(self, data):
-        # step one more time with most updated policy to measure performance
-        # result dumped in logger
-        raise NotImplementedError

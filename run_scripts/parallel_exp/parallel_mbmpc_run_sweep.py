@@ -1,5 +1,6 @@
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.trainers.parallel_mb_trainer import ParallelTrainer
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
@@ -15,7 +16,7 @@ import pickle
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'timing-parallel-mbmpc'
+EXP_NAME = 'parallel-mbmpc'
 
 
 def init_vars(sender, config_sess, policy, dynamics_model):
@@ -37,7 +38,6 @@ def init_vars(sender, config_sess, policy, dynamics_model):
 
 def run_experiment(**config):
 
-    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
@@ -83,18 +83,33 @@ def run_experiment(**config):
         )
 
     else:
-        dynamics_model = MLPDynamicsEnsemble(
-            name="dyn_model",
-            env=env,
-            learning_rate=config['learning_rate'],
-            hidden_sizes=config['hidden_sizes_model'],
-            weight_normalization=config['weight_normalization_model'],
-            num_models=config['num_models'],
-            valid_split_ratio=config['valid_split_ratio'],
-            rolling_average_persitency=config['rolling_average_persitency'],
-            hidden_nonlinearity=config['hidden_nonlinearity_model'],
-            batch_size=config['batch_size_model'],
-        )
+        
+        if config['probabilistic_dynamics']:
+            dynamics_model = ProbMLPDynamicsEnsemble(
+                'prob-dynamics-ensemble',
+                env=env,
+                num_models=config['num_models'],
+                hidden_nonlinearity=config['dyanmics_hidden_nonlinearity'],
+                hidden_sizes=config['dynamics_hidden_sizes'],
+                output_nonlinearity=config['dyanmics_output_nonlinearity'],
+                learning_rate=config['dynamics_learning_rate'],
+                batch_size=config['dynamics_batch_size'],
+                buffer_size=config['dynamics_buffer_size'],
+                rolling_average_persitency=config['rolling_average_persitency']
+            )
+        else:
+            dynamics_model = MLPDynamicsEnsemble(
+                'dynamics-ensemble',
+                env=env,
+                num_models=config['num_models'],
+                hidden_nonlinearity=config['dyanmics_hidden_nonlinearity'],
+                hidden_sizes=config['dynamics_hidden_sizes'],
+                output_nonlinearity=config['dyanmics_output_nonlinearity'],
+                learning_rate=config['dynamics_learning_rate'],
+                batch_size=config['dynamics_batch_size'],
+                buffer_size=config['dynamics_buffer_size'],
+                rolling_average_persitency=config['rolling_average_persitency']
+            )
 
         policy = MPCController(
             name="policy",
@@ -143,6 +158,7 @@ def run_experiment(**config):
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict],
         n_itr=config['n_itr'],
+        flags_need_query=config['flags_need_query'],
         initial_random_samples=config['initial_random_samples'],
         initial_sinusoid_samples=config['initial_sinusoid_samples'],
         config=config_sess,
@@ -153,18 +169,22 @@ def run_experiment(**config):
 
 
 if __name__ == '__main__':
-    # -------------------- Define Variants -----------------------------------
 
     config = {
-        'seed': [1],
+        'flags_need_query': [
+            [False, False, False],
+            # [True, True, True],
+        ],
+        'seed': [1, 2],
+        'simulation_sleep': [0],
+        'rolling_average_persitency': [0.1, 0.4],
 
         # Problem
         'env': [HalfCheetahEnv, AntEnv, Walker2dEnv,],  # 'HalfCheetahEnv'
         'max_path_length': [200],
         'normalize': [False],
-         'n_itr': [100],
+         'n_itr': [5],
         'discount': [1.],
-        'simulation_sleep': [0],# 50, 200],
 
         # Policy
         'n_candidates': [200], # K ###
@@ -176,7 +196,6 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.99, 0.9, 0.6],
         'initial_random_samples': [False],
         'initial_sinusoid_samples': [True],
 
@@ -185,14 +204,16 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500, 500)],
-        'dynamic_model_epochs': [1], # no outer loop
+        'dynamic_model_epochs': [1], # UNUSED
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [128],
         'cell_type': ['lstm'],
+        'probabilistic_dynamics': [True, False],
 
         #  Other
         'n_parallel': [1],
+        'exp_tag': ['parallel-mbmpc']
     }
 
     assert config.get('recurrent') == [False]

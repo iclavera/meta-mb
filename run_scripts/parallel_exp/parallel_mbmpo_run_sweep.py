@@ -15,11 +15,12 @@ from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.trainers.parallel_mbmpo_trainer import ParallelTrainer
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'timing-parallel-mbmpo'
+EXP_NAME = 'parallel-mbmpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -39,7 +40,6 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
@@ -72,19 +72,32 @@ def run_experiment(**kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    dynamics_model = MLPDynamicsEnsemble(
-        'dynamics-ensemble',
-         env=env,
-         num_models=kwargs['num_models'],
-         hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-         hidden_sizes=kwargs['dynamics_hidden_sizes'],
-         output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-         learning_rate=kwargs['dynamics_learning_rate'],
-         batch_size=kwargs['dynamics_batch_size'],
-         buffer_size=kwargs['dynamics_buffer_size'],
-         loss_str=kwargs['loss_str'],
-         rolling_average_persitency=kwargs['rolling_average_persitency'],
-    )
+    if kwargs['probabilistic_dynamics']:
+        dynamics_model = ProbMLPDynamicsEnsemble(
+            'prob-dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+            rolling_average_persitency=kwargs['rolling_average_persitency']
+        )
+    else:
+        dynamics_model = MLPDynamicsEnsemble(
+            'dynamics-ensemble',
+            env=env,
+            num_models=kwargs['num_models'],
+            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+            hidden_sizes=kwargs['dynamics_hidden_sizes'],
+            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+            learning_rate=kwargs['dynamics_learning_rate'],
+            batch_size=kwargs['dynamics_batch_size'],
+            buffer_size=kwargs['dynamics_buffer_size'],
+            rolling_average_persitency=kwargs['rolling_average_persitency']
+        )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -174,28 +187,27 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-
         'seed': [1, 2,],
+        'simulation_sleep': [10, 50, 200],
+        'rolling_average_persitency': [0.1, 0.4],
 
+        # Problem Conf
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv, Walker2dEnv, HalfCheetahEnv],
-
-        # Problem Conf
-        'n_itr': [501],#[501],
+        'n_itr': [5],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],  # not implemented
-        'meta_steps_per_iter': [1],  # 30 # Get rid of outer loop in effect
+        'meta_steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [False],
         'fraction_meta_batch_size': [1.],
-        'simulation_sleep': [50, 200],
 
         # Dynamics Model
         'num_models': [5],
@@ -207,9 +219,8 @@ if __name__ == '__main__':
         'dynamics_batch_size': [128],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
-        'loss_str': ['L2'],
-        'rolling_average_persitency': [0.5, 0.3, 0.1],
-
+        'loss_str': ['MSE'],
+        'probabilistic_dynamics': [True, False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -225,10 +236,10 @@ if __name__ == '__main__':
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
-        'sample_from_buffer': [False],  #[True, False],# not implemented
+        'sample_from_buffer': [False],  # not implemented
 
         'scope': [None],
-        'exp_tag': ['timing-parallel-mbmpo'],  # For changes besides hyperparams
+        'exp_tag': ['parallel-mbmpo'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

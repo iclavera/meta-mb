@@ -1,16 +1,13 @@
 import time, pickle
 import numpy as np
 from meta_mb.logger import logger
-from meta_mb.workers.base import Worker
+from meta_mb.workers.worker_data_base import WorkerDataBase
 
-class WorkerData(Worker):
+
+class WorkerData(WorkerDataBase):
     def __init__(self, fraction_meta_batch_size, simulation_sleep):
-        super().__init__()
+        super().__init__(simulation_sleep)
         self.fraction_meta_batch_size = fraction_meta_batch_size
-        self.simulation_sleep = simulation_sleep
-        self.env = None
-        self.env_sampler = None
-        self.dynamics_sample_processor = None
 
     def construct_from_feed_dict(
             self,
@@ -35,15 +32,9 @@ class WorkerData(Worker):
             **feed_dict['dynamics_sample_processor']
         )
 
-    def prepare_start(self):
-        initial_random_samples = self.queue.get()
-        self.step(initial_random_samples)
-        self.queue_next.put(pickle.dumps(self.result))
-
     def step(self, random=False):
-        """
-        When args is not None, args = initial_random_samples (bool)
-        """
+
+        time_step = time.time()
 
         '''------------- Obtaining samples from the environment -----------'''
 
@@ -61,7 +52,6 @@ class WorkerData(Worker):
 
         if self.verbose:
             logger.log("Data is processing samples...")
-        # first processing just for logging purposes
         time_env_samp_proc = time.time()
         env_paths = list(env_paths.values())
         idxs = np.random.choice(
@@ -77,47 +67,12 @@ class WorkerData(Worker):
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
+        time_step = time.time() - time_step
         time.sleep(self.simulation_sleep)
         self.result = samples_data
 
-        info = {'Data-Iteration': self.itr_counter,
-                'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
-        logger.logkvs(info)
+        logger.logkv('Data-TimeStep', time_step)
+        logger.logkv('Data-TimeEnvSampling', time_env_sampling)
+        logger.logkv('Data-TimeEnvSampProc', time_env_samp_proc)
 
-    def _synch(self, policy_state_pickle):
-        time_synch = time.time()
-        policy_state = pickle.loads(policy_state_pickle)
-        assert isinstance(policy_state, dict)
-        self.env_sampler.policy.set_shared_params(policy_state)
-        time_synch = time.time() - time_synch
 
-        logger.logkv('Data-TimeSynch', time_synch)
-
-    def push(self):
-        time_push = time.time()
-        self.dump_result()
-        self.queue_next.put(self.state_pickle)
-        time_push = time.time() - time_push
-        logger.logkv('Data-TimePush', time_push)
-
-    def set_stop_cond(self):
-        if self.itr_counter >= self.n_itr:
-            self.stop_cond.set()
-
-    """
-    def set_switch_mode_cond(self, avg_return):
-        self.window_counter += 1
-        self.window_sum += avg_return
-        if self.window_counter == self.window_size:
-            curr_window_avg = self.window_sum / self.window_size
-            if curr_window_avg < self.prev_window_avg * self.switch_mode_threshold:
-                self.switch_mode_cond.set()
-            self.window_counter = 0
-            self.window_sum = 0
-            self.prev_window_avg = curr_window_avg
-    """
-
-    def prepare_close(self, data):
-        # step one more time with most updated policy to measure performance
-        # result dumped in logger
-        raise NotImplementedError
