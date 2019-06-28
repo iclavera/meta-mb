@@ -100,6 +100,7 @@ class Sampler(BaseSampler):
                 actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
                 agent_infos = dict()
             else:
+                obses = np.array(obses)
                 actions, agent_infos = policy.get_actions(obses)
             policy_time += time.time() - t
 
