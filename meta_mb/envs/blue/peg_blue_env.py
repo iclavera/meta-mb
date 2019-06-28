@@ -9,7 +9,7 @@ import mujoco_py
 
 
 class PegArmBlueEnv(RandomEnv, utils.EzPickle):
-    def __init__(self, goal_dist=0.1, log_rand=0, frame_skip=20):
+    def __init__(self, goal_dist=0.1, log_rand=0, frame_skip=25):
         utils.EzPickle.__init__(**locals())
 
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'blue_right_peg_v2.xml')
@@ -21,7 +21,7 @@ class PegArmBlueEnv(RandomEnv, utils.EzPickle):
 
         self.reached = False
 
-        RandomEnv.__init__(self, 0, xml_file, 2)
+        RandomEnv.__init__(self, log_rand, xml_file, frame_skip)
 
 
     def _get_obs(self):
@@ -43,7 +43,7 @@ class PegArmBlueEnv(RandomEnv, utils.EzPickle):
 
         joint_velocities = self.sim.data.qvel
         reward_ctrl = -np.square(joint_velocities).sum()
-        reward = reward_dist + 1.25e-8 * reward_ctrl
+        reward = reward_dist + 1.25e-3 * reward_ctrl
 
         observation = self._get_obs()
         done = False
@@ -73,7 +73,7 @@ class PegArmBlueEnv(RandomEnv, utils.EzPickle):
                 reward_dist = -1.5 * self.reach_dist()
             else:
                 reward_dist = -self.peg_insertion()
-            reward = reward_dist + 1.25e-8 * reward_ctrl
+            reward = reward_dist + 1.25e-3 * reward_ctrl
             return np.clip(reward, -1e2, 1e2)
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
