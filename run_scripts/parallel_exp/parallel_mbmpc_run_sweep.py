@@ -6,7 +6,7 @@ from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv
+from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
 from meta_mb.utils.utils import ClassEncoder, set_seed
 from multiprocessing import Process, Pipe
 from tensorflow import ConfigProto
@@ -55,7 +55,20 @@ def run_experiment(**config):
     # Instantiate classes
     set_seed(config['seed'])
 
-    env = config['env']()
+    if config['env'] == 'Ant':
+        env = AntEnv()
+        simulation_sleep = 0.05 * config['num_rollouts'] * config['max_path_length'] * config['simulation_sleep_frac']
+    elif config['env'] == 'HalfCheetah':
+        env = HalfCheetahEnv()
+        simulation_sleep = 0.05 * config['num_rollouts'] * config['max_path_length'] * config['simulation_sleep_frac']
+    elif config['env'] == 'Hopper':
+        env = HopperEnv()
+        simulation_sleep = 0.008 * config['num_rollouts'] * config['max_path_length'] * config['simulation_sleep_frac']
+    elif config['env'] == 'Walker2d':
+        env = Walker2dEnv()
+        simulation_sleep = 0.008 * config['num_rollouts'] * config['max_path_length'] * config['simulation_sleep_frac']
+    else:
+        raise NotImplementedError
 
     if config['recurrent']:
         dynamics_model = RNNDynamicsEnsemble(
@@ -162,7 +175,7 @@ def run_experiment(**config):
         initial_random_samples=config['initial_random_samples'],
         initial_sinusoid_samples=config['initial_sinusoid_samples'],
         config=config_sess,
-        simulation_sleep=config['simulation_sleep'],
+        simulation_sleep=simulation_sleep,
     )
 
     trainer.train()
@@ -171,29 +184,37 @@ def run_experiment(**config):
 if __name__ == '__main__':
 
     config = {
+
         'flags_need_query': [
             [False, False, False],
             # [True, True, True],
         ],
-        'seed': [1, 2],
-        'simulation_sleep': [0],
-        'rolling_average_persitency': [0.1, 0.4],
+        'flags_push_freq': [
+            [20, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.9],
+
+        'seed': [1,],
+        'probabilistic_dynamics': [False], #[True, False],
+        'num_models': [20],
+
+        'n_itr': [501],
+        'num_rollouts': [1],
+        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv,],  # 'HalfCheetahEnv'
         'max_path_length': [200],
         'normalize': [False],
-         'n_itr': [5],
         'discount': [1.],
 
         # Policy
-        'n_candidates': [200], # K ###
+        'n_candidates': [1000], # K ###
         'horizon': [10], # Tau ###
         'use_cem': [False],
         'num_cem_iters': [5],
 
         # Training
-        'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
         'initial_random_samples': [False],
@@ -201,7 +222,6 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'recurrent': [False], # only support recurrent = False
-        'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500, 500)],
         'dynamic_model_epochs': [1], # UNUSED
@@ -209,7 +229,6 @@ if __name__ == '__main__':
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [128],
         'cell_type': ['lstm'],
-        'probabilistic_dynamics': [True, False],
 
         #  Other
         'n_parallel': [1],

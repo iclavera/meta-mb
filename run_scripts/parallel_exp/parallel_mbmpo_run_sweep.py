@@ -8,7 +8,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
-from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv
+from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
 from meta_mb.envs.mujoco.hopper_env import HopperEnv
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.trainers.mbmpo_trainer import Trainer
@@ -59,7 +59,20 @@ def run_experiment(**kwargs):
 
     baseline = kwargs['baseline']()
 
-    env = kwargs['env']() # Wrappers?
+    if kwargs['env'] == 'Ant':
+        env = AntEnv()
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'HalfCheetah':
+        env = HalfCheetahEnv()
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Hopper':
+        env = HopperEnv()
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Walker2d':
+        env = Walker2dEnv()
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    else:
+        raise NotImplementedError
 
     policy = MetaGaussianMLPPolicy(
         name="meta-policy",
@@ -119,10 +132,12 @@ def run_experiment(**kwargs):
 
     worker_data_feed_dict = {
         'env_sampler': {
-            'rollouts_per_meta_task': kwargs['real_env_rollouts_per_meta_task'],
-            'meta_batch_size': kwargs['meta_batch_size'],
+            # 'rollouts_per_meta_task': kwargs['real_env_rollouts_per_meta_task'],
+            # 'meta_batch_size': kwargs['meta_batch_size'],
             'max_path_length': kwargs['max_path_length'],
-            'parallel': kwargs['parallel'],
+            # 'parallel': kwargs['parallel'],
+            'num_rollouts': kwargs['num_rollouts'],
+            'n_parallel': kwargs['parallel'],
         },
         'dynamics_sample_processor': {
             'discount': kwargs['discount'],
@@ -167,13 +182,12 @@ def run_experiment(**kwargs):
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        meta_steps_per_iter=kwargs['meta_steps_per_iter'],
         log_real_performance=kwargs['log_real_performance'],
         flags_need_query=kwargs['flags_need_query'],
         sample_from_buffer=kwargs['sample_from_buffer'],
         fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
         config=config,
-        simulation_sleep=kwargs['simulation_sleep'],
+        simulation_sleep=simulation_sleep,
     )
 
     trainer.train()
@@ -187,15 +201,23 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'seed': [1, 2,],
-        'simulation_sleep': [10, 50, 200],
-        'rolling_average_persitency': [0.1, 0.4],
+        'flags_push_freq': [
+            [20, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.9],
+
+        'seed': [1,],
+        'probabilistic_dynamics': [False], #[True, False],
+        'num_models': [20],
+
+        'n_itr': [501],
+        'num_rollouts': [1],
+        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv, Walker2dEnv, HalfCheetahEnv],
-        'n_itr': [5],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -210,7 +232,6 @@ if __name__ == '__main__':
         'fraction_meta_batch_size': [1.],
 
         # Dynamics Model
-        'num_models': [5],
         'dynamics_hidden_sizes': [(500, 500, 500)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
@@ -220,7 +241,6 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
-        'probabilistic_dynamics': [True, False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

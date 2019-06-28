@@ -51,3 +51,7 @@ class WorkerDataBase(Worker):
         time_synch = time.time() - time_synch
 
         logger.logkv('Data-TimeSynch', time_synch)
+
+    def dump_result(self):
+        self.state_pickle = pickle.dumps(self.result)
+        self.result = None

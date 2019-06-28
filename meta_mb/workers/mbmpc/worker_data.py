@@ -1,4 +1,5 @@
 import time, pickle
+import numpy as np
 from meta_mb.logger import logger
 from meta_mb.workers.worker_data_base import WorkerDataBase
 
@@ -64,9 +65,15 @@ class WorkerData(WorkerDataBase):
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
+        if self.result is None:
+            self.result = samples_data
+        else:
+            self.result['actions'] = np.append(self.result['actions'], samples_data['actions'], axis=0)
+            self.result['observations'] = np.append(self.result['observations'], samples_data['observations'], axis=0)
+            self.result['next_observations'] = np.append(self.result['next_observations'], samples_data['next_observations'], axis=0)
+
         time_step = time.time() - time_step
         time.sleep(self.simulation_sleep)
-        self.result = samples_data
 
         logger.logkv('Data-TimeStep', time_step)
         logger.logkv('Data-TimeEnvSampling', time_env_sampling)

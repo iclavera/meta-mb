@@ -35,6 +35,7 @@ class ParallelTrainer(object):
             initial_random_samples=True,
             initial_sinusoid_samples=False,
             flags_need_query=(False, False, False),
+            flags_push_freq=(20, 1, 1),
             config=None,
             simulation_sleep=10,
             ):
@@ -56,7 +57,6 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_auto_push = [not flags_need_query[1], not flags_need_query[0]]
 
         self.ps = [
             Process(
@@ -77,15 +77,15 @@ class ParallelTrainer(object):
                     n_itr,
                     stop_cond,
                     need_query,
-                    auto_push,
+                    push_freq,
                     config,
                 ),
             ) for (worker_instance, name, feed_dict,
                    queue_prev, queue, queue_next,
-                   worker_remote, need_query, auto_push) in zip(
+                   worker_remote, need_query, push_freq) in zip(
                 worker_instances, names, feed_dicts,
                 [queues[1], queues[0]], queues, [queues[1], queues[0]],
-                worker_remotes, flags_need_query, flags_auto_push,
+                worker_remotes, flags_need_query, flags_push_freq,
                 )
         ]
 

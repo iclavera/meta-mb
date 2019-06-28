@@ -7,7 +7,7 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv
+from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
@@ -55,7 +55,21 @@ def run_experiment(**kwargs):
 
     baseline = kwargs['baseline']()
 
-    env = normalize(kwargs['env']()) # Wrappers?
+    if kwargs['env'] == 'Ant':
+        env = normalize(AntEnv())
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'HalfCheetah':
+        env = normalize(HalfCheetahEnv())
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Hopper':
+        env = normalize(HopperEnv())
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Walker2d':
+        env = normalize(Walker2dEnv())
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    else:
+        raise NotImplementedError
+
 
     policy = GaussianMLPPolicy(
         name="meta-policy",
@@ -156,10 +170,9 @@ def run_experiment(**kwargs):
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
         log_real_performance=kwargs['log_real_performance'],
-        steps_per_iter=kwargs['steps_per_iter'],
         flags_need_query=kwargs['flags_need_query'],
         config=config,
-        simulation_sleep=kwargs['simulation_sleep'],
+        simulation_sleep=simulation_sleep,
     )
 
     trainer.train()
@@ -173,15 +186,24 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'seed': [1, 2],
-        'simulation_sleep': [10, 50, 200],
-        'rolling_average_persitency': [0.1, 0.4],
+        'flags_push_freq': [
+            [20, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.9],
+
+        'seed': [1,],
+        'probabilistic_dynamics': [False], #[True, False],
+        'num_models': [20],
+
+        'n_itr': [501],
+        'num_rollouts': [1],
+        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
+
         'algo': ['metrpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, Walker2dEnv, AntEnv],
-        'n_itr': [501],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -191,11 +213,9 @@ if __name__ == '__main__':
         'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
-        'num_rollouts': [20],
         'n_parallel': [1],
 
         # Dynamics Model
-        'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
@@ -205,7 +225,6 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
         'loss_str': ['MSE'],
-        'probabilistic_dynamics': [True, False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

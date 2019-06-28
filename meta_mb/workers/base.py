@@ -32,9 +32,9 @@ class Worker(object):
             start_itr,
             n_itr,
             stop_cond,
-            need_query=False,
-            auto_push=True,
-            config=None,
+            need_query,
+            push_freq, # auto_push = True
+            config,
     ):
         time_start = time.time()
 
@@ -93,7 +93,8 @@ class Worker(object):
                 if do_step:
                     self.itr_counter += 1
                     self.step()
-                    if auto_push:
+                    # if auto_push:
+                    if self.itr_counter % push_freq == 0:
                         do_push += 1
                         self.push()
 
@@ -167,7 +168,7 @@ class Worker(object):
         raise NotImplementedError
 
     def dump_result(self):
-        self.state_pickle = pickle.dumps(self.result)
+        raise NotImplementedError
 
     def push(self):
         raise NotImplementedError
