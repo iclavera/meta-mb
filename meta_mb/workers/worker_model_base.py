@@ -4,7 +4,7 @@ from meta_mb.workers.base import Worker
 from queue import Empty
 
 
-TIMEOUT = 10
+TIMEOUT = 20
 
 
 class WorkerModelBase(Worker):
@@ -71,40 +71,6 @@ class WorkerModelBase(Worker):
                         logger.log('Model queue Empty')
                     break
             do_step = 1
-
-        if self.verbose:
-            logger.log('Model finishes processing queue with {}, {}, {}......'.format(do_push, do_synch, do_step))
-
-        return do_push, do_synch, do_step
-
-    def process_queue(self):
-        do_push, do_synch = 0, 0
-
-        while True:
-            try:
-                if not self.remaining_model_idx:
-                    if self.verbose:
-                        logger.log('Model at iteration {} is block waiting for data'.format(self.itr_counter))
-                    new_data = self.queue.get()
-                    #new_data = self.queue.get(block=True, timeout=TIMEOUT)
-                else:
-                    if self.verbose:
-                        logger.log('Model try get_nowait.........')
-                    new_data = self.queue.get_nowait()
-                if new_data == 'push':
-                    # Only push once before executing another step
-                    if do_push == 0:
-                        do_push = 1
-                        self.push()
-                else:
-                    do_synch += 1
-                    self._synch(new_data)
-            except Empty:
-                if self.verbose:
-                    logger.log('Model queue Empty')
-                break
-
-        do_step = 1 - do_synch
 
         if self.verbose:
             logger.log('Model finishes processing queue with {}, {}, {}......'.format(do_push, do_synch, do_step))
