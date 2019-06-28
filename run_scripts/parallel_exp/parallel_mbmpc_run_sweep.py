@@ -35,19 +35,23 @@ def init_vars(sender, config_sess, policy, dynamics_model):
     sender.close()
 
 
-
 def run_experiment(**config):
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.mkdir(exp_dir + '/Data/')
-    os.mkdir(exp_dir + '/Model/')
-    os.mkdir(exp_dir + '/Policy/')
+    os.makedirs(exp_dir + '/Data/', exist_ok=True)
+    os.makedirs(exp_dir + '/Model/', exist_ok=True)
+    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
     json.dump(config, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(config, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(config, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    run_base(exp_dir, **config)
+
+
+def run_base(exp_dir, **config):
+
     config_sess = ConfigProto()
     config_sess.gpu_options.allow_growth = True
     config_sess.gpu_options.per_process_gpu_memory_fraction = config.get('gpu_frac', 0.95)
@@ -102,12 +106,12 @@ def run_experiment(**config):
                 'prob-dynamics-ensemble',
                 env=env,
                 num_models=config['num_models'],
-                hidden_nonlinearity=config['dyanmics_hidden_nonlinearity'],
-                hidden_sizes=config['dynamics_hidden_sizes'],
-                output_nonlinearity=config['dyanmics_output_nonlinearity'],
-                learning_rate=config['dynamics_learning_rate'],
-                batch_size=config['dynamics_batch_size'],
-                buffer_size=config['dynamics_buffer_size'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                hidden_sizes=config['hidden_sizes_model'],
+                output_nonlinearity=config['output_nonlinearity_model'],
+                learning_rate=config['learning_rate'],
+                batch_size=config['batch_size_model'],
+                buffer_size=config['buffer_size_model'],
                 rolling_average_persitency=config['rolling_average_persitency']
             )
         else:
@@ -115,13 +119,13 @@ def run_experiment(**config):
                 'dynamics-ensemble',
                 env=env,
                 num_models=config['num_models'],
-                hidden_nonlinearity=config['dyanmics_hidden_nonlinearity'],
-                hidden_sizes=config['dynamics_hidden_sizes'],
-                output_nonlinearity=config['dyanmics_output_nonlinearity'],
-                learning_rate=config['dynamics_learning_rate'],
-                batch_size=config['dynamics_batch_size'],
-                buffer_size=config['dynamics_buffer_size'],
-                rolling_average_persitency=config['rolling_average_persitency']
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                hidden_sizes=config['hidden_sizes_model'],
+                output_nonlinearity=config['output_nonlinearity_model'],
+                learning_rate=config['learning_rate'],
+                batch_size=config['batch_size_model'],
+                buffer_size=config['buffer_size_model'],
+                rolling_average_persitency=config['rolling_average_persitency'],
             )
 
         policy = MPCController(
@@ -198,7 +202,7 @@ if __name__ == '__main__':
         'probabilistic_dynamics': [False], #[True, False],
         'num_models': [5],
 
-        'n_itr': [501],
+        'n_itr': [501 * 20],
         'num_rollouts': [1],
         'simulation_sleep_frac': [2, 1, 0.5, 0.1],
         'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
@@ -224,10 +228,12 @@ if __name__ == '__main__':
         'recurrent': [False], # only support recurrent = False
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500, 500)],
+        'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [1], # UNUSED
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [128],
+        'buffer_size_model': [25000],
         'cell_type': ['lstm'],
 
         #  Other

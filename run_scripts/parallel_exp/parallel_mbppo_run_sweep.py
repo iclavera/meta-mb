@@ -40,12 +40,17 @@ def run_experiment(**kwargs):
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.mkdir(exp_dir + '/Data/')
-    os.mkdir(exp_dir + '/Model/')
-    os.mkdir(exp_dir + '/Policy/')
+    os.makedirs(exp_dir + '/Data/', exist_ok=True)
+    os.makedirs(exp_dir + '/Model/', exist_ok=True)
+    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
     json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+
+    run_base(exp_dir, **kwargs)
+
+
+def run_base(exp_dir, **kwargs):
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -197,7 +202,7 @@ if __name__ == '__main__':
         'probabilistic_dynamics': [False], #[True, False],
         'num_models': [5],
 
-        'n_itr': [501],
+        'n_itr': [501 * 20],
         'num_rollouts': [1],
         'simulation_sleep_frac': [2, 1, 0.5, 0.1],
         'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
