@@ -17,12 +17,12 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         self.post_update_action_var = None
         self.post_update_mean_var = None
         self.post_update_log_std_var = None
-        super(MetaGaussianMLPPolicy, self).__init__(*args, **kwargs)
+        GaussianMLPPolicy.__init__(self, *args, **kwargs)
+        # MetaPolicy.__init__(self, *args, **kwargs)
         # super does not call MetaPolicy.__init__()
         self._pre_update_mode = True
         # super().__init__(*args, **kwargs)
         # GaussianMLPPolicy.__init__(self, *args, **kwargs)
-        # MetaPolicy.__init__(self, *args, **kwargs)
 
     def build_graph(self):
         """
@@ -30,7 +30,7 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         """
 
         # Create pre-update policy by calling build_graph of the super class
-        super(MetaGaussianMLPPolicy, self).build_graph()
+        super().build_graph()
         self.pre_update_action_var = tf.split(self.action_var, self.meta_batch_size)
         self.pre_update_mean_var = tf.split(self.mean_var, self.meta_batch_size)
         self.pre_update_log_std_var = [self.log_std_var for _ in range(self.meta_batch_size)]
@@ -125,19 +125,34 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
             observations (list): List of numpy arrays of shape (meta_batch_size, batch_size, obs_dim)
 
         """
-        batch_size = observations[0].shape[0]
-        assert all([obs.shape[0] == batch_size for obs in observations])
-        assert len(observations) == self.meta_batch_size
-        obs_stack = np.concatenate(observations, axis=0)
-        feed_dict = {self.obs_var: obs_stack}
-
         sess = tf.get_default_session()
-        actions, means, log_stds = sess.run([self.pre_update_action_var,
-                                             self.pre_update_mean_var,
-                                             self.pre_update_log_std_var],
-                                            feed_dict=feed_dict)
-        log_stds = np.concatenate(log_stds) # Get rid of fake batch size dimension (would be better to do this in tf, if we can match batch sizes)
-        agent_infos = [[dict(mean=mean, log_std=log_stds[idx]) for mean in means[idx]] for idx in range(self.meta_batch_size)]
+
+        if type(observations) is list:
+            batch_size = observations[0].shape[0]
+            assert all([obs.shape[0] == batch_size for obs in observations])
+            assert len(observations) == self.meta_batch_size
+            obs_stack = np.concatenate(observations, axis=0)
+
+            feed_dict = {self.obs_var: obs_stack}
+            actions, means, log_stds = sess.run([self.pre_update_action_var,
+                                                 self.pre_update_mean_var,
+                                                 self.pre_update_log_std_var],
+                                                feed_dict=feed_dict)
+            log_stds = np.concatenate(
+                log_stds)  # Get rid of fake batch size dimension (would be better to do this in tf, if we can match batch sizes)
+            agent_infos = [[dict(mean=mean, log_std=log_stds[idx]) for mean in means[idx]] for idx in
+                           range(self.meta_batch_size)]
+        else:
+            assert type(observations) is np.ndarray and observations.ndim == 2
+
+            feed_dict = {self.obs_var: observations}
+            actions, means, log_stds = sess.run([self.pre_update_action_var,
+                                                 self.pre_update_mean_var,
+                                                 self.pre_update_log_std_var],
+                                                 feed_dict=feed_dict)
+            actions = np.concatenate(actions)
+            agent_infos = [dict(mean=mean, log_std=log_stds[0]) for mean in means]
+
         return actions, agent_infos
 
     def _get_post_update_actions(self, observations):

@@ -237,7 +237,7 @@ class Policy(Serializable):
 class MetaPolicy(Policy):
 
     def __init__(self, *args, **kwargs):
-        super(MetaPolicy, self).__init__(*args, **kwargs)
+        Policy.__init__(self, *args, **kwargs)
         self._pre_update_mode = True
         self.policies_params_vals = None
         self.policy_params_keys = None
