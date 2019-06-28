@@ -93,8 +93,7 @@ class Worker(object):
                 if do_step:
                     self.itr_counter += 1
                     self.step()
-                    # if auto_push:
-                    if self.itr_counter % push_freq == 0:
+                    if self.itr_counter % push_freq == 0: # if auto_push:
                         do_push += 1
                         self.push()
 
@@ -142,7 +141,7 @@ class Worker(object):
                 if self.verbose:
                     logger.log('{} try'.format(self.name))
                 new_data = self.queue.get_nowait()
-                if new_data == 'push':
+                if new_data == 'push': # only happens when next worker has need_query = True
                     if do_push == 0: # only push once
                         do_push += 1
                         self.push()

@@ -68,12 +68,18 @@ class WorkerData(WorkerDataBase):
         if self.result is None:
             self.result = samples_data
         else:
-            self.result['actions'] = np.append(self.result['actions'], samples_data['actions'], axis=0)
-            self.result['observations'] = np.append(self.result['observations'], samples_data['observations'], axis=0)
-            self.result['next_observations'] = np.append(self.result['next_observations'], samples_data['next_observations'], axis=0)
+            self.result['actions'] = np.concatenate([
+                self.result['actions'], samples_data['actions']
+            ])
+            self.result['observations'] = np.concatenate([
+                self.result['observations'], samples_data['observations']
+            ])
+            self.result['next_observations'] = np.concatenate([
+                self.result['next_observations'], samples_data['next_observations']
+            ])
 
         time_step = time.time() - time_step
-        time.sleep(self.simulation_sleep)
+        time.sleep(max(self.simulation_sleep - time_step, 0))
 
         logger.logkv('Data-TimeStep', time_step)
         logger.logkv('Data-TimeEnvSampling', time_env_sampling)
