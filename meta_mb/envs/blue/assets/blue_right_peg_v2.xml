@@ -1,6 +1,6 @@
 <mujoco model="blue_descriptions_right">
     <compiler angle="radian" meshdir="meshes/"/>
-    <option timestep="0.01" gravity="0 0 -0.5" />
+    <option timestep="0.008" gravity="0 0 -0.5" />
     <size njmax="500" nconmax="100" />
 
     <default>
