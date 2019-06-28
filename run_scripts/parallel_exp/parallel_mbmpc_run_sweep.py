@@ -16,7 +16,7 @@ import pickle
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'parallel-mbmpc'
+EXP_NAME = 'performance-parallel-mbmpc'
 
 
 def init_vars(sender, config_sess, policy, dynamics_model):
@@ -196,7 +196,7 @@ if __name__ == '__main__':
 
         'seed': [1,],
         'probabilistic_dynamics': [False], #[True, False],
-        'num_models': [20],
+        'num_models': [5],
 
         'n_itr': [501],
         'num_rollouts': [1],
