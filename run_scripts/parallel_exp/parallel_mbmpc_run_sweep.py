@@ -175,9 +175,11 @@ def run_base(exp_dir, **config):
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict],
         n_itr=config['n_itr'],
-        flags_need_query=config['flags_need_query'],
         initial_random_samples=config['initial_random_samples'],
         initial_sinusoid_samples=config['initial_sinusoid_samples'],
+        flags_need_query=config['flags_need_query'],
+        flags_push_freq=config['flags_push_freq'],
+        flags_pull_freq=config['flags_pull_freq'],
         config=config_sess,
         simulation_sleep=simulation_sleep,
     )
@@ -194,9 +196,12 @@ if __name__ == '__main__':
             # [True, True, True],
         ],
         'flags_push_freq': [
-            [20, 1, 1],
+            [1, 1, 1],
         ],
-        'rolling_average_persitency': [0.1, 0.4, 0.95],
+        'flags_pull_freq': [
+            [1, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.99],
 
         'seed': [1,],
         'probabilistic_dynamics': [False], #[True, False],

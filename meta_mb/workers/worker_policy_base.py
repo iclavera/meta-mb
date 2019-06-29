@@ -41,7 +41,6 @@ class WorkerPolicyBase(Worker):
         self.model_sampler.dynamics_model = dynamics_model
         self.model_sampler.vec_env.dynamics_model = dynamics_model
         self.step()
-        # self.queue_next.put(pickle.dumps(self.result))
         self.push()
 
     def step(self):
@@ -71,6 +70,7 @@ class WorkerPolicyBase(Worker):
                 if data == 'push':
                     put_msg_push = True
             except Empty:
+                # very rare chance to reach here (if any)
                 break
         self.queue_next.put(self.state_pickle)
         if put_msg_push:

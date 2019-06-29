@@ -60,6 +60,9 @@ class WorkerData(WorkerDataBase):
         )
         time_env_samp_proc = time.time() - time_env_samp_proc
 
+        self.result.append(samples_data)
+
+        """
         if self.result is None:
             self.result = samples_data
         else:
@@ -72,9 +75,10 @@ class WorkerData(WorkerDataBase):
             self.result['next_observations'] = np.concatenate([
                 self.result['next_observations'], samples_data['next_observations']
             ])
+        """
 
         time_step = time.time() - time_step
-        time.sleep(self.simulation_sleep)
+        time.sleep(max(self.simulation_sleep - time_step, 0))
 
         logger.logkv('Data-TimeStep', time_step)
         logger.logkv('Data-TimeEnvSampling', time_env_sampling)

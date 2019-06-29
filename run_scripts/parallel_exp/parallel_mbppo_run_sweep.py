@@ -175,9 +175,10 @@ def run_base(exp_dir, **kwargs):
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
-        log_real_performance=kwargs['log_real_performance'],
+        initial_random_samples=kwargs['initial_random_samples'],
         flags_need_query=kwargs['flags_need_query'],
         flags_push_freq=kwargs['flags_push_freq'],
+        flags_pull_freq=kwargs['flags_pull_freq'],
         config=config,
         simulation_sleep=simulation_sleep,
     )
@@ -194,9 +195,12 @@ if __name__ == '__main__':
             # [True, True, True],
         ],
         'flags_push_freq': [
-            [20, 1, 1],
+            [1, 1, 1],
         ],
-        'rolling_average_persitency': [0.1, 0.4, 0.9],
+        'flags_pull_freq': [
+            [1, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.99],
 
         'seed': [1,],
         'probabilistic_dynamics': [False], #[True, False],
@@ -231,6 +235,7 @@ if __name__ == '__main__':
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
+        'initial_random_samples': [True],
         'loss_str': ['MSE'],
 
         # Policy

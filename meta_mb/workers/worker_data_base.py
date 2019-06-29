@@ -1,5 +1,6 @@
 import time
 import pickle
+import numpy as np
 from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
 
@@ -11,6 +12,7 @@ class WorkerDataBase(Worker):
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
+        self.result = []
 
     def construct_from_feed_dict(
             self,
@@ -24,12 +26,9 @@ class WorkerDataBase(Worker):
 
     def prepare_start(self):
         self.step(self.queue.get())
-        self.queue_next.put(pickle.dumps(self.result))
+        self.push()
 
     def step(self, random=False):
-        raise NotImplementedError
-
-    def _synch(self, policy_state_pickle):
         raise NotImplementedError
 
     def push(self):
@@ -46,12 +45,14 @@ class WorkerDataBase(Worker):
     def _synch(self, policy_state_pickle):
         time_synch = time.time()
         policy_state = pickle.loads(policy_state_pickle)
-        assert isinstance(policy_state, dict)
         self.env_sampler.policy.set_shared_params(policy_state)
         time_synch = time.time() - time_synch
 
         logger.logkv('Data-TimeSynch', time_synch)
 
     def dump_result(self):
-        self.state_pickle = pickle.dumps(self.result)
-        self.result = None
+        act = np.concatenate([samples_data['actions'] for samples_data in self.result])
+        obs = np.concatenate([samples_data['observations'] for samples_data in self.result])
+        obs_next = np.concatenate([samples_data['next_observations'] for samples_data in self.result])
+        self.result = []
+        self.state_pickle = pickle.dumps((act, obs, obs_next))

@@ -26,8 +26,7 @@ class WorkerModelBase(Worker):
         self.dynamics_model = pickle.loads(dynamics_model_pickle)
 
     def prepare_start(self):
-        samples_data_pickle = self.queue.get()
-        self._synch(samples_data_pickle, check_init=True)
+        self._synch(self.queue.get(), check_init=True)
         self.step()
         self.queue_next.put(pickle.dumps(self.result))
 
@@ -35,23 +34,7 @@ class WorkerModelBase(Worker):
         do_push, do_synch = 0, 0
 
         if not self.remaining_model_idx:  # early stopped
-            if self.verbose:
-                logger.log('Model at iteration {} is block waiting for data'.format(self.itr_counter))
-            # after TIMEOUT, go back to main loop to check stopping condition
-            new_data = self.queue.get(block=True, timeout=TIMEOUT)
-            # FIXME: it is possible that model pushes without update
-            #  (after TIMEOUT, it gets into a new main loop and hits "push" again)
-            #  solution: set self.pushed (bool), and set to True after push, to False after synch
-            if new_data == 'push':
-                do_push = 1
-                do_step = 0
-                self.push()
-            elif new_data is None:
-                do_step = 0
-            else:
-                do_synch = 1
-                do_step = 1
-                self._synch(new_data)
+            do_step = 0
         else:
             while True:
                 try:
@@ -84,6 +67,7 @@ class WorkerModelBase(Worker):
         time_model_fit = time.time()
         if self.verbose:
             logger.log('Model at iteration {} is training for one epoch...'.format(self.itr_counter))
+
         self.remaining_model_idx, self.valid_loss_rolling_average = self.dynamics_model.fit_one_epoch(
             remaining_model_idx=self.remaining_model_idx,
             valid_loss_rolling_average_prev=self.valid_loss_rolling_average,
@@ -104,6 +88,14 @@ class WorkerModelBase(Worker):
         if self.verbose:
             logger.log('Model at {} is synchronizing...'.format(self.itr_counter))
         time_synch = time.time()
+        act, obs, obs_next = pickle.loads(samples_data_pickle)
+        self.dynamics_model.update_buffer(
+            act=act,
+            obs=obs,
+            obs_next=obs_next,
+            check_init=check_init,
+        )
+        """
         samples_data = pickle.loads(samples_data_pickle)
         self.dynamics_model.update_buffer(
             samples_data['observations'],
@@ -111,11 +103,12 @@ class WorkerModelBase(Worker):
             samples_data['next_observations'],
             check_init=check_init,
         )
+        """
 
         # Reset variables for early stopping condition
         self.with_new_data = True
         self.remaining_model_idx = list(range(self.dynamics_model.num_models))
-        self.valid_loss_rolling_average = None
+        self.valid_loss_rollng_average = None
         time_synch = time.time() - time_synch
 
         logger.logkv('Model-TimeSynch', time_synch)
