@@ -5,21 +5,18 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.cassie.cassie_env import CassieEnv
-from meta_mb.envs.mb_envs import HalfCheetahEnv
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mujoco.hopper_env import HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
-from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.trainers.mf_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.single_sample_processor import SingleSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.policies.tanh_mlp_gaussian_policy import TanhGaussianMLPPolicy
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'ppo-test-3-2'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'ppo'
 
 
 def run_experiment(**kwargs):
@@ -93,15 +90,15 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['ppo'],
-        'seed': [1, 2],
+        'seed': [1, 2, 3, 4],
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [HopperEnv],
+        'env': [Walker2dEnv, HopperEnv, HalfCheetahEnv, AntEnv],
 
-        'num_rollouts': [2],
-        'max_path_length': [1000],
-        'n_parallel': [2],
+        'num_rollouts': [40],
+        'max_path_length': [200],
+        'n_parallel': [5],
 
         'discount': [0.99],
         'gae_lambda': [.975],

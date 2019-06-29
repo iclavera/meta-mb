@@ -168,8 +168,8 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],

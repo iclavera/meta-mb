@@ -51,8 +51,7 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='',
-                       random=False, deterministic=False, sinusoid=False,
+    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, sinusoid=False,
                        verbose=False):
         """
         Collect batch_size trajectories from each task
