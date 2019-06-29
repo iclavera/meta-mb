@@ -193,7 +193,7 @@ if __name__ == '__main__':
         'flags_push_freq': [
             [20, 1, 1],
         ],
-        'rolling_average_persitency': [0.1, 0.4, 0.9],
+        'rolling_average_persitency': [0.1, 0.4, 0.95],
 
         'seed': [1,],
         'probabilistic_dynamics': [False], #[True, False],

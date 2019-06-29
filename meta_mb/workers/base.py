@@ -1,4 +1,4 @@
-import time, pickle
+import time
 from meta_mb.logger import logger
 from multiprocessing import current_process
 from queue import Empty
