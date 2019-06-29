@@ -26,7 +26,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  weight_normalization=False,  # Doesn't work
                  normalize_input=True,
                  optimizer=tf.train.AdamOptimizer,
-                 valid_split_ratio=0.2,
+                 valid_split_ratio=0.1,
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
@@ -226,7 +226,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
-        logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]), len(self._dataset_train['obs'][0])))
+        logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]),
+                                                                                   len(self._dataset_test['obs'][0])))
 
     def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
                       compute_normalization=True, rolling_average_persitency=None,

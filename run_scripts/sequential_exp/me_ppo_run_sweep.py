@@ -115,7 +115,7 @@ def run_experiment(**kwargs):
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
             steps_per_iter=kwargs['steps_per_iter'],
-            sample_from_buffer=False,
+            sample_from_buffer=kwargs['sample_from_buffer'],
             sess=sess,
         )
 
@@ -168,6 +168,7 @@ if __name__ == '__main__':
         'learning_rate': [1e-3],# 5e-4],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50], #50],
+        'sample_from_buffer': [True],
         'scope': [None],
         'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
     }

@@ -7,7 +7,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
-from meta_mb.trainers.mbmpo_trainer import Trainer
+from meta_mb.trainers.mbmpo_w_exploration_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -17,7 +17,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-mb-mpo'
+EXP_NAME = 'exploration-mb-mpo'
 
 
 def run_experiment(**kwargs):
@@ -112,8 +112,8 @@ def run_experiment(**kwargs):
             model_sample_processor=model_sample_processor,
             dynamics_sample_processor=dynamics_sample_processor,
             dynamics_model=dynamics_model,
-            num_rollouts_per_iter=kwargs['num_rollouts'],
             n_itr=kwargs['n_itr'],
+            num_rollouts_per_iter=kwargs['num_rollouts'],
             num_inner_grad_steps=kwargs['num_inner_grad_steps'],
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
         # Real Env Sampling
         'num_rollouts': [5, 10, 20],
-        'n_parallel': [5],
+        'n_parallel': [1],
         'fraction_meta_batch_size': [1.],
 
         # Dynamics Model
@@ -168,8 +168,8 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],

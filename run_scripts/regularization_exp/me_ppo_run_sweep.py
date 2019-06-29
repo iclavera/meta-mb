@@ -6,42 +6,44 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
-from meta_mb.meta_algos.trpo_maml import TRPOMAML
-from meta_mb.trainers.mbmpo_trainer import Trainer
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.algos.ppo import PPO
+from meta_mb.algos.trpo import TRPO
+from meta_mb.trainers.metrpo_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
-from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
-from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.samplers.base import SampleProcessor
+from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-mb-mpo'
+EXP_NAME = 'regularization-no-me-ppo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + kwargs.get('exp_name', '')
-    logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + kwargs.get('exp_name', '')
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
     with sess.as_default() as sess:
-
         # Instantiate classes
         set_seed(kwargs['seed'])
 
         baseline = kwargs['baseline']()
 
-        env = kwargs['env']() # Wrappers?
+        env = normalize(kwargs['env']()) # Wrappers?
 
-        policy = MetaGaussianMLPPolicy(
+        policy = GaussianMLPPolicy(
             name="meta-policy",
             obs_dim=np.prod(env.observation_space.shape),
             action_dim=np.prod(env.action_space.shape),
-            meta_batch_size=kwargs['meta_batch_size'],
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
@@ -59,21 +61,21 @@ def run_experiment(**kwargs):
                                              buffer_size=kwargs['dynamics_buffer_size'],
                                              rolling_average_persitency=kwargs['rolling_average_persitency']
                                              )
+
         env_sampler = Sampler(
             env=env,
             policy=policy,
-            num_rollouts=kwargs['meta_batch_size'],
+            num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
             n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = MBMPOSampler(
+        model_sampler = METRPOSampler(
             env=env,
             policy=policy,
-            rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
-            meta_batch_size=kwargs['meta_batch_size'],
-            max_path_length=kwargs['max_path_length'],
             dynamics_model=dynamics_model,
+            num_rollouts=kwargs['imagined_num_rollouts'],
+            max_path_length=kwargs['max_path_length'],
             deterministic=kwargs['deterministic'],
         )
 
@@ -85,7 +87,7 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        model_sample_processor = MAMLSampleProcessor(
+        model_sample_processor = SampleProcessor(
             baseline=baseline,
             discount=kwargs['discount'],
             gae_lambda=kwargs['gae_lambda'],
@@ -93,14 +95,11 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = TRPOMAML(
+        algo = PPO(
             policy=policy,
-            step_size=kwargs['step_size'],
-            inner_type=kwargs['inner_type'],
-            inner_lr=kwargs['inner_lr'],
-            meta_batch_size=kwargs['meta_batch_size'],
-            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-            exploration=kwargs['exploration'],
+            step_size=kwargs['learning_rate'],
+            clip_eps=kwargs['clip_eps'],
+            max_epochs=kwargs['num_ppo_steps'],
         )
 
         trainer = Trainer(
@@ -112,12 +111,10 @@ def run_experiment(**kwargs):
             model_sample_processor=model_sample_processor,
             dynamics_sample_processor=dynamics_sample_processor,
             dynamics_model=dynamics_model,
-            num_rollouts_per_iter=kwargs['num_rollouts'],
             n_itr=kwargs['n_itr'],
-            num_inner_grad_steps=kwargs['num_inner_grad_steps'],
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
-            meta_steps_per_iter=kwargs['meta_steps_per_iter'],
+            steps_per_iter=kwargs['steps_per_iter'],
             sample_from_buffer=kwargs['sample_from_buffer'],
             sess=sess,
         )
@@ -130,9 +127,9 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [1, 2],
 
-        'algo': ['mbmpo'],
+        'algo': ['me-ppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv],
+        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
         'n_itr': [500],
@@ -141,24 +138,23 @@ if __name__ == '__main__':
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [False],
-        'meta_steps_per_iter': [(50, 50)],
+        'log_real_performance': [True],
+        'steps_per_iter': [(400, 400)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
+        'num_rollouts': [10],
         'n_parallel': [5],
-        'fraction_meta_batch_size': [1.],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1, 5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [200],
+        'dynamics_max_epochs': [100],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.9, 0.4],
         'deterministic': [False],
 
         # Policy
@@ -167,18 +163,14 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
 
-        # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
-        'num_inner_grad_steps': [1],
-        'inner_lr': [0.001],
-        'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
-        'exploration': [False],
-        'sample_from_buffer': [True],
-
+        # Algo
+        'clip_eps': [0.3, 0.2],# 0.3, 0.1],
+        'learning_rate': [1e-3, 3e-4],# 5e-4],
+        'num_ppo_steps': [5],
+        'imagined_num_rollouts': [50], #50],
         'scope': [None],
-        'exp_tag': ['mbmpo_all'], # For changes besides hyperparams
+        'sample_from_buffer': [True],
+        'exp_tag': ['regularization-no-me-ppo'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -21,7 +21,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-me-ppo'
+EXP_NAME = 'performance-sequential-me-trpo'
 
 
 def run_experiment(**kwargs):
@@ -95,11 +95,9 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = PPO(
+        algo = TRPO(
             policy=policy,
-            step_size=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
+            step_size=kwargs['step_size'],
         )
 
         trainer = Trainer(
@@ -115,7 +113,7 @@ def run_experiment(**kwargs):
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
             steps_per_iter=kwargs['steps_per_iter'],
-            sample_from_buffer=False,
+            sample_from_buffer=kwargs['sample_from_buffer'],
             sess=sess,
         )
 
@@ -127,7 +125,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [1, 2, 3, 4],
 
-        'algo': ['me-ppo'],
+        'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
 
@@ -164,12 +162,11 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.3],# 0.3, 0.1],
-        'learning_rate': [1e-3],# 5e-4],
-        'num_ppo_steps': [5],
+        'step_size': [0.01],# 0.3, 0.1],
         'imagined_num_rollouts': [50], #50],
+        'sample_from_buffer': [True],
         'scope': [None],
-        'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
+        'exp_tag': ['me_trpo_all'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
