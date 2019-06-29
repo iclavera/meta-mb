@@ -5,7 +5,7 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.algos.trpo import TRPO
@@ -21,7 +21,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'mbppo-prob'
+EXP_NAME = 'performance-sequential-me-ppo'
 
 
 def run_experiment(**kwargs):
@@ -50,7 +50,7 @@ def run_experiment(**kwargs):
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
         )
 
-        dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
                                              env=env,
                                              num_models=kwargs['num_models'],
                                              hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
@@ -59,6 +59,7 @@ def run_experiment(**kwargs):
                                              learning_rate=kwargs['dynamics_learning_rate'],
                                              batch_size=kwargs['dynamics_batch_size'],
                                              buffer_size=kwargs['dynamics_buffer_size'],
+                                             rolling_average_persitency=kwargs['rolling_average_persitency']
                                              )
 
         env_sampler = Sampler(
@@ -94,11 +95,11 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = TRPO(
+        algo = PPO(
             policy=policy,
-            # step_size=kwargs['learning_rate'],
-            # clip_eps=kwargs['clip_eps'],
-            # max_epochs=kwargs['num_ppo_steps'],
+            step_size=kwargs['learning_rate'],
+            clip_eps=kwargs['clip_eps'],
+            max_epochs=kwargs['num_ppo_steps'],
         )
 
         trainer = Trainer(
@@ -124,24 +125,24 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2],
+        'seed': [1, 2, 3, 4],
 
-        'algo': ['meppo'],
+        'algo': ['me-ppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [200],
-        'max_path_length': [200,],
+        'n_itr': [500],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(10, 10), (30, 30), (50, 50)],
+        'steps_per_iter': [(50, 50)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 20],
+        'num_rollouts': [5, 10, 20],
         'n_parallel': [5],
 
         # Dynamics Model
@@ -149,10 +150,11 @@ if __name__ == '__main__':
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50, 200],
+        'dynamics_max_epochs': [200],
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [256, 128],
-        'dynamics_buffer_size': [10000, 20000],
+        'dynamics_batch_size': [256],
+        'dynamics_buffer_size': [25000],
+        'rolling_average_persitency': [0.9, 0.4, 0.1],
         'deterministic': [False],
 
         # Policy
@@ -165,7 +167,7 @@ if __name__ == '__main__':
         'clip_eps': [0.3],# 0.3, 0.1],
         'learning_rate': [1e-3],# 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [400], #50],
+        'imagined_num_rollouts': [50], #50],
         'scope': [None],
         'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
     }
