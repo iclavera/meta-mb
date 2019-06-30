@@ -30,6 +30,14 @@ def valid_experiment(params, algo):
             'rolling_average_persitency': [0.4],
         }
 
+    elif algo == 'ppo':
+        values = {
+             'num_rollouts': [50],
+             'clip_eps': [0.2],
+             'num_ppo_steps': [5],
+             'learning_rate': [0.001]
+        }
+
     else:
         raise NotImplementedError
 

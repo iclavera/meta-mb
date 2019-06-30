@@ -23,9 +23,9 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
 COLORS = dict(ours=colors.pop(0))
-LEGEND_ORDER = {'ppo': 0, 'sac': 1, 'me-ppo': 2, 'me-trpo': 3, 'mbmpo': 4, 'a-me-ppo': 5}
+LEGEND_ORDER = {'regularization': 0, 'no-regularization': 1}
 
-data_path = '/home/ignasi/corl_data/time_comparison/'
+data_path = '/home/ignasi/corl_data/regularization/'
 
 exps_data = load_exps_data([data_path])
 
@@ -220,7 +220,7 @@ exps_data_filtered = filter(exps_data, filter_dict)
 
 plot_from_exps(exps_data,
                split_figures_by='env.$class',
-               split_plots_by='algo',
+               split_plots_by='exp_tag',
                y_key='train-AverageReturn',
                x_key='Time',
                filters=filter_dict,
@@ -233,7 +233,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_samples.png',
+               plot_name='./comparison_regularization.png',
                num_rows=2,
                report_max_performance=False,
                log_scale=False,

@@ -39,6 +39,39 @@ sampling_time = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 0.008,
                  'meta_mb.envs.mujoco.hopper_env.HopperEnv': 0.008,
                  'Hopper': 0.008,
                  }
+round_plot = {'a-me-ppo': {'Hopper': 5000,
+                           'Walker2d': 5000,
+                           'Ant': 5000,
+                           'HalfCheetah': 5000,
+                      },
+            'me-ppo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
+                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
+                        'meta_mb.envs.mb_envs.ant.AntEnv': 5000,
+                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
+                      },
+            'me-trpo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
+                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
+                        'meta_mb.envs.mb_envs.ant.AntEnv': 5000,
+                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
+                      },
+            'mbmpo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
+                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
+                        'meta_mb.envs.mb_envs.ant.AntEnv': 5000,
+                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
+                      }
+
+         }
+
+x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25e4],
+            'Walker2d': [0, 25e4],
+            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 25e4],
+            'HalfCheetah': [0, 25e4],
+            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 50e4],
+            'Ant': [0, 50e4],
+            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 25e4],
+            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 25e4],
+            'Hopper': [0, 25e4],
+            }
 
 def prepare_data_for_plot(exp_data,
                           y_key=None,
@@ -47,8 +80,8 @@ def prepare_data_for_plot(exp_data,
                           add_sampling_time=False):
     x_y_tuples = []
     x_key = 'n_timesteps'
+    async = exp_data[0]['flat_params'].get('async', False)
     for exp in exp_data:
-        async = exp['flat_params'].get('async', False)
         if not async:
             if sup_y_key is not None:
                 assert type(sup_y_key) is list
@@ -69,6 +102,14 @@ def prepare_data_for_plot(exp_data,
             else:
                 raise NotImplementedError
     x_y_dict = defaultdict(list)
+    if async:
+        env = exp_data[0]['flat_params']['env']
+    else:
+        env = exp_data[0]['flat_params']['env.$class']
+
+    algo = exp_data[0]['flat_params']['algo']
+    _round_x = round_plot.get(algo, dict()).get(env, None)
+    round_x = _round_x if _round_x is not None else round_x
     for k, v in x_y_tuples:
         if round_x is not None:
             x_y_dict[(k//round_x) * round_x].append(v)
@@ -78,7 +119,7 @@ def prepare_data_for_plot(exp_data,
     for key in sorted(x_y_dict.keys()):
         means.append(np.mean(x_y_dict[key]))
         stddevs.append(np.std(x_y_dict[key]))
-    return np.array(sorted(x_y_dict.keys())), np.array(means), np.array(stddevs)
+    return np.array(sorted(x_y_dict.keys())), np.array(means), np.array(stddevs), x_limits[env]
 
 
 def sorting_legend(label):
@@ -104,7 +145,6 @@ def plot_from_exps(exp_data,
                    x_label=None,
                    y_label=None,
                    num_rows=1,
-                   x_limits=None,
                    y_limits=None,
                    report_max_performance=False,
                    log_scale=False,
@@ -116,8 +156,8 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(20, 8))
-    fig.tight_layout(pad=4.0, w_pad=1.5, h_pad=3, rect=[0, 0, 1, 1])
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
+    fig.tight_layout(pad=4.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -134,7 +174,7 @@ def plot_from_exps(exp_data,
         y_axis_max = -1e10
         for j, default_label in enumerate(sorted(plots_in_figure_exps, key=sorting_legend)):
             exps = plots_in_figure_exps[default_label]
-            x, y_mean, y_std = prepare_data_for_plot(exps,
+            x, y_mean, y_std, x_limits = prepare_data_for_plot(exps,
                                                      y_key=y_key,
                                                      sup_y_key=sup_y_key,
                                                      round_x=round_x)
@@ -156,7 +196,7 @@ def plot_from_exps(exp_data,
             if y_limits is not None:
                 axarr[r, c].set_ylim(*y_limits)
             else:
-                _y_axis_min, _y_axis_max = correct_limit(axarr[r, c], x, y_mean+2*y_std)
+                _y_axis_min, _y_axis_max = correct_limit(axarr[r, c], x, y_mean-y_std, y_mean+y_std)
                 y_axis_max = max(_y_axis_max, y_axis_max)
                 y_axis_min = min(_y_axis_min, y_axis_min)
                 if max(y_mean) > y_max_mean:
@@ -195,7 +235,6 @@ plot_from_exps(exps_data,
                y_label='Average Return',
                plot_name='./comparison_samples.png',
                num_rows=2,
-               x_limits=[0, 5e5],
                report_max_performance=False,
                log_scale=False,
                round_x=5000,

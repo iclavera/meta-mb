@@ -133,12 +133,12 @@ def _flatten_dict(d):
     return flat_params
 
 
-def correct_limit(ax, x, y):
+def correct_limit(ax, x, y_min, y_max):
     # ax: axes object handle
     #  x: data for entire x-axes
     #  y: data for entire y-axes
     # assumption: you have already set the x-limit as desired
     lims = ax.get_xlim()
     i = np.where((x > lims[0]) & (x < lims[1]))[0]
-    return y[i].min(), y[i].max()
+    return y_min[i].min(), y_max[i].max()
 
