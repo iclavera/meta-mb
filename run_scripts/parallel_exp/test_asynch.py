@@ -7,17 +7,12 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
-from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
-from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from run_scripts.parallel_exp.parallel_mbppo_run_sweep import run_base
 
+
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'test-fully-asynch'
+EXP_NAME = 'test-20-rollouts'
 
 
 def run_experiment(**kwargs):
@@ -49,15 +44,19 @@ if __name__ == '__main__':
             #[1, 1, 20],
             [1, 1, 1],
         ],
-        'rolling_average_persitency': [0.4, 0.95],
+        'flags_pull_freq': [
+            [1, 1, 1],
+        ],
 
-        'seed': [1, 2,],
+        'rolling_average_persitency': [0.99],
+
+        'seed': [1,],
         'probabilistic_dynamics': [False],
         'num_models': [5],
 
-        'n_itr': [501 * 20], # num_samples = num_rollouts * max_path_length * n_itr
-        'num_rollouts': [1],
-        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
+        'n_itr': [501], # num_samples = num_rollouts * max_path_length * n_itr
+        'num_rollouts': [20],
+        'simulation_sleep_frac': [2, 1, 0.5],
         'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
@@ -84,6 +83,7 @@ if __name__ == '__main__':
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
+        'initial_random_samples': [True],
         'loss_str': ['MSE'],
 
         # Policy

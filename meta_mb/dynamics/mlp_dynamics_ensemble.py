@@ -238,17 +238,16 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         sess = tf.get_default_session()
 
-        time_compute_normalization = time.time()
+        # time_compute_normalization = time.time()
         if with_new_data:
             if compute_normalization and self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
                                            self._dataset_train['act'],
                                            self._dataset_train['delta'])
-        time_compute_normalization = time.time() - time_compute_normalization
+        # time_compute_normalization = time.time() - time_compute_normalization
 
-        time_normalize_input = time.time()
+        # time_normalize_input = time.time()
         if self.normalize_input:
-            # TODO: store normalied data so that if not with_new_data, don't recompute?
             # normalize data
             obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
                                                                      self._dataset_train['act'],
@@ -256,7 +255,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         else:
             obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
                                                 self._dataset_train['delta']
-        time_normalize_input = time.time() - time_normalize_input
+        # time_normalize_input = time.time() - time_normalize_input
 
         valid_loss_rolling_average = valid_loss_rolling_average_prev
         assert remaining_model_idx is not None
@@ -336,9 +335,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     )
                 break
 
-        for i in range(self.num_models):
-            # TODO: is this condition reasonable with avg_prev inherited from previous epoch
-            if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]) and i in remaining_model_idx:
+        for i in remaining_model_idx:
+            if valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]:
                 remaining_model_idx.remove(i)
                 logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
 
@@ -347,8 +345,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         """ ------- Tabular Logging ------- """
         if log_tabular:
             logger.logkv(prefix+'EpochTime', time_epoch)
-            logger.logkv(prefix+'TimeComputeNorm', time_compute_normalization)
-            logger.logkv(prefix+'TimeNormInput', time_normalize_input)
+            # logger.logkv(prefix+'TimeComputeNorm', time_compute_normalization)
+            # logger.logkv(prefix+'TimeNormInput', time_normalize_input)
             logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
             logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))

@@ -32,15 +32,14 @@ class ParallelTrainer(object):
             dynamics_model_pickle,
             feed_dicts,
             n_itr,
+            initial_random_samples,
+            flags_need_query,
+            flags_push_freq,
+            flags_pull_freq,
+            config,
+            simulation_sleep,
             start_itr=0,
-            initial_random_samples=True,
-            log_real_performance=True,
-            flags_need_query=(True, False, True),
-            flags_push_freq=(20, 1, 1),
-            config=None,
-            simulation_sleep=10,
             ):
-        self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
@@ -77,14 +76,15 @@ class ParallelTrainer(object):
                     stop_cond,
                     need_query,
                     push_freq,
+                    pull_freq,
                     config,
                 ),
             ) for (worker_instance, name, feed_dict,
                    queue_prev, queue, queue_next,
-                   worker_remote, need_query, push_freq) in zip(
+                   worker_remote, need_query, push_freq, pull_freq) in zip(
                 worker_instances, names, feed_dicts,
                 queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
-                worker_remotes, flags_need_query, flags_push_freq,
+                worker_remotes, flags_need_query, flags_push_freq, flags_pull_freq,
             )
         ]
 

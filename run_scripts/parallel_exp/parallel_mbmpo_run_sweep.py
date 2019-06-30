@@ -187,8 +187,10 @@ def run_base(exp_dir, **kwargs):
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        log_real_performance=kwargs['log_real_performance'],
+        initial_random_samples=kwargs['initial_random_samples'],
         flags_need_query=kwargs['flags_need_query'],
+        flags_push_freq=kwargs['flags_push_freq'],
+        flags_pull_freq=kwargs['flags_pull_freq'],
         sample_from_buffer=kwargs['sample_from_buffer'],
         fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
         config=config,
@@ -207,9 +209,12 @@ if __name__ == '__main__':
             # [True, True, True],
         ],
         'flags_push_freq': [
-            [20, 1, 1],
+            [1, 1, 1],
         ],
-        'rolling_average_persitency': [0.1, 0.4, 0.95],
+        'flags_pull_freq': [
+            [1, 1, 1],
+        ],
+        'rolling_average_persitency': [0.1, 0.4, 0.99],
 
         'seed': [1,],
         'probabilistic_dynamics': [False], #[True, False],
@@ -246,6 +251,7 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
+        'initial_random_samples': [True],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],

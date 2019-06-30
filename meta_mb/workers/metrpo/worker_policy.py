@@ -58,11 +58,6 @@ class WorkerPolicy(WorkerPolicyBase):
         paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
         time_sampling = time.time() - time_sampling
 
-        for path in paths:
-            assert not np.isnan(np.sum(path['observations']))
-            assert not np.isnan(np.sum(path['actions']))
-            assert not np.isnan(np.sum(path['rewards']))
-
         """ ----------------- Processing Samples ---------------------"""
 
         if self.verbose:

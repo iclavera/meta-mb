@@ -34,6 +34,7 @@ class Worker(object):
             stop_cond,
             need_query,
             push_freq, # auto_push = True
+            pull_freq,
             config,
     ):
         time_start = time.time()
@@ -87,30 +88,34 @@ class Worker(object):
                     queue_prev.put('push')
                     time_poll = time.time() - time_poll
                     logger.logkv('{}-TimePoll'.format(self.name), time_poll)
+
                 do_push, do_synch, do_step = self.process_queue()
 
                 # step
                 if do_step:
-                    self.itr_counter += 1
-                    self.step()
-                    if self.itr_counter % push_freq == 0: # if auto_push:
-                        do_push += 1
-                        self.push()
+                    do_step = pull_freq
+                    for _ in range(pull_freq):
+                        self.itr_counter += 1
+                        self.step()
+                        if self.itr_counter % push_freq == 0: # if auto_push:
+                            do_push += 1
+                            self.push()
 
-                total_push += do_push
-                total_synch += do_synch
-                total_step += do_step
-                logger.logkv(self.name+'-TimeSoFar', time.time() - time_start)
-                logger.logkv(self.name+'-TotalPush', total_push)
-                logger.logkv(self.name+'-TotalSynch', total_synch)
-                logger.logkv(self.name+'-TotalStep', total_step)
-                logger.dumpkvs()
-                logger.log("\n========================== {} {}, total {} ===================".format(
-                    self.name,
-                    (do_push, do_synch, do_step),
-                    (total_push, total_synch, total_step),
-                ))
-                self.set_stop_cond()
+                if do_push or do_synch or do_step:
+                    total_push += do_push
+                    total_synch += do_synch
+                    total_step += do_step
+                    logger.logkv(self.name+'-TimeSoFar', time.time() - time_start)
+                    logger.logkv(self.name+'-TotalPush', total_push)
+                    logger.logkv(self.name+'-TotalSynch', total_synch)
+                    logger.logkv(self.name+'-TotalStep', total_step)
+                    logger.dumpkvs()
+                    logger.log("\n========================== {} {}, total {} ===================".format(
+                        self.name,
+                        (do_push, do_synch, do_step),
+                        (total_push, total_synch, total_step),
+                    ))
+                    self.set_stop_cond()
 
             remote.send('loop done')
 
@@ -136,13 +141,14 @@ class Worker(object):
     def process_queue(self):
         do_push, do_synch = 0, 0
         data = None
+
         while True:
             try:
                 if self.verbose:
                     logger.log('{} try'.format(self.name))
                 new_data = self.queue.get_nowait()
                 if new_data == 'push': # only happens when next worker has need_query = True
-                    if do_push == 0: # only push once
+                    if do_push == 0:  # only push once
                         do_push += 1
                         self.push()
                 else:
@@ -158,6 +164,7 @@ class Worker(object):
 
         if self.verbose:
             logger.log('{} finishes processing queue with {}, {}, {}......'.format(self.name, do_push, do_synch, do_step))
+
         return do_push, do_synch, do_step
 
     def step(self, *args, **kwargs):
