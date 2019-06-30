@@ -7,13 +7,16 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
+from meta_mb.algos.ppo import PPO
 from meta_mb.algos.trpo import TRPO
 from meta_mb.trainers.metrpo_w_exploration_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
@@ -121,24 +124,24 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2, 3],
 
-        'algo': ['exploration-me-trpo'],
+        'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [HalfCheetahEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [500],
+        'n_itr': [200],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(50, 50)],
+        'steps_per_iter': [(100, 100), (200, 200)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
+        'num_rollouts': [10],
         'n_parallel': [1],
 
         # Dynamics Model
@@ -150,7 +153,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.4, 0.9],
         'deterministic': [False],
 
         # Policy
@@ -161,9 +164,10 @@ if __name__ == '__main__':
 
         # Algo
         'step_size': [0.01],
-        'imagined_num_rollouts': [50], #50],
+        'imagined_num_rollouts': [50],
         'sample_from_buffer': [True],
         'scope': [None],
+        'exp_tag': ['exploration'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

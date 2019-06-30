@@ -8,7 +8,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
@@ -17,11 +17,11 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-mb-mpo'
+EXP_NAME = 'performance-sequential-2-mb-mpo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -59,12 +59,13 @@ def run_experiment(**kwargs):
                                              buffer_size=kwargs['dynamics_buffer_size'],
                                              rolling_average_persitency=kwargs['rolling_average_persitency']
                                              )
-        env_sampler = Sampler(
+        env_sampler = MetaSampler(
             env=env,
             policy=policy,
-            num_rollouts=kwargs['meta_batch_size'],
+            rollouts_per_meta_task=kwargs['real_env_rollouts_per_meta_task'],
+            meta_batch_size=kwargs['meta_batch_size'],
             max_path_length=kwargs['max_path_length'],
-            n_parallel=kwargs['n_parallel'],
+            parallel=kwargs['parallel'],
         )
 
         model_sampler = MBMPOSampler(
@@ -112,7 +113,7 @@ def run_experiment(**kwargs):
             model_sample_processor=model_sample_processor,
             dynamics_sample_processor=dynamics_sample_processor,
             dynamics_model=dynamics_model,
-            num_rollouts_per_iter=kwargs['num_rollouts'],
+            num_rollouts_per_iter=int(kwargs['meta_batch_size'] * kwargs['fraction_meta_batch_size']),
             n_itr=kwargs['n_itr'],
             num_inner_grad_steps=kwargs['num_inner_grad_steps'],
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
@@ -128,14 +129,14 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2],
+        'seed': [1, 2, 3, 4],
 
-        'algo': ['mbmpo'],
+        'algo': ['mb-mpo'],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [500],
+        'n_itr': [250],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -145,9 +146,9 @@ if __name__ == '__main__':
         'meta_steps_per_iter': [(50, 50)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
-        'n_parallel': [5],
-        'fraction_meta_batch_size': [1.],
+        'parallel': [True],
+        'fraction_meta_batch_size': [.5],
+        'real_env_rollouts_per_meta_task': [1],
 
         # Dynamics Model
         'num_models': [5],
@@ -158,7 +159,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.9, 0.4],
         'deterministic': [False],
 
         # Policy
@@ -168,17 +169,17 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Meta-Algo
-        'meta_batch_size': [10],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20],
+        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001],
+        'inner_lr': [0.001, 0.0005],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
         'sample_from_buffer': [True],
 
         'scope': [None],
-        'exp_tag': ['mbmpo_all'], # For changes besides hyperparams
+        'exp_tag': ['mbmpo-sequential'], # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

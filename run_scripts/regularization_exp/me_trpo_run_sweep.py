@@ -21,7 +21,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'exploration-no-me-trpo'
+EXP_NAME = 'regularization-no-me-trpo'
 
 
 def run_experiment(**kwargs):
@@ -123,28 +123,28 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2, 3],
 
         'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [HalfCheetahEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [500],
+        'n_itr': [100],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(50, 50)],
+        'steps_per_iter': [(200, 200), (400, 400)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
+        'num_rollouts': [10],
         'n_parallel': [5],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1, 5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
@@ -152,7 +152,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.4, 0.9],
         'deterministic': [False],
 
         # Policy
@@ -162,11 +162,11 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'step_size': [0.01],# 0.3, 0.1],
-        'imagined_num_rollouts': [50], #50],
-        'sample_from_buffer': [True],
+        'step_size': [0.01],
+        'imagined_num_rollouts': [50],
         'scope': [None],
-        'exp_tag': ['me_trpo_all'],  # For changes besides hyperparams
+        'sample_from_buffer': [True],
+        'exp_tag': ['no-regularization'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -7,7 +7,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.algos.ppo import PPO
+from meta_mb.algos.trpo import TRPO
 from meta_mb.trainers.mf_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.single_sample_processor import SingleSampleProcessor
@@ -15,7 +15,7 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'ppo'
+EXP_NAME = 'trpo'
 
 
 def run_experiment(**kwargs):
@@ -65,12 +65,9 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = PPO(
+        algo = TRPO(
             policy=policy,
-            learning_rate=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
-            entropy_bonus=kwargs['entropy_bonus'],
+            step_size=kwargs['step_size'],
         )
 
         trainer = Trainer(
@@ -88,7 +85,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'algo': ['ppo'],
+        'algo': ['trpo'],
         'seed': [1, 2, 3, 4],
 
         'baseline': [LinearFeatureBaseline],
@@ -110,17 +107,13 @@ if __name__ == '__main__':
         'output_nonlinearity': [None],
         'init_std': [1.],
 
-        'learning_rate': [1e-3, 3e-4],
-        'num_ppo_steps': [5],
-        'num_minibatches': [1],
-        'clip_eps': [0.2, 0.3],
-        'entropy_bonus': [0.],
+        'step_size': [0.01],
         'squashed': [False],
 
         'n_itr': [2000],
         'scope': [None],
 
-        'exp_tag': ['v0']
+        'exp_tag': ['trpo']
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
