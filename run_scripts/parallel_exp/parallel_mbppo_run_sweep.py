@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'local-g1e1-revert-20-parallel-mbppo-partial-buffer'
+EXP_NAME = 'g1e1-revert-fully-asynch-parallel-mbppo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -173,18 +173,20 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99,
+            0.4, #0.99,
         ],
 
         'seed': [1, 2,],
+        'n_itr': [401*20],
+        'num_rollouts': [1],
 
         'algo': ['meppo'],
-        'baseline': [LinearFeatureBaseline],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
-        'simulation_sleep_frac': [1, 0.5, 0.1],
+        'simulation_sleep_frac': [1],
+
+        'env': ['HalfCheetah'],# 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
-        'n_itr': [401],
+        'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -194,7 +196,6 @@ if __name__ == '__main__':
         'steps_per_iter': [1], # No outer loop in effect
 
         # Real Env Sampling
-        'num_rollouts': [20],
         'n_parallel': [1],
 
         # Dynamics Model
