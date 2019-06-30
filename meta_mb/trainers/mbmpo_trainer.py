@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import time
 from meta_mb.logger import logger
+import collections
 
 
 class Trainer(object):
@@ -92,7 +93,6 @@ class Trainer(object):
                 meta_steps_per_iter = [self.meta_steps_per_iter] * self.n_itr
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
-                self.policy.switch_to_pre_update()
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
 
@@ -111,8 +111,8 @@ class Trainer(object):
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
-                if type(env_paths) is dict:
-                    env_paths = list(env_paths.values()) if env_paths is dict else env_paths
+                if type(env_paths) is dict or type(env_paths) is collections.OrderedDict:
+                    env_paths = list(env_paths.values())
                     idxs = np.random.choice(range(len(env_paths)),
                                             size=self.num_rollouts_per_iter,
                                             replace=False)
@@ -123,6 +123,9 @@ class Trainer(object):
                                             size=self.num_rollouts_per_iter,
                                             replace=False)
                     env_paths = [env_paths[idx] for idx in idxs]
+
+                else:
+                    raise TypeError
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
                                                                               log_prefix='EnvTrajs-')
 
