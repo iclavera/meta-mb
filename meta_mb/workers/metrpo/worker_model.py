@@ -41,6 +41,7 @@ class WorkerModel(Worker):
                     samples_data_arr_pickle = self.queue.get()
                     time_wait = time.time() - time_wait
                     logger.logkv('Model-TimeBlockWait', time_wait)
+                    self.remaining_model_idx = list(range(self.dynamics_model.num_models))
                 else:
                     if self.verbose:
                         logger.log('Model try get_nowait.........')
