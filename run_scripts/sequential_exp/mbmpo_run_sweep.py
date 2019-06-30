@@ -17,7 +17,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-mb-mpo'
+EXP_NAME = 'performance-sequential-2-mb-mpo'
 
 
 def run_experiment(**kwargs):
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
         # Real Env Sampling
         'parallel': [True],
-        'fraction_meta_batch_size': [1.],
+        'fraction_meta_batch_size': [.5],
         'real_env_rollouts_per_meta_task': [1],
 
         # Dynamics Model
@@ -170,7 +170,7 @@ if __name__ == '__main__':
 
         # Meta-Algo
         'meta_batch_size': [20],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20, 50],
+        'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001, 0.0005],
         'inner_type': ['log_likelihood'],

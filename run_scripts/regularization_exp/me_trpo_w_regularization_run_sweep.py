@@ -9,19 +9,17 @@ from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.algos.trpo import TRPO
-from meta_mb.trainers.metrpo_trainer import Trainer
+from meta_mb.trainers.metrpo_w_regularization_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
-from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-me-ppo'
+EXP_NAME = 'regularization-me-trpo'
 
 
 def run_experiment(**kwargs):
@@ -95,11 +93,9 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = PPO(
+        algo = TRPO(
             policy=policy,
-            learning_rate=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
+            step_size=kwargs['step_size'],
         )
 
         trainer = Trainer(
@@ -112,11 +108,12 @@ def run_experiment(**kwargs):
             dynamics_sample_processor=dynamics_sample_processor,
             dynamics_model=dynamics_model,
             n_itr=kwargs['n_itr'],
-            dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
-            steps_per_iter=kwargs['steps_per_iter'],
             sample_from_buffer=kwargs['sample_from_buffer'],
             sess=sess,
+            num_epochs_per_step=kwargs['num_epochs_per_step'],
+            num_grad_policy_per_step=kwargs['num_grad_policy_per_step'],
+            repeat_steps=kwargs['repeat_steps']
         )
 
         trainer.train()
@@ -125,36 +122,34 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2, 3],
 
-        'algo': ['me-ppo'],
+        'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [HalfCheetahEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [500],
+        'n_itr': [100],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(50, 50)],
 
         # Real Env Sampling
         'num_rollouts': [10],
         'n_parallel': [5],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1, 5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [200],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.4],
+        'rolling_average_persitency': [0.4, 0.9],
         'deterministic': [False],
 
         # Policy
@@ -164,13 +159,16 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2],# 0.3, 0.1],
-        'learning_rate': [1e-3, 3e-4],# 5e-4],
-        'num_ppo_steps': [5, 10],
-        'imagined_num_rollouts': [50], #50],
-        'sample_from_buffer': [True],
+        'step_size': [0.01],
+        'imagined_num_rollouts': [50],
         'scope': [None],
-        'exp_tag': ['me-ppo'],  # For changes besides hyperparams
+        'sample_from_buffer': [True],
+
+        'num_epochs_per_step': [10],
+        'num_grad_policy_per_step': [10, 20, 40],
+        'repeat_steps': [20],
+
+        'exp_tag': ['regularization'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -97,7 +97,7 @@ def run_experiment(**kwargs):
 
         algo = PPO(
             policy=policy,
-            step_size=kwargs['learning_rate'],
+            learning_rate=kwargs['learning_rate'],
             clip_eps=kwargs['clip_eps'],
             max_epochs=kwargs['num_ppo_steps'],
         )
