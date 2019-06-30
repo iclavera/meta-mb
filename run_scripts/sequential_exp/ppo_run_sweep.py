@@ -6,7 +6,6 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
-from meta_mb.envs.mujoco.hopper_env import HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.mf_trainer import Trainer
@@ -96,9 +95,9 @@ if __name__ == '__main__':
 
         'env': [Walker2dEnv, HopperEnv, HalfCheetahEnv, AntEnv],
 
-        'num_rollouts': [40],
+        'num_rollouts': [50],
         'max_path_length': [200],
-        'n_parallel': [5],
+        'n_parallel': [10],
 
         'discount': [0.99],
         'gae_lambda': [.975],
@@ -118,7 +117,7 @@ if __name__ == '__main__':
         'entropy_bonus': [0.],
         'squashed': [False],
 
-        'n_itr': [1000],
+        'n_itr': [2000],
         'scope': [None],
 
         'exp_tag': ['v0']
