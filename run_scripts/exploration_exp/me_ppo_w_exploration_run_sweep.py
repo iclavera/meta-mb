@@ -21,7 +21,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'exploration-me-ppo'
+EXP_NAME = 'exploration-2-me-ppo'
 
 
 def run_experiment(**kwargs):
@@ -126,24 +126,24 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, 2, 3],
 
         'algo': ['me-ppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [HalfCheetahEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [500],
+        'n_itr': [200],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(50, 50)],
+        'steps_per_iter': [(100, 100), (200, 200)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
+        'num_rollouts': [10, 20],
         'n_parallel': [1],
 
         # Dynamics Model
@@ -155,7 +155,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.4],
         'deterministic': [False],
 
         # Policy
@@ -165,13 +165,13 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.3],# 0.3, 0.1],
+        'clip_eps': [0.3, 0.2],# 0.3, 0.1],
         'learning_rate': [1e-3],# 5e-4],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50], #50],
         'sample_from_buffer': [True],
         'scope': [None],
-        'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
+        'exp_tag': ['exploration'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
