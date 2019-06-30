@@ -26,7 +26,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  weight_normalization=False,  # Doesn't work
                  normalize_input=True,
                  optimizer=tf.train.AdamOptimizer,
-                 valid_split_ratio=0.1,
+                 valid_split_ratio=0.2,  # 0.1
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
@@ -57,6 +57,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
+        self.timesteps_counter= 0
+        self.used_timesteps_counter = 0
 
         self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
         self.output_nonlinearity  = output_nonlinearity = self._activations[output_nonlinearity]
@@ -165,6 +167,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
+        self.timesteps_counter += obs.shape[0]
+
         if valid_split_ratio is None: valid_split_ratio = self.valid_split_ratio
 
         assert 1 > valid_split_ratio >= 0
@@ -198,8 +202,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
-                                                                 batch_size=self.batch_size,
-                                                                 take_size=-1)
+                                                                 batch_size=self.batch_size)
             assert self.normalization is None
             if self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
@@ -238,15 +241,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         sess = tf.get_default_session()
 
-        # time_compute_normalization = time.time()
         if with_new_data:
             if compute_normalization and self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
                                            self._dataset_train['act'],
                                            self._dataset_train['delta'])
-        # time_compute_normalization = time.time() - time_compute_normalization
 
-        # time_normalize_input = time.time()
+        self.used_timesteps_counter += len(self._dataset_train['obs'][0])
         if self.normalize_input:
             # normalize data
             obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
@@ -255,7 +256,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         else:
             obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
                                                 self._dataset_train['delta']
-        # time_normalize_input = time.time() - time_normalize_input
 
         valid_loss_rolling_average = valid_loss_rolling_average_prev
         assert remaining_model_idx is not None
@@ -270,7 +270,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess.run(self.iterator.initializer, feed_dict=feed_dict)
 
         # preparations for recording training stats
-        time_epoch = time.time()
         batch_losses = []
 
         """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
@@ -340,13 +339,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 remaining_model_idx.remove(i)
                 logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
 
-        time_epoch = time.time() - time_epoch
-
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv(prefix+'EpochTime', time_epoch)
-            # logger.logkv(prefix+'TimeComputeNorm', time_compute_normalization)
-            # logger.logkv(prefix+'TimeNormInput', time_normalize_input)
+            logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
+            logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
+            logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
             logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
             logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
@@ -634,7 +631,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000, take_size=-1):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert len(obs_batches) == len(act_batches) == len(delta_batches)
@@ -651,7 +648,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
-        # dataset = dataset.take(take_size) # if take_size = -1, take all of dataset
         dataset = dataset.shuffle(buffer_size=buffer_size)
         iterator = dataset.make_initializable_iterator()
         next_batch = iterator.get_next()

@@ -12,11 +12,10 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-parallel-mbppo'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'local-g1e1-revert-20-parallel-mbppo-partial-buffer'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -36,21 +35,17 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
+    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.makedirs(exp_dir + '/Data/', exist_ok=True)
-    os.makedirs(exp_dir + '/Model/', exist_ok=True)
-    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
+    os.mkdir(exp_dir + '/Data/')
+    os.mkdir(exp_dir + '/Model/')
+    os.mkdir(exp_dir + '/Policy/')
     json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-
-    run_base(exp_dir, **kwargs)
-
-
-def run_base(exp_dir, **kwargs):
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -85,32 +80,18 @@ def run_base(exp_dir, **kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    if kwargs['probabilistic_dynamics']:
-        dynamics_model = ProbMLPDynamicsEnsemble(
-            'prob-dynamics-ensemble',
-            env=env,
-            num_models=kwargs['num_models'],
-            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-            hidden_sizes=kwargs['dynamics_hidden_sizes'],
-            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-            learning_rate=kwargs['dynamics_learning_rate'],
-            batch_size=kwargs['dynamics_batch_size'],
-            buffer_size=kwargs['dynamics_buffer_size'],
-            rolling_average_persitency=kwargs['rolling_average_persitency']
-        )
-    else:
-        dynamics_model = MLPDynamicsEnsemble(
-            'dynamics-ensemble',
-            env=env,
-            num_models=kwargs['num_models'],
-            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-            hidden_sizes=kwargs['dynamics_hidden_sizes'],
-            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-            learning_rate=kwargs['dynamics_learning_rate'],
-            batch_size=kwargs['dynamics_batch_size'],
-            buffer_size=kwargs['dynamics_buffer_size'],
-            rolling_average_persitency=kwargs['rolling_average_persitency']
-        )
+    dynamics_model = MLPDynamicsEnsemble(
+        'dynamics-ensemble',
+        env=env,
+        num_models=kwargs['num_models'],
+        hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+        hidden_sizes=kwargs['dynamics_hidden_sizes'],
+        output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+        learning_rate=kwargs['dynamics_learning_rate'],
+        batch_size=kwargs['dynamics_batch_size'],
+        buffer_size=kwargs['dynamics_buffer_size'],
+        rolling_average_persitency=kwargs['rolling_average_persitency'],
+    )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -129,7 +110,7 @@ def run_base(exp_dir, **kwargs):
     receiver.close()
 
     '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
-    
+
     worker_data_feed_dict = {
         'env_sampler': {
             'num_rollouts': kwargs['num_rollouts'],
@@ -145,7 +126,7 @@ def run_base(exp_dir, **kwargs):
     }
 
     worker_model_feed_dict = {}
-    
+
     worker_policy_feed_dict = {
         'model_sampler': {
             'num_rollouts': kwargs['imagined_num_rollouts'],
@@ -168,17 +149,15 @@ def run_base(exp_dir, **kwargs):
 
     trainer = ParallelTrainer(
         exp_dir=exp_dir,
-        algo_str=kwargs['algo'],
         policy_pickle=policy_pickle,
         env_pickle=env_pickle,
         baseline_pickle=baseline_pickle,
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
-        initial_random_samples=kwargs['initial_random_samples'],
+        log_real_performance=kwargs['log_real_performance'],
+        steps_per_iter=kwargs['steps_per_iter'],
         flags_need_query=kwargs['flags_need_query'],
-        flags_push_freq=kwargs['flags_push_freq'],
-        flags_pull_freq=kwargs['flags_pull_freq'],
         config=config,
         simulation_sleep=simulation_sleep,
     )
@@ -192,41 +171,34 @@ if __name__ == '__main__':
 
         'flags_need_query': [
             [False, False, False],
-            # [True, True, True],
         ],
-        'flags_push_freq': [
-            [1, 1, 1],
+        'rolling_average_persitency': [
+            0.99,
         ],
-        'flags_pull_freq': [
-            [1, 1, 1],
-        ],
-        'rolling_average_persitency': [0.1, 0.4, 0.99],
 
-        'seed': [1,],
-        'probabilistic_dynamics': [False], #[True, False],
-        'num_models': [5],
-
-        'n_itr': [501 * 20],
-        'num_rollouts': [1],
-        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
-
-        # Problem Conf
+        'seed': [1, 2,],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'simulation_sleep_frac': [1, 0.5, 0.1],
+
+        # Problem Conf
+        'n_itr': [401],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [True],  # UNUSED
-        'steps_per_iter': [1],  # UNUSED
+        'log_real_performance': [True],
+        'steps_per_iter': [1], # No outer loop in effect
 
         # Real Env Sampling
+        'num_rollouts': [20],
         'n_parallel': [1],
 
         # Dynamics Model
+        'num_models': [5],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
@@ -235,7 +207,6 @@ if __name__ == '__main__':
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [25000],
         'deterministic': [False],
-        'initial_random_samples': [True],
         'loss_str': ['MSE'],
 
         # Policy
@@ -250,7 +221,7 @@ if __name__ == '__main__':
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],
-        'exp_tag': ['parallel-mbppo'],  # For changes besides hyperparams
+        'exp_tag': ['timing-parallel-mbppo'],  # For changes besides hyperparams
 
     }
 
