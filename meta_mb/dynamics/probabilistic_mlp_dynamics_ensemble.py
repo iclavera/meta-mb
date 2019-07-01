@@ -54,6 +54,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
+        self.timesteps_counter = 0
+        self.used_timesteps_counter = 0
 
         hidden_nonlinearity = self._activations[hidden_nonlinearity]
         output_nonlinearity = self._activations[output_nonlinearity]

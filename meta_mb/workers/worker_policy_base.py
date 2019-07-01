@@ -13,29 +13,6 @@ class WorkerPolicyBase(Worker):
         self.model_sample_processor = None
         self.algo = None
 
-    def construct_from_feed_dict(
-            self,
-            policy_pickle,
-            env_pickle,
-            baseline_pickle,
-            dynamics_model_pickle,
-            feed_dict,
-    ):
-
-        from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
-        from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
-        from meta_mb.meta_algos.trpo_maml import TRPOMAML
-
-        env = pickle.loads(env_pickle)
-        policy = pickle.loads(policy_pickle)
-        baseline = pickle.loads(baseline_pickle)
-
-        self.policy = policy
-        self.baseline = baseline
-        self.model_sampler = MBMPOSampler(env=env, policy=policy, **feed_dict['model_sampler'])
-        self.model_sample_processor = MAMLSampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
-        self.algo = TRPOMAML(policy=policy, **feed_dict['algo'])
-
     def prepare_start(self):
         dynamics_model = pickle.loads(self.queue.get())
         self.model_sampler.dynamics_model = dynamics_model
@@ -56,25 +33,18 @@ class WorkerPolicyBase(Worker):
 
         logger.logkv('Policy-TimeSynch', time_synch)
 
-    def dump_result(self):
-        self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
-
     def push(self):
         time_push = time.time()
-        self.dump_result()
-        put_msg_push = False
+        policy_state_pickle = pickle.dumps(self.policy.get_shared_param_values())
         while self.queue_next.qsize() > 3:
             try:
                 logger.log('Policy is off loading data from queue_next...')
-                data = self.queue_next.get_nowait()
-                if data == 'push':
-                    put_msg_push = True
+                _ = self.queue_next.get_nowait()
             except Empty:
                 # very rare chance to reach here (if any)
                 break
-        self.queue_next.put(self.state_pickle)
-        if put_msg_push:
-            self.queue_next.put('push')
+        assert policy_state_pickle is not None
+        self.queue_next.put(policy_state_pickle)
         time_push = time.time() - time_push
 
         logger.logkv('Policy-TimePush', time_push)

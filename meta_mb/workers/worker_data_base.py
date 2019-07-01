@@ -14,27 +14,19 @@ class WorkerDataBase(Worker):
         self.dynamics_sample_processor = None
         self.result = []
 
-    def construct_from_feed_dict(
-            self,
-            policy_pickle,
-            env_pickle,
-            baseline_pickle,
-            dynamics_model_pickle,
-            feed_dict
-    ):
-        raise NotImplementedError
-
     def prepare_start(self):
+        if self.verbose:
+            logger.log('** Data has sleeping time {}'.format(self.simulation_sleep))
         self.step(self.queue.get())
         self.push()
 
-    def step(self, random=False):
+    def step(self, init_arg):
         raise NotImplementedError
 
     def push(self):
         time_push = time.time()
-        self.dump_result()
-        self.queue_next.put(self.state_pickle)
+        act_obs_obs_next_pickle = self.dump_result()
+        self.queue_next.put(act_obs_obs_next_pickle)
         time_push = time.time() - time_push
         logger.logkv('Data-TimePush', time_push)
 
@@ -55,4 +47,4 @@ class WorkerDataBase(Worker):
         obs = np.concatenate([samples_data['observations'] for samples_data in self.result])
         obs_next = np.concatenate([samples_data['next_observations'] for samples_data in self.result])
         self.result = []
-        self.state_pickle = pickle.dumps((act, obs, obs_next))
+        return pickle.dumps((act, obs, obs_next))

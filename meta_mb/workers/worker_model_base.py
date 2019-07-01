@@ -4,9 +4,6 @@ from meta_mb.workers.base import Worker
 from queue import Empty
 
 
-TIMEOUT = 20
-
-
 class WorkerModelBase(Worker):
     def __init__(self):
         super().__init__()
@@ -28,35 +25,32 @@ class WorkerModelBase(Worker):
     def prepare_start(self):
         self._synch(self.queue.get(), check_init=True)
         self.step()
-        self.queue_next.put(pickle.dumps(self.result))
+        self.queue_next.put(pickle.dumps(self.dynamics_model))
 
     def process_queue(self):
         do_push, do_synch = 0, 0
 
-        if not self.remaining_model_idx:  # early stopped
-            do_step = 0
-        else:
-            while True:
-                try:
-                    if self.verbose:
-                        logger.log('Model try get_nowait.........')
+        while True:
+            try:
+                if not self.remaining_model_idx:
+                    new_data = self.queue.get(block=True, timeout=100)
+                else:
                     new_data = self.queue.get_nowait()
-                    if new_data == 'push':
-                        # Only push once before executing another step
-                        if do_push == 0:
-                            do_push = 1
-                            self.push()
-                    else:
-                        do_synch += 1
-                        self._synch(new_data)
-                except Empty:
-                    if self.verbose:
-                        logger.log('Model queue Empty')
-                    break
-            do_step = 1
+                if new_data == 'push':
+                    # Only push once before executing another step
+                    if do_push == 0:
+                        do_push = 1
+                        self.push()
+                else:
+                    do_synch += 1
+                    self._synch(new_data)
+            except Empty:
+                break
 
-        if self.verbose:
-            logger.log('Model finishes processing queue with {}, {}, {}......'.format(do_push, do_synch, do_step))
+        if self.remaining_model_idx:
+            do_step = 1
+        else:  # early stopped
+            do_step = 0
 
         return do_push, do_synch, do_step
 
@@ -78,7 +72,6 @@ class WorkerModelBase(Worker):
         )
         time_model_fit = time.time() - time_model_fit
 
-        self.result = self.dynamics_model
         self.with_new_data = False
 
         logger.logkv('Model-TimeStep', time_model_fit)
@@ -87,6 +80,7 @@ class WorkerModelBase(Worker):
 
         if self.verbose:
             logger.log('Model at {} is synchronizing...'.format(self.itr_counter))
+
         time_synch = time.time()
         act, obs, obs_next = pickle.loads(samples_data_pickle)
         self.dynamics_model.update_buffer(
@@ -95,27 +89,30 @@ class WorkerModelBase(Worker):
             obs_next=obs_next,
             check_init=check_init,
         )
-        """
-        samples_data = pickle.loads(samples_data_pickle)
-        self.dynamics_model.update_buffer(
-            samples_data['observations'],
-            samples_data['actions'],
-            samples_data['next_observations'],
-            check_init=check_init,
-        )
-        """
-
         # Reset variables for early stopping condition
         self.with_new_data = True
         self.remaining_model_idx = list(range(self.dynamics_model.num_models))
-        self.valid_loss_rollng_average = None
+        self.valid_loss_rolling_average = None
         time_synch = time.time() - time_synch
 
         logger.logkv('Model-TimeSynch', time_synch)
 
-    def dump_result(self):
-        self.state_pickle = pickle.dumps(self.result.get_shared_param_values())
+    def push(self):
+        time_push = time.time()
+        state_pickle = pickle.dumps(self.dynamics_model.get_shared_param_values())
+        while self.queue_next.qsize() > 3:
+            try:
+                logger.log('Model is off loading data from queue_next...')
+                _ = self.queue_next.get_nowait()
+            except Empty:
+                break
+        assert state_pickle is not None
+        self.queue_next.put(state_pickle)
+        time_push = time.time() - time_push
 
+        logger.logkv('Model-TimePush', time_push)
+
+    """
     def push(self):
         time_push = time.time()
         self.dump_result()
@@ -134,3 +131,4 @@ class WorkerModelBase(Worker):
         time_push = time.time() - time_push
 
         logger.logkv('Model-TimePush', time_push)
+    """
