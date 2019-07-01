@@ -5,13 +5,13 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self):
+    def __init__(self, algo_str):
         super().__init__()
         self.policy = None
         self.baseline = None
         self.model_sampler = None
         self.model_sample_processor = None
-        self.algo = None
+        self.algo = algo_str
 
     def construct_from_feed_dict(
             self,
@@ -26,17 +26,24 @@ class WorkerPolicy(Worker):
         from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
         from meta_mb.samplers.base import SampleProcessor
         from meta_mb.algos.ppo import PPO
+        from meta_mb.algos.trpo import TRPO
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
         baseline = pickle.loads(baseline_pickle)
+        dynamics_model = pickle.loads(dynamics_model_pickle)
 
         self.policy = policy
         self.baseline = baseline
-        self.model_sampler = METRPOSampler(env=env, policy=policy, **feed_dict['model_sampler'])
+        self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
         # self.model_sampler = BPTTSampler(env=env, policy=policy, **feed_dict['model_sampler'])
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
-        self.algo = PPO(policy=policy, **feed_dict['algo'])
+        if self.algo == 'meppo':
+            self.algo = PPO(policy=policy, **feed_dict['algo'])
+        elif self.algo == 'metrpo':
+            self.algo = TRPO(policy=policy, **feed_dict['algo'])
+        else:
+            raise NotImplementedError('algo_str must be meppo or metrpo')
 
     def prepare_start(self):
         dynamics_model = pickle.loads(self.queue.get())
@@ -112,7 +119,7 @@ class WorkerPolicy(Worker):
                 logger.log('Policy is off loading data from queue_next...')
                 _ = self.queue_next.get_nowait()
             except Empty:
-                # very rare chance to reach here (if any)
+                # very rare chance to reach here
                 break
         self.queue_next.put(policy_state_pickle)
         time_push = time.time() - time_push

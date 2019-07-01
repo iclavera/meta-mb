@@ -35,7 +35,6 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -46,6 +45,10 @@ def run_experiment(**kwargs):
     json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    run_base(exp_dir, **kwargs)
+
+
+def run_base(exp_dir, **kwargs):
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -131,7 +134,6 @@ def run_experiment(**kwargs):
         'model_sampler': {
             'num_rollouts': kwargs['imagined_num_rollouts'],
             'max_path_length': kwargs['max_path_length'],
-            'dynamics_model': dynamics_model,
             'deterministic': kwargs['deterministic'],
         },
         'model_sample_processor': {
@@ -149,14 +151,13 @@ def run_experiment(**kwargs):
 
     trainer = ParallelTrainer(
         exp_dir=exp_dir,
+        algo_str=kwargs['algo'],
         policy_pickle=policy_pickle,
         env_pickle=env_pickle,
         baseline_pickle=baseline_pickle,
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
-        log_real_performance=kwargs['log_real_performance'],
-        steps_per_iter=kwargs['steps_per_iter'],
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
@@ -173,19 +174,19 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.4, #0.99,
+            0.99,
         ],
 
         'seed': [1, 2,],
         'n_itr': [401*20],
         'num_rollouts': [1],
 
-        'algo': ['meppo'],
         'simulation_sleep_frac': [1],
 
-        'env': ['HalfCheetah'],# 'Ant', 'Walker2d', 'Hopper'],
+        'env': ['Ant'], #['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
+        'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],

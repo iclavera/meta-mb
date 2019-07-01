@@ -1,6 +1,6 @@
 import time
 from meta_mb.logger import logger
-from multiprocessing import Process, Pipe, Queue, Event, active_children
+from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.workers.metrpo.worker_data import WorkerData
 from meta_mb.workers.metrpo.worker_model import WorkerModel
 from meta_mb.workers.metrpo.worker_policy import WorkerPolicy
@@ -25,27 +25,25 @@ class ParallelTrainer(object):
     def __init__(
             self,
             exp_dir,
+            algo_str,
             policy_pickle,
             env_pickle,
             baseline_pickle,
             dynamics_model_pickle,
             feed_dicts,
             n_itr,
-            start_itr=0,
-            steps_per_iter=30,
+            flags_need_query,
+            config,
+            simulation_sleep,
             initial_random_samples=True,
-            log_real_performance=True,
-            flags_need_query=(True, False, True),
-            config=None,
-            simulation_sleep=10,
+            start_itr=0,
     ):
-        self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
             WorkerData(simulation_sleep=simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(),
+            WorkerPolicy(algo_str=algo_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
@@ -110,16 +108,13 @@ class ParallelTrainer(object):
 
         worker_data_remote.send('prepare start')
         worker_data_queue.put(self.initial_random_samples)
-        msg = worker_data_remote.recv()
-        assert msg == 'loop ready'
+        assert worker_data_remote.recv() == 'loop ready'
 
         worker_model_remote.send('prepare start')
-        msg = worker_model_remote.recv()
-        assert msg == 'loop ready'
+        assert worker_model_remote.recv() == 'loop ready'
 
         worker_policy_remote.send('prepare start')
-        msg = worker_policy_remote.recv()
-        assert msg == 'loop ready'
+        assert worker_policy_remote.recv() == 'loop ready'
 
         time_total = time.time()
 

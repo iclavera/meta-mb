@@ -14,14 +14,7 @@ class Worker(object):
     ):
         self.verbose = verbose
 
-    def construct_from_feed_dict(
-            self,
-            policy_pickle,
-            env_pickle,
-            baseline_pickle,
-            dynamics_model_pickle,
-            feed_dict
-    ):
+    def construct_from_feed_dict(self, *args, **kwargs):
         raise NotImplementedError
 
     def __call__(
@@ -39,9 +32,9 @@ class Worker(object):
             start_itr,
             n_itr,
             stop_cond,
-            need_query=False,
-            auto_push=True,
-            config=None,
+            need_query,
+            auto_push,
+            config,
     ):
         time_start = time.time()
 

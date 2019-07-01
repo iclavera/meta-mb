@@ -57,7 +57,6 @@ class WorkerData(Worker):
 
         if self.verbose:
             logger.log("Data is processing environment samples...")
-        # first processing just for logging purposes
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
