@@ -161,8 +161,6 @@ class Trainer(object):
                 """============================TODO==========================start============================"""
                 for _ in range(40 * 20):
                     random_states = samples_data['observations']
-                     # random_batch = self.env_replay_buffer.random_batch(samples_data['observations'].shape[0])
-                     # random_states = random_batch['observations']
                     actions_from_policy = self.policy.get_actions(random_states)[0]
                     predictions = self.dynamics_model.predict(random_states, actions_from_policy)
                     all_obs = np.concatenate([random_states, predictions])

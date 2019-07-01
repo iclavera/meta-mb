@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-q-3'
+EXP_NAME = 'sac-q-4'
 
 
 from meta_mb.algos.sac_edit import SAC_MB
@@ -113,7 +113,9 @@ def run_experiment(**kwargs):
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
-            sampler_batch_size=kwargs['sampler_batch_size']
+            sampler_batch_size=kwargs['sampler_batch_size'],
+            num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
+            prediction_type=kwargs['prediction_type']
         )
 
         trainer = Trainer(
@@ -141,48 +143,6 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        """=============hyperparameter search start=============="""
-        # 'seed': [3, 36, 369],
-        # 'baseline': [LinearFeatureBaseline],
-        # 'env': [HalfCheetahEnv],
-        #
-        # # Policy
-        # 'policy_hidden_sizes': [(256, 256)],
-        # 'policy_learn_std': [True],
-        # 'policy_output_nonlinearity': [None],
-        # 'policy_update_per_iteration': [40],
-        # 'speed_up_factor': [100],
-        # 'num_model_rollouts': [20],
-        #
-        # # Env Sampling
-        # 'num_rollouts': [1],
-        # 'n_parallel': [1],
-        #
-        # # replay_buffer
-        # 'env_replay_buffer_max_size': [1e6],
-        # 'model_replay_buffer_max_size': [4*1e7],
-        #
-        # # Problem Conf
-        # 'n_itr': [400],
-        # 'max_path_length': [1000],
-        # 'discount': [0.99],
-        # 'gae_lambda': [1.],
-        # 'normalize_adv': [True],
-        # 'positive_adv': [False],
-        # 'learning_rate': [5e-5, 1e-4, 5e-4],
-        # 'reward_scale': [1],
-        # 'sampler_batch_size': [256],
-        #
-        # # Dynamics Model
-        # 'num_models': [4],
-        # 'model_learning_rate': [1e-3, 5e-4],
-        # 'dynamics_hidden_sizes': [(200, 200, 200, 200)],
-        # 'dyanmics_hidden_nonlinearity': ['relu'],
-        # 'dyanmics_output_nonlinearity': [None],
-        # 'dynamics_batch_size': [512, 1024],
-        # 'dynamics_buffer_size': [10000],
-        # 'dynamics_model_max_epochs': [10, 50],
-        """=============hyperparameter search end=============="""
         'seed': [3],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
@@ -222,7 +182,10 @@ if __name__ == '__main__':
         'dyanmics_output_nonlinearity': [None],
         'dynamics_batch_size': [512],
         'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [50]
+        'dynamics_model_max_epochs': [50],
+
+        'num_actions_per_next_observation': [3],
+        'prediction_type':['mean']
 
 
         }
