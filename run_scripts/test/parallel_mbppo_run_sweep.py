@@ -16,7 +16,7 @@ from meta_mb.logger import logger
 
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-mbppo'
+EXP_NAME = 'mbppo-all-1-0.99-1'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -178,8 +178,8 @@ if __name__ == '__main__':
             0.99
         ],
 
-        'seed': [1, 2,],
-        'n_itr': [150],
+        'seed': [1, 2, 3, 4],
+        'n_itr': [500 * 10],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
@@ -206,9 +206,9 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-2, 5e-3, 1e-3, 5e-4],
+        'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256,],
-        'dynamics_buffer_size': [1000, 10000, 25000],
+        'dynamics_buffer_size': [1000, 10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
 
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.3],
+        'clip_eps': [0.3, 0.2],
         'learning_rate': [1e-3],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
