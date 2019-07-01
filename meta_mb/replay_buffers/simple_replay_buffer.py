@@ -85,6 +85,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
 
     def add_sample_simple(self, observation, **kwargs):
         self._observations[self._top] = observation
+        # self._terminals[self._top] = terminal
         self._advance()
 
 
@@ -92,6 +93,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         total_num = observations.shape[0]
         if self._top + total_num <= self._max_buffer_size:
             self._observations[self._top: self._top + total_num] = observations
+            # self._terminals[self._top: self._top + total_num] = terminals
         else:
             back_size = self._max_buffer_size - self._top
             redundant = (total_num - back_size) // self._max_buffer_size
@@ -99,10 +101,14 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
             if redundant == 0:
                 self._observations[self._top:] = observations[:back_size]
                 self._observations[:total_num - back_size] = observations[back_size:]
+                # self._terminals[self._top:] = terminals[:back_size]
+                # self._terminals[:total_num - back_size] = terminals[back_size:]
             else:
                 print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
                 self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
                 self._observations[:remaining] = observations[back_size + redundant * self._max_buffer_size:]
+                # self._terminals[:] = terminals[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                # self._terminals[:remaining] = terminals[back_size + redundant * self._max_buffer_size:]
 
         for _ in range(total_num):
             self._advance()
@@ -128,6 +134,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         indices = np.random.randint(0, self._size, batch_size)
         result = dict()
         result[prefix + 'observations'] = self._observations[indices]
+        # result[prefix + 'dones'] = self._terminals[indices]
         return result
 
     @property

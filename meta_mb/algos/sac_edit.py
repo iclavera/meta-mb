@@ -70,7 +70,6 @@ class SAC_MB(Algo):
 
         super(SAC_MB, self).__init__(policy)
 
-        """===============added==========start============"""
         self.name = name
         self.policy = policy
         self.discount = discount
@@ -89,7 +88,6 @@ class SAC_MB(Algo):
         self.sampler_batch_size = sampler_batch_size
         self.session = session or tf.keras.backend.get_session()
         self._squash = True
-        """===============added==========end============"""
         self.Qs = Qs
         if Q_targets is None:
             self.Q_targets = Qs
@@ -165,55 +163,29 @@ class SAC_MB(Algo):
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def _get_q_target(self):
-        """===============MBPO===========start================"""
-        # next_observations_ph = self.op_phs_dict['next_observations']
-        # dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
-        # next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        # next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-        # next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-        #
-        # input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
-        # next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
-        #
-        # min_next_Q = tf.reduce_min(next_q_values, axis=0)
-        # next_values_var = min_next_Q - self.alpha * next_log_pis_var
-        #
-        # dones_ph = tf.cast(self.op_phs_dict['dones'], next_values_var.dtype)
-        # dones_ph = tf.expand_dims(dones_ph, axis=-1)
-        # rewards_ph = self.op_phs_dict['rewards']
-        # rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
-        # self.q_target = td_target(
-        #     reward=self.reward_scale * rewards_ph,
-        #     discount=self.discount,
-        #     next_value=(1 - dones_ph) * next_values_var)
 
-        """===============MBPO=============end================"""
-
-        """===============change===========start================"""
-        observation_ph = self.op_phs_dict['observations']
-        action_ph = self.op_phs_dict['actions']
-        dist_info_sym = self.dynamics_model.distribution_info_sym(observation_ph, action_ph)
-
-        # random_model_index = randint(0, self.dynamics_model.num_models-1)
-        means = dist_info_sym['mean']
-        # interval = tf.shape(means)[0]//self.dynamics_model.num_models
-        # next_observation = means[interval*random_model_index:interval*(random_model_index+1)]
-        next_observation = means
-        dist_info_sym = self.policy.distribution_info_sym(next_observation)
+        next_observations_ph = self.op_phs_dict['next_observations']
+        dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
         next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
-        min_next_Q = tf.reduce_min(next_q_values, axis=0)
-        rewards = self.training_environment.tf_reward(observation_ph, action_ph, next_observation)
-        rewards = tf.expand_dims(rewards, axis=-1)
+        next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+        next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
-        dones_ph = tf.cast(self.op_phs_dict['dones'], min_next_Q.dtype)
+        input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+
+        min_next_Q = tf.reduce_min(next_q_values, axis=0)
+        next_values_var = min_next_Q - self.alpha * next_log_pis_var
+
+        dones_ph = tf.cast(self.op_phs_dict['dones'], next_values_var.dtype)
         dones_ph = tf.expand_dims(dones_ph, axis=-1)
+        rewards_ph = self.op_phs_dict['rewards']
+        rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
         self.q_target = td_target(
-            reward=self.reward_scale * rewards,
+            reward=self.reward_scale * rewards_ph,
             discount=self.discount,
-            next_value=(1 - dones_ph) * min_next_Q)
-        """===============change===========end=================="""
+            next_value=(1 - dones_ph) * next_values_var)
+
+
 
         return tf.stop_gradient(self.q_target)
 
@@ -226,12 +198,13 @@ class SAC_MB(Algo):
         Q-function update rule.
         """
 
+
         q_target = self._get_q_target()
         assert q_target.shape.as_list() == [None, 1]
         observations_ph = self.op_phs_dict['observations']
         actions_ph = self.op_phs_dict['actions']
-        input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
+        input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
         q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
         q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
                                     for q_value in q_values_var]
@@ -248,6 +221,7 @@ class SAC_MB(Algo):
             in enumerate(zip(self.Qs, q_losses, self.q_optimizers))]
 
         self.training_ops.update({'Q': tf.group(q_training_ops)})
+
 
 
 
@@ -289,9 +263,29 @@ class SAC_MB(Algo):
         elif self.action_prior == 'uniform':
             policy_prior_log_probs = 0.0
 
-        input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
+
+        """==============================================================="""
+        # input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
+        # next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        # min_q_val_var = tf.reduce_min(next_q_values, axis=0)
+        """==============================================================="""
+        # dist_info_sym = self.dynamics_model.distribution_info_sym(observations_ph, actions_var, pred_type='rand')
+        dist_info_sym = self.dynamics_model.distribution_info_sym(observations_ph, actions_var, pred_type='mean')
+        next_observation = dist_info_sym['mean']
+        dist_info_sym = self.policy.distribution_info_sym(next_observation)
+        next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
         next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        min_q_val_var = tf.reduce_min(next_q_values, axis=0)
+        rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
+        rewards = tf.expand_dims(rewards, axis=-1)
+        q_values_var = self.q_values_var = [td_target(
+            reward=self.reward_scale * rewards,
+            discount=self.discount,
+            next_value= q) for q in next_q_values]
+        min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        """==============================================================="""
+
+
 
         if self.reparameterize:
             policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
@@ -349,6 +343,7 @@ class SAC_MB(Algo):
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
+            # print("q_values: ",  sess.run([tf.reshape(q, [-1]) for q in self.q_values_var], feed_dict))
             if log:
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
@@ -359,6 +354,7 @@ class SAC_MB(Algo):
 
     def train_actor(self, buffer, grad_steps, log=True):
         sess = tf.get_default_session()
+        # st()
         for i in range(grad_steps):
             value_dict=buffer.random_batch_simple(self.sampler_batch_size)
             placeholder=self.op_phs_dict['observations']

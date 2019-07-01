@@ -367,7 +367,3 @@ def create_rnn(name,
                                          )
 
     return input_var, state_var,  output_var, next_state_var, cell
-
-
-
-

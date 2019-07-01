@@ -6,6 +6,7 @@ from meta_mb.utils import compile_function
 from meta_mb.logger import logger
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 import time
+from random import randint
 
 
 class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
@@ -42,28 +43,34 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self.valid_split_ratio = valid_split_ratio
         self.rolling_average_persitency = rolling_average_persitency
 
-        self.buffer_size = buffer_size
+        self.buffer_size_train = int(buffer_size * (1 - valid_split_ratio))
+        self.buffer_size_test = int(buffer_size * valid_split_ratio)
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.num_models = num_models
         self.name = name
         self._dataset_train = None
         self._dataset_test = None
+        self.hidden_sizes = hidden_sizes
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
 
-        hidden_nonlinearity = self._activations[hidden_nonlinearity]
-        output_nonlinearity = self._activations[output_nonlinearity]
+        self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
+        self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
 
         """ computation graph for training and simple inference """
-        with tf.variable_scope(name):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+            self._create_stats_vars()
+
             self.max_logvar = tf.Variable(np.ones([1, obs_space_dims]) * max_logvar, dtype=tf.float32,
+                                          trainable=True,
                                           name="max_logvar")
             self.min_logvar = tf.Variable(np.ones([1, obs_space_dims]) * min_logvar, dtype=tf.float32,
+                                          trainable=True,
                                           name="min_logvar")
-
+            self._create_assign_ph()
 
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
@@ -73,19 +80,23 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
 
+            obs_ph = tf.split(self.nn_input, self.num_models, axis=0)
+
             # create MLP
             mlps = []
             delta_preds = []
             var_preds = []
+            logvar_preds = []
+            invar_preds = []
             self.obs_next_pred = []
             for i in range(num_models):
-                with tf.variable_scope('model_{}'.format(i)):
-                    mlp = MLP(name,
+                with tf.variable_scope('model_{}'.format(i), reuse = tf.AUTO_REUSE):
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
-                              input_var=self.nn_input,
+                              input_var=obs_ph[i],
                               input_dim=obs_space_dims+action_space_dims,
                               )
                     mlps.append(mlp)
@@ -94,16 +105,22 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
                 var = tf.exp(logvar)
+                inv_var = tf.exp(-logvar)
 
                 delta_preds.append(mean)
+                logvar_preds.append(logvar)
                 var_preds.append(var)
+                invar_preds.append(inv_var)
 
             self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+            self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+            self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
 
             # define loss and train_op
-            self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2/self.var_pred + tf.log(self.var_pred))
+            self.loss = tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
+                                       + self.logvar_pred)
             self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
             self.optimizer = optimizer(learning_rate=self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
@@ -134,7 +151,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
-                    mlp = MLP(name,
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=2 * obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
@@ -147,8 +164,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
                 var = tf.exp(logvar)
+                inv_var = tf.exp(-logvar)
 
-                loss = tf.reduce_mean((self.delta_model_batches[i] - mean) ** 2/var + logvar)
+                loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
                 loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
 
                 delta_preds.append(mean)
@@ -170,7 +188,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         self._networks = mlps
 
-    def predict(self, obs, act, pred_type='rand', deterministic=True):
+    def predict(self, obs, act, pred_type='rand', deterministic=False):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -190,14 +208,17 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         obs_original = obs
 
+        obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
         if self.normalize_input:
             obs, act = self._normalize_data(obs, act)
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
             delta = np.array(self.f_delta_pred(obs, act))
             var = np.array(self.f_var_pred(obs, act))
             if not deterministic:
                 delta = np.random.normal(delta, np.sqrt(var))
-            delta = denormalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
+            delta = self._denormalize_data(delta)
         else:
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
             delta = np.array(self.f_delta_pred(obs, act))
             var = np.array(self.f_var_pred(obs, act))
             if not deterministic:
@@ -259,6 +280,81 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         pred_obs_batches = obs_batches_original + delta_batches
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
+
+    def distribution_info_sym(self, obs_var, act_var, pred_type = 'mean'):
+        means = []
+        log_stds = []
+        if pred_type == 'mean':
+            with tf.variable_scope(self.name, reuse=True):
+                obs_var = tf.split(obs_var, self.num_models, axis=0)
+                act_var = tf.split(act_var, self.num_models, axis=0)
+                for i in range(self.num_models):
+                    with tf.variable_scope('model_{}'.format(i), reuse=True):
+                        in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                        in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                        input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                        mlp = MLP(self.name+'/model_{}'.format(i),
+                                  output_dim=2 * self.obs_space_dims,
+                                  hidden_sizes=self.hidden_sizes,
+                                  hidden_nonlinearity=self.hidden_nonlinearity,
+                                  output_nonlinearity=self.output_nonlinearity,
+                                  input_var=input_var,
+                                  input_dim=self.obs_space_dims + self.action_space_dims,
+                                  )
+                        mean, logvar = tf.split(mlp.output_var, 2,  axis=-1)
+                        logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                        logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                        mean = mean * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
+                    means.append(mean)
+                    log_stds.append(logvar/2)
+            mean = tf.concat(means, axis=0)
+            log_std = tf.concat(log_stds, axis=0)
+        elif pred_type == 'rand':
+            with tf.variable_scope(self.name, reuse=True):
+                for i in range(self.num_models):
+                    with tf.variable_scope('model_{}'.format(i), reuse=True):
+                        in_obs_var = (obs_var - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                        in_act_var = (act_var - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                        input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                        mlp = MLP(self.name+'/model_{}'.format(i),
+                                  output_dim=2 * self.obs_space_dims,
+                                  hidden_sizes=self.hidden_sizes,
+                                  hidden_nonlinearity=self.hidden_nonlinearity,
+                                  output_nonlinearity=self.output_nonlinearity,
+                                  input_var=input_var,
+                                  input_dim=self.obs_space_dims + self.action_space_dims,
+                                  )
+                        mean, logvar = tf.split(mlp.output_var, 2,  axis=-1)
+                        logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                        logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                        mean = mean * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
+                    means.append(mean)
+                    log_stds.append(logvar/2)
+            random_index = randint(0, self.num_models - 1)
+            mean = means[random_index]
+            log_std = log_stds[random_index]
+
+        return dict(mean=mean, log_std=log_std)
+
+    def _create_assign_ph(self):
+        self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")
+        self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="max_logvar_ph")
+        self._assign_ops_var = [tf.assign(self.min_logvar, self._min_log_var_ph), tf.assign(self.max_logvar,
+                                                                                            self._max_log_var_ph)]
+
+    def __getstate__(self):
+        state = MLPDynamicsEnsemble.__getstate__(self)
+        sess = tf.get_default_session()
+        state['min_log_var'] = sess.run(self.min_logvar)
+        state['max_log_var'] = sess.run(self.max_logvar)
+        return state
+
+    def __setstate__(self, state):
+        MLPDynamicsEnsemble.__setstate__(self, state)
+        sess = tf.get_default_session()
+        sess.run(self._assign_ops_var, feed_dict={self._min_log_var_ph: state['min_log_var'],
+                                                  self._max_log_var_ph: state['max_log_var']
+                                                  })
 
 
 def denormalize(data_array, mean, std):

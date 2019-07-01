@@ -8,6 +8,7 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
+from random import randint
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
@@ -408,7 +409,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             # randomly selecting the prediction of one model in each row
             idx = np.random.randint(0, self.num_models, size=batch_size)
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
-            self.model_used = idx
+            # self.model_used = idx
         elif pred_type == 'mean':
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':
@@ -457,31 +458,55 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 
-    def distribution_info_sym(self, obs_var, act_var):
+    def distribution_info_sym(self, obs_var, act_var, pred_type = 'mean'):
         means = []
         log_stds = []
-        with tf.variable_scope(self.name, reuse=True):
-            obs_var = tf.split(obs_var, self.num_models, axis=0)
-            act_var = tf.split(act_var, self.num_models, axis=0)
-            for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=self.obs_space_dims,
-                              hidden_sizes=self.hidden_sizes,
-                              hidden_nonlinearity=self.hidden_nonlinearity,
-                              output_nonlinearity=self.output_nonlinearity,
-                              input_var=input_var,
-                              input_dim=self.obs_space_dims + self.action_space_dims,
-                              )
-                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
-                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
-                means.append(mean)
-                log_stds.append(log_std)
-        mean = tf.concat(means, axis=0)
-        log_std = tf.concat(log_stds, axis=0)
+        if pred_type == 'mean':
+            with tf.variable_scope(self.name, reuse=True):
+                obs_var = tf.split(obs_var, self.num_models, axis=0)
+                act_var = tf.split(act_var, self.num_models, axis=0)
+                for i in range(self.num_models):
+                    with tf.variable_scope('model_{}'.format(i), reuse=True):
+                        in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                        in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                        input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                        mlp = MLP(self.name+'/model_{}'.format(i),
+                                  output_dim=self.obs_space_dims,
+                                  hidden_sizes=self.hidden_sizes,
+                                  hidden_nonlinearity=self.hidden_nonlinearity,
+                                  output_nonlinearity=self.output_nonlinearity,
+                                  input_var=input_var,
+                                  input_dim=self.obs_space_dims + self.action_space_dims,
+                                  )
+                        mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
+                        log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                    means.append(mean)
+                    log_stds.append(log_std)
+            mean = tf.concat(means, axis=0)
+            log_std = tf.concat(log_stds, axis=0)
+        elif pred_type == 'rand':
+            with tf.variable_scope(self.name, reuse=True):
+                for i in range(self.num_models):
+                    with tf.variable_scope('model_{}'.format(i), reuse=True):
+                        in_obs_var = (obs_var - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                        in_act_var = (act_var - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                        input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                        mlp = MLP(self.name+'/model_{}'.format(i),
+                                  output_dim=self.obs_space_dims,
+                                  hidden_sizes=self.hidden_sizes,
+                                  hidden_nonlinearity=self.hidden_nonlinearity,
+                                  output_nonlinearity=self.output_nonlinearity,
+                                  input_var=input_var,
+                                  input_dim=self.obs_space_dims + self.action_space_dims,
+                                  )
+                        mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
+                        log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                    means.append(mean)
+                    log_stds.append(log_std)
+                random_index = randint(0, self.num_models - 1)
+            mean = means[random_index]
+            log_std = log_stds[random_index]
+
         return dict(mean=mean, log_std=log_std)
 
     def predict_std(self, obs, act):
@@ -588,6 +613,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       ])
 
     def _normalize_data(self, obs, act, delta=None):
+        # print(len(obs), len(act), self.num_models)
         assert len(obs) == len(act) == self.num_models
         assert self.normalization is not None
         norm_obses = []
