@@ -66,13 +66,15 @@ class WorkerData(WorkerDataBase):
         time_env_samp_proc = time.time() - time_env_samp_proc
 
         self.result.append(samples_data)
-
         time_step = time.time() - time_step
-        time.sleep(max(self.simulation_sleep - time_step, 0))
+
+        time_sleep = max(self.simulation_sleep - time_step, 0)
+        time.sleep(time_sleep)
 
         logger.logkv('Data-TimeStep', time_step)
         logger.logkv('Data-TimeEnvSampling', time_env_sampling)
         logger.logkv('Data-TimeEnvSampProc', time_env_samp_proc)
+        logger.logkv('Data-TimeSleep', time_sleep)
 
     def _synch(self, dynamics_model_state_pickle):
         time_synch = time.time()

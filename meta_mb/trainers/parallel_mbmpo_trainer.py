@@ -32,23 +32,23 @@ class ParallelTrainer(object):
             feed_dicts,
             n_itr,
             num_inner_grad_steps,
-            initial_random_samples,
             flags_need_query,
-            flags_push_freq,
-            flags_pull_freq,
-            sample_from_buffer,
-            fraction_meta_batch_size,
+            num_rollouts_per_iter,
             config,
             simulation_sleep,
+            initial_random_samples=True,
             start_itr=0,
             ):
 
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
-            WorkerData(fraction_meta_batch_size, simulation_sleep),
+            WorkerData(
+                num_rollouts_per_iter=num_rollouts_per_iter,
+                simulation_sleep=simulation_sleep,
+            ),
             WorkerModel(),
-            WorkerPolicy(sample_from_buffer, num_inner_grad_steps),
+            WorkerPolicy(num_inner_grad_steps=num_inner_grad_steps),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
@@ -59,6 +59,7 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
+        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
             Process(
@@ -79,16 +80,15 @@ class ParallelTrainer(object):
                     n_itr,
                     stop_cond,
                     need_query,
-                    push_freq,
-                    pull_freq,
+                    auto_push,
                     config,
                 ),
             ) for (worker_instance, name, feed_dict,
                    queue_prev, queue, queue_next,
-                   worker_remote, need_query, push_freq) in zip(
+                   worker_remote, need_query, auto_push) in zip(
                 worker_instances, names, feed_dicts,
                 queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
-                worker_remotes, flags_need_query, flags_push_freq, flags_pull_freq,
+                worker_remotes, flags_need_query, flags_auto_push,
                 )
         ]
 

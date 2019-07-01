@@ -145,6 +145,7 @@ class Sampler(BaseSampler):
 
         self.total_timesteps_sampled += self.total_samples
         if log:
+            logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 

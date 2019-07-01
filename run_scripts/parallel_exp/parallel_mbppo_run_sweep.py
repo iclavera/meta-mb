@@ -14,8 +14,9 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
+
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'g1e1-revert-fully-asynch-parallel-mbppo'
+EXP_NAME = '2x-all-1-0.99-1-mbppo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -39,9 +40,9 @@ def run_experiment(**kwargs):
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.mkdir(exp_dir + '/Data/')
-    os.mkdir(exp_dir + '/Model/')
-    os.mkdir(exp_dir + '/Policy/')
+    os.makedirs(exp_dir + '/Data/', exist_ok=True)
+    os.makedirs(exp_dir + '/Model/', exist_ok=True)
+    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
     json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -183,7 +184,7 @@ if __name__ == '__main__':
 
         'simulation_sleep_frac': [1],
 
-        'env': ['Ant'], #['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
 
         # Problem Conf
         'algo': ['meppo'],
@@ -194,7 +195,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [1], # No outer loop in effect
+        'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
         'n_parallel': [1],
@@ -207,7 +208,7 @@ if __name__ == '__main__':
         'dynamics_max_epochs': [50],  # UNUSED
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256,],
-        'dynamics_buffer_size': [25000],
+        'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
 

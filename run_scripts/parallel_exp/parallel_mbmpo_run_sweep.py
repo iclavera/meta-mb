@@ -19,8 +19,8 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-parallel-mbmpo'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = '2x-all-1-0.99-1-mbmpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -90,32 +90,18 @@ def run_base(exp_dir, **kwargs):
         output_nonlinearity=kwargs['policy_output_nonlinearity'],
     )
 
-    if kwargs['probabilistic_dynamics']:
-        dynamics_model = ProbMLPDynamicsEnsemble(
-            'prob-dynamics-ensemble',
-            env=env,
-            num_models=kwargs['num_models'],
-            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-            hidden_sizes=kwargs['dynamics_hidden_sizes'],
-            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-            learning_rate=kwargs['dynamics_learning_rate'],
-            batch_size=kwargs['dynamics_batch_size'],
-            buffer_size=kwargs['dynamics_buffer_size'],
-            rolling_average_persitency=kwargs['rolling_average_persitency']
-        )
-    else:
-        dynamics_model = MLPDynamicsEnsemble(
-            'dynamics-ensemble',
-            env=env,
-            num_models=kwargs['num_models'],
-            hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-            hidden_sizes=kwargs['dynamics_hidden_sizes'],
-            output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-            learning_rate=kwargs['dynamics_learning_rate'],
-            batch_size=kwargs['dynamics_batch_size'],
-            buffer_size=kwargs['dynamics_buffer_size'],
-            rolling_average_persitency=kwargs['rolling_average_persitency']
-        )
+    dynamics_model = MLPDynamicsEnsemble(
+        'dynamics-ensemble',
+        env=env,
+        num_models=kwargs['num_models'],
+        hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+        hidden_sizes=kwargs['dynamics_hidden_sizes'],
+        output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+        learning_rate=kwargs['dynamics_learning_rate'],
+        batch_size=kwargs['dynamics_batch_size'],
+        buffer_size=kwargs['dynamics_buffer_size'],
+        rolling_average_persitency=kwargs['rolling_average_persitency'],
+    )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -127,7 +113,7 @@ def run_base(exp_dir, **kwargs):
         target=init_vars,
         name="init_vars",
         args=(sender, config, policy, dynamics_model),
-        daemon=False,
+        daemon=True,
     )
     p.start()
     policy_pickle, dynamics_model_pickle = receiver.recv()
@@ -137,12 +123,10 @@ def run_base(exp_dir, **kwargs):
 
     worker_data_feed_dict = {
         'env_sampler': {
-            # 'rollouts_per_meta_task': kwargs['real_env_rollouts_per_meta_task'],
-            # 'meta_batch_size': kwargs['meta_batch_size'],
+            'rollouts_per_meta_task': kwargs['real_env_rollouts_per_meta_task'],
+            'meta_batch_size': kwargs['meta_batch_size'],
             'max_path_length': kwargs['max_path_length'],
-            # 'parallel': kwargs['parallel'],
-            'num_rollouts': kwargs['num_rollouts'],
-            'n_parallel': kwargs['parallel'],
+            'parallel': kwargs['parallel'],
         },
         'dynamics_sample_processor': {
             'discount': kwargs['discount'],
@@ -159,7 +143,6 @@ def run_base(exp_dir, **kwargs):
             'rollouts_per_meta_task': kwargs['rollouts_per_meta_task'],
             'meta_batch_size': kwargs['meta_batch_size'],
             'max_path_length': kwargs['max_path_length'],
-            'dynamics_model': dynamics_model,
             'deterministic': kwargs['deterministic'],
         },
         'model_sample_processor': {
@@ -189,10 +172,7 @@ def run_base(exp_dir, **kwargs):
         num_inner_grad_steps=kwargs['num_inner_grad_steps'],
         initial_random_samples=kwargs['initial_random_samples'],
         flags_need_query=kwargs['flags_need_query'],
-        flags_push_freq=kwargs['flags_push_freq'],
-        flags_pull_freq=kwargs['flags_pull_freq'],
-        sample_from_buffer=kwargs['sample_from_buffer'],
-        fraction_meta_batch_size=kwargs['fraction_meta_batch_size'],
+        num_rollouts_per_iter=int(kwargs['meta_batch_size'] * kwargs['fraction_meta_batch_size']),
         config=config,
         simulation_sleep=simulation_sleep,
     )
@@ -208,24 +188,17 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'flags_push_freq': [
-            [1, 1, 1],
-        ],
-        'flags_pull_freq': [
-            [1, 1, 1],
-        ],
-        'rolling_average_persitency': [0.1, 0.4, 0.99],
+        'rolling_average_persitency': [0.99],
 
-        'seed': [1,],
-        'probabilistic_dynamics': [False], #[True, False],
-        'num_models': [5],
+        'seed': [1, 2],
 
-        'n_itr': [501 * 20],
+        'n_itr': [401*20],
         'num_rollouts': [1],
-        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'simulation_sleep_frac': [1],
+        'env': ['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
 
         # Problem Conf
+        'num_models': [5],
         'algo': ['mbmpo'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
@@ -239,7 +212,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [False],
-        'fraction_meta_batch_size': [1.],
+        'fraction_meta_batch_size': [0.5],
 
         # Dynamics Model
         'dynamics_hidden_sizes': [(500, 500, 500)],
@@ -247,7 +220,7 @@ if __name__ == '__main__':
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50,],  # UNUSED
         'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [128],
+        'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
