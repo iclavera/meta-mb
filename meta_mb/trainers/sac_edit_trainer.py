@@ -40,6 +40,7 @@ class Trainer(object):
             dynamics_model,
             policy,
             n_itr,
+            rollout_length_params,
             dynamics_model_max_epochs=200,
             policy_update_per_iteration=20,
             num_model_rollouts = 1,
@@ -51,7 +52,12 @@ class Trainer(object):
             model_num_grad_steps=None,
             env_max_replay_buffer_size=1e6,
             model_max_replay_buffer_size=4*1e7,
-            speed_up_factor=100
+            speed_up_factor=100,
+            rollout_batch_size=100,
+            model_train_freq=100,
+            n_train_repeats=1,
+            real_ratio = 1,
+            rollout_length = 1
             ):
         self.algo = algo
         self.env = env
@@ -65,17 +71,23 @@ class Trainer(object):
         self.start_itr = start_itr
         self.num_model_rollouts = num_model_rollouts
         self.task = task
+        self.rollout_length_params = rollout_length_params
         self.n_initial_exploration_steps = n_initial_exploration_steps
         self.env_replay_buffer = SimpleReplayBuffer(self.env, env_max_replay_buffer_size)
         self.model_replay_buffer = SimpleReplayBuffer(self.env, model_max_replay_buffer_size)
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.env_num_grad_steps = env_num_grad_steps
+        self.rollout_batch_size = rollout_batch_size
+        self.rollout_length = rollout_length
         self.speed_up_factor = speed_up_factor
         if env_num_grad_steps is None:
             self.env_num_grad_steps = self.env_sampler.total_samples
         # if model_num_grad_steps is None:
         self.model_num_grad_steps = policy_update_per_iteration * self.env_num_grad_steps
         self.policy_update_per_iteration = policy_update_per_iteration
+        self.model_train_freq = model_train_freq
+        self.n_train_repeats = n_train_repeats
+        self.real_ratio = real_ratio
         #     self.model_num_grad_steps = 20 * self.env_sampler.total_samples
 
         if sess is None:
@@ -108,12 +120,6 @@ class Trainer(object):
                         samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                         self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                             samples_data['dones'], samples_data['next_observations'])
-                        self.dynamics_model.fit(samples_data['observations'],
-                                                samples_data['actions'],
-                                                samples_data['next_observations'],
-                                                epochs=self.dynamics_model_max_epochs, verbose=False,
-                                                log_tabular=True, prefix='Model-')
-
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -121,6 +127,19 @@ class Trainer(object):
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
 
                 """ -------------------- Sampling --------------------------"""
+                all_samples = self.env_replay_buffer.all_samples()
+                for _ in range(self.env_sampler.max_path_length // self.model_train_freq):
+                    self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
+                                            epochs=self.dynamics_model_max_epochs, verbose=False,
+                                            log_tabular=True, prefix='Model-')
+                    for _ in range(self.rollout_length):
+                        random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
+                        actions_from_policy = self.policy.get_actions(random_states)[0]
+                        predictions = self.dynamics_model.predict(random_states, actions_from_policy)
+                        rewards = self.algo.training_environment.reward(random_states, actions_from_policy, predictions)
+                        terminals = np.array([False]).repeat(random_states.shape[0])
+                        self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, terminals, predictions)
+                    self.set_rollout_length(itr)
 
                 logger.log("Obtaining samples...")
                 time_env_sampling_start = time.time()
@@ -133,70 +152,42 @@ class Trainer(object):
                 time_proc_samples_start = time.time()
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                 sample_num = samples_data['observations'].shape[0]
-                # print("+++++++++++++++++++++sample_num: ", sample_num)
                 self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                     samples_data['dones'], samples_data['next_observations'])
                 proc_samples_time = time.time() - time_proc_samples_start
                 model_start = time.time()
-                self.dynamics_model.fit(samples_data['observations'],
-                                        samples_data['actions'],
-                                        samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False,
-                                        log_tabular=True, prefix='Model-')
-                model_end = time.time()
-
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
                 _ = self.env_sample_processor.process_samples(paths, log='all', log_prefix='eval-')
 
-                self.log_diagnostics(paths, prefix='train-')
-                time_optimization_step_start = time.time()
-                logger.log("critic")
-                self.algo.train_critic(self.env_replay_buffer, itr - self.start_itr, self.env_num_grad_steps)
-                critic_end = time.time()
-                # this one should be 40000
-                # grad_steps = self.model_num_grad_steps//self.speed_up_factor
-                predict_start = time.time()
-                actor_time = []
-                logger.log("actor")
-                """============================TODO==========================start============================"""
-                for _ in range(40 * 20):
-                    random_states = samples_data['observations']
-                    actions_from_policy = self.policy.get_actions(random_states)[0]
-                    predictions = self.dynamics_model.predict(random_states, actions_from_policy)
-                    all_obs = np.concatenate([random_states, predictions])
-                    self.model_replay_buffer.add_samples_simple(all_obs)
-                actor_start = time.time()
-                self.algo.train_actor(self.model_replay_buffer, samples_data['observations'].shape[0] * 40)
-                actor_time.append(time.time() - actor_start)
+                for _ in range(self.n_train_repeats * self.env_sampler.max_path_length):
+                    batch_size = 256
+                    env_batch_size = int(batch_size*self.real_ratio)
+                    model_batch_size = batch_size - env_batch_size
+                    env_batch = self.env_replay_buffer.random_batch(env_batch_size)
+                    model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
+                    keys = env_batch.keys()
+                    batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+                    self.algo.do_training(itr, batch)
 
-                #for _ in range(40):
-                    # random_states = samples_data['observations']
-                    #random_batch = self.env_replay_buffer.random_batch(samples_data['observations'].shape[0] * 20)
-                    #random_states = random_batch['observations']
-                    #actions_from_policy = self.policy.get_actions(random_states)[0]
-                    #predictions = self.dynamics_model.predict(random_states, actions_from_policy)
-                    #all_obs = np.concatenate([random_states, predictions])
-                    #self.model_replay_buffer.add_samples_simple(all_obs)
-                    #actor_start = time.time()
-                    #self.algo.train_actor(self.model_replay_buffer, samples_data['observations'].shape[0])
-                    #actor_time.append(time.time() - actor_start)
-                """============================TODO==========================end=============================="""
+
+                self.log_diagnostics(paths, prefix='train-')
+
 
                 train_actor_start = time.time()
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
                 logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
-                logger.logkv('fit_model_time', model_end - model_start)
-                logger.logkv('train_critic_time', critic_end - time_optimization_step_start)
-                logger.logkv('train_actor_time', sum(actor_time))
-                logger.logkv('predict_time', train_actor_start - predict_start)
+                # logger.logkv('fit_model_time', model_end - model_start)
+                # logger.logkv('train_critic_time', critic_end - time_optimization_step_start)
+                # logger.logkv('train_actor_time', sum(actor_time))
+                # logger.logkv('predict_time', train_actor_start - predict_start)
+#
+                # logger.logkv('Time-Optimization', time.time() - time_optimization_step_start)
+                # logger.logkv('Time-SampleProc', np.sum(proc_samples_time))
+                # logger.logkv('Time-Sampling', sampling_time)
 
-                logger.logkv('Time-Optimization', time.time() - time_optimization_step_start)
-                logger.logkv('Time-SampleProc', np.sum(proc_samples_time))
-                logger.logkv('Time-Sampling', sampling_time)
-
-                logger.logkv('Time', time.time() - start_time)
+                # logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
                 logger.log("Saving snapshot...")
@@ -210,6 +201,20 @@ class Trainer(object):
 
         logger.log("Training finished")
         self.sess.close()
+
+    def set_rollout_length(self, itr):
+        min_epoch, max_epoch, min_length, max_length = self.rollout_length_params
+        if itr <= min_epoch:
+            y = min_length
+        else:
+            dx = (itr - min_epoch) / (max_epoch - min_epoch)
+            dx = min(dx, 1)
+            y = dx * (max_length - min_length) + min_length
+
+        self.rollout_length = int(y)
+        # print('[ Model Length ] Epoch: {} (min: {}, max: {}) | Length: {} (min: {} , max: {})'.format(
+        #     itr, min_epoch, max_epoch, self._rollout_length, min_length, max_length
+        # ))
 
     def get_itr_snapshot(self, itr):
         """

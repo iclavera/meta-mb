@@ -101,17 +101,18 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
             if redundant == 0:
                 self._observations[self._top:] = observations[:back_size]
                 self._observations[:total_num - back_size] = observations[back_size:]
-                # self._terminals[self._top:] = terminals[:back_size]
-                # self._terminals[:total_num - back_size] = terminals[back_size:]
             else:
                 print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
                 self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
                 self._observations[:remaining] = observations[back_size + redundant * self._max_buffer_size:]
-                # self._terminals[:] = terminals[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
-                # self._terminals[:remaining] = terminals[back_size + redundant * self._max_buffer_size:]
 
         for _ in range(total_num):
             self._advance()
+
+    def all_samples(self):
+        return self._observations[:self._size], self._actions[:self._size], self._next_obs[:self._size]
+
+
     def terminate_episode(self):
         pass
 

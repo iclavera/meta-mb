@@ -18,12 +18,13 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, num_rollouts, max_path_length):
+    def __init__(self, env, policy, num_rollouts, max_path_length, batch_size = 256):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
         self.policy = policy
         self.max_path_length = max_path_length
+        self.batch_size = batch_size
 
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
@@ -80,7 +81,7 @@ class BaseSampler(object):
             if done:
                 next_obs = self.env.reset()
                 ts = 0
-                
+
             env_time += time.time() - t
 
             new_samples = 0
@@ -151,7 +152,7 @@ class SampleProcessor(object):
         assert 0 <= discount <= 1.0, 'discount factor must be in [0,1]'
         assert 0 <= gae_lambda <= 1.0, 'gae_lambda must be in [0,1]'
         assert hasattr(baseline, 'fit') and hasattr(baseline, 'predict')
-        
+
         self.baseline = baseline
         self.discount = discount
         self.gae_lambda = gae_lambda
@@ -290,4 +291,3 @@ class SampleProcessor(object):
             for path in paths
         ])
         return padded_array
-

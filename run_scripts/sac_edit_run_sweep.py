@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-q-4'
+EXP_NAME = 'MBPO'
 
 
 from meta_mb.algos.sac_edit import SAC_MB
@@ -75,16 +75,6 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        # dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-        #                                      env=env,
-        #                                      num_models=kwargs['num_models'],
-        #                                      hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-        #                                      hidden_sizes=kwargs['dynamics_hidden_sizes'],
-        #                                      output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-        #                                      learning_rate=kwargs['model_learning_rate'],
-        #                                      batch_size=kwargs['dynamics_batch_size'],
-        #                                      buffer_size=kwargs['dynamics_buffer_size'],
-        #                                      )
         dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
                                                 env=env,
                                                 num_models=kwargs['num_models'],
@@ -115,7 +105,8 @@ def run_experiment(**kwargs):
             reward_scale=kwargs['reward_scale'],
             sampler_batch_size=kwargs['sampler_batch_size'],
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-            prediction_type=kwargs['prediction_type']
+            prediction_type=kwargs['prediction_type'],
+            T=kwargs['T'],
         )
 
         trainer = Trainer(
@@ -131,9 +122,15 @@ def run_experiment(**kwargs):
             policy_update_per_iteration=kwargs['policy_update_per_iteration'],
             num_model_rollouts=kwargs['num_model_rollouts'],
             sess=sess,
+            n_initial_exploration_steps=kwargs['n_initial_exploration_steps'],
             env_max_replay_buffer_size=kwargs['env_replay_buffer_max_size'],
             model_max_replay_buffer_size=kwargs['model_replay_buffer_max_size'],
-            speed_up_factor=kwargs['speed_up_factor']
+            speed_up_factor=kwargs['speed_up_factor'],
+            rollout_length_params=kwargs['rollout_length_params'],
+            rollout_batch_size=kwargs['rollout_batch_size'],
+            model_train_freq=kwargs['model_train_freq'],
+            n_train_repeats=kwargs['n_train_repeats'],
+            real_ratio=kwargs['real_ratio'],
         )
 
         trainer.train()
@@ -143,7 +140,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [3],
+        'seed': [2],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
@@ -161,7 +158,7 @@ if __name__ == '__main__':
 
         # replay_buffer
         'env_replay_buffer_max_size': [1e6],
-        'model_replay_buffer_max_size': [4*1e7],
+        'model_replay_buffer_max_size': [2e6],
 
         # Problem Conf
         'n_itr': [400],
@@ -175,17 +172,25 @@ if __name__ == '__main__':
         'sampler_batch_size': [256],
 
         # Dynamics Model
-        'num_models': [4],
+        'num_models': [1],
         'model_learning_rate': [1e-3],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_batch_size': [512],
+        'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [50],
+        'dynamics_model_max_epochs': [30e4],
 
         'num_actions_per_next_observation': [3],
-        'prediction_type':['mean']
+        'prediction_type':['mean'],
+        'T': [3],
+        'n_initial_exploration_steps': [5e3],
+        'rollout_length_params': [[20, 150, 1, 1]],
+        'model_reset_freq': [1000],
+        'model_train_freq': [250],
+        'rollout_batch_size': [100e3],
+        'n_train_repeats': [8],
+        'real_ratio': [0.05]
 
 
         }

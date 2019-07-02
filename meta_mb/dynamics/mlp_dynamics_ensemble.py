@@ -271,7 +271,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         epochs_per_model = []
 
         """ ------- Looping over training epochs ------- """
-        for epoch in range(epochs):
+        for epoch in range(int(epochs)):
 
             # initialize data queue
             feed_dict = dict(
