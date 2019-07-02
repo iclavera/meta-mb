@@ -3,10 +3,7 @@ import tensorflow as tf
 import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
-from meta_mb.logger import logger
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.utils import normalize
-import time
 
 
 class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
@@ -235,8 +232,12 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             act_var = tf.split(act_var, self.num_models, axis=0)
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    if self.normalize_input:
+                        in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                        in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    else:
+                        in_obs_var = obs_var[i]
+                        in_act_var = act_var[i]
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
                               output_dim=2 * self.obs_space_dims,
@@ -255,6 +256,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 log_stds.append(logvar/2)
 
         mean = tf.concat(means, axis=0)
+        mean = tf.clip_by_value(mean, -1e3, 1e3)
         log_std = tf.concat(log_stds, axis=0)
         return dict(mean=mean, var=log_std)
 

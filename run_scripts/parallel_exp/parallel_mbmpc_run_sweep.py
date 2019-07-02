@@ -13,7 +13,7 @@ from tensorflow import ConfigProto
 import pickle
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-mbmpc'
+EXP_NAME = 'test-all-1-0.99-1-mbmpc'
 
 
 def init_vars(sender, config_sess, policy, dynamics_model):
@@ -162,23 +162,23 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'rolling_average_persitency': [0.99],
+        'rolling_average_persitency': [0.4],
 
         'seed': [1, 2],
 
         'n_itr': [401*20],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
+        'env': ['HalfCheetah'], #['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
 
         # Problem
         'probabilistic_dynamics': [True],
-        'max_path_length': [200],
+        'max_path_length': [50],
         'normalize': [False],
         'discount': [1.],
 
         # Policy
-        'n_candidates': [2000], # K ###
+        'n_candidates': [1000], # K ###
         'horizon': [20], # Tau ###
         'use_cem': [False],
         'num_cem_iters': [5],
@@ -207,7 +207,6 @@ if __name__ == '__main__':
         'exp_tag': ['parallel-mbmpc']
     }
 
-    assert config.get('recurrent') == [False]
-    assert config.get('n_parallel') == [1]
+    assert config['n_candidates'][0] % config['num_models'][0] == 0  # FIXME: remove constraint
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
