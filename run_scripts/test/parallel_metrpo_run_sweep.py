@@ -12,11 +12,11 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'mbppo-all-1-0.99-1'
+EXP_NAME = 'a-me-trpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -114,7 +114,7 @@ def run_base(exp_dir, **kwargs):
     receiver.close()
 
     '''-------- following classes depend on baseline, env, policy, dynamics_model -----------'''
-
+    
     worker_data_feed_dict = {
         'env_sampler': {
             'num_rollouts': kwargs['num_rollouts'],
@@ -130,7 +130,7 @@ def run_base(exp_dir, **kwargs):
     }
 
     worker_model_feed_dict = {}
-
+    
     worker_policy_feed_dict = {
         'model_sampler': {
             'num_rollouts': kwargs['imagined_num_rollouts'],
@@ -144,9 +144,7 @@ def run_base(exp_dir, **kwargs):
             'positive_adv': kwargs['positive_adv'],
         },
         'algo': {
-            'learning_rate': kwargs['learning_rate'],
-            'clip_eps': kwargs['clip_eps'],
-            'max_epochs': kwargs['num_ppo_steps'],
+            'step_size': kwargs['step_size'],
         }
     }
 
@@ -175,26 +173,26 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99
+            0.1, 0.4, 0.9, 0.99,
         ],
 
         'seed': [1, 2, 3, 4],
-        'n_itr': [500 * 10],
+        'n_itr': [1250],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-
-        'env': ['Walker2d'],
+        'env': ['HalfCheetah', 'Ant'],
 
         # Problem Conf
-        'algo': ['meppo'],
+
+        'algo': ['metrpo'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [True],
+        'log_real_performance': [True],  # UNUSED
         'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
@@ -207,10 +205,11 @@ if __name__ == '__main__':
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
         'dynamics_learning_rate': [1e-3, 5e-4],
-        'dynamics_batch_size': [256,],
-        'dynamics_buffer_size': [1000, 10000],
+        'dynamics_batch_size': [256],
+        'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
+        'initial_random_samples': [True],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -219,12 +218,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.3, 0.2],
-        'learning_rate': [1e-3],
-        'num_ppo_steps': [5],
-        'imagined_num_rollouts': [50,],
+        'step_size': [0.01],
+        'imagined_num_rollouts': [50],
         'scope': [None],
-        'exp_tag': ['timing-parallel-mbppo'],  # For changes besides hyperparams
+        'exp_tag': ['a-me-trpo'],  # For changes besides hyperparams
 
     }
 
