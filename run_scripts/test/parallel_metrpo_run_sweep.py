@@ -173,7 +173,7 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99,
+            0.1, 0.4, 0.9, 0.99,
         ],
 
         'seed': [1, 2, 3, 4],
@@ -181,7 +181,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'env': ['Walker2d', 'Hopper'],
 
         # Problem Conf
 
