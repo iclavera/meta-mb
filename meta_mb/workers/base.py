@@ -117,115 +117,12 @@ class Worker(object):
                 self.set_stop_cond()
 
             remote.send('loop done')
-        logger.log("\n================== {} closed ===================".format(
-            self.name
-        ))
-
-        remote.send('worker closed')
-    """
-    def __call__(
-            self,
-            exp_dir,
-            policy_pickle,
-            env_pickle,
-            baseline_pickle,
-            dynamics_model_pickle,
-            feed_dict,
-            queue_prev, 
-            queue, 
-            queue_next,
-            remote,
-            start_itr,
-            n_itr,
-            stop_cond,
-            need_query,
-            push_freq, # auto_push = True
-            pull_freq,
-            config,
-    ):
-        time_start = time.time()
-
-        self.name = current_process().name
-        logger.configure(dir=exp_dir + '/' + self.name, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
-
-        self.n_itr = n_itr
-        self.queue_prev = queue_prev
-        self.queue = queue
-        self.queue_next = queue_next
-        self.stop_cond = stop_cond
-        
-        # FIXME: specify CPU/GPU usage here
-
-        import tensorflow as tf
-
-        def _init_vars():
-            sess = tf.get_default_session()
-            sess.run(tf.initializers.global_variables())
-
-        with tf.Session(config=config).as_default():
-
-            self.construct_from_feed_dict(
-                policy_pickle,
-                env_pickle,
-                baseline_pickle,
-                dynamics_model_pickle,
-                feed_dict,
-            )
-
-            _init_vars()
-
-            # warm up
-            self.itr_counter = start_itr
-            assert remote.recv() == 'prepare start'
-            self.prepare_start()
-            remote.send('loop ready')
-            logger.dumpkvs()
-            logger.log("\n============== {} is ready =============".format(self.name))
-
-            assert remote.recv() == 'start loop'
-            total_push, total_synch, total_step = 0, 0, 0
-            while not self.stop_cond.is_set():
-
-                if need_query: # poll
-                    time_poll = time.time()
-                    queue_prev.put('push')
-                    time_poll = time.time() - time_poll
-                    logger.logkv('{}-TimePoll'.format(self.name), time_poll)
-
-                do_push, do_synch, do_step = self.process_queue()
-
-                # step
-                if do_step:
-                    for _ in range(pull_freq):
-                        self.itr_counter += 1
-                        self.step()
-                        if self.itr_counter % push_freq == 0: # if auto_push:
-                            do_push += 1
-                            self.push()
-
-                    total_push += do_push
-                    total_synch += do_synch
-                    total_step += pull_freq
-                    logger.logkv(self.name+'-TimeSoFar', time.time() - time_start)
-                    logger.logkv(self.name+'-TotalPush', total_push)
-                    logger.logkv(self.name+'-TotalSynch', total_synch)
-                    logger.logkv(self.name+'-TotalStep', total_step)
-                    logger.dumpkvs()
-                    logger.log("\n========================== {} {}, total {} ===================".format(
-                        self.name,
-                        (do_push, do_synch, pull_freq),
-                        (total_push, total_synch, total_step),
-                    ))
-                    self.set_stop_cond()
-
-            remote.send('loop done')
 
         logger.log("\n================== {} closed ===================".format(
             self.name
         ))
 
         remote.send('worker closed')
-    """
 
     def prepare_start(self):
         raise NotImplementedError

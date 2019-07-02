@@ -1,12 +1,16 @@
 import time, pickle
-import numpy as np
 from meta_mb.logger import logger
-from meta_mb.workers.worker_data_base import WorkerDataBase
+from meta_mb.workers.base import Worker
 
 
-class WorkerData(WorkerDataBase):
+class WorkerData(Worker):
     def __init__(self, simulation_sleep):
-        super().__init__(simulation_sleep)
+        super().__init__()
+        self.simulation_sleep = simulation_sleep
+        self.env = None
+        self.env_sampler = None
+        self.dynamics_sample_processor = None
+        self.samples_data_arr = []
 
     def construct_from_feed_dict(
             self,
@@ -29,8 +33,12 @@ class WorkerData(WorkerDataBase):
             **feed_dict['sample_processor']
         )
 
-    def step(self, random_sinusoid=(False, False)):
+    def prepare_start(self):
+        random_sinusoid = self.queue.get()
+        self.step(random_sinusoid)
+        self.push()
 
+    def step(self, random_sinusoid=(False, False)):
         time_step = time.time()
 
         if self.itr_counter == 1 and self.env_sampler.policy.dynamics_model.normalization is None:
@@ -44,36 +52,30 @@ class WorkerData(WorkerDataBase):
 
         if self.verbose:
             logger.log("Data is obtaining samples...")
-        time_env_sampling = time.time()
         env_paths = self.env_sampler.obtain_samples(
             log=True,
             random=random_sinusoid[0],
             sinusoid=random_sinusoid[1],
             log_prefix='Data-EnvSampler-',
         )
-        time_env_sampling = time.time() - time_env_sampling
 
         '''-------------- Processing environment samples -------------------'''
 
         if self.verbose:
             logger.log("Data is processing samples...")
-        time_env_samp_proc = time.time()
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
             log_prefix='Data-EnvTrajs-',
         )
-        time_env_samp_proc = time.time() - time_env_samp_proc
 
-        self.result.append(samples_data)
+        self.samples_data_arr.append(samples_data)
         time_step = time.time() - time_step
 
         time_sleep = max(self.simulation_sleep - time_step, 0)
         time.sleep(time_sleep)
 
         logger.logkv('Data-TimeStep', time_step)
-        logger.logkv('Data-TimeEnvSampling', time_env_sampling)
-        logger.logkv('Data-TimeEnvSampProc', time_env_samp_proc)
         logger.logkv('Data-TimeSleep', time_sleep)
 
     def _synch(self, dynamics_model_state_pickle):
@@ -84,4 +86,16 @@ class WorkerData(WorkerDataBase):
         time_synch = time.time() - time_synch
 
         logger.logkv('Data-TimeSynch', time_synch)
+
+    def push(self):
+        time_push = time.time()
+        self.queue_next.put(pickle.dumps(self.samples_data_arr))
+        self.samples_data_arr = []
+        time_push = time.time() - time_push
+
+        logger.logkv('Data-TimePush', time_push)
+
+    def set_stop_cond(self):
+        if self.itr_counter >= self.n_itr:
+            self.stop_cond.set()
 

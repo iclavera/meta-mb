@@ -1,22 +1,19 @@
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.trainers.parallel_mb_trainer import ParallelTrainer
 from meta_mb.policies.mpc_controller import MPCController
-from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
 from meta_mb.utils.utils import ClassEncoder, set_seed
-from multiprocessing import Process, Pipe
-from tensorflow import ConfigProto
+from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
 import json
 import os
+from multiprocessing import Process, Pipe
+from tensorflow import ConfigProto
 import pickle
 
-
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-parallel-mbmpc'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = '2x-all-1-0.99-1-mbmpc'
 
 
 def init_vars(sender, config_sess, policy, dynamics_model):
@@ -36,7 +33,6 @@ def init_vars(sender, config_sess, policy, dynamics_model):
 
 
 def run_experiment(**config):
-
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
@@ -74,70 +70,43 @@ def run_base(exp_dir, **config):
     else:
         raise NotImplementedError
 
-    if config['recurrent']:
-        dynamics_model = RNNDynamicsEnsemble(
-            name="dyn_model",
+    if config['probabilistic_dynamics']:
+        dynamics_model = ProbMLPDynamicsEnsemble(
+            'prob-dynamics-ensemble',
             env=env,
-            hidden_sizes=config['hidden_sizes_model'],
-            learning_rate=config['learning_rate'],
-            backprop_steps=config['backprop_steps'],
-            cell_type=config['cell_type'],
             num_models=config['num_models'],
-            batch_size=config['batch_size_model'],
-            normalize_input=True,
+            hidden_nonlinearity=config['dynamics_hidden_nonlinearity'],
+            hidden_sizes=config['dynamics_hidden_sizes'],
+            output_nonlinearity=config['dynamics_output_nonlinearity'],
+            learning_rate=config['dynamics_learning_rate'],
+            batch_size=config['dynamics_batch_size'],
+            buffer_size=config['dynamics_buffer_size'],
+            rolling_average_persitency=config['rolling_average_persitency']
         )
-
-        policy = RNNMPCController(
-            name="policy",
-            env=env,
-            dynamics_model=dynamics_model,
-            discount=config['discount'],
-            n_candidates=config['n_candidates'],
-            horizon=config['horizon'],
-            use_cem=config['use_cem'],
-            num_cem_iters=config['num_cem_iters'],
-            use_reward_model=config['use_reward_model']
-        )
-
     else:
-        
-        if config['probabilistic_dynamics']:
-            dynamics_model = ProbMLPDynamicsEnsemble(
-                'prob-dynamics-ensemble',
-                env=env,
-                num_models=config['num_models'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                hidden_sizes=config['hidden_sizes_model'],
-                output_nonlinearity=config['output_nonlinearity_model'],
-                learning_rate=config['learning_rate'],
-                batch_size=config['batch_size_model'],
-                buffer_size=config['buffer_size_model'],
-                rolling_average_persitency=config['rolling_average_persitency']
-            )
-        else:
-            dynamics_model = MLPDynamicsEnsemble(
-                'dynamics-ensemble',
-                env=env,
-                num_models=config['num_models'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                hidden_sizes=config['hidden_sizes_model'],
-                output_nonlinearity=config['output_nonlinearity_model'],
-                learning_rate=config['learning_rate'],
-                batch_size=config['batch_size_model'],
-                buffer_size=config['buffer_size_model'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-            )
-
-        policy = MPCController(
-            name="policy",
+        dynamics_model = MLPDynamicsEnsemble(
+            'dynamics-ensemble',
             env=env,
-            dynamics_model=dynamics_model,
-            discount=config['discount'],
-            n_candidates=config['n_candidates'],
-            horizon=config['horizon'],
-            use_cem=config['use_cem'],
-            num_cem_iters=config['num_cem_iters'],
+            num_models=config['num_models'],
+            hidden_nonlinearity=config['dynamics_hidden_nonlinearity'],
+            hidden_sizes=config['dynamics_hidden_sizes'],
+            output_nonlinearity=config['dynamics_output_nonlinearity'],
+            learning_rate=config['dynamics_learning_rate'],
+            batch_size=config['dynamics_batch_size'],
+            buffer_size=config['dynamics_buffer_size'],
+            rolling_average_persitency=config['rolling_average_persitency']
         )
+
+    policy = MPCController(
+        name="policy",
+        env=env,
+        dynamics_model=dynamics_model,
+        discount=config['discount'],
+        n_candidates=config['n_candidates'],
+        horizon=config['horizon'],
+        use_cem=config['use_cem'],
+        num_cem_iters=config['num_cem_iters'],
+    )
 
     '''-------- dumps and reloads -----------------'''
 
@@ -178,8 +147,6 @@ def run_base(exp_dir, **config):
         initial_random_samples=config['initial_random_samples'],
         initial_sinusoid_samples=config['initial_sinusoid_samples'],
         flags_need_query=config['flags_need_query'],
-        flags_push_freq=config['flags_push_freq'],
-        flags_pull_freq=config['flags_pull_freq'],
         config=config_sess,
         simulation_sleep=simulation_sleep,
     )
@@ -195,50 +162,44 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'flags_push_freq': [
-            [1, 1, 1],
-        ],
-        'flags_pull_freq': [
-            [1, 1, 1],
-        ],
-        'rolling_average_persitency': [0.1, 0.4, 0.99],
+        'rolling_average_persitency': [0.99],
 
-        'seed': [1,],
-        'probabilistic_dynamics': [False], #[True, False],
-        'num_models': [5],
+        'seed': [1, 2],
 
-        'n_itr': [501 * 20],
+        'n_itr': [401*20],
         'num_rollouts': [1],
-        'simulation_sleep_frac': [2, 1, 0.5, 0.1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'simulation_sleep_frac': [1],
+        'env': ['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
 
         # Problem
+        'probabilistic_dynamics': [True],
         'max_path_length': [200],
         'normalize': [False],
         'discount': [1.],
 
         # Policy
-        'n_candidates': [1000], # K ###
-        'horizon': [10], # Tau ###
+        'n_candidates': [2000], # K ###
+        'horizon': [20], # Tau ###
         'use_cem': [False],
         'num_cem_iters': [5],
 
         # Training
-        'learning_rate': [0.001],
+        'dynamics_learning_rate': [0.001],
         'valid_split_ratio': [0.1],
-        'initial_random_samples': [False],
-        'initial_sinusoid_samples': [True],
+        'initial_random_samples': [True],
+        'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'recurrent': [False], # only support recurrent = False
-        'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500, 500, 500)],
-        'output_nonlinearity_model': [None],
-        'dynamic_model_epochs': [1], # UNUSED
+        'recurrent': [False],
+        'num_models': [5],
+        'dynamics_hidden_nonlinearity': ['swish'],
+        'dynamics_output_nonlinearity': [None],
+        'dynamics_hidden_sizes': [(512, 512, 512)],
+        'dynamic_model_epochs': [50],  # UNUSED
+        'dynamics_buffer_size': [25000],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [128],
-        'buffer_size_model': [25000],
+        'dynamics_batch_size': [64],
         'cell_type': ['lstm'],
 
         #  Other

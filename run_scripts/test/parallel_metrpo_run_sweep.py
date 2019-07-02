@@ -16,7 +16,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-5e-4-metrpo'
+EXP_NAME = 'a-me-trpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -173,15 +173,15 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99,
+            0.1, 0.4, 0.9, 0.99,
         ],
 
-        'seed': [1, 2,],
-        'n_itr': [401*20],
+        'seed': [1, 2, 3, 4],
+        'n_itr': [1250],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'env': ['HalfCheetah', 'Ant'],
 
         # Problem Conf
 
@@ -204,8 +204,8 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [5e-4],
-        'dynamics_batch_size': [256,],
+        'dynamics_learning_rate': [1e-3, 5e-4],
+        'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
@@ -218,12 +218,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.3],
-        'num_ppo_steps': [5],
-        'step_size': [0.001],
-        'imagined_num_rollouts': [50,],
+        'step_size': [0.01],
+        'imagined_num_rollouts': [50],
         'scope': [None],
-        'exp_tag': ['parallel-metrpo'],  # For changes besides hyperparams
+        'exp_tag': ['a-me-trpo'],  # For changes besides hyperparams
 
     }
 
