@@ -5,6 +5,7 @@ from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.utils import normalize
 import time
 
 
@@ -48,6 +49,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self.learning_rate = learning_rate
         self.num_models = num_models
         self.name = name
+        self.hidden_sizes = hidden_sizes
         self._dataset_train = None
         self._dataset_test = None
 
@@ -59,6 +61,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         hidden_nonlinearity = self._activations[hidden_nonlinearity]
         output_nonlinearity = self._activations[output_nonlinearity]
+        self.hidden_nonlinearity = hidden_nonlinearity
+        self.output_nonlinearity = output_nonlinearity
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -97,7 +101,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
                               input_var=obs_ph[i],
-                              input_dim=obs_space_dims+action_space_dims,
+                              input_dim=obs_space_dims+action_space_dims, # FIXME: input weight_normalization?
                               )
                     mlps.append(mlp)
 
@@ -116,7 +120,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-
 
             # define loss and train_op
             self.loss = tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
@@ -187,6 +190,79 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                                                                 self.var_pred_model_batches_stack)
 
         self._networks = mlps
+
+    """
+    def predict_sym(self, obs_ph, act_ph):
+        """
+        Predict the batch of next observations given the batch of current observations and actions
+        :param obs: observations - tf placeholder of shape (n_samples, ndim_obs)
+        :param act: actions - tf placeholder of shape (n_samples, ndim_act)
+        :return: pred_obs_next: shape:  (n_samples, ndim_obs)
+        """
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            delta_preds = []
+            var_preds = []
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    in_obs_var = (obs_ph - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim= 2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                var = tf.exp(logvar)
+
+                delta_preds.append(mean)
+                var_preds.append(var)
+
+            delta_pred = tf.stack(delta_preds, axis=1)  # shape: (batch_size, n_models, ndim_obs)
+            var_pred = tf.stack(var_preds, axis=1)
+        pred_obs = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.sqrt(var_pred)
+        model_idx = tf.random.uniform(shape=(tf.shape(delta_pred)[0],), minval=0, maxval=self.num_models, dtype=tf.int32)
+        pred_obs = tf.batch_gather(pred_obs, tf.reshape(model_idx, [-1, 1]))
+        pred_obs = tf.squeeze(pred_obs, axis=1)
+        return pred_obs
+    """
+
+    def distribution_info_sym(self, obs_var, act_var):
+        means = []
+        log_stds = []
+        with tf.variable_scope(self.name, reuse=True):
+            obs_var = tf.split(obs_var, self.num_models, axis=0)
+            act_var = tf.split(act_var, self.num_models, axis=0)
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+
+                means.append(mean)
+                log_stds.append(logvar/2)
+
+        mean = tf.concat(means, axis=0)
+        log_std = tf.concat(log_stds, axis=0)
+        return dict(mean=mean, var=log_std)
 
     def predict(self, obs, act, pred_type='rand', deterministic=False):
         """

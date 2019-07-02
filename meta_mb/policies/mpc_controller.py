@@ -1,4 +1,5 @@
 from meta_mb.utils.serializable import Serializable
+import tensorflow as tf
 import numpy as np
 
 
@@ -37,8 +38,16 @@ class MPCController(Serializable):
         while hasattr(self.unwrapped_env, '_wrapped_env'):
             self.unwrapped_env = self.unwrapped_env._wrapped_env
 
+        assert len(env.observation_space.shape) == 1
+        assert len(env.action_space.shape) == 1
+        self.obs_space_dims = env.observation_space.shape[0]
+        self.action_space_dims = env.action_space.shape[0]
+
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+
+        if not use_cem:
+            self.build_rs_graph()
 
     @property
     def vectorized(self):
@@ -120,6 +129,31 @@ class MPCController(Serializable):
 
         return cand_a[range(m), np.argmax(returns, axis=1)]
 
+    def build_rs_graph(self):
+        returns = 0
+        self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+        act = tf.random.uniform(
+            shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
+            minval=self.env.action_space.low,
+            maxval=self.env.action_space.high)
+        observation = tf.reshape(
+            tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
+            [-1, self.obs_space_dims]
+        )
+        for t in range(self.horizon):
+            # next_observation = self.dynamics_model.predict_sym(observation, act[t])
+            dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
+            mean, var = dynamics_dist['mean'], dynamics_dist['var']
+            next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
+            assert self.reward_model is None
+            rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+            returns = self.discount ** t * rewards
+            observation = next_observation
+        returns = tf.reshape(returns, (-1, self.n_candidates))
+        cand_a = tf.reshape(act[0], [-1, self.n_candidates, self.action_space_dims])
+        idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])
+        self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+
     def get_rs_action(self, observations):
         n = self.n_candidates
         m = len(observations)
@@ -141,6 +175,10 @@ class MPCController(Serializable):
             observation = next_observation
         returns = returns.reshape(m, n)
         return cand_a[range(m), np.argmax(returns, axis=1)]
+
+    def get_rs_action(self, observations):
+        sess = tf.get_default_session()
+        return sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
 
     def get_params_internal(self, **tags):
         return []
