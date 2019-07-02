@@ -177,11 +177,11 @@ if __name__ == '__main__':
         ],
 
         'seed': [1, 2, 3, 4],
-        'n_itr': [1000],
+        'n_itr': [1250],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'Hopper'],
+        'env': ['HalfCheetah', 'Ant'],
 
         # Problem Conf
 
@@ -205,7 +205,7 @@ if __name__ == '__main__':
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
         'dynamics_learning_rate': [1e-3, 5e-4],
-        'dynamics_batch_size': [256,],
+        'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
@@ -219,7 +219,7 @@ if __name__ == '__main__':
 
         # Algo
         'step_size': [0.01],
-        'imagined_num_rollouts': [50,],
+        'imagined_num_rollouts': [50],
         'scope': [None],
         'exp_tag': ['a-me-trpo'],  # For changes besides hyperparams
 
