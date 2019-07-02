@@ -70,7 +70,7 @@ class Worker(object):
             # warm up
             self.itr_counter = start_itr
             if self.verbose:
-                print('working waiting for starting msg from trainer...')
+                print('{} waiting for starting msg from trainer...'.format(self.name))
             assert remote.recv() == 'prepare start'
             self.prepare_start()
             remote.send('loop ready')

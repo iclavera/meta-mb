@@ -193,12 +193,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
     """
     def predict_sym(self, obs_ph, act_ph):
-        """
-        Predict the batch of next observations given the batch of current observations and actions
-        :param obs: observations - tf placeholder of shape (n_samples, ndim_obs)
-        :param act: actions - tf placeholder of shape (n_samples, ndim_act)
-        :return: pred_obs_next: shape:  (n_samples, ndim_obs)
-        """
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             delta_preds = []
             var_preds = []
