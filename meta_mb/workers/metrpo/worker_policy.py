@@ -35,8 +35,8 @@ class WorkerPolicy(Worker):
 
         self.policy = policy
         self.baseline = baseline
-        self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
-        # self.model_sampler = BPTTSampler(env=env, policy=policy, **feed_dict['model_sampler'])
+        #self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        self.model_sampler = BPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         if self.algo == 'meppo':
             self.algo = PPO(policy=policy, **feed_dict['algo'])
@@ -48,7 +48,8 @@ class WorkerPolicy(Worker):
     def prepare_start(self):
         dynamics_model = pickle.loads(self.queue.get())
         self.model_sampler.dynamics_model = dynamics_model
-        self.model_sampler.vec_env.dynamics_model = dynamics_model
+        if hasattr(self.model_sampler, 'vec_env'):
+            self.model_sampler.vec_env.dynamics_model = dynamics_model
         self.step()
         # self.queue_next.put(pickle.dumps(self.result))
         self.push()
@@ -60,13 +61,10 @@ class WorkerPolicy(Worker):
 
         if self.verbose:
             logger.log("Policy is obtaining samples ...")
-        #time_sampling = time.time()
         paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
-        #time_sampling = time.time() - time_sampling
 
         """ ----------------- Processing Samples ---------------------"""
 
-        #time_sample_proc = time.time()
         if self.verbose:
             logger.log("Policy is processing samples ...")
         samples_data = self.model_sample_processor.process_samples(
@@ -74,7 +72,6 @@ class WorkerPolicy(Worker):
             log='all',
             log_prefix='Policy-'
         )
-        #time_sample_proc = time.time() - time_sample_proc
 
         if type(paths) is list:
             self.log_diagnostics(paths, prefix='Policy-')
@@ -83,20 +80,15 @@ class WorkerPolicy(Worker):
 
         """ ------------------ Policy Update ---------------------"""
 
-        #time_algo_opt = time.time()
         if self.verbose:
             logger.log("Policy optimization...")
         # This needs to take all samples_data so that it can construct graph for meta-optimization.
         self.algo.optimize_policy(samples_data, log=True, verbose=self.verbose, prefix='Policy-')
-        #time_algo_opt = time.time() - time_algo_opt
 
         self.policy = self.model_sampler.policy
         time_step = time.time() - time_step
 
         logger.logkv('Policy-TimeStep', time_step)
-        #logger.logkv('Policy-TimeSampling', time_sampling)
-        #logger.logkv('Policy-TimeSampleProc', time_sample_proc)
-        #logger.logkv('Policy-TimeAlgoOpt', time_algo_opt)
 
     def _synch(self, dynamics_model_state_pickle):
         time_synch = time.time()
@@ -105,7 +97,8 @@ class WorkerPolicy(Worker):
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
         assert isinstance(dynamics_model_state, dict)
         self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
-        self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
+        if hasattr(self.model_sampler, 'vec_env'):
+            self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
         time_synch = time.time() - time_synch
 
         logger.logkv('Policy-TimeSynch', time_synch)

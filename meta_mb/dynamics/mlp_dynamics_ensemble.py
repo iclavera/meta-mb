@@ -584,13 +584,51 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 
+    def distribution_info_sym(self, obs_ph, act_ph):
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        means = []
+        log_stds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]
+                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                means.append(mean)
+                log_stds.append(log_std)
+
+        mean = tf.concat(means, axis=0)
+        log_std = tf.concat(log_stds, axis=0)
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        mean, perm_inv = tf.gather(mean, perm_inv), tf.gather(log_std, perm_inv)
+        return dict(mean=mean, log_std=log_std)
+
+    """
     def distribution_info_sym(self, obs_var, act_var):
         means = []
         log_stds = []
         with tf.variable_scope(self.name, reuse=True):
             obs_var = tf.split(obs_var, self.num_models, axis=0)
             act_var = tf.split(act_var, self.num_models, axis=0)
-            for i in range(self.num_models):
+            for i in range(self.num_models):  # if self.normalize_input is True?
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
@@ -610,6 +648,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         mean = tf.concat(means, axis=0)
         log_std = tf.concat(log_stds, axis=0)
         return dict(mean=mean, log_std=log_std)
+    """
 
     def predict_std(self, obs, act):
         """
@@ -742,6 +781,28 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
 
+    def get_shared_param_values(self): # to feed policy
+        state = dict()
+        state['normalization'] = self.normalization
+        state['networks_params'] = [nn.get_param_values() for nn in self._networks]
+        return state
+
+    def set_shared_params(self, state):
+        self.normalization = state['normalization']
+        feed_dict = {}
+        for i in range(self.num_models):
+            feed_dict.update({
+                self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
+                self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+                self._mean_act_ph[i]: self.normalization[i]['act'][0],
+                self._std_act_ph[i]: self.normalization[i]['act'][1],
+                self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+                self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+            })
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict=feed_dict)
+        for i in range(len(self._networks)):
+            self._networks[i].set_params(state['networks_params'][i])
 
 
 
