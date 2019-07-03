@@ -279,8 +279,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
-        delta_preds = []
+        mean_preds = []
         logvar_preds = []
+        delta_preds = []
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
@@ -301,17 +302,22 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
 
-                delta_preds.append(mean)
+                delta_pred = (mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)) * self._std_delta_var[i] + \
+                              self._mean_delta_var[i]
+                mean_preds.append(mean)
                 logvar_preds.append(logvar)
+                delta_preds.append(delta_pred)
 
+        # delta_pred = tf.concat(delta_preds, axis=0)
+        # logvar_pred = tf.concat(logvar_preds, axis=0)
+        # delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred)
+        #
         delta_preds = tf.concat(delta_preds, axis=0)
-        logvar_preds = tf.concat(logvar_preds, axis=0)
-        delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred * 0.5)
-        delta_pred = tf.clip_by_value(delta_pred, -1e3, 1e3)
+        delta_preds = tf.clip_by_value(delta_preds, -1e3, 1e3)
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        return original_obs + tf.gather(delta_pred, perm_inv)
+        return original_obs + tf.gather(delta_preds, perm_inv)
 
     def predict(self, obs, act, pred_type='rand', deterministic=False):
         """

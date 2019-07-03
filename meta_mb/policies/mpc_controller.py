@@ -70,8 +70,6 @@ class MPCController(Serializable):
         else:
             actions = self._get_rs_action(observations)
 
-        #for i in range(3, len(actions)): #limit movement to first 3 joints
-        #    actions[i] = 0
         return actions, dict()
 
     def get_random_action(self, n):
