@@ -24,6 +24,7 @@ class WorkerPolicy(Worker):
     ):
 
         from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
+        from meta_mb.samplers.bptt_samplers.meta_bptt_sampler import MetaBPTTSampler
         from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
         from meta_mb.meta_algos.trpo_maml import TRPOMAML
 
@@ -34,7 +35,9 @@ class WorkerPolicy(Worker):
 
         self.policy = policy
         self.baseline = baseline
-        self.model_sampler = MBMPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        # self.model_sampler = MBMPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        self.model_sampler = MetaBPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model,
+                                             **feed_dict['model_sampler'])
         self.model_sample_processor = MAMLSampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = TRPOMAML(policy=policy, **feed_dict['algo'])
 
