@@ -189,17 +189,19 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self._networks = mlps
 
     """
+
     def predict_sym(self, obs_ph, act_ph):
+        delta_preds = []
+        logvar_preds = []
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            delta_preds = []
-            var_preds = []
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
                     in_obs_var = (obs_ph - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim= 2 * self.obs_space_dims,
+                              output_dim=2 * self.obs_space_dims,
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
                               output_nonlinearity=self.output_nonlinearity,
@@ -210,20 +212,22 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
-                var = tf.exp(logvar)
 
                 delta_preds.append(mean)
-                var_preds.append(var)
+                logvar_preds.append(logvar)
 
-            delta_pred = tf.stack(delta_preds, axis=1)  # shape: (batch_size, n_models, ndim_obs)
-            var_pred = tf.stack(var_preds, axis=1)
-        pred_obs = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.sqrt(var_pred)
+        delta_pred = tf.stack(delta_preds, axis=1)  # shape: (batch_size, n_models, ndim_obs)
+        logvar_pred = tf.stack(logvar_preds, axis=1)  # shape: (batch_size, n_models, ndim_obs)
+        delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred * 0.5)
+        delta_pred = tf.clip_by_value(delta_pred, -1e3, 1e3)
+
+        # select one model for each row
         model_idx = tf.random.uniform(shape=(tf.shape(delta_pred)[0],), minval=0, maxval=self.num_models, dtype=tf.int32)
-        pred_obs = tf.batch_gather(pred_obs, tf.reshape(model_idx, [-1, 1]))
-        pred_obs = tf.squeeze(pred_obs, axis=1)
-        return pred_obs
-    """
+        delta_pred = tf.batch_gather(delta_pred, tf.reshape(model_idx, [-1, 1]))
+        delta_pred = tf.squeeze(delta_pred, axis=1)
 
+        return obs_ph + delta_pred
+        
     def distribution_info_sym(self, obs_var, act_var):
         means = []
         log_stds = []
@@ -256,9 +260,59 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 log_stds.append(logvar/2)
 
         mean = tf.concat(means, axis=0)
-        mean = tf.clip_by_value(mean, -1e3, 1e3)
+        mean = tf.clip_by_value(mean, -1e3, 1e3)  #?
         log_std = tf.concat(log_stds, axis=0)
         return dict(mean=mean, var=log_std)
+    """
+
+    def predict_sym(self, obs_ph, act_ph):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        logvar_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+
+                delta_preds.append(mean)
+                logvar_preds.append(logvar)
+
+        delta_pred = tf.concat(delta_preds, axis=0)
+        logvar_pred = tf.concat(logvar_preds, axis=0)
+        delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred * 0.5)
+        delta_pred = tf.clip_by_value(delta_pred, -1e3, 1e3)
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        return original_obs + tf.gather(delta_pred, perm_inv)
 
     def predict(self, obs, act, pred_type='rand', deterministic=False):
         """
@@ -373,6 +427,20 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                                                   self._max_log_var_ph: state['max_log_var']
                                                   })
 
+    def get_shared_param_values(self): # to feed policy
+        state = MLPDynamicsEnsemble.get_shared_param_values(self)
+        sess = tf.get_default_session()
+        state['min_log_var'] = sess.run(self.min_logvar)
+        state['max_log_var'] = sess.run(self.max_logvar)
+        return state
+
+    def set_shared_params(self, state):
+        MLPDynamicsEnsemble.set_shared_params(self, state)
+        sess = tf.get_default_session()
+        sess.run(self._assign_ops_var, feed_dict={
+            self._min_log_var_ph: state['min_log_var'],
+            self._max_log_var_ph: state['max_log_var'],
+        })
 
 def denormalize(data_array, mean, std):
     if data_array.ndim == 3: # assumed shape (batch_size, ndim_obs, n_models)

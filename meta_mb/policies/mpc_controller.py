@@ -131,33 +131,39 @@ class MPCController(Serializable):
 
     def build_rs_graph(self):
         # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
-        returns = 0  # (batch_size * n_candidates,)
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+        returns = 0  # (batch_size * n_candidates,)
         act = tf.random.uniform(
             shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
             minval=self.env.action_space.low,
             maxval=self.env.action_space.high)
-        """
+
+        # Equivalent to np.repeat
         observation = tf.reshape(
             tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
             [-1, self.obs_space_dims]
         )
-        """
-        observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
+        # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
+
         for t in range(self.horizon):
-            dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
-            mean, var = dynamics_dist['mean'], dynamics_dist['var']
-            next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
+            # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
+            # mean, var = dynamics_dist['mean'], dynamics_dist['var']
+            # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
+            next_observation = self.dynamics_model.predict_sym(observation, act[t])
             assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
             returns = self.discount ** t * rewards
             observation = next_observation
-        # returns = tf.reshape(returns, (-1, self.n_candidates))
-        # idx = tf.reshpe(tf.argmax(returns, axis=1), [-1, 1])
+        """
         returns = tf.reshape(returns, (self.n_candidates, -1))
         idx = tf.reshape(tf.argmax(returns, axis=0), [-1, 1])  # (batch_size, 1)
         cand_a = tf.reshape(act[0], [self.n_candidates, -1, self.action_space_dims])  # (n_candidates, batch_size, act_dims)
         cand_a = tf.transpose(cand_a, perm=[1, 0, 2])  # (batch_size, n_candidates, act_dims)
+        self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+        """
+        returns = tf.reshape(returns, (-1, self.n_candidates))  # (batch_size, n_candidates)
+        cand_a = tf.reshape(act[0], [-1, self.n_candidates, self.action_space_dims])  # (batch_size, n_candidates, act_dims)
+        idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
         self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
 
     def get_rs_action(self, observations):
