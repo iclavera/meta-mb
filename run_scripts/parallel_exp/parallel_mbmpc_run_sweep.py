@@ -13,8 +13,7 @@ from tensorflow import ConfigProto
 import pickle
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'test-all-1-0.99-1-mbmpc'
-
+EXP_NAME = '2x-halfcheetah-ant-det-mbmpc'
 
 def init_vars(sender, config_sess, policy, dynamics_model):
     import tensorflow as tf
@@ -33,7 +32,7 @@ def init_vars(sender, config_sess, policy, dynamics_model):
 
 
 def run_experiment(**config):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '-' + config.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -162,17 +161,17 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'rolling_average_persitency': [0.4],
+        'rolling_average_persitency': [0.1, 0.4],
 
         'seed': [1, 2],
 
-        'n_itr': [401*20],
+        'n_itr': [101*20],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah'], #['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
+        'env': ['HalfCheetah', 'Ant'], #['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
 
         # Problem
-        'probabilistic_dynamics': [True],
+        'probabilistic_dynamics': [False],
         'max_path_length': [50],
         'normalize': [False],
         'discount': [1.],
@@ -184,7 +183,7 @@ if __name__ == '__main__':
         'num_cem_iters': [5],
 
         # Training
-        'dynamics_learning_rate': [0.001],
+        'dynamics_learning_rate': [5e-4, 0.001],
         'valid_split_ratio': [0.1],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
