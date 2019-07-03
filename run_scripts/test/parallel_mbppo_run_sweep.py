@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
         'simulation_sleep_frac': [1],
 
-        'env': ['HalfCheetah', 'Ant'],
+        'env': ['Walker2d', 'Hopper'],
 
         # Problem Conf
         'algo': ['meppo'],
