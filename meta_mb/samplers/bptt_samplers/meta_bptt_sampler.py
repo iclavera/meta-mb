@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
 
-class BPTTSampler(BaseSampler):
+class MetaBPTTSampler(BaseSampler):
     """
     Sampler for Meta-RL
 
@@ -23,7 +23,8 @@ class BPTTSampler(BaseSampler):
             env,
             policy,
             dynamics_model,
-            num_rollouts,
+            meta_batch_size,
+            rollouts_per_meta_task,
             max_path_length,
             parallel=False,
             deterministic_policy=False,
@@ -32,18 +33,19 @@ class BPTTSampler(BaseSampler):
             learning_rate=1e-4,
             **kwargs,
     ):
-        super(BPTTSampler, self).__init__(env, policy, num_rollouts, max_path_length)
+        super(MetaBPTTSampler, self).__init__(env, policy, rollouts_per_meta_task, max_path_length)
         assert not parallel
 
         self.env = env
         self.policy = policy
         self.dynamics_model = dynamics_model
         self.max_path_length = max_path_length
-        self.total_samples = num_rollouts * max_path_length
-        self.num_rollouts = num_rollouts
+        self.num_rollouts_per_meta_task = rollouts_per_meta_task
+        self.meta_batch_size = meta_batch_size
+        self.total_samples = meta_batch_size * rollouts_per_meta_task * max_path_length
+        self.num_rollouts = meta_batch_size * rollouts_per_meta_task
         self.total_timesteps_sampled = 0
         self.deterministic_policy = deterministic_policy
-        self.optimize_actions = optimize_actions
         self.num_models = getattr(dynamics_model, 'num_models', 1)
 
         self.optimizer = FirstOrderOptimizer(learning_rate=learning_rate, max_epochs=max_epochs)
@@ -53,10 +55,6 @@ class BPTTSampler(BaseSampler):
     def build_graph(self):
         self._initial_obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_rollouts,
                                                                        self.policy.obs_dim), name='init_obs')
-        if self.optimize_actions:
-            self.optimal_actions = tf.Variable(np.zeros(self.max_path_length, self.policy.action_dim),
-                                      trainable=True,
-                                      name='optimal_actions')
         obses = []
         acts = []
         rewards = []
@@ -65,18 +63,13 @@ class BPTTSampler(BaseSampler):
         obs = self._initial_obs_ph
         for t in range(self.max_path_length):
             dist_policy = self.policy.distribution_info_sym(obs)
-            if self.optimize_actions:
-                act = self.optimal_actions[t]
-            elif self.deterministic_policy:
+            if self.deterministic_policy:
                 act = dist_policy['mean']
             else:
                 act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            next_obs = self.dynamics_model.predict_sym(obs, act)
+            next_obs = self.dynamics_model.predict_batches_sym(obs, act)
 
             reward = self.env.tf_reward(obs, act, next_obs)
-            # TODO: I think it's better to have random weighted rewards than random weighted states. So the way to
-            # do it would be by predicting # num-ensemble trajectories, and then do a random weighted of the rewards.
-
             obses.append(obs)
             acts.append(act)
             rewards.append(reward)
@@ -95,17 +88,6 @@ class BPTTSampler(BaseSampler):
         self._observations_var = obses
         self._means_var = means
         self._log_stds_var = log_stds
-
-        with tf.variable_scope('model_sampler'):
-            self._loss = -tf.reduce_mean(self._returns_var)
-            if self.optimize_actions:
-                target = self.optimal_actions
-            else:
-                target = self.policy
-            self.optimizer.build_graph(loss=self._loss,
-                                       target=target,
-                                       input_ph_dict=dict(initial_obs=self._initial_obs_ph)
-                                       )
 
     def obtain_samples(self, log=False, log_prefix='', buffer=None):
         """
@@ -151,11 +133,8 @@ class BPTTSampler(BaseSampler):
                       dones=done, env_infos=env_info, agent_infos=agent_info) for
                  obs, act, rew, done, env_info, agent_info in
                  zip(observations, actions, rewards, dones, env_infos, agent_infos)]
+        paths = dict((idx, paths[idx * self.num_rollouts_per_meta_task: (idx + 1) * self.num_rollouts_per_meta_task])
+                     for idx in range(self.meta_batch_size))
         self.total_timesteps_sampled += self.total_samples
 
         return paths
-
-    def optimize_policy(self, log=True):
-        init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)] * self.num_models)
-        input_dict = dict(initial_obs=init_obses)
-        self.optimizer.optimize(input_dict)

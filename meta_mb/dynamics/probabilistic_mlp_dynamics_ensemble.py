@@ -273,7 +273,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         :return: (batch_size, obs_space_dims)
         """
         original_obs = obs_ph
-
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
         perm = tf.random.shuffle(perm)

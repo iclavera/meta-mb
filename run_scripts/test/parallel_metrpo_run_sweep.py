@@ -160,6 +160,7 @@ def run_base(exp_dir, **kwargs):
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
+        sampler_str=kwargs['sampler'],
     )
 
     trainer.train()
@@ -186,6 +187,7 @@ if __name__ == '__main__':
         # Problem Conf
 
         'algo': ['metrpo'],
+        'sampler': ['bptt'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],
