@@ -35,7 +35,7 @@ class WorkerPolicy(Worker):
         dynamics_model = pickle.loads(dynamics_model_pickle)
 
         self.policy = policy
-        self.baseline = baselines
+        self.baseline = baseline
         if self.sampler_str == 'metrpo':
             self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
         elif self.sampler_str == 'bptt':
