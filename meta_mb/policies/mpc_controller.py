@@ -60,7 +60,7 @@ class MPCController(Serializable):
         if self.use_cem:
             action = self.get_cem_action(observation)
         else:
-            action = self.get_rs_action(observation)
+            action = self._get_rs_action(observation)
 
         return action, dict()
 
@@ -68,10 +68,8 @@ class MPCController(Serializable):
         if self.use_cem:
             actions = self.get_cem_action(observations)
         else:
-            actions = self.get_rs_action(observations)
+            actions = self._get_rs_action(observations)
 
-        #for i in range(3, len(actions)): #limit movement to first 3 joints
-        #    actions[i] = 0
         return actions, dict()
 
     def get_random_action(self, n):
