@@ -5,7 +5,7 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, num_inner_grad_steps):
+    def __init__(self, num_inner_grad_steps, sampler_str='mbmpo'):
         super().__init__()
         self.num_inner_grad_steps = num_inner_grad_steps
         self.policy = None
@@ -13,6 +13,7 @@ class WorkerPolicy(Worker):
         self.model_sampler = None
         self.model_sample_processor = None
         self.algo = None
+        self.sampler_str = sampler_str
 
     def construct_from_feed_dict(
             self,
@@ -35,9 +36,13 @@ class WorkerPolicy(Worker):
 
         self.policy = policy
         self.baseline = baseline
-        # self.model_sampler = MBMPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
-        self.model_sampler = MetaBPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model,
-                                             **feed_dict['model_sampler'])
+        if self.sampler_str == 'mbmpo':
+            self.model_sampler = MBMPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        elif self.sampler_str == 'bptt':
+            self.model_sampler = MetaBPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model,
+                                                 **feed_dict['model_sampler'])
+        else:
+            raise NotImplementedError
         self.model_sample_processor = MAMLSampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         self.algo = TRPOMAML(policy=policy, **feed_dict['algo'])
 
