@@ -196,7 +196,7 @@ if __name__ == '__main__':
         'n_itr': [1250],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah'],
+        'env': ['Ant'],
 
         # Problem Conf
         'num_models': [5],
