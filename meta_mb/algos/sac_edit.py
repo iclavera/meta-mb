@@ -46,7 +46,7 @@ class SAC_MB(Algo):
             session=None,
             num_actions_per_next_observation=1,
             prediction_type = 'mean',
-            T = 1,
+            T = 0,
             **kwargs
     ):
         """
@@ -301,25 +301,31 @@ class SAC_MB(Algo):
         # rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
         # rewards = tf.expand_dims(rewards, axis=-1)
         # q_values_var = [td_target(
-        #     reward=self.reward_scale * rewards,
-        #     discount=self.discount,
-        #     next_value= q) for q in next_q_values]
+        #    reward=self.reward_scale * rewards,
+        #    discount=self.discount,
+        #    next_value= q) for q in next_q_values]
         # min_q_val_var = tf.reduce_min(q_values_var, axis=0)
         """===============================4================================"""
-
-        # dist_info_sym = self.dynamics_model.distribution_info_sym(observations_ph, actions_var, pred_type=self.prediction_type)
-        # next_observation = dist_info_sym['mean']
-        # dist_info_sym = self.policy.distribution_info_sym(next_observation)
-        # next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        # input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-        # next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        # rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
-        # rewards = tf.expand_dims(rewards, axis=-1)
-        # q_values_var = [ (self.discount**(self.T)) * q for q in next_q_values]
-        # for i in range(self.T):
-        #     temp_q_value = [(self.discount**(i)) * reward for reward in rewards]
-        #     q_values_var = [q_values_var[j] + temp_q_value[j] for j in range(2)]
-        #
+        # assert self.T >= 0
+        # obs = observations_ph
+        # actions = actions_var
+        # for i in range(self.T + 1):
+        #     dist_info_sym = self.dynamics_model.distribution_info_sym(obs, actions, pred_type=self.prediction_type)
+        #     next_observation = dist_info_sym['mean']
+        #     dist_info_sym = self.policy.distribution_info_sym(next_observation)
+        #     next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        #     rewards = self.training_environment.tf_reward(obs, actions, next_observation)
+        #     rewards = tf.expand_dims(rewards, axis=-1)
+        #     if i == 0:
+        #         q_values_var = [(self.discount**(i)) * rewards[j] for j in range(2)]
+        #     elif i == self.T:
+        #         input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+        #         next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        #         q_values_var = [q_values_var[j] + next_q_values[j] for j in range(2)]
+        #     else :
+        #         temp_value = [(self.discount**(i)) * rewards[j] for j in range(2)]
+        #         q_values_var = [q_values_var[j] + temp_value[j] for j in range(2)]
+        #     obs, actions = next_observation, next_actions_var
         # min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
         """==============================================================="""

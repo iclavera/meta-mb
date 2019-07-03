@@ -120,6 +120,9 @@ class Trainer(object):
                         samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                         self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                             samples_data['dones'], samples_data['next_observations'])
+                        # self.dynamics_model.fit(samples_data['observations'], samples_data['actions'], samples_data['next_observations'],
+                        #                         epochs=self.dynamics_model_max_epochs, verbose=False,
+                        #                         log_tabular=True, prefix='Model-')
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -127,11 +130,26 @@ class Trainer(object):
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
 
                 """ -------------------- Sampling --------------------------"""
-                all_samples = self.env_replay_buffer.all_samples()
+                # logger.log("Processing samples...")
+                # time_proc_samples_start = time.time()
+                # samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                # sample_num = samples_data['observations'].shape[0]
+                # self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
+                #                                     samples_data['dones'], samples_data['next_observations'])
+                # proc_samples_time = time.time() - time_proc_samples_start
+                # model_start = time.time()
+                # paths = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
+                # _ = self.env_sample_processor.process_samples(paths, log='all', log_prefix='eval-')
+
+                model_fit_start = time.time()
+                # all_samples = self.env_replay_buffer.all_samples()
+                all_samples = self.env_replay_buffer.random_batch(self.env_replay_buffer._size // 3)
+                self.dynamics_model.fit(all_samples['observations'], all_samples['actions'], all_samples['next_observations'],
+                                        epochs=self.dynamics_model_max_epochs, verbose=False,
+                                        log_tabular=True, prefix='Model-')
+                logger.logkv('environment buffer size', self.env_replay_buffer._size)
+                logger.logkv('fit_model_time', time.time() - model_fit_start)
                 for _ in range(self.env_sampler.max_path_length // self.model_train_freq):
-                    self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
-                                            epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-')
                     for _ in range(self.rollout_length):
                         random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
                         actions_from_policy = self.policy.get_actions(random_states)[0]
@@ -140,6 +158,7 @@ class Trainer(object):
                         terminals = np.array([False]).repeat(random_states.shape[0])
                         self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, terminals, predictions)
                     self.set_rollout_length(itr)
+                logger.logkv('rollout length', self.rollout_length)
 
                 logger.log("Obtaining samples...")
                 time_env_sampling_start = time.time()
@@ -147,7 +166,6 @@ class Trainer(object):
                 sampling_time = time.time() - time_env_sampling_start
 
                 """ ----------------- Processing Samples ---------------------"""
-                # check how the samples are processed
                 logger.log("Processing samples...")
                 time_proc_samples_start = time.time()
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
@@ -178,7 +196,6 @@ class Trainer(object):
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
                 logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
-                # logger.logkv('fit_model_time', model_end - model_start)
                 # logger.logkv('train_critic_time', critic_end - time_optimization_step_start)
                 # logger.logkv('train_actor_time', sum(actor_time))
                 # logger.logkv('predict_time', train_actor_start - predict_start)

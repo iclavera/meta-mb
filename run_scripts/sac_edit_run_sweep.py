@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'MBPO'
+EXP_NAME = 'MBPO3'
 
 
 from meta_mb.algos.sac_edit import SAC_MB
@@ -140,7 +140,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [2],
+        'seed': [1, 22],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
 
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # replay_buffer
-        'env_replay_buffer_max_size': [1e6],
+        'env_replay_buffer_max_size': [1e5],
         'model_replay_buffer_max_size': [2e6],
 
         # Problem Conf
@@ -172,14 +172,14 @@ if __name__ == '__main__':
         'sampler_batch_size': [256],
 
         # Dynamics Model
-        'num_models': [1],
+        'num_models': [7],
         'model_learning_rate': [1e-3],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_batch_size': [256],
+        'dynamics_batch_size': [512],
         'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [30e4],
+        'dynamics_model_max_epochs': [50],
 
         'num_actions_per_next_observation': [3],
         'prediction_type':['mean'],
