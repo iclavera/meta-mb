@@ -37,13 +37,14 @@ class ParallelTrainer(object):
             simulation_sleep,
             initial_random_samples=True,
             start_itr=0,
+            sampler_str='metrpo',
     ):
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
             WorkerData(simulation_sleep=simulation_sleep),
             WorkerModel(),
-            WorkerPolicy(algo_str=algo_str),
+            WorkerPolicy(algo_str=algo_str, sampler_str=sampler_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker

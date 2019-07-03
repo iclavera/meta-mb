@@ -273,7 +273,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         :return: (batch_size, obs_space_dims)
         """
         original_obs = obs_ph
-
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
         perm = tf.random.shuffle(perm)
@@ -305,8 +304,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 delta_preds.append(mean)
                 logvar_preds.append(logvar)
 
-        delta_pred = tf.concat(delta_preds, axis=0)
-        logvar_pred = tf.concat(logvar_preds, axis=0)
+        delta_preds = tf.concat(delta_preds, axis=0)
+        logvar_preds = tf.concat(logvar_preds, axis=0)
         delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred * 0.5)
         delta_pred = tf.clip_by_value(delta_pred, -1e3, 1e3)
 

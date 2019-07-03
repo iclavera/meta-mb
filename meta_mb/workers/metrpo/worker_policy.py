@@ -5,13 +5,14 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, algo_str):
+    def __init__(self, algo_str, sampler_str='metrpo'):
         super().__init__()
         self.policy = None
         self.baseline = None
         self.model_sampler = None
         self.model_sample_processor = None
         self.algo = algo_str
+        self.sampler_str = sampler_str
 
     def construct_from_feed_dict(
             self,
@@ -34,9 +35,13 @@ class WorkerPolicy(Worker):
         dynamics_model = pickle.loads(dynamics_model_pickle)
 
         self.policy = policy
-        self.baseline = baseline
-        #self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
-        self.model_sampler = BPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        self.baseline = baselines
+        if self.sampler_str == 'metrpo':
+            self.model_sampler = METRPOSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        elif self.sampler_str == 'bptt':
+            self.model_sampler = BPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['model_sampler'])
+        else:
+            raise NotImplementedError
         self.model_sample_processor = SampleProcessor(baseline=baseline, **feed_dict['model_sample_processor'])
         if self.algo == 'meppo':
             self.algo = PPO(policy=policy, **feed_dict['algo'])
