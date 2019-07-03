@@ -742,6 +742,28 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
 
+    def get_shared_param_values(self): # to feed policy
+        state = dict()
+        state['normalization'] = self.normalization
+        state['networks_params'] = [nn.get_param_values() for nn in self._networks]
+        return state
+
+    def set_shared_params(self, state):
+        self.normalization = state['normalization']
+        feed_dict = {}
+        for i in range(self.num_models):
+            feed_dict.update({
+                self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
+                self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+                self._mean_act_ph[i]: self.normalization[i]['act'][0],
+                self._std_act_ph[i]: self.normalization[i]['act'][1],
+                self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+                self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+            })
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict=feed_dict)
+        for i in range(len(self._networks)):
+            self._networks[i].set_params(state['networks_params'][i])
 
 
 

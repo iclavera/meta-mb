@@ -130,6 +130,7 @@ class MPCController(Serializable):
         return cand_a[range(m), np.argmax(returns, axis=1)]
 
     def build_rs_graph(self):
+        # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
         returns = 0  # (batch_size * n_candidates,)
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
         act = tf.random.uniform(
