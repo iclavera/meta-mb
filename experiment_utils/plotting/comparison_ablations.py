@@ -25,7 +25,7 @@ colors = prop_cycle.by_key()['color']
 COLORS = dict(ours=colors.pop(0))
 LEGEND_ORDER = {'ppo': 0, 'sac': 1, 'me-ppo': 2, 'me-trpo': 3, 'mbmpo': 4, 'a-me-ppo': 5}
 
-data_path = '/home/ignasi/corl_data/time_comparison/'
+data_path = './data/corl_data/time_comparison/'
 
 exps_data = load_exps_data([data_path])
 
@@ -80,9 +80,9 @@ def prepare_data_for_plot(exp_data,
                           add_sampling_time=False):
     x_y_tuples = []
     x_key = 'n_timesteps'
-    async = exp_data[0]['flat_params'].get('async', False)
+    asynch = exp_data[0]['flat_params'].get('async', False)
     for exp in exp_data:
-        if not async:
+        if not asynch:
             if sup_y_key is not None:
                 assert type(sup_y_key) is list
                 for key in sup_y_key:
@@ -102,7 +102,7 @@ def prepare_data_for_plot(exp_data,
             else:
                 raise NotImplementedError
     x_y_dict = defaultdict(list)
-    if async:
+    if asynch:
         env = exp_data[0]['flat_params']['env']
     else:
         env = exp_data[0]['flat_params']['env.$class']

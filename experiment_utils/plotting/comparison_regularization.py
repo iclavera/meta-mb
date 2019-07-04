@@ -11,6 +11,8 @@ SMALL_SIZE = 20
 MEDIUM_SIZE = 22
 BIGGER_SIZE = 26
 LINEWIDTH = 3
+YELLOW = '#FBC15E'
+BLUE = '#348ABD'
 
 plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -22,10 +24,11 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
+print(colors)
 COLORS = dict()
 LEGEND_ORDER = {'regularization': 0, 'no-regularization': 1}
 
-data_path = '/home/ignasi/corl_data/regularization_comparison/'
+data_path = './data/corl_data/regularization_comparison/'
 
 exps_data = load_exps_data([data_path])
 
@@ -80,9 +83,9 @@ def prepare_data_for_plot(exp_data,
                           add_sampling_time=False):
     x_y_tuples = []
     x_key = 'n_timesteps'
-    async = exp_data[0]['flat_params'].get('async', False)
+    asynch = exp_data[0]['flat_params'].get('async', False)
     for exp in exp_data:
-        if not async:
+        if not asynch:
             if sup_y_key is not None:
                 assert type(sup_y_key) is list
                 for key in sup_y_key:
@@ -102,7 +105,7 @@ def prepare_data_for_plot(exp_data,
             else:
                 raise NotImplementedError
     x_y_dict = defaultdict(list)
-    if async:
+    if asynch:
         env = exp_data[0]['flat_params']['env']
     else:
         env = exp_data[0]['flat_params']['env.$class']
@@ -125,12 +128,17 @@ def prepare_data_for_plot(exp_data,
 def sorting_legend(label):
     return LEGEND_ORDER[label]
 
-
 def get_color(label):
     if label not in COLORS.keys():
-        COLORS[label] = colors.pop(0)
+        if YELLOW in colors:
+            colors.remove(YELLOW)
+            COLORS[label] = YELLOW
+        elif BLUE in colors:
+            COLORS[label] = BLUE
+            colors.remove(BLUE)
+        else:
+            COLORS[label] = colors.pop(0)
     return COLORS[label]
-
 
 def plot_from_exps(exp_data,
                    filters={},
@@ -141,7 +149,7 @@ def plot_from_exps(exp_data,
                    sup_y_key=None,
                    plot_name='./bad-models.png',
                    subfigure_titles=None,
-                   plot_labels=None,
+                   plot_labels=['interleaved policy learning', 'in-order policy learning'],
                    x_label=None,
                    y_label=None,
                    num_rows=1,
@@ -159,7 +167,7 @@ def plot_from_exps(exp_data,
     fig, axarr = plt.subplots(num_rows, num_columns, figsize=(20, 8))
     if num_rows == 1:
         axarr = np.expand_dims(axarr, axis=0)
-    fig.tight_layout(pad=4.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
+    fig.tight_layout(pad=4.0, w_pad=4, h_pad=6, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):

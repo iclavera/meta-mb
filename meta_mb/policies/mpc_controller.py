@@ -19,6 +19,7 @@ class MPCController(Serializable):
             use_reward_model=False,
             alpha=0.1,
             num_particles=20,
+            use_graph=False,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
@@ -34,7 +35,7 @@ class MPCController(Serializable):
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
-        self.optimal_action = None
+        self.use_graph = use_graph
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -48,10 +49,13 @@ class MPCController(Serializable):
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
-        if not use_cem:
-            self.build_rs_graph()
-        else:
-            self.build_cem_graph()
+        if use_graph:
+            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+            self.optimal_action = None
+            if not use_cem:
+                self.build_rs_graph()
+            else:
+                self.build_cem_graph()
 
     @property
     def vectorized(self):
@@ -61,16 +65,18 @@ class MPCController(Serializable):
         if observation.ndim == 1:
             observation = observation[None]
 
-        if self.use_cem:
-            action = self.get_cem_action(observation)
-        else:
-            action = self._get_rs_action(observation)
-
-        return action, dict()
+        return self.get_actions(observation)
 
     def get_actions(self, observations):
-        sess = tf.get_default_session()
-        actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
+        if self.use_graph:
+            sess = tf.get_default_session()
+            actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
+        else:
+            if self.use_cem:
+                actions = self.get_cem_action(observations)
+            else:
+                actions = self.get_rs_action(observations)
+
         return actions, dict()
 
     def get_random_action(self, n):
@@ -89,7 +95,6 @@ class MPCController(Serializable):
 
     def build_rs_graph(self):
         # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
-        self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
         returns = 0  # (batch_size * n_candidates,)
         act = tf.random.uniform(
             shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
@@ -125,7 +130,6 @@ class MPCController(Serializable):
         self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
 
     def build_cem_graph(self):
-        self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
         mean = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
                               self.action_space_dims]) * (self.env.action_space.high + self.env.action_space.low) / 2
         var = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
@@ -229,10 +233,6 @@ class MPCController(Serializable):
             observation = next_observation
         returns = returns.reshape(m, n)
         return cand_a[range(m), np.argmax(returns, axis=1)]
-
-    def _get_rs_action(self, observations):
-        sess = tf.get_default_session()
-        return sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
 
     def get_params_internal(self, **tags):
         return []
