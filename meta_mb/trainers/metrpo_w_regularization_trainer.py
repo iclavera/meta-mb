@@ -133,10 +133,9 @@ class Trainer(object):
                 times_step = []
                 remaining_model_idx = list(range(self.dynamics_model.num_models))
                 valid_loss_rolling_average_prev = None
-                with_new_data = False
 
+                with_new_data = True
                 for id_step in range(self.repeat_steps):
-
 
                     for epoch in range(self.num_epochs_per_step):
                         logger.log("Training dynamics model for %i epochs ..." % 1)
@@ -145,7 +144,8 @@ class Trainer(object):
                                                                                 valid_loss_rolling_average_prev,
                                                                                 with_new_data,
                                                                                 log_tabular=True,
-                                                                                 prefix='Model-')
+                                                                                prefix='Model-')
+                        with_new_data = False
 
                     for step in range(self.num_grad_policy_per_step):
 
