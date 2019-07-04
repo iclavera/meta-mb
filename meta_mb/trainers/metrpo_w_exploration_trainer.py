@@ -33,7 +33,7 @@ class Trainer(object):
             n_itr,
             num_rollouts_per_iter,
             start_itr=0,
-            steps_per_iter=30,
+            grad_steps_per_rollout=5,
             initial_random_samples=True,
             sess=None,
             dynamics_model_max_epochs=200,
@@ -55,7 +55,7 @@ class Trainer(object):
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
 
         self.initial_random_samples = initial_random_samples
-        self.steps_per_iter = steps_per_iter
+        self.grad_steps_per_rollout = grad_steps_per_rollout
         self.log_real_performance = log_real_performance
         self.sample_from_buffer = sample_from_buffer
 
@@ -81,12 +81,6 @@ class Trainer(object):
             # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             # sess.run(tf.variables_initializer(uninit_vars))
             sess.run(tf.global_variables_initializer())
-
-            if type(self.steps_per_iter) is tuple:
-                steps_per_iter = np.linspace(self.steps_per_iter[0],
-                                             self.steps_per_iter[1], self.n_itr).astype(np.int)
-            else:
-                steps_per_iter = [self.steps_per_iter] * self.n_itr
 
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
@@ -126,21 +120,16 @@ class Trainer(object):
 
                 env_paths = []
                 for id_rollout in range(self.num_rollouts_per_iter):
-                    logger.log("Obtaining random samples from the environment...")
-                    env_paths.extend(self.env_sampler.obtain_samples(log=True,
-                                                                     log_prefix='Data-EnvSampler-',
-                                                                     verbose=True))
-
                     times_dyn_sampling = []
                     times_dyn_sample_processing = []
                     times_optimization = []
                     times_step = []
 
-                    grad_steps = int(np.ceil(steps_per_iter[itr]/self.num_rollouts_per_iter))
-                    for step in range(grad_steps):
+                    grad_steps_per_rollout = self.grad_steps_per_rollout
+                    for step in range(grad_steps_per_rollout):
 
-                        logger.log("\n ---------------- Grad-Step %d ----------------" % int(sum(steps_per_iter[:itr])
-                                                                                    + id_rollout * grad_steps + step))
+                        # logger.log("\n ---------------- Grad-Step %d ----------------" % int(grad_steps_per_rollout*itr*self.num_rollouts_per_iter,
+                        #                                                             + id_rollout * grad_steps_per_rollout + step))
                         step_start_time = time.time()
 
                         """ -------------------- Sampling --------------------------"""
@@ -174,6 +163,11 @@ class Trainer(object):
                         times_dyn_sample_processing.append(proc_samples_time)
                         times_optimization.append(optimization_time)
                         times_step.append(time.time() - step_start_time)
+
+                    logger.log("Obtaining random samples from the environment...")
+                    env_paths.extend(self.env_sampler.obtain_samples(log=True,
+                                                                     log_prefix='Data-EnvSampler-',
+                                                                     verbose=True))
 
                 logger.record_tabular('Data-TimeEnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
