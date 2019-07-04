@@ -16,7 +16,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-me-trpo-3'
+EXP_NAME = 'bptt-a-me-trpo-4'
 
 
 def init_vars(sender, config, policy, dynamics_model):
