@@ -22,10 +22,10 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
-COLORS = dict(ours=colors.pop(0))
-LEGEND_ORDER = {'regularization': 0, 'no-regularization': 1}
+COLORS = dict()
+LEGEND_ORDER = {'exploration': 0, 'no-exploration': 1}
 
-data_path = '/home/ignasi/corl_data/regularization_comparison/'
+data_path = '/home/ignasi/corl_data/exploration_comparison/'
 
 exps_data = load_exps_data([data_path])
 
@@ -235,7 +235,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_regularization.png',
+               plot_name='./comparison_exploration.png',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,

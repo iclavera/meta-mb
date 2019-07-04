@@ -22,10 +22,10 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
-COLORS = dict(ours=colors.pop(0))
+COLORS = dict()
 LEGEND_ORDER = {'regularization': 0, 'no-regularization': 1}
 
-data_path = '/home/ignasi/corl_data/regularization/'
+data_path = '/home/ignasi/corl_data/regularization_comparison/'
 
 exps_data = load_exps_data([data_path])
 
@@ -62,15 +62,15 @@ round_plot = {'a-me-ppo': {'Hopper': 5000,
 
          }
 
-x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25e4],
-            'Walker2d': [0, 25e4],
-            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 25e4],
-            'HalfCheetah': [0, 25e4],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 50e4],
-            'Ant': [0, 50e4],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 25e4],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 25e4],
-            'Hopper': [0, 25e4],
+x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 10e4],
+            'Walker2d': [0, 10e4],
+            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 10e4],
+            'HalfCheetah': [0, 10e4],
+            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 10e4],
+            'Ant': [0, 10e4],
+            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 10e4],
+            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 10e4],
+            'Hopper': [0, 10e4],
             }
 
 def prepare_data_for_plot(exp_data,
@@ -156,7 +156,9 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(20, 8))
+    if num_rows == 1:
+        axarr = np.expand_dims(axarr, axis=0)
     fig.tight_layout(pad=4.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
@@ -234,7 +236,7 @@ plot_from_exps(exps_data,
                x_label='Time-steps',
                y_label='Average Return',
                plot_name='./comparison_regularization.png',
-               num_rows=2,
+               num_rows=1,
                report_max_performance=False,
                log_scale=False,
                round_x=5000,

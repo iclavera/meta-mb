@@ -22,8 +22,10 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
-COLORS = dict(ours=colors.pop(0))
-LEGEND_ORDER = {'ppo': 0, 'me-ppo': 1, 'me-trpo': 2, 'mbmpo': 3, 'a-me-ppo': 4}
+COLORS = dict()
+LEGEND_ORDER = {'a-me-trpo': 0, 'a-me-ppo':1, 'a-mb-mpo': 2, 'a-mb-mpc': 3,
+                'me-trpo': 4, 'me-ppo': 5, 'mb-mpo': 6, 'mb-mpc': 7,
+                'trpo': 8, 'ppo': 9}
 
 data_path = '/home/ignasi/corl_data/time_comparison/'
 
@@ -63,15 +65,15 @@ round_plot = {'a-me-ppo': {'Hopper': 2,
 
          }
 
-x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 80],
-            'Walker2d': [0, 80],
+x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25],
+            'Walker2d': [0, 25],
             'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 60],
             'HalfCheetah': [0, 60],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 200],
-            'Ant': [0, 200],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 40],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 40],
-            'Hopper': [0, 40],
+            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 60],
+            'Ant': [0, 60],
+            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 25],
+            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 25],
+            'Hopper': [0, 25],
             }
 
 def prepare_data_for_plot(exp_data,
@@ -103,11 +105,8 @@ def prepare_data_for_plot(exp_data,
                 assert type(sup_y_key) is list
                 for key in sup_y_key:
                     if key in exp['progress'].keys():
-                        if add_sampling_time:
-                            x_y_tuples.extend(list(zip(exp['progress']['Data-TimeSoFar']/60,
-                                                       exp['progress'][key])))
-                        else:
-                            x_y_tuples.extend(list(zip(exp['progress'][x_key]/60, exp['progress'][key])))
+                        x_y_tuples.extend(list(zip(exp['progress']['Data-TimeSoFar']/60,
+                                                   exp['progress'][key])))
                         break
 
             else:
@@ -138,9 +137,23 @@ def sorting_legend(label):
 
 
 def get_color(label):
+    asynch = True if label[:2] == 'a-' else False
     if label not in COLORS.keys():
-        COLORS[label] = colors.pop(0)
+        new_color = colors.pop(0)
+        COLORS[label] = new_color
+        if asynch:
+            COLORS[label[2:]] = new_color
+        else:
+            COLORS['a-' + label] = new_color
     return COLORS[label]
+
+
+def get_linestyle(label):
+    asynch = True if label[:2] == 'a-' else False
+    if asynch:
+        return '-'
+    else:
+        return '--'
 
 
 def plot_from_exps(exp_data,
@@ -169,7 +182,7 @@ def plot_from_exps(exp_data,
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
     fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
-    fig.tight_layout(pad=4.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
+    fig.tight_layout(pad=8.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -195,9 +208,11 @@ def plot_from_exps(exp_data,
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
             if log_scale:
-                axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
+                axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
+                                     color=get_color(label),  linestyle=get_linestyle(label))
             else:
-                axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
+                axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH,
+                                 color=get_color(label), linestyle=get_linestyle(label))
 
             axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
 
@@ -223,7 +238,7 @@ def plot_from_exps(exp_data,
         if y_limits is None:
             axarr[r, c].set_ylim([y_axis_min, y_axis_max])
 
-    fig.legend(loc='lower center', ncol=4, bbox_transform=plt.gcf().transFigure)
+    fig.legend(loc='lower center', ncol=3, bbox_transform=plt.gcf().transFigure)
     fig.savefig(plot_name)
 
 
@@ -249,6 +264,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time (min)',
                y_label='Average Return',
+               # plot_name='./comparison_time_no_sampling_time.png',
                plot_name='./comparison_time.png',
                num_rows=2,
                report_max_performance=False,
