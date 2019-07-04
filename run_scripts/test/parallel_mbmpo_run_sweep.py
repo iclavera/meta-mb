@@ -14,7 +14,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-mb-mpo-3'
+EXP_NAME = 'bptt-a-mb-mpo-4'
 
 
 def init_vars(sender, config, policy, dynamics_model):
