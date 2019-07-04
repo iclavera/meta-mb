@@ -7,18 +7,14 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
 from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
-from meta_mb.envs.mujoco.hopper_env import HopperEnv
-# from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.trainers.parallel_mbmpo_trainer import ParallelTrainer
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-mb-mpo'
+EXP_NAME = 'bptt-a-mb-mpo-2'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -196,7 +192,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
 
-        'env': ['HalfCheetah', 'Walker2d'],
+        'env': ['Ant', 'Hopper'],
 
         # Problem Conf
         'num_models': [5],
@@ -214,7 +210,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [False],
-        'fraction_meta_batch_size': [0.05, 0.5],
+        'fraction_meta_batch_size': [0.05],
 
         # Dynamics Model
         'dynamics_hidden_sizes': [(512, 512, 512)],
