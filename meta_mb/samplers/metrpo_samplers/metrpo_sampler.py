@@ -124,6 +124,7 @@ class METRPOSampler(BaseSampler):
         # pbar.stop()
 
         self.total_timesteps_sampled += self.total_samples
+        logger.logkv('ModelSampler-n_timesteps', self.total_timesteps_sampled)
         if log:
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)

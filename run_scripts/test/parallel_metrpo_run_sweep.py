@@ -182,7 +182,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'HalfCheetah'],
+        'env': ['Hopper', 'Ant'],
 
         # Problem Conf
 
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'step_size': [0.01],
+        'step_size': [0.01, 0.02, 0.05],
         'imagined_num_rollouts': [50],
         'scope': [None],
         'exp_tag': ['a-me-trpo'],  # For changes besides hyperparams
