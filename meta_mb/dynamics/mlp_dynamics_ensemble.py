@@ -527,16 +527,18 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               input_var=input_var,
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               )
-
+                    # denormalize delta_pred
                     delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-        delta_preds = tf.clip_by_value(delta_preds, -1e3, 1e3)
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        return original_obs + tf.gather(delta_preds, perm_inv)
+        # nex_obs = clip(obs + delta_pred)
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
 
     def predict_batches_sym(self, obs_ph, act_ph):
         """
@@ -658,12 +660,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         assert delta_batches.ndim == 2
 
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
-
         pred_obs_batches = obs_batches_original + delta_batches
+        pred_obs_batches = np.clip(pred_obs_batches, -1e2, 1e2)
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 
+    """
+    
     def distribution_info_sym(self, obs_ph, act_ph):
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
@@ -688,8 +691,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               input_var=input_var,
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               )
-                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]
+                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]  # FIXME: this is mean for obs_next??
                     log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                    # FIXME: mean is already denormalized, why need log_std? log_std should not be the std for obs_next?
+                    #  log_Std only useful for prob model??
                 means.append(mean)
                 log_stds.append(log_std)
 
@@ -699,9 +704,9 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
         mean, perm_inv = tf.gather(mean, perm_inv), tf.gather(log_std, perm_inv)
+        # FIXME: need to clip in the parent function?????
         return dict(mean=mean, log_std=log_std)
 
-    """
     def distribution_info_sym(self, obs_var, act_var):
         means = []
         log_stds = []

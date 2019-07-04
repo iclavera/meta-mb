@@ -11,6 +11,8 @@ SMALL_SIZE = 20
 MEDIUM_SIZE = 22
 BIGGER_SIZE = 26
 LINEWIDTH = 3
+YELLOW = '#FBC15E'
+BLUE = '#348ABD'
 
 plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -27,7 +29,7 @@ LEGEND_ORDER = {'a-me-trpo': 0, 'a-me-ppo':1, 'a-mb-mpo': 2, 'a-mb-mpc': 3,
                 'me-trpo': 4, 'me-ppo': 5, 'mb-mpo': 6, 'mb-mpc': 7,
                 'trpo': 8, 'ppo': 9}
 
-data_path = '/home/ignasi/corl_data/time_comparison/'
+data_path = './data/corl_data/time_comparison/'
 
 exps_data = load_exps_data([data_path])
 
@@ -83,9 +85,9 @@ def prepare_data_for_plot(exp_data,
                           add_sampling_time=False):
     x_y_tuples = []
     x_key = 'Time'
-    async = exp_data[0]['flat_params'].get('async', False)
+    asynch = exp_data[0]['flat_params'].get('async', False)
     for exp in exp_data:
-        if not async:
+        if not asynch:
             if sup_y_key is not None:
                 assert type(sup_y_key) is list
                 for key in sup_y_key:
@@ -112,7 +114,7 @@ def prepare_data_for_plot(exp_data,
             else:
                 x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key])))
     x_y_dict = defaultdict(list)
-    if async:
+    if asynch:
         env = exp_data[0]['flat_params']['env']
     else:
         env = exp_data[0]['flat_params']['env.$class']
@@ -182,7 +184,7 @@ def plot_from_exps(exp_data,
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
     fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
-    fig.tight_layout(pad=8.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
+    fig.tight_layout(pad=8.0, w_pad=4, h_pad=6, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
