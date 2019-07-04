@@ -182,7 +182,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
-        'env': ['Hopper', 'Ant'],
+        'env': ['Walker2d', 'HalfCheetah'],
 
         # Problem Conf
 
