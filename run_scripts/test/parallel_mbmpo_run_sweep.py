@@ -14,7 +14,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-mb-mpo-2'
+EXP_NAME = 'bptt-a-mb-mpo-3'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -192,7 +192,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
 
-        'env': ['Ant', 'Hopper'],
+        'env': ['Walker2d', 'HalfCheetah'],
 
         # Problem Conf
         'num_models': [5],
@@ -236,7 +236,7 @@ if __name__ == '__main__':
         'num_inner_grad_steps': [1],
         'inner_lr': [0.001],
         'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
+        'step_size': [0.01, 0.02, 0.05],
         'exploration': [False],
         'sample_from_buffer': [False],  # not implemented
 
