@@ -20,7 +20,9 @@ class ImgWrapperEnv(Serializable):
         self._time_steps = time_steps
 
     def step(self, action):
+        true_state = np.copy(self._wrapped_env._get_obs())
         _, reward, done, info = self._wrapped_env.step(action)
+        info['true_state'] = true_state
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
         self._obs[:, :, self._num_chan:] = self._obs[:, :, :-self._num_chan]
         self._obs[:, :, :self._num_chan] = obs
@@ -57,6 +59,10 @@ class ImgWrapperEnv(Serializable):
         return Box(-1e6 * np.ones(self._img_size + (self._n_channels,)),
                    1e6 * np.ones(self._img_size + (self._n_channels,)),
                    dtype=np.float32)
+
+    @property
+    def action_space(self):
+        return self._wrapped_env.action_space
 
     def __getattr__(self, attr):
         """
