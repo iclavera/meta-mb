@@ -111,7 +111,6 @@ if __name__ == "__main__":
     img_seqs = np.random.uniform(size=(20, 16, 64, 64, 3))
     data = CPCDataGenerator(img_seqs, 32, 1, negative_samples=3, predict_terms=1)
     for (x, y), labels in data:
-        import pdb; pdb.set_trace()
         plot_seq(x, y, labels, name='point_mass_seq')
         break
 
