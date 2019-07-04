@@ -38,6 +38,7 @@ class ParallelTrainer(object):
             simulation_sleep,
             initial_random_samples=True,
             start_itr=0,
+            sampler_str='mbmpo',
             ):
 
         self.initial_random_samples = initial_random_samples
@@ -48,7 +49,7 @@ class ParallelTrainer(object):
                 simulation_sleep=simulation_sleep,
             ),
             WorkerModel(),
-            WorkerPolicy(num_inner_grad_steps=num_inner_grad_steps),
+            WorkerPolicy(num_inner_grad_steps=num_inner_grad_steps, sampler_str=sampler_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
