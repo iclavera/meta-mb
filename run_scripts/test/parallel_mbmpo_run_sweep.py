@@ -15,7 +15,6 @@ from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.trainers.parallel_mbmpo_trainer import ParallelTrainer
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
@@ -174,6 +173,7 @@ def run_base(exp_dir, **kwargs):
         num_rollouts_per_iter=int(kwargs['meta_batch_size'] * kwargs['fraction_meta_batch_size']),
         config=config,
         simulation_sleep=simulation_sleep,
+        sampler_str=kwargs['sampler'],
     )
 
     trainer.train()
@@ -185,7 +185,6 @@ if __name__ == '__main__':
 
         'flags_need_query': [
             [False, False, False],
-            # [True, True, True],
         ],
         'rolling_average_persitency': [
             0.1, 0.4, 0.9, 0.99
@@ -196,11 +195,13 @@ if __name__ == '__main__':
         'n_itr': [1250],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
-        'env': ['Ant'],
+
+        'env': ['Walker2d', 'Hopper'],
 
         # Problem Conf
         'num_models': [5],
         'algo': ['mbmpo'],
+        'sampler': ['bptt'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],

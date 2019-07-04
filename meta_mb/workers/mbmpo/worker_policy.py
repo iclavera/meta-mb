@@ -49,7 +49,8 @@ class WorkerPolicy(Worker):
     def prepare_start(self):
         dynamics_model = pickle.loads(self.queue.get())
         self.model_sampler.dynamics_model = dynamics_model
-        self.model_sampler.vec_env.dynamics_model = dynamics_model
+        if hasattr(self.model_sampler, 'vec_env'):
+            self.model_sampler.vec_env.dynamics_model = dynamics_model
         self.step()
         self.push()
 
@@ -112,7 +113,8 @@ class WorkerPolicy(Worker):
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
         assert isinstance(dynamics_model_state, dict)
         self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
-        self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
+        if hasattr(self.model_sampler, 'vec_env'):
+            self.model_sampler.vec_env.dynamics_model.set_shared_params(dynamics_model_state)
         time_synch = time.time() - time_synch
 
         logger.logkv('Policy-TimeSynch', time_synch)
