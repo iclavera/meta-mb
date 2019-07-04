@@ -6,17 +6,21 @@ import numpy as np
 from gym import utils
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, random_reset=True):
         utils.EzPickle.__init__(self)
         MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos.xml'), 2)
 
+        self.random_reset = random_reset
+
     def step(self, a):
-        desired_pos = self.get_xy() + np.clip(a, -20, 20) / 50.
-        for _ in range(40):
-            self.do_simulation(desired_pos, self.frame_skip)
-            if np.linalg.norm(desired_pos - self.get_xy()) < 0.01 and np.linalg.norm(
-                    self.sim.data.qvel.ravel()) < 1e-3:
-                break
+        desired_pos = self.get_xy() + np.clip(a, -20, 20) / 30.
+        # for _ in range(40):
+        #     self.do_simulation(desired_pos, self.frame_skip)
+        #     if np.linalg.norm(desired_pos - self.get_xy()) < 0.01 and np.linalg.norm(
+        #             self.sim.data.qvel.ravel()) < 1e-3:
+        #         break
+        desired_pos = np.clip(desired_pos, -2.8, 2.8)
+        self.reset_model(pos=desired_pos)
 
         ob = self._get_obs()
         dist = np.linalg.norm(ob[:2] - np.array([2, 2]))
@@ -24,9 +28,15 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         reward = -dist
         return ob, reward, done, {}
 
-    def reset_model(self):
-        qpos = self.init_qpos + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
-        qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
+    def reset_model(self, pos=None):
+        if pos is None:
+            if self.random_reset:
+                qpos = self.init_qpos + np.random.uniform(size=self.model.nq, low=-2., high=2.)
+            else:
+                qpos = self.init_qpos + np.random.uniform(size=self.model.nq, low=-0.01, high=0.01)
+        else:
+            qpos = self.init_qpos + pos
+        qvel = self.init_qvel + np.random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         self.set_state(qpos, qvel)
         return self._get_obs()
 
