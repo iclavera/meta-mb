@@ -279,8 +279,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
-        mean_preds = []
-        logvar_preds = []
         delta_preds = []
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             for i in range(self.num_models):
@@ -301,23 +299,19 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
-
-                delta_pred = (mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)) * self._std_delta_var[i] + \
-                              self._mean_delta_var[i]
-                mean_preds.append(mean)
-                logvar_preds.append(logvar)
+                delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+                # denormalize
+                delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
                 delta_preds.append(delta_pred)
 
-        # delta_pred = tf.concat(delta_preds, axis=0)
-        # logvar_pred = tf.concat(logvar_preds, axis=0)
-        # delta_pred = delta_pred + tf.random.normal(shape=tf.shape(delta_pred)) * tf.exp(logvar_pred)
-        #
         delta_preds = tf.concat(delta_preds, axis=0)
-        delta_preds = tf.clip_by_value(delta_preds, -1e3, 1e3)
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        return original_obs + tf.gather(delta_preds, perm_inv)
+        # next_obs = clip(obs + delta_pred
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
 
     def predict(self, obs, act, pred_type='rand', deterministic=False):
         """
@@ -357,7 +351,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         assert delta.ndim == 3
 
-        delta = np.clip(delta, -1e3, 1e3)
+        delta = np.clip(delta, -1e2, 1e2)
 
         pred_obs = obs_original[:, :, None] + delta
 
@@ -406,9 +400,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         assert delta_batches.ndim == 2
 
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
-
         pred_obs_batches = obs_batches_original + delta_batches
+        delta_batches = np.clip(delta_batches, -1e2, 1e2)
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 

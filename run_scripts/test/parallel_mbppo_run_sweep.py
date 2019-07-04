@@ -16,7 +16,7 @@ from meta_mb.logger import logger
 
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-me-ppo'
+EXP_NAME = 'bptt-a-me-ppo-3'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
         'simulation_sleep_frac': [1],
 
-        'env': ['Walker2d', 'Hopper'],
+        'env': ['Walker2d', 'HalfCheetah'],
 
         # Problem Conf
         'algo': ['meppo'],

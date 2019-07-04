@@ -136,6 +136,7 @@ class ProbMLPDynamics(MLPDynamicsModel):
         pred_obs = obs_original + delta
         return pred_obs
 
+    # FIXME: use predicy_sym instead
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
             in_obs_var = (obs_var - self._mean_obs_var) / (self._std_obs_var + 1e-8)
