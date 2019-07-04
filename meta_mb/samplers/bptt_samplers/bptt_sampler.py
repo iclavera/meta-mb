@@ -1,6 +1,7 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.optimizers.first_order_optimizer import FirstOrderOptimizer
 from meta_mb.utils import utils
+from meta_mb.logger import logger
 import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
@@ -129,6 +130,7 @@ class BPTTSampler(BaseSampler):
                  obs, act, rew, done, env_info, agent_info in
                  zip(observations, actions, rewards, dones, env_infos, agent_infos)]
         self.total_timesteps_sampled += self.total_samples
+        logger.logkv('ModelSampler-n_timesteps', self.total_timesteps_sampled)
 
         return paths
 
