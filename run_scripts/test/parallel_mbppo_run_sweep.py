@@ -16,7 +16,7 @@ from meta_mb.logger import logger
 
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-me-ppo'
+EXP_NAME = 'bptt-a-me-ppo-3'
 
 
 def init_vars(sender, config, policy, dynamics_model):
