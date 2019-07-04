@@ -214,7 +214,7 @@ if __name__ == '__main__':
         # Real Env Sampling
         'real_env_rollouts_per_meta_task': [1],
         'parallel': [False],
-        'fraction_meta_batch_size': [0.05, 0.5],
+        'fraction_meta_batch_size': [0.05],
 
         # Dynamics Model
         'dynamics_hidden_sizes': [(512, 512, 512)],
