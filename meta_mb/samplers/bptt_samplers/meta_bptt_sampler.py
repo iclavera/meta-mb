@@ -63,10 +63,7 @@ class MetaBPTTSampler(BaseSampler):
         obs = self._initial_obs_ph
         for t in range(self.max_path_length):
             dist_policy = self.policy.distribution_info_sym(obs)
-            if self.deterministic_policy:
-                act = dist_policy['mean']
-            else:
-                act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
             next_obs = self.dynamics_model.predict_batches_sym(obs, act)
 
             reward = self.env.tf_reward(obs, act, next_obs)

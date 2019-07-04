@@ -53,10 +53,6 @@ class BPTTSampler(BaseSampler):
     def build_graph(self):
         self._initial_obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_rollouts,
                                                                        self.policy.obs_dim), name='init_obs')
-        if self.optimize_actions:
-            self.optimal_actions = tf.Variable(np.zeros(self.max_path_length, self.policy.action_dim),
-                                      trainable=True,
-                                      name='optimal_actions')
         obses = []
         acts = []
         rewards = []
@@ -65,24 +61,16 @@ class BPTTSampler(BaseSampler):
         obs = self._initial_obs_ph
         for t in range(self.max_path_length):
             dist_policy = self.policy.distribution_info_sym(obs)
-            if self.optimize_actions:
-                act = self.optimal_actions[t]
-            elif self.deterministic_policy:
-                act = dist_policy['mean']
-            else:
-                act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
             next_obs = self.dynamics_model.predict_sym(obs, act)
 
             reward = self.env.tf_reward(obs, act, next_obs)
-            # TODO: I think it's better to have random weighted rewards than random weighted states. So the way to
-            # do it would be by predicting # num-ensemble trajectories, and then do a random weighted of the rewards.
 
             obses.append(obs)
             acts.append(act)
             rewards.append(reward)
             means.append(dist_policy['mean'])
             log_stds.append(dist_policy['log_std'])
-            # pre_tanhs.append(dist_policy['pre_tanh'])
 
             obs = next_obs
 
@@ -95,17 +83,6 @@ class BPTTSampler(BaseSampler):
         self._observations_var = obses
         self._means_var = means
         self._log_stds_var = log_stds
-
-        with tf.variable_scope('model_sampler'):
-            self._loss = -tf.reduce_mean(self._returns_var)
-            if self.optimize_actions:
-                target = self.optimal_actions
-            else:
-                target = self.policy
-            self.optimizer.build_graph(loss=self._loss,
-                                       target=target,
-                                       input_ph_dict=dict(initial_obs=self._initial_obs_ph)
-                                       )
 
     def obtain_samples(self, log=False, log_prefix='', buffer=None):
         """

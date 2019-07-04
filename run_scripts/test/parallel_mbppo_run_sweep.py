@@ -16,7 +16,7 @@ from meta_mb.logger import logger
 
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'a-me-ppo-3'
+EXP_NAME = 'bptt-a-me-ppo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -162,6 +162,7 @@ def run_base(exp_dir, **kwargs):
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
+        sampler_str=kwargs['sampler'],
     )
 
     trainer.train()
@@ -175,19 +176,20 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.1, 0.4, 0.9, 0.99
+            0.1, 0.4, 0.9, 0.99,
         ],
 
         'seed': [1, 2, 3, 4],
-        'n_itr': [1000],
+        'n_itr': [1250],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],
 
-        'env': ['Walker2d'],
+        'env': ['Walker2d', 'Hopper'],
 
         # Problem Conf
         'algo': ['meppo'],
+        'sampler': ['bptt'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
         'discount': [0.99],
@@ -222,9 +224,9 @@ if __name__ == '__main__':
         'clip_eps': [0.3, 0.2],
         'learning_rate': [1e-3],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [50,],
+        'imagined_num_rollouts': [50],
         'scope': [None],
-        'exp_tag': ['timing-parallel-mbppo'],  # For changes besides hyperparams
+        'exp_tag': ['a-me-ppo'],  # For changes besides hyperparams
 
     }
 
