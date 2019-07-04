@@ -4,6 +4,8 @@ from experiment_utils.plot_utils import load_exps_data, defaultdict, group_by, c
 
 plt.style.use('ggplot')
 import matplotlib
+from cycler import cycler
+import random
 matplotlib.use('TkAgg')
 
 
@@ -22,8 +24,15 @@ plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
-COLORS = dict(ours=colors.pop(0))
-LEGEND_ORDER = {'ppo': 0, 'sac': 1, 'me-ppo': 2, 'me-trpo': 3, 'mbmpo': 4, 'a-me-ppo': 5}
+# colors = ['green', 'blue', 'red', 'yellow', 'black']
+# Use cycler to change the color
+# keys = list(colors.keys())      # Python 3; use keys = d.keys() in Python 2
+# random.shuffle(colors)
+# colors = [(key, colors[key]) for key in keys]
+COLORS = dict()
+LEGEND_ORDER = {'a-me-trpo':0 , 'a-me-ppo':1, 'a-mb-mpo': 2, 'a-mb-mpc': 3,
+                'me-trpo': 4, 'me-ppo': 5, 'mb-mpo': 6, 'mb-mpc': 7,
+                'trpo': 8, 'ppo': 9}
 
 data_path = '/home/ignasi/corl_data/time_comparison/'
 
@@ -62,16 +71,17 @@ round_plot = {'a-me-ppo': {'Hopper': 5000,
 
          }
 
-x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25e4],
-            'Walker2d': [0, 25e4],
-            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 25e4],
-            'HalfCheetah': [0, 25e4],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 50e4],
-            'Ant': [0, 50e4],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 25e4],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 25e4],
-            'Hopper': [0, 25e4],
+x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 20e4],
+            'Walker2d': [0, 20e4],
+            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 20e4],
+            'HalfCheetah': [0, 20e4],
+            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 25e4],
+            'Ant': [0, 25e4],
+            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 20e4],
+            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 20e4],
+            'Hopper': [0, 20e4],
             }
+
 
 def prepare_data_for_plot(exp_data,
                           y_key=None,
@@ -127,9 +137,23 @@ def sorting_legend(label):
 
 
 def get_color(label):
+    asynch = True if label[:2] == 'a-' else False
     if label not in COLORS.keys():
-        COLORS[label] = colors.pop(0)
+        new_color = colors.pop(0)
+        COLORS[label] = new_color
+        if asynch:
+            COLORS[label[2:]] = new_color
+        else:
+            COLORS['a-' + label] = new_color
     return COLORS[label]
+
+
+def get_linestyle(label):
+    asynch = True if label[:2] == 'a-' else False
+    if asynch:
+        return '-'
+    else:
+        return '--'
 
 
 def plot_from_exps(exp_data,
@@ -182,9 +206,11 @@ def plot_from_exps(exp_data,
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
             if log_scale:
-                axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
+                axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
+                                     color=get_color(label), linestyle=get_linestyle(label))
             else:
-                axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
+                axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH,
+                                 color=get_color(label), linestyle=get_linestyle(label))
 
             axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
 
@@ -208,11 +234,10 @@ def plot_from_exps(exp_data,
         if y_limits is None:
             axarr[r, c].set_ylim([y_axis_min, y_axis_max])
 
-    fig.legend(loc='lower center', ncol=4, bbox_transform=plt.gcf().transFigure)
+    fig.legend(loc='lower center', ncol=3, bbox_transform=plt.gcf().transFigure)
     fig.savefig(plot_name)
 
 
-# filter_dict = {'fast_lr': 0.001, 'path_length':200}
 filter_dict = {}
 
 exps_data_filtered = filter(exps_data, filter_dict)

@@ -532,11 +532,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-        delta_preds = tf.clip_by_value(delta_preds, -1e3, 1e3)
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        return original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(original_obs + tf.gather(delta_preds, perm_inv), -1e2, 1e2)
+        return next_obs
 
     def predict_batches_sym(self, obs_ph, act_ph):
         """
@@ -571,10 +571,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-        delta_preds = tf.clip_by_value(delta_preds, -1e3, 1e3)
 
         # unshuffle
-        return original_obs + delta_preds
+        next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        return next_obs
 
     def predict(self, obs, act, pred_type='rand', **kwargs):
         """
