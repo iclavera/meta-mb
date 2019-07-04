@@ -19,7 +19,7 @@ class MPCController(Serializable):
             use_reward_model=False,
             alpha=0.1,
             num_particles=20,
-            use_graph=False,
+            use_graph=True,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model

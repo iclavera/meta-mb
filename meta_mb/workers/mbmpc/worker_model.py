@@ -8,6 +8,7 @@ import numpy as np
 class WorkerModel(Worker):
     def __init__(self):
         super().__init__()
+        self.sum_model_itr = 0
         self.with_new_data = None
         self.remaining_model_idx = None
         self.valid_loss_rolling_average = None
@@ -74,6 +75,7 @@ class WorkerModel(Worker):
 
         if self.verbose:
             logger.log('Model at iteration {} is training for one epoch...'.format(self.itr_counter))
+        self.sum_model_itr += len(self.remaining_model_idx)
         self.remaining_model_idx, self.valid_loss_rolling_average = self.dynamics_model.fit_one_epoch(
             remaining_model_idx=self.remaining_model_idx,
             valid_loss_rolling_average_prev=self.valid_loss_rolling_average,
@@ -102,6 +104,8 @@ class WorkerModel(Worker):
         )
 
         # Reset variables for early stopping condition
+        logger.logkv('Model-AvgEpochs', self.sum_model_itr/self.dynamics_model.num_models)
+        self.sum_model_itr = 0
         self.with_new_data = True
         self.remaining_model_idx = list(range(self.dynamics_model.num_models))
         self.valid_loss_rolling_average = None
