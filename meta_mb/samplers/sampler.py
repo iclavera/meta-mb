@@ -51,8 +51,7 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='',
-                       random=False, deterministic=False, sinusoid=False,
+    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, sinusoid=False,
                        verbose=False):
         """
         Collect batch_size trajectories from each task
@@ -100,6 +99,7 @@ class Sampler(BaseSampler):
                 actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
                 agent_infos = dict()
             else:
+                obses = np.array(obses)
                 actions, agent_infos = policy.get_actions(obses)
             policy_time += time.time() - t
 
@@ -145,6 +145,7 @@ class Sampler(BaseSampler):
 
         self.total_timesteps_sampled += self.total_samples
         if log:
+            logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 

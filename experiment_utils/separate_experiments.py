@@ -8,28 +8,38 @@ import shutil
 """
 
 
-def valid_experiment(params, lr, rl, env):
-    #           'dyanmics_hidden_nonlinearity': ['relu'],
-    #           'dynamics_buffer_size': [10000],
-    #           'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]}
-
-    # 'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]}
-    # 'env': [{'$class': 'meta_mb.envs.mujoco.ant_env.AntEnv'}]}
-    # 'env': [{'$class': 'meta_mb.envs.mujoco.hopper_env.HopperEnv'}]}
-    # #
-    values = {
-             # 'env': [{'$class': 'meta_mb.envs.mb_envs.pendulumO001.PendulumO001Env'},
-             # {'$class': 'meta_mb.envs.mb_envs.pendulumO01.PendulumO01Env'}
-             # ]
-              'env': [{'$class': 'meta_mb.envs.mb_envs.' + env}],
-              'inner_lr': [lr],
-              'rollouts_per_meta_task': [rl],
-              'max_path_length': [1000],
-              'sample_from_buffer': [False],
-              'meta_steps_per_iter': [[50, 50]],
-              'n_itr': [201],
-              'fraction_meta_batch_size': [1.],
+def valid_experiment(params, algo):
+    if algo == 'mb-mpo':
+        values = {
+              'num_rollouts': [10],
+              'rolling_average_persitency': [0.9],
               }
+
+    elif algo == 'me-ppo':
+        values = {
+            'num_rollouts': [10],
+            'rolling_average_persitency': [0.4],
+            'clip_eps': [0.2],
+            'num_ppo_steps': [5],
+            'learning_rate': [0.0003]
+        }
+
+    elif algo == 'a-me-ppo':
+        values = {
+            'simulation_sleep_frac': [1],
+            'rolling_average_persitency': [0.4],
+        }
+
+    elif algo == 'ppo':
+        values = {
+             'num_rollouts': [50],
+             'clip_eps': [0.2],
+             'num_ppo_steps': [5],
+             'learning_rate': [0.001]
+        }
+
+    else:
+        raise NotImplementedError
 
     for k, v in values.items():
         if params[k] not in v:
@@ -41,20 +51,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("data", type=str)
     parser.add_argument("--store", type=str,
-            default=os.path.join(os.path.expanduser('~'), 'bench_data_lasts'))
-    parser.add_argument('--lr', type=float)
-    parser.add_argument('--rl', type=float)
-    parser.add_argument('--env', type=str)
+            default=os.path.join(os.path.expanduser('~'), 'new'))
+    parser.add_argument('--algo', '-a', type=str)
     args = parser.parse_args()
 
     experimet_paths = load_exps_data(args.data, gap=0.)
     counter = 0
     for exp_path in experimet_paths:
         json_file = exp_path['json']
-        if valid_experiment(json_file, args.lr, args.rl, args.env):
-            env_name = json_file['env']['$class'].split('.')[-2]
+        if valid_experiment(json_file, args.algo):
+            try:
+                env_name = json_file['env']['$class'].split('.')[-2]
+            except TypeError:
+                env_name = json_file['env']
             dir_name = os.path.join(args.store, json_file['algo'], env_name, env_name + str(counter))
-            os.makedirs(dir_name)
+            os.makedirs(dir_name, exist_ok=True)
             shutil.copy2(os.path.join(exp_path['exp_name'], "params.json"), dir_name)
             shutil.copy2(os.path.join(exp_path['exp_name'], "progress.csv"), dir_name)
             counter += 1

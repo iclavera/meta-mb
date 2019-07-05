@@ -31,30 +31,25 @@ class ParallelTrainer(object):
             dynamics_model_pickle,
             feed_dicts,
             n_itr,
-            start_itr=0,
-            num_inner_grad_steps=1,
-            meta_steps_per_iter=30,
+            num_inner_grad_steps,
+            flags_need_query,
+            num_rollouts_per_iter,
+            config,
+            simulation_sleep,
             initial_random_samples=True,
-            log_real_performance=True,
-            flags_need_query=(False, False, False,),
-            sample_from_buffer=False,
-            fraction_meta_batch_size=1,
-            config=None,
-            simulation_sleep=10,
+            start_itr=0,
+            sampler_str='mbmpo',
             ):
 
-        self.log_real_performance = log_real_performance
         self.initial_random_samples = initial_random_samples
 
-        if type(meta_steps_per_iter) is tuple:
-            meta_step_per_iter = int((meta_steps_per_iter[1] + meta_steps_per_iter[0])/2)
-        else:
-            meta_step_per_iter = meta_steps_per_iter
-
         worker_instances = [
-            WorkerData(fraction_meta_batch_size, simulation_sleep),
+            WorkerData(
+                num_rollouts_per_iter=num_rollouts_per_iter,
+                simulation_sleep=simulation_sleep,
+            ),
             WorkerModel(),
-            WorkerPolicy(sample_from_buffer, meta_step_per_iter, num_inner_grad_steps),
+            WorkerPolicy(num_inner_grad_steps=num_inner_grad_steps, sampler_str=sampler_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker

@@ -242,6 +242,7 @@ class MLPDynamicsModel(Serializable):
         pred_obs = obs_original + delta
         return pred_obs
 
+    # FIXME: use predict_sym instead
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name, reuse=True):
             in_obs_var = (obs_var - self._mean_obs_var)/(self._std_obs_var + 1e-8)
@@ -380,15 +381,4 @@ class MLPDynamicsModel(Serializable):
         self.normalization = state['normalization']
         for i in range(len(self._networks)):
             self._networks[i].__setstate__(state['networks'][i])
-
-    def get_shared_param_values(self): # to feed policy
-        state = dict()
-        state['normalization'] = self.normalization
-        state['networks_params'] = [nn.get_param_values() for nn in self._networks]
-        return state
-
-    def set_shared_params(self, state):
-        self.normalization = state['normalization']
-        for i in range(len(self._networks)):
-            self._networks[i].set_params(state['networks_params'][i])
 

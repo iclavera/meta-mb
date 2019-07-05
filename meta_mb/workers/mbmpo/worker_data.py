@@ -2,15 +2,18 @@ import time, pickle
 import numpy as np
 from meta_mb.logger import logger
 from meta_mb.workers.base import Worker
+from collections import OrderedDict
+
 
 class WorkerData(Worker):
-    def __init__(self, fraction_meta_batch_size, simulation_sleep):
+    def __init__(self, num_rollouts_per_iter, simulation_sleep):
         super().__init__()
-        self.fraction_meta_batch_size = fraction_meta_batch_size
+        self.num_rollouts_per_iter = num_rollouts_per_iter
         self.simulation_sleep = simulation_sleep
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
+        self.samples_data_arr = []
 
     def construct_from_feed_dict(
             self,
@@ -38,51 +41,54 @@ class WorkerData(Worker):
     def prepare_start(self):
         initial_random_samples = self.queue.get()
         self.step(initial_random_samples)
-        self.queue_next.put(pickle.dumps(self.result))
+        self.push()
 
     def step(self, random=False):
-        """
-        When args is not None, args = initial_random_samples (bool)
-        """
+        time_step = time.time()
 
         '''------------- Obtaining samples from the environment -----------'''
 
         if self.verbose:
             logger.log("Data is obtaining samples...")
-        time_env_sampling = time.time()
         env_paths = self.env_sampler.obtain_samples(
             log=True,
             random=random,
             log_prefix='Data-EnvSampler-',
         )
-        time_env_sampling = time.time() - time_env_sampling
 
         '''-------------- Processing environment samples -------------------'''
 
         if self.verbose:
             logger.log("Data is processing samples...")
-        # first processing just for logging purposes
-        time_env_samp_proc = time.time()
-        env_paths = list(env_paths.values())
-        idxs = np.random.choice(
-            range(len(env_paths)),
-            size=int(len(env_paths)* self.fraction_meta_batch_size),
-            replace=False,
-        )
-        env_paths = sum([env_paths[idx] for idx in idxs], [])
+        if type(env_paths) is dict or type(env_paths) is OrderedDict:
+            env_paths = list(env_paths.values())
+            idxs = np.random.choice(range(len(env_paths)),
+                                    size=self.num_rollouts_per_iter,
+                                    replace=False)
+            env_paths = sum([env_paths[idx] for idx in idxs], [])
+
+        elif type(env_paths) is list:
+            idxs = np.random.choice(range(len(env_paths)),
+                                    size=self.num_rollouts_per_iter,
+                                    replace=False)
+            env_paths = [env_paths[idx] for idx in idxs]
+
+        else:
+            raise TypeError
         samples_data = self.dynamics_sample_processor.process_samples(
             env_paths,
             log=True,
             log_prefix='Data-EnvTrajs-',
         )
-        time_env_samp_proc = time.time() - time_env_samp_proc
 
-        time.sleep(self.simulation_sleep)
-        self.result = samples_data
+        self.samples_data_arr.append(samples_data)
+        time_step = time.time() - time_step
 
-        info = {'Data-Iteration': self.itr_counter,
-                'Data-TimeEnvSampling': time_env_sampling, 'Data-TimeEnvSampProc': time_env_samp_proc}
-        logger.logkvs(info)
+        time_sleep = max(self.simulation_sleep - time_step, 0)
+        time.sleep(time_sleep)
+
+        logger.logkv('Data-TimeStep', time_step)
+        logger.logkv('Data-TimeSleep', time_sleep)
 
     def _synch(self, policy_state_pickle):
         time_synch = time.time()
@@ -95,29 +101,13 @@ class WorkerData(Worker):
 
     def push(self):
         time_push = time.time()
-        self.dump_result()
-        self.queue_next.put(self.state_pickle)
+        self.queue_next.put(pickle.dumps(self.samples_data_arr))
+        self.samples_data_arr = []
         time_push = time.time() - time_push
+
         logger.logkv('Data-TimePush', time_push)
 
     def set_stop_cond(self):
         if self.itr_counter >= self.n_itr:
             self.stop_cond.set()
 
-    """
-    def set_switch_mode_cond(self, avg_return):
-        self.window_counter += 1
-        self.window_sum += avg_return
-        if self.window_counter == self.window_size:
-            curr_window_avg = self.window_sum / self.window_size
-            if curr_window_avg < self.prev_window_avg * self.switch_mode_threshold:
-                self.switch_mode_cond.set()
-            self.window_counter = 0
-            self.window_sum = 0
-            self.prev_window_avg = curr_window_avg
-    """
-
-    def prepare_close(self, data):
-        # step one more time with most updated policy to measure performance
-        # result dumped in logger
-        raise NotImplementedError

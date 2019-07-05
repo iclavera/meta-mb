@@ -1,6 +1,7 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.optimizers.first_order_optimizer import FirstOrderOptimizer
 from meta_mb.utils import utils
+from meta_mb.logger import logger
 import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
@@ -27,7 +28,6 @@ class BPTTSampler(BaseSampler):
             max_path_length,
             parallel=False,
             deterministic_policy=False,
-            deterministic_dynamics=True,
             optimize_actions=False,
             max_epochs=2,
             learning_rate=1e-4,
@@ -44,7 +44,6 @@ class BPTTSampler(BaseSampler):
         self.num_rollouts = num_rollouts
         self.total_timesteps_sampled = 0
         self.deterministic_policy = deterministic_policy
-        self.deterministic_dynamics = deterministic_dynamics
         self.optimize_actions = optimize_actions
         self.num_models = getattr(dynamics_model, 'num_models', 1)
 
@@ -53,37 +52,26 @@ class BPTTSampler(BaseSampler):
         self.build_graph()
 
     def build_graph(self):
-        self._initial_obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_rollouts * self.num_models, self.policy.obs_dim), name='init_obs')
-        if self.optimize_actions:
-            self.optimal_actions = tf.Variable(np.zeros(self.max_path_length, self.policy.action_dim),
-                                      trainable=True,
-                                      name='optimal_actions')
+        self._initial_obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_rollouts,
+                                                                       self.policy.obs_dim), name='init_obs')
         obses = []
         acts = []
         rewards = []
-        agent_infos = []
+        means = []
+        log_stds = []
         obs = self._initial_obs_ph
         for t in range(self.max_path_length):
             dist_policy = self.policy.distribution_info_sym(obs)
-            if self.optimize_actions:
-                act = self.optimal_actions[t]
-            elif self.deterministic_policy:
-                act = dist_policy['mean']
-            else:
-                act = dist_policy['mean'] + tf.random.normal(shape=(self.num_rollouts * self.num_models, self.policy.action_dim)) * tf.exp(dist_policy['log_std'])
-            dist_dynamics = self.dynamics_model.distribution_info_sym(obs, act)
-            if self.deterministic_dynamics:
-                next_obs = dist_dynamics['mean']
-            else:
-                next_obs = dist_dynamics['mean'] + tf.random.normal(shape=(self.num_rollouts * self.num_models, self.policy.obs_dim)) * tf.exp(dist_dynamics['log_std'])
+            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            next_obs = self.dynamics_model.predict_sym(obs, act)
+
             reward = self.env.tf_reward(obs, act, next_obs)
-            # TODO: I think it's better to have random weighted rewards than random weighted states. So the way to
-            # do it would be by predicting # num-ensemble trajectories, and then do a random weighted of the rewards.
 
             obses.append(obs)
             acts.append(act)
             rewards.append(reward)
-            agent_infos.append(dist_policy)
+            means.append(dist_policy['mean'])
+            log_stds.append(dist_policy['log_std'])
 
             obs = next_obs
 
@@ -94,18 +82,8 @@ class BPTTSampler(BaseSampler):
         self._rewards_var = rewards
         self._actions_var = acts
         self._observations_var = obses
-        self._agent_infos_var = agent_infos
-
-        with tf.variable_scope('model_sampler'):
-            self._loss = -tf.reduce_mean(self._returns_var)
-            if self.optimize_actions:
-                target = self.optimal_actions
-            else:
-                target = self.policy
-            self.optimizer.build_graph(loss=self._loss,
-                                       target=target,
-                                       input_ph_dict=dict(initial_obs=self._initial_obs_ph)
-                                       )
+        self._means_var = means
+        self._log_stds_var = log_stds
 
     def obtain_samples(self, log=False, log_prefix='', buffer=None):
         """
@@ -125,21 +103,26 @@ class BPTTSampler(BaseSampler):
         policy.reset(dones=[True] * self.num_rollouts)
 
         # initial reset of meta_envs
-        init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)] * self.num_models)
+        init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
 
         sess = tf.get_default_session()
-        observations, actions, agent_infos, rewards = sess.run([self._observations_var,
-                                                                self._actions_var,
-                                                                self._agent_infos_var,
-                                                                self._rewards_var,
-                                                               ],
-                                                               feed_dict={self._initial_obs_ph: init_obses}
-                                                               )
+        observations, actions, means, log_stds, rewards = sess.run([self._observations_var,
+                                                                    self._actions_var,
+                                                                    self._means_var,
+                                                                    self._log_stds_var,
+                                                                    self._rewards_var
+                                                                    ],
+                                                                    feed_dict={self._initial_obs_ph: init_obses}
+                                                                    )
 
+        means = np.array(means).transpose((1, 0, 2))
+        log_stds = np.array(log_stds).transpose((1, 0, 2))
+        if log_stds.shape[0] == 1:
+            log_stds = np.repeat(log_stds, self.num_rollouts, axis=0)
+        agent_infos = [dict(mean=mean, log_std=log_std) for mean, log_std in zip(means, log_stds)]
         observations = np.array(observations).transpose((1, 0, 2))
         actions = np.array(actions).transpose((1, 0, 2))
         rewards = np.array(rewards).T
-        agent_infos = transpose_list_dict(agent_infos)
         dones = [[False for _ in range(self.max_path_length)] for _ in range(self.num_rollouts)]
         env_infos = [dict() for _ in range(self.num_rollouts)]
         paths = [dict(observations=obs, actions=act, rewards=rew,
@@ -147,6 +130,7 @@ class BPTTSampler(BaseSampler):
                  obs, act, rew, done, env_info, agent_info in
                  zip(observations, actions, rewards, dones, env_infos, agent_infos)]
         self.total_timesteps_sampled += self.total_samples
+        logger.logkv('ModelSampler-n_timesteps', self.total_timesteps_sampled)
 
         return paths
 
@@ -154,11 +138,3 @@ class BPTTSampler(BaseSampler):
         init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)] * self.num_models)
         input_dict = dict(initial_obs=init_obses)
         self.optimizer.optimize(input_dict)
-
-
-def transpose_list_dict(list_dict):
-    t_mean = np.array([d['mean'] for d in list_dict])
-    t_mean = t_mean.transpose((1, 0, 2)) # batch, time, obs_dim
-    t_log_std = np.array([d['log_std'][0] for d in list_dict]) # time, obs_dim
-    t_list_dict = [dict(mean=mean, log_std=t_log_std) for mean in t_mean]
-    return t_list_dict

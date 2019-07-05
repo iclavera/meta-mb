@@ -26,7 +26,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  weight_normalization=False,  # Doesn't work
                  normalize_input=True,
                  optimizer=tf.train.AdamOptimizer,
-                 valid_split_ratio=0.2,
+                 valid_split_ratio=0.2,  # 0.1
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
@@ -57,9 +57,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
+        self.timesteps_counter = 0
+        self.used_timesteps_counter = 0
 
         self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
-        self.output_nonlinearity  = output_nonlinearity = self._activations[output_nonlinearity]
+        self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -165,6 +167,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
+        self.timesteps_counter += obs.shape[0]
+
         if valid_split_ratio is None: valid_split_ratio = self.valid_split_ratio
 
         assert 1 > valid_split_ratio >= 0
@@ -198,8 +202,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
-                                                                 batch_size=self.batch_size,
-                                                                 take_size=-1)
+                                                                 batch_size=self.batch_size)
             assert self.normalization is None
             if self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
@@ -226,7 +229,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self._dataset_train['delta'][i] = np.concatenate(
                     [self._dataset_train['delta'][i][-n_max_train:], delta_train_batches[i]])
 
-        logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]), len(self._dataset_train['obs'][0])))
+        logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]),
+                                                                                   len(self._dataset_test['obs'][0])))
 
     def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
                       compute_normalization=True, rolling_average_persitency=None,
@@ -237,17 +241,14 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         sess = tf.get_default_session()
 
-        time_compute_normalization = time.time()
         if with_new_data:
             if compute_normalization and self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
                                            self._dataset_train['act'],
                                            self._dataset_train['delta'])
-        time_compute_normalization = time.time() - time_compute_normalization
 
-        time_normalize_input = time.time()
+        self.used_timesteps_counter += len(self._dataset_train['obs'][0])
         if self.normalize_input:
-            # TODO: store normalied data so that if not with_new_data, don't recompute?
             # normalize data
             obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
                                                                      self._dataset_train['act'],
@@ -255,7 +256,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         else:
             obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
                                                 self._dataset_train['delta']
-        time_normalize_input = time.time() - time_normalize_input
 
         valid_loss_rolling_average = valid_loss_rolling_average_prev
         assert remaining_model_idx is not None
@@ -270,7 +270,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess.run(self.iterator.initializer, feed_dict=feed_dict)
 
         # preparations for recording training stats
-        time_epoch = time.time()
         batch_losses = []
 
         """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
@@ -335,19 +334,16 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     )
                 break
 
-        for i in range(self.num_models):
-            # TODO: is this condition reasonable with avg_prev inherited from previous epoch
-            if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]) and i in remaining_model_idx:
+        for i in remaining_model_idx:
+            if valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]:
                 remaining_model_idx.remove(i)
                 logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
 
-        time_epoch = time.time() - time_epoch
-
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv(prefix+'EpochTime', time_epoch)
-            logger.logkv(prefix+'TimeComputeNorm', time_compute_normalization)
-            logger.logkv(prefix+'TimeNormInput', time_normalize_input)
+            logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
+            logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
+            logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
             logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
             logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
@@ -500,6 +496,88 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
+    def predict_sym(self, obs_ph, act_ph):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    # denormalize delta_pred
+                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.concat(delta_preds, axis=0)
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        # nex_obs = clip(obs + delta_pred)
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
+
+    def predict_batches_sym(self, obs_ph, act_ph):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        # shuffle
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.concat(delta_preds, axis=0)
+
+        # unshuffle
+        next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        return next_obs
+
     def predict(self, obs, act, pred_type='rand', **kwargs):
         """
         Predict the batch of next observations given the batch of current observations and actions
@@ -582,11 +660,52 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         assert delta_batches.ndim == 2
 
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
-
         pred_obs_batches = obs_batches_original + delta_batches
+        pred_obs_batches = np.clip(pred_obs_batches, -1e2, 1e2)
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
+
+    """
+    
+    def distribution_info_sym(self, obs_ph, act_ph):
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        means = []
+        log_stds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]  # FIXME: this is mean for obs_next??
+                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                    # FIXME: mean is already denormalized, why need log_std? log_std should not be the std for obs_next?
+                    #  log_Std only useful for prob model??
+                means.append(mean)
+                log_stds.append(log_std)
+
+        mean = tf.concat(means, axis=0)
+        log_std = tf.concat(log_stds, axis=0)
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        mean, perm_inv = tf.gather(mean, perm_inv), tf.gather(log_std, perm_inv)
+        # FIXME: need to clip in the parent function?????
+        return dict(mean=mean, log_std=log_std)
 
     def distribution_info_sym(self, obs_var, act_var):
         means = []
@@ -594,7 +713,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         with tf.variable_scope(self.name, reuse=True):
             obs_var = tf.split(obs_var, self.num_models, axis=0)
             act_var = tf.split(act_var, self.num_models, axis=0)
-            for i in range(self.num_models):
+            for i in range(self.num_models):  # if self.normalize_input is True?
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
@@ -614,6 +733,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         mean = tf.concat(means, axis=0)
         log_std = tf.concat(log_stds, axis=0)
         return dict(mean=mean, log_std=log_std)
+    """
 
     def predict_std(self, obs, act):
         """
@@ -635,7 +755,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000, take_size=-1):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert len(obs_batches) == len(act_batches) == len(delta_batches)
@@ -652,7 +772,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
-        # dataset = dataset.take(take_size) # if take_size = -1, take all of dataset
         dataset = dataset.shuffle(buffer_size=buffer_size)
         iterator = dataset.make_initializable_iterator()
         next_batch = iterator.get_next()
@@ -747,6 +866,28 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
 
+    def get_shared_param_values(self): # to feed policy
+        state = dict()
+        state['normalization'] = self.normalization
+        state['networks_params'] = [nn.get_param_values() for nn in self._networks]
+        return state
+
+    def set_shared_params(self, state):
+        self.normalization = state['normalization']
+        feed_dict = {}
+        for i in range(self.num_models):
+            feed_dict.update({
+                self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
+                self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+                self._mean_act_ph[i]: self.normalization[i]['act'][0],
+                self._std_act_ph[i]: self.normalization[i]['act'][1],
+                self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+                self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+            })
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict=feed_dict)
+        for i in range(len(self._networks)):
+            self._networks[i].set_params(state['networks_params'][i])
 
 
 

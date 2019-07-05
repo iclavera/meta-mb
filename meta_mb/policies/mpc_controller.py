@@ -1,4 +1,5 @@
 from meta_mb.utils.serializable import Serializable
+import tensorflow as tf
 import numpy as np
 
 
@@ -18,6 +19,7 @@ class MPCController(Serializable):
             use_reward_model=False,
             alpha=0.1,
             num_particles=20,
+            use_graph=True,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
@@ -28,17 +30,32 @@ class MPCController(Serializable):
         self.use_cem = use_cem
         self.num_cem_iters = num_cem_iters
         self.percent_elites = percent_elites
+        self.num_elites = int(percent_elites * n_candidates)
         self.env = env
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
+        self.use_graph = use_graph
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
             self.unwrapped_env = self.unwrapped_env._wrapped_env
 
+        assert len(env.observation_space.shape) == 1
+        assert len(env.action_space.shape) == 1
+        self.obs_space_dims = env.observation_space.shape[0]
+        self.action_space_dims = env.action_space.shape[0]
+
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+
+        if use_graph:
+            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+            self.optimal_action = None
+            if not use_cem:
+                self.build_rs_graph()
+            else:
+                self.build_cem_graph()
 
     @property
     def vectorized(self):
@@ -48,21 +65,18 @@ class MPCController(Serializable):
         if observation.ndim == 1:
             observation = observation[None]
 
-        if self.use_cem:
-            action = self.get_cem_action(observation)
-        else:
-            action = self.get_rs_action(observation)
-
-        return action, dict()
+        return self.get_actions(observation)
 
     def get_actions(self, observations):
-        if self.use_cem:
-            actions = self.get_cem_action(observations)
+        if self.use_graph:
+            sess = tf.get_default_session()
+            actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
         else:
-            actions = self.get_rs_action(observations)
+            if self.use_cem:
+                actions = self.get_cem_action(observations)
+            else:
+                actions = self.get_rs_action(observations)
 
-        #for i in range(3, len(actions)): #limit movement to first 3 joints
-        #    actions[i] = 0
         return actions, dict()
 
     def get_random_action(self, n):
@@ -79,6 +93,84 @@ class MPCController(Serializable):
         #    actions[i] = 0
         return actions
 
+    def build_rs_graph(self):
+        # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
+        returns = 0  # (batch_size * n_candidates,)
+        act = tf.random.uniform(
+            shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
+            minval=self.env.action_space.low,
+            maxval=self.env.action_space.high)
+
+        # Equivalent to np.repeat
+        observation = tf.reshape(
+            tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
+            [-1, self.obs_space_dims]
+        )
+        # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
+
+        for t in range(self.horizon):
+            # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
+            # mean, var = dynamics_dist['mean'], dynamics_dist['var']
+            # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
+            next_observation = self.dynamics_model.predict_sym(observation, act[t])
+            assert self.reward_model is None
+            rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+            returns += self.discount ** t * rewards
+            observation = next_observation
+        """
+        returns = tf.reshape(returns, (self.n_candidates, -1))
+        idx = tf.reshape(tf.argmax(returns, axis=0), [-1, 1])  # (batch_size, 1)
+        cand_a = tf.reshape(act[0], [self.n_candidates, -1, self.action_space_dims])  # (n_candidates, batch_size, act_dims)
+        cand_a = tf.transpose(cand_a, perm=[1, 0, 2])  # (batch_size, n_candidates, act_dims)
+        self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+        """
+        returns = tf.reshape(returns, (-1, self.n_candidates))  # (batch_size, n_candidates)
+        cand_a = tf.reshape(act[0], [-1, self.n_candidates, self.action_space_dims])  # (batch_size, n_candidates, act_dims)
+        idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
+        self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+
+    def build_cem_graph(self):
+        mean = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
+                              self.action_space_dims]) * (self.env.action_space.high + self.env.action_space.low) / 2
+        var = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
+                             self.action_space_dims]) * (self.env.action_space.high - self.env.action_space.low) / 16
+
+        for itr in range(self.num_cem_iters):
+            lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+            constrained_var = tf.minimum(tf.minimum(tf.square(lb_dist / 2), tf.square(ub_dist / 2)), var)
+            std = tf.sqrt(constrained_var)
+            act = mean + tf.random.normal(shape=[self.horizon, tf.shape(self.obs_ph)[0], self.n_candidates,
+                                                 self.action_space_dims]) * std
+            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
+            returns = 0
+            observation = tf.reshape(
+                tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
+                [-1, self.obs_space_dims]
+            )
+            act = tf.reshape(act, shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates,
+                                         self.action_space_dims])
+            for t in range(self.horizon):
+                next_observation = self.dynamics_model.predict_sym(observation, act[t])
+                assert self.reward_model is None
+                rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                returns += self.discount ** t * rewards
+                observation = next_observation
+
+            # Re-fit belief to the best ones.
+            returns = tf.reshape(returns, (tf.shape(self.obs_ph)[0], self.n_candidates))  # (batch_size, n_candidates)
+            act = tf.reshape(act, shape=[self.horizon, tf.shape(self.obs_ph)[0], self.n_candidates,
+                                         self.action_space_dims])
+            _, indices = tf.nn.top_k(returns, self.num_elites, sorted=False)
+            act = tf.transpose(act, (1, 2, 3, 0))  # (batch_size, n_candidates, obs_dim, horizon)
+            elite_actions = tf.batch_gather(act, indices)
+            elite_actions = tf.transpose(elite_actions, (3, 0, 1, 2))  # (horizon, batch_size, n_candidates, obs_dim)
+            elite_mean, elite_var = tf.nn.moments(elite_actions, axes=[2])
+            elite_mean, elite_var = tf.expand_dims(elite_mean, axis=2), tf.expand_dims(elite_var, axis=2)
+            mean = mean * self.alpha + (1 - self.alpha) * elite_mean
+            var = var * self.alpha + (1 - self.alpha) * elite_var
+
+        self.optimal_action = tf.squeeze(mean[0], axis=1)
+
     def get_cem_action(self, observations):
 
         n = self.n_candidates
@@ -87,13 +179,13 @@ class MPCController(Serializable):
         act_dim = self.env.action_space.shape[0]
 
         num_elites = max(int(self.n_candidates * self.percent_elites), 1)
-        mean = np.ones((m, h * act_dim)) * (self.env.action_space.high + self.env.action_space.low)/2
-        std = np.ones((m, h * act_dim)) * (self.env.action_space.high - self.env.action_space.low)/16
+        mean = np.ones((m, h * act_dim)) * (self.env.action_space.high + self.env.action_space.low) / 2
+        std = np.ones((m, h * act_dim)) * (self.env.action_space.high - self.env.action_space.low) / 16
         clip_low = np.concatenate([self.env.action_space.low] * h)
         clip_high = np.concatenate([self.env.action_space.high] * h)
 
         for i in range(self.num_cem_iters):
-            z = np.random.normal(size=(n, m,  h * act_dim))
+            z = np.random.normal(size=(n, m, h * act_dim))
             a = mean + z * std
             a = np.clip(a, clip_low, clip_high)
             a_stacked = a.copy()
@@ -110,13 +202,13 @@ class MPCController(Serializable):
                 returns += self.discount ** t * rewards
                 observation = next_observation
             returns = np.mean(np.split(returns.reshape(m, n * self.num_particles),
-                                       self.num_particles, axis=-1), axis=0)   # TODO: Make sure this reshaping works
+                                       self.num_particles, axis=-1), axis=0)  # TODO: Make sure this reshaping works
             elites_idx = ((-returns).argsort(axis=-1) < num_elites).T
             elites = a_stacked[elites_idx]
             mean = mean * self.alpha + (1 - self.alpha) * np.mean(elites, axis=0)
             std = np.std(elites, axis=0)
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
-            std = np.minimum(np.minimum(lb_dist/2, ub_dist/2), std)
+            std = np.minimum(np.minimum(lb_dist / 2, ub_dist / 2), std)
 
         return cand_a[range(m), np.argmax(returns, axis=1)]
 

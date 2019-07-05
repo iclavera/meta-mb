@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import time
 from meta_mb.logger import logger
+import collections
 
 
 class Trainer(object):
@@ -31,6 +32,7 @@ class Trainer(object):
             policy,
             dynamics_model,
             n_itr,
+            num_rollouts_per_iter=None,
             start_itr=0,
             num_inner_grad_steps=1,
             meta_steps_per_iter=30,
@@ -39,7 +41,6 @@ class Trainer(object):
             dynamics_model_max_epochs=200,
             log_real_performance=True,
             sample_from_buffer=False,
-            fraction_meta_batch_size=1,
             ):
         self.algo = algo
         self.env = env
@@ -54,7 +55,8 @@ class Trainer(object):
         self.start_itr = start_itr
         self.num_inner_grad_steps = num_inner_grad_steps
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
-        self.fraction_meta_batch_size = fraction_meta_batch_size
+        self.num_rollouts_per_iter = self.policy.meta_batch_size if num_rollouts_per_iter is None else num_rollouts_per_iter
+        assert self.policy.meta_batch_size % self.num_rollouts_per_iter == 0
 
         self.initial_random_samples = initial_random_samples
         self.meta_steps_per_iter = meta_steps_per_iter
@@ -80,8 +82,9 @@ class Trainer(object):
         with self.sess.as_default() as sess:
 
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.global_variables_initializer())
 
             if type(self.meta_steps_per_iter) is tuple:
                 meta_steps_per_iter = np.linspace(self.meta_steps_per_iter[0]
@@ -108,10 +111,21 @@ class Trainer(object):
 
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
-                env_paths = list(env_paths.values())
-                idxs = np.random.choice(range(len(env_paths)), size=int(len(env_paths) * self.fraction_meta_batch_size),
-                                        replace=False)
-                env_paths = sum([env_paths[idx] for idx in idxs], [])
+                if type(env_paths) is dict or type(env_paths) is collections.OrderedDict:
+                    env_paths = list(env_paths.values())
+                    idxs = np.random.choice(range(len(env_paths)),
+                                            size=self.num_rollouts_per_iter,
+                                            replace=False)
+                    env_paths = sum([env_paths[idx] for idx in idxs], [])
+
+                elif type(env_paths) is list:
+                    idxs = np.random.choice(range(len(env_paths)),
+                                            size=self.num_rollouts_per_iter,
+                                            replace=False)
+                    env_paths = [env_paths[idx] for idx in idxs]
+
+                else:
+                    raise TypeError
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths, log=True,
                                                                               log_prefix='EnvTrajs-')
 
@@ -220,9 +234,9 @@ class Trainer(object):
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
                 if self.log_real_performance:
-                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/3 * self.fraction_meta_batch_size)
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/(3 * self.policy.meta_batch_size) * self.num_rollouts_per_iter)
                 else:
-                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled * self.fraction_meta_batch_size)
+                    logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled/self.policy.meta_batch_size * self.num_rollouts_per_iter)
                 logger.logkv('AvgTime-OuterStep', np.mean(times_outer_step))
                 logger.logkv('AvgTime-InnerStep', np.mean(times_inner_step))
                 logger.logkv('AvgTime-TotalInner', np.mean(times_total_inner_step))

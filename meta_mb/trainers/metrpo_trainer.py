@@ -76,8 +76,9 @@ class Trainer(object):
         with self.sess.as_default() as sess:
 
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.global_variables_initializer())
 
             if type(self.steps_per_iter) is tuple:
                 steps_per_iter = np.linspace(self.steps_per_iter[0],
@@ -147,7 +148,7 @@ class Trainer(object):
 
                     logger.log("Obtaining samples from the model...")
                     time_env_sampling_start = time.time()
-                    paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-')
+                    paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-', buffer=buffer)
                     sampling_time = time.time() - time_env_sampling_start
 
                     """ ----------------- Processing Samples ---------------------"""

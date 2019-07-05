@@ -7,15 +7,16 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv
+from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'timing-parallel-metrpo'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = '2x-all-1-0.99-1-5e-4-metrpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -35,17 +36,20 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    # exp_dir = os.getcwd() + '/data/' + EXP_NAME
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.mkdir(exp_dir + '/Data/')
-    os.mkdir(exp_dir + '/Model/')
-    os.mkdir(exp_dir + '/Policy/')
+    os.makedirs(exp_dir + '/Data/', exist_ok=True)
+    os.makedirs(exp_dir + '/Model/', exist_ok=True)
+    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
     json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    run_base(exp_dir, **kwargs)
+
+
+def run_base(exp_dir, **kwargs):
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -55,7 +59,20 @@ def run_experiment(**kwargs):
 
     baseline = kwargs['baseline']()
 
-    env = normalize(kwargs['env']()) # Wrappers?
+    if kwargs['env'] == 'Ant':
+        env = normalize(AntEnv())
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'HalfCheetah':
+        env = normalize(HalfCheetahEnv())
+        simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Hopper':
+        env = normalize(HopperEnv())
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    elif kwargs['env'] == 'Walker2d':
+        env = normalize(Walker2dEnv())
+        simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
+    else:
+        raise NotImplementedError
 
     policy = GaussianMLPPolicy(
         name="meta-policy",
@@ -118,7 +135,6 @@ def run_experiment(**kwargs):
         'model_sampler': {
             'num_rollouts': kwargs['imagined_num_rollouts'],
             'max_path_length': kwargs['max_path_length'],
-            'dynamics_model': dynamics_model,
             'deterministic': kwargs['deterministic'],
         },
         'model_sample_processor': {
@@ -141,11 +157,9 @@ def run_experiment(**kwargs):
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
-        log_real_performance=kwargs['log_real_performance'],
-        steps_per_iter=kwargs['steps_per_iter'],
         flags_need_query=kwargs['flags_need_query'],
         config=config,
-        simulation_sleep=kwargs['simulation_sleep'],
+        simulation_sleep=simulation_sleep,
     )
 
     trainer.train()
@@ -158,27 +172,31 @@ if __name__ == '__main__':
         'flags_need_query': [
             [False, False, False],
         ],
+        'rolling_average_persitency': [
+            0.99,
+        ],
 
         'seed': [1, 2,],
+        'n_itr': [401*20],
+        'num_rollouts': [1],
+
+        'simulation_sleep_frac': [1],
+        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+
+        # Problem Conf
 
         'algo': ['metrpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, Walker2dEnv, AntEnv],
-
-        # Problem Conf
-        'n_itr': [401],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [True],
-        'steps_per_iter': [1], # No outer loop in effect
+        'log_real_performance': [True],  # UNUSED
+        'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
-        'num_rollouts': [20],
         'n_parallel': [1],
-        'simulation_sleep': [10, 50, 200],
 
         # Dynamics Model
         'num_models': [5],
@@ -186,12 +204,12 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-3],
+        'dynamics_learning_rate': [5e-4],
         'dynamics_batch_size': [256,],
-        'dynamics_buffer_size': [25000],
+        'dynamics_buffer_size': [10000],
         'deterministic': [False],
         'loss_str': ['MSE'],
-        'rolling_average_persitency': [0.99, 0.9, 0.5],
+        'initial_random_samples': [True],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -205,7 +223,7 @@ if __name__ == '__main__':
         'step_size': [0.001],
         'imagined_num_rollouts': [50,],
         'scope': [None],
-        'exp_tag': ['timing-parallel-metrpo'],  # For changes besides hyperparams
+        'exp_tag': ['parallel-metrpo'],  # For changes besides hyperparams
 
     }
 

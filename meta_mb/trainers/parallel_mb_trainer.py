@@ -1,7 +1,6 @@
-import tensorflow as tf
-from multiprocessing import Pipe, Process, Event, Queue, active_children
 import time
 from meta_mb.logger import logger
+from multiprocessing import Pipe, Process, Event, Queue
 from meta_mb.workers.mbmpc.worker_data import WorkerData
 from meta_mb.workers.mbmpc.worker_model import WorkerModel
 
@@ -31,19 +30,19 @@ class ParallelTrainer(object):
             dynamics_model_pickle,
             feed_dicts,
             n_itr,
+            initial_random_samples,
+            initial_sinusoid_samples,
+            flags_need_query,
+            config,
+            simulation_sleep,
             start_itr=0,
-            initial_random_samples=True,
-            initial_sinusoid_samples=False,
-            flags_need_query=(False, False, False),
-            config=None,
-            simulation_sleep=10,
             ):
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
 
         worker_instances = [
-            WorkerData(simulation_sleep),
+            WorkerData(simulation_sleep=simulation_sleep),
             WorkerModel(),
         ]
 
@@ -56,7 +55,7 @@ class ParallelTrainer(object):
         stop_cond = Event()
         # current worker needs query means previous workers does not auto push
         # skipped checking here
-        flags_auto_push = [not flags_need_query[1], not flags_need_query[0]]
+        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
             Process(
@@ -103,8 +102,6 @@ class ParallelTrainer(object):
 
         for p in self.ps:
             p.start()
-
-        print(active_children())
 
         ''' --------------- worker warm-up --------------- '''
 

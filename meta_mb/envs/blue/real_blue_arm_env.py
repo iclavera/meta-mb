@@ -4,13 +4,15 @@ from meta_mb.logger import logger
 import gym
 from gym import error, spaces
 from meta_mb.meta_envs.base import MetaEnv
+
 from blue_interface.blue_interface import BlueInterface
 
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
-    def __init__(self, match_joints=False, side='right', ip='127.0.0.1', port=9090):
+    def __init__(self, match_joints=False, fixed=False, side='right', ip='127.0.0.1', port=9090):
         self.goal = np.array([0.1, 0.21, -0.55])
         self.joint_goal_pos = np.zeros(7) # joint position control vs torque control
         self.match_joints = match_joints
+        self.fixed = fixed
         max_torques = np.array([5, 5, 4, 4, 3, 2, 2]) #control 7 different joints not including the grippers
         self.frame_skip = 1
         self.dt = 0.2
@@ -36,15 +38,17 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def step(self, act):
         self._prev_qpos = self.get_joint_positions()
         self._prev_qvel = self.get_joint_velocities()
+        if len(act) == 1:
+            act = act[0]
         self.do_simulation(act, self.frame_skip)
 
         #self.correction() #FIXME
-        if not self.match_joints
+        if not self.match_joints:
             vec = self.vec_gripper_to_goal
+            reward_dist = -np.linalg.norm(vec)
         else:
-            vec = self.joint_goal()
+            reward = self.joint_match()
 
-        reward_dist = -np.linalg.norm(vec)
         reward_ctrl = -np.square(act/(2 * self._high)).sum()
         reward = reward_dist + 0.5 * 0.1 * reward_ctrl
         ob = self._get_obs()
@@ -78,7 +82,10 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
             reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act / (2 * self._high)), axis=1)
-            reward_dist = -np.linalg.norm(obs_next[:, -3:], axis=1)
+            if self.match_joints:
+                reward_dist = -np.linalg.norm(self.joint_goal())
+            else:
+                reward_dist = -np.linalg.norm(obs_next[:, -3:], axis=1)
             reward = reward_dist + reward_ctrl
             return np.clip(reward, -1e2, 1e2)
 
@@ -92,8 +99,14 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.set_joint_positions(np.zeros(7), duration=5)
         while True:
             #self.goal = np.append(np.random.uniform(low=-0.75, hig-0.25), np.random.uniform(low=-0.2, high=0.2, size=3))
-            self.joint_goal_pos = self.joint_goal()
-            self.goal = np.array([0.1, 0.21, -0.55])
+            if self.fixed and self.match_joints:
+                self.joint_goal_pos = np.array([-np.pi/4.0, -0.78539816339, np.pi/4.0, 0, 0, 0, 0])
+            elif not self.fixed and self.match_joints:
+                self.joint_goal_pos = self.joint_goal()
+            elif self.fixed:
+                self.goal = np.array([-0.44, -0.1, 0.21])
+            else:
+                self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
             if np.linalg.norm(self.goal) < 2:
                 break
         return self._get_obs()
@@ -131,9 +144,8 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             joints[1] = correction
             joint_velocities[1] = joint_velocities[1] * 0.9
             print("correction!")
-            #self.set_joint_positions(joints)
-            self.get_joint_to
-            #self._joint_velocities = joint_velocities
+            self.set_joint_positions(joints)
+            self._joint_velocities = joint_velocities
         except:
             pass
 
@@ -176,7 +188,7 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
 
 if __name__ == "__main__":
-    env = ArmReacherEnv()
+    env = ArmReacherEnv(match_joints=True)
     while True:
         env.reset()
         for _ in range(100):
