@@ -55,8 +55,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train VAE')
     parser.add_argument('--epochs', type=int, default=20, help='number of epochs to train the model for')
     parser.add_argument('--run_suffix', type=str, default='')
-    # parser.add_argument('--encoder_arch', type=str, default='default')
-    parser.add_argument('--context_network', type=str, default='stack')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--beta', type=float, default=1)
 
@@ -66,7 +64,7 @@ if __name__ == "__main__":
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'vae_ballsize=0.4'
+    exp_name = 'vae_normaldecoder_ballsize=0.4'
 
     train_with_exploratory_policy(raw_env, policy, exp_name, num_rollouts=1024, batch_size=32,
                                   epochs=args.epochs, lr=args.lr, beta=args.beta)

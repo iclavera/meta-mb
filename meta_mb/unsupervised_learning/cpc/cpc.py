@@ -141,8 +141,11 @@ def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, 
     return cpc_model
 
 class CPCEncoder:
-    def __init__(self, path):
+    def __init__(self, path, image_shape=(64, 64, 3)):
         self.encoder = keras.models.load_model(path)
+        self.image_shape = image_shape
 
     def encode(self, imgs):
+        if imgs.ndim == len(self.image_shape):
+            return self.encoder.predict(imgs[None, ...])[0]
         return self.encoder.predict(imgs)

@@ -23,10 +23,8 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         self.reset_model(pos=desired_pos)
 
         ob = self._get_obs()
-        dist = np.linalg.norm(ob[:2] - np.array([2, 2]))
         done =  False
-        reward = -dist
-        return ob, reward, done, {}
+        return ob, self.reward(None, None, ob), done, {}
 
     def reset_model(self, pos=None):
         if pos is None:
@@ -39,6 +37,9 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         qvel = self.init_qvel + np.random.uniform(size=self.model.nv, low=-0.01, high=0.01)
         self.set_state(qpos, qvel)
         return self._get_obs()
+
+    def reward(self, obs, act, obs_next):
+        return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
 
     def _get_obs(self):
         return self.sim.data.qpos.ravel()

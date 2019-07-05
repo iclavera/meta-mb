@@ -14,7 +14,8 @@ from collections import OrderedDict
 
 class VAE(Serializable):
 
-    def __init__(self, latent_dim, img_size=(64, 64), channels=3, lr=1e-4, step=0, batch_size=32):
+    def __init__(self, latent_dim, img_size=(64, 64), channels=3, lr=1e-4, step=0, batch_size=32,
+                 decoder_bernoulli=False, model_path=None):
         """
         VAE Class
 
@@ -37,6 +38,7 @@ class VAE(Serializable):
         self.batch_shape = [-1, img_size[0], img_size[1], channels]
         self.lr = lr
         self.batch_size = batch_size
+        self.decoder_bernoulli = decoder_bernoulli
 
         self._assign_ops = None
         self._assign_phs = None
@@ -50,12 +52,21 @@ class VAE(Serializable):
 
             with tf.variable_scope('decoder', reuse=tf.AUTO_REUSE):
                 self.z = tf.placeholder(tf.float32, [None, self.latent_dim])
-                self.decoder = self.decode_sym(self.z).probs
+                if self.decoder_bernoulli:
+                    self.decoder = self.decode_sym(self.z).probs
+                else:
+                    self.decoder = self.decode_sym(self.z).mean
 
             current_scope = tf.get_default_graph().get_name_scope()
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.vae_params = OrderedDict(
                 [(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
+
+        # if we want to load a pre-trained model
+        if model_path is not None:
+            saver = tf.train.Saver()
+            saver.restore(tf.get_default_session(), model_path)
+
 
     def decode_sym(self, z):
         net = tf.layers.dense(z, 256, activation=tf.nn.relu)
@@ -66,7 +77,12 @@ class VAE(Serializable):
         net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d_transpose(net, filters=self.n_channels, kernel_size=4, strides=2, padding='same')
         net = tf.contrib.layers.flatten(net)
-        return tf.distributions.Bernoulli(logits=net)
+        if self.decoder_bernoulli:
+            return tf.distributions.Bernoulli(logits=net)
+        else:
+            mean = tf.layers.dense(net, self.do)
+            std = tf.exp(tf.layers.dense(net, self.do))
+            return tf.contrib.distributions.MultivariateNormalDiag(mean, scale_diag=std)
 
     def encode_sym(self, inputs):
         net = tf.reshape(inputs, self.batch_shape)
@@ -94,7 +110,10 @@ class VAE(Serializable):
             scale_diag=tf.ones([self.batch_size, self.latent_dim])
         )
         self.kl = tf.distributions.kl_divergence(self.q_S, p_S)
-        self.log_likelihood = tf.reduce_sum(self.q_O.log_prob(self.O), axis=1)
+        if self.decoder_bernoulli:
+            self.log_likelihood = tf.reduce_sum(self.q_O.log_prob(self.O), axis=1)
+        else:
+            self.log_likelihood = self.q_O.log_prob(self.O)
         self.elbo = tf.reduce_mean(self.log_likelihood - self.kl)
         self.beta_elbo = tf.reduce_mean(self.log_likelihood - self.beta * self.kl)
         self.train_op = tf.train.AdamOptimizer(self.lr).minimize(-self.beta_elbo)
@@ -103,7 +122,10 @@ class VAE(Serializable):
         tf.summary.scalar('Log Likelihood', tf.reduce_mean(self.log_likelihood))
         tf.summary.scalar('ELBO', self.elbo)
         tf.summary.scalar('Beta ELBO', self.beta_elbo)
-        img, rec = tf.reshape(self.O, self.batch_shape), tf.reshape(self.q_O.probs, self.batch_shape)
+        if self.decoder_bernoulli:
+            img, rec = tf.reshape(self.O, self.batch_shape), tf.reshape(self.q_O.probs, self.batch_shape)
+        else:
+            img, rec = tf.reshape(self.O, self.batch_shape), tf.reshape(self.q_O.mean(), self.batch_shape)
         tf.summary.image('State', img[7:10])
         tf.summary.image('Reconstruction', rec[7:10])
         self.summary = tf.summary.merge_all()

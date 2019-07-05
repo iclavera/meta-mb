@@ -132,20 +132,33 @@ def print_prediction(model_path, raw_env, policy, num_rollouts=16, max_path_leng
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Train CPC model')
+    parser.add_argument('exp_name', type=str, help='name of the experiment: '
+                                                   'data will be loaded from meta_mb/unsupervised_learning/cpc/data/$exp_name')
+    parser.add_argument('num_rollout', type=int, help='number of rollouts to use during training')
+    parser.add_argument('--epoch', type=int, default=20, help='number of epochs to train for')
+    parser.add_argument('--vae', action='store_true', help='if a vae is used instead of CPC')
+    parser.add_argument('--e2e', action='store_true', help='not freeze the encoding and train end to end')
+
+    args = parser.parse_args()
+
+
     raw_env = PointEnv()
     policy = RepeatRandom(2, 2, repeat=3)
-    encoder_path = 'meta_mb/unsupervised_learning/cpc/data/vae_beta=01.0'
+    encoder_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', args.exp_name)
 
     #
     # collect_img_and_truestate(raw_env, policy, num_rollouts=8, plot=True)
-    freeze_encoding = True
+    freeze_encoding = not args.e2e
     if freeze_encoding:
-        save_name='supervised'
+        save_name='supervised%d' % args.num_rollout
     else:
-        save_name = 'supervised_unfrozen'
+        save_name = 'supervised_unfrozen%d' % args.num_rollout
 
-    train_regression(raw_env, policy, encoder_path, epochs=20, batch_size=64, lr=1e-3, img_shape=(64, 64, 3),
-                     state_shape=2, num_rollouts=512, freeze_encoding=freeze_encoding, save_name=save_name, vae=True,
-                     code_size=32)
+    train_regression(raw_env, policy, encoder_path, epochs=args.epoch, batch_size=64, lr=1e-3, img_shape=(64, 64, 3),
+                     state_shape=2, num_rollouts=args.num_rollout, freeze_encoding=freeze_encoding, save_name=save_name,
+                     vae=args.vae, code_size=32)
 
     # print_prediction(os.path.join(encoder_path, save_name + '.h5'), raw_env, policy, num_rollouts=2, max_path_length=16)
