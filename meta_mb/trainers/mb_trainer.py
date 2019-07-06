@@ -33,15 +33,19 @@ class Trainer(object):
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
+            reward_model_max_epochs=200,
+            reward_model=None,
             ):
         self.env = env
         self.sampler = sampler
         self.dynamics_sample_processor = dynamics_sample_processor
         self.dynamics_model = dynamics_model
+        self.reward_model = reward_model
         self.policy = policy
         self.n_itr = n_itr
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
+        self.reward_model_max_epochs = reward_model_max_epochs
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -105,6 +109,19 @@ class Trainer(object):
                                         epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
+
+                ''' --------------- fit reward model --------------- '''
+                time_fitrew_start = time.time()
+
+                logger.log("Training reward model for %i epochs ..." % (self.reward_model_max_epochs))
+                self.reward_model.fit(samples_data['observations'],
+                                        samples_data['actions'],
+                                        samples_data['next_observations'],
+                                        samples_data['rewards'],
+                                        epochs=self.reward_model_max_epochs, verbose=False, log_tabular=True)
+
+                logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
+
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)

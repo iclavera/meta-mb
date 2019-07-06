@@ -113,8 +113,12 @@ class MPCController(Serializable):
             # mean, var = dynamics_dist['mean'], dynamics_dist['var']
             # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
             next_observation = self.dynamics_model.predict_sym(observation, act[t])
-            assert self.reward_model is None
-            rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+            if not self.use_reward_model:
+                assert self.reward_model is None
+                rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+            else:
+                assert not (self.reward_model is None)
+                rewards = self.reward_model.predict_sym(observation, act[t], next_observation)
             returns += self.discount ** t * rewards
             observation = next_observation
         """
@@ -151,8 +155,12 @@ class MPCController(Serializable):
                                          self.action_space_dims])
             for t in range(self.horizon):
                 next_observation = self.dynamics_model.predict_sym(observation, act[t])
-                assert self.reward_model is None
-                rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                if not self.use_reward_model:
+                    assert self.reward_model is None
+                    rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                else:
+                    assert not (self.reward_model is None)
+                    rewards = self.reward_model.predict_sym(observation, act[t], next_observation)
                 returns += self.discount ** t * rewards
                 observation = next_observation
 
