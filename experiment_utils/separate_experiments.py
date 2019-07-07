@@ -247,6 +247,10 @@ def valid_experiment(params, algo):
             'exp_tag': ['no-exploration']
         }
 
+    elif algo == 'a-mb-mpo-pr2':
+        return True
+
+
     else:
         raise NotImplementedError
 
