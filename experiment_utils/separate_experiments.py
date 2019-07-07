@@ -72,7 +72,11 @@ def valid_experiment(params, algo):
                 'dynamics_learning_rate': [0.0005],
             }
         elif params['env'] == 'Ant':
-            raise NotImplementedError
+            values = {
+                'clip_eps': [0.2],
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.0005],
+            }
         # # Ant:
         # values = {
         #     'clip_eps': [0.2],
@@ -80,7 +84,11 @@ def valid_experiment(params, algo):
         #     'dynamics_learning_rate': [0.0005],
         # }
         elif params['env'] == 'Hopper':
-            raise NotImplementedError
+            values = {
+                'clip_eps': [0.2],
+                'rolling_average_persitency': [0.9],
+                'dynamics_learning_rate': [0.0005],
+            }
 
         elif params['env'] == 'Walker2d':
             values = {
@@ -92,7 +100,7 @@ def valid_experiment(params, algo):
     elif algo == 'a-me-trpo':
         if params['env'] == 'HalfCheetah':
             values = {
-                'rolling_average_persistency': [0.4],
+                'rolling_average_persitency': [0.4],
                 'dynamics_learning_rate': [0.0005],
                 'step_size': [0.01]
             }
@@ -106,6 +114,7 @@ def valid_experiment(params, algo):
             #     'dynamics_learning_rate': [0.0005],
             # }
         elif params['env'] == 'Ant':
+            return False
             values = {
                 'rolling_average_persitency': [0.1],
                 'dynamics_learning_rate': [0.0005],
@@ -114,7 +123,7 @@ def valid_experiment(params, algo):
 
         elif params['env'] == 'Walker2d':
             values = {
-                'rolling_average_persistency': [0.4],
+                'rolling_average_persitency': [0.4],
                 'dynamics_learning_rate': [0.0005],
                 'step_size': [0.01]
             }
@@ -133,10 +142,11 @@ def valid_experiment(params, algo):
             # }
 
         elif params['env'] == 'Hopper':
+            return False
             values = {
                 'env': ['Hopper'],
                 'step_size': [0.02],
-                'rolling_average_persitency': [0.9],
+                'rolling_average_persistency': [0.9],
                 'dynamics_learning_rate': [0.0005],
                 }
         else:
@@ -160,6 +170,7 @@ def valid_experiment(params, algo):
                 'step_size': [0.05],
                 'rolling_average_persitency': [0.1],
                 'dynamics_learning_rate': [0.001],
+
 
             }
             # values = {
@@ -247,12 +258,29 @@ def valid_experiment(params, algo):
             'exp_tag': ['no-exploration']
         }
 
+    elif algo == 'time-ablations':
+        values = {
+            'rolling_average_persitency': [0.4],
+            'dynamics_learning_rate': [0.0005],
+            'step_size': [0.01]
+        }
+
+    elif algo == 'persistency-ablations':
+        values = {
+            'env': ['HalfCheetah', 'Walker2d'],
+            'dynamics_learning_rate': [0.0005],
+            'step_size': [0.01]
+        }
+
     else:
         raise NotImplementedError
 
     for k, v in values.items():
-        if params[k] not in v:
-            return False
+        try:
+            if params[k] not in v:
+                return False
+        except:
+            import pdb; pdb.set_trace()
     return True
 
 
