@@ -86,7 +86,7 @@ class MetaBPTTSampler(BaseSampler):
         self._means_var = means
         self._log_stds_var = log_stds
 
-    def obtain_samples(self, log=False, log_prefix='', buffer=None):
+    def obtain_samples(self, log=False, log_prefix='', buffer=None, random=False):
         """
         Collect batch_size trajectories from each task
 

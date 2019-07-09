@@ -24,15 +24,17 @@ class WorkerData(Worker):
             feed_dict
     ):
 
-        from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+        #from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+        from meta_mb.samplers.bptt_samplers.meta_bptt_sampler import MetaBPTTSampler
         from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
         baseline = pickle.loads(baseline_pickle)
+        dynamics_model = pickle.loads(dynamics_model_pickle)
 
         self.env = env
-        self.env_sampler = MetaSampler(env=env, policy=policy, **feed_dict['env_sampler'])
+        self.env_sampler = MetaBPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['env_sampler'])
         self.dynamics_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             **feed_dict['dynamics_sample_processor']

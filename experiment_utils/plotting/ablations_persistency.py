@@ -6,21 +6,20 @@ plt.style.use('ggplot')
 import matplotlib
 matplotlib.use('TkAgg')
 
-
-SMALL_SIZE = 20
-MEDIUM_SIZE = 24
-BIGGER_SIZE = 28
-BIG_SIZE = 30
-LINEWIDTH = 3
-YELLOW = '#FBC15E'
-BLUE = '#348ABD'
+SMALL_SIZE = 32
+MEDIUM_SIZE = 36
+BIGGER_SIZE = 44
+BIG_SIZE = 44
+LINEWIDTH = 8
+MARKER = None
+ALPHA=0.15
 
 plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
 plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+plt.rc('legend', fontsize=BIG_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
 
 
@@ -171,7 +170,7 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(14, 8))
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 12))
     axarr = np.reshape(axarr, (num_rows, num_columns))
     fig.tight_layout(pad=5.0, w_pad=1, h_pad=2, rect=[0, 0, 1, 1])
 
@@ -202,7 +201,7 @@ def plot_from_exps(exp_data,
             else:
                 axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
 
-            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
+            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=ALPHA, color=get_color(label))
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
@@ -250,7 +249,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./ablations_persistency.png',
+               plot_name='./ablations_persistency.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,

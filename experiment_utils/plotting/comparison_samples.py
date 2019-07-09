@@ -8,11 +8,11 @@ matplotlib.use('TkAgg')
 
 SMALL_SIZE = 32
 MEDIUM_SIZE = 36
-BIGGER_SIZE = 40
+BIGGER_SIZE = 44
 BIG_SIZE = 44
-LINEWIDTH = 5
-MARKER = 'o'
-
+LINEWIDTH = 8
+MARKER = None
+ALPHA=0.15
 
 plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -182,9 +182,9 @@ def get_linestyle(label):
     if label.startswith('a'):
         return '-'
     elif label.startswith('m'):
-        return ':'
-    else:
         return '--'
+    else:
+        return ':'
 
 def get_marker(label):
     if label.startswith('a'):
@@ -243,6 +243,8 @@ def plot_from_exps(exp_data,
 
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
+            if _label.startswith('a-'):
+                _label = 'asynch-' + _label[2:]
             if log_scale:
                 axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
                                      color=get_color(label), linestyle=get_linestyle(label), marker=get_marker(label), markersize=10)
@@ -250,7 +252,7 @@ def plot_from_exps(exp_data,
                 axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH,
                                  color=get_color(label), linestyle=get_linestyle(label), marker=get_marker(label), markersize=10)
 
-            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
+            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=ALPHA, color=get_color(label))
 
             # axis labels
             if c == 0:
@@ -298,7 +300,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_samples.png',
+               plot_name='./comparison_samples.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,
