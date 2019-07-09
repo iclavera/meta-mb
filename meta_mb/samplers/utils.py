@@ -41,6 +41,8 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
             a, agent_info = agent.get_action(o)
             if not stochastic:
                 a = agent_info['mean']
+            if a.ndim == 2:
+                a = a[0]
             next_o, r, d, env_info = env.step(a)
             observations.append(o)
             rewards.append(r)

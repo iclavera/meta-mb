@@ -71,6 +71,7 @@ class Trainer(object):
             # initialize uninitialized vars  (only initialize vars that were not loaded)
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
+            # sess.run(tf.variables_initializer(tf.global_variables()))
 
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
@@ -84,10 +85,12 @@ class Trainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
                 elif self.initial_sinusoid_samples and itr == 0:
                     logger.log("Obtaining sinusoidal samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+
+                # import pdb; pdb.set_trace()
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
@@ -113,14 +116,16 @@ class Trainer(object):
                 ''' --------------- fit reward model --------------- '''
                 time_fitrew_start = time.time()
 
-                logger.log("Training reward model for %i epochs ..." % (self.reward_model_max_epochs))
-                self.reward_model.fit(samples_data['observations'],
-                                        samples_data['actions'],
-                                        samples_data['next_observations'],
-                                        samples_data['rewards'],
-                                        epochs=self.reward_model_max_epochs, verbose=False, log_tabular=True)
+                if self.reward_model is not None:
+                    logger.log("Training reward model for %i epochs ..." % (self.reward_model_max_epochs))
+                    self.reward_model.fit(samples_data['observations'],
+                                            samples_data['actions'],
+                                            samples_data['next_observations'],
+                                            samples_data['rewards'],
+                                            epochs=self.reward_model_max_epochs, verbose=False, log_tabular=True,
+                                            prefix='Rew')
 
-                logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
+                    logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
 
 
                 """ ------------------- Logging Stuff --------------------------"""
@@ -147,7 +152,7 @@ class Trainer(object):
         """
         Gets the current policy and env for storage
         """
-        return dict(itr=itr, policy=self.policy, env=self.env, dynamics_model=self.dynamics_model)
+        return dict(itr=itr, policy=self.policy, env=self.env, dynamics_model=self.dynamics_model, reward_model=self.reward_model)
 
     def log_diagnostics(self, paths, prefix):
         self.env.log_diagnostics(paths, prefix)

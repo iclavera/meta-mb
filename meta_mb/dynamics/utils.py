@@ -10,7 +10,7 @@ def denormalize(data_array, mean, std):
     return data_array * (std + 1e-10) + mean
 
 
-def train_test_split(obs, act, delta, test_split_ratio=0.2):
+def train_test_split(obs, act, delta, reward=None, test_split_ratio=0.2):
     assert obs.shape[0] == act.shape[0] == delta.shape[0]
     dataset_size = obs.shape[0]
     indices = np.arange(dataset_size)
@@ -21,8 +21,12 @@ def train_test_split(obs, act, delta, test_split_ratio=0.2):
     idx_test = indices[split_idx:]
     assert len(idx_train) + len(idx_test) == dataset_size
 
-    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
-           obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
+    if reward is None:
+        return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
+               obs[idx_test, :], act[idx_test, :], delta[idx_test, :]
+    else:
+        return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], reward[idx_train, :], \
+               obs[idx_test, :], act[idx_test, :], delta[idx_test, :], reward[idx_test, :]
 
 
 
