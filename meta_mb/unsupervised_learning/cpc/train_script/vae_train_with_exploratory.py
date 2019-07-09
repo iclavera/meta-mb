@@ -20,7 +20,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 def train_with_exploratory_policy(raw_env, policy, exp_name, batch_size=32, code_size=32, epochs=30,
                                   image_shape=(64, 64, 3),  num_rollouts=32, max_path_length=16,
-                                  lr=1e-3, beta=1):
+                                  lr=1e-3, beta=1, bnl_decoder=False):
 
     logger.configure(dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data', exp_name))
 
@@ -37,7 +37,7 @@ def train_with_exploratory_policy(raw_env, policy, exp_name, batch_size=32, code
     # with sess.as_default():
     #     pass
 
-    model = VAE(latent_dim=code_size, lr=lr)
+    model = VAE(latent_dim=code_size, lr=lr, decoder_bernoulli=bnl_decoder)
     init_uninit_vars(sess)
 
     for i in range(epochs * n_train // batch_size):
@@ -53,7 +53,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Train VAE')
-    parser.add_argument('--epochs', type=int, default=20, help='number of epochs to train the model for')
+    parser.add_argument('--bnl_decoder', action='store_true')
+    parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train the model for')
     parser.add_argument('--run_suffix', type=str, default='')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--beta', type=float, default=1)
@@ -64,10 +65,10 @@ if __name__ == "__main__":
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'vae_normaldecoder_ballsize=0.4'
+    exp_name = 'vae_bnldecoder_ballsize=0.1'
 
-    train_with_exploratory_policy(raw_env, policy, exp_name, num_rollouts=1024, batch_size=32,
-                                  epochs=args.epochs, lr=args.lr, beta=args.beta)
+    train_with_exploratory_policy(raw_env, policy, exp_name, num_rollouts=512, batch_size=32,
+                                  epochs=args.epochs, lr=args.lr, beta=args.beta, bnl_decoder=args.bnl_decoder)
 
 
 

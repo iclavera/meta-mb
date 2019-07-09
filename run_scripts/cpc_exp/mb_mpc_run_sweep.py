@@ -24,6 +24,8 @@ from meta_mb.envs.mujoco.point_pos import PointEnv
 from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 EXP_NAME = 'ptmass-state'
 
@@ -258,11 +260,11 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [True],
+                'use_image': [False],
                 'model_path': ['meta_mb/unsupervised_learning/cpc/data/ip-neg-15/encoder.h5'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
 
     }
 
-    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_ip, EXP_NAME, INSTANCE_TYPE)

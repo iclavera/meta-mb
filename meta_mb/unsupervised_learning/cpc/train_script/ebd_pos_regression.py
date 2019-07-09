@@ -10,6 +10,7 @@ import tensorflow as tf
 from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
+from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.logger import logger
 from meta_mb.policies.base import Policy
 from meta_mb.samplers.base import BaseSampler
@@ -23,10 +24,10 @@ from meta_mb.utils import Serializable
 
 def collect_img_and_truestate(raw_env, policy, num_rollouts=1024, max_path_length=16, plot=False):
     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1)
-    sampler = BaseSampler(env, policy, num_rollouts, max_path_length, )
+    sampler = BaseSampler(env, policy, num_rollouts, max_path_length, ignore_done=True)
 
     # Sampling data from the given exploratory policy and create a data iterator
-    env_paths = sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-', random=True)
+    env_paths = sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-', random=True, )
     img_seqs = np.concatenate([path['observations'] for path in env_paths])  # (N x T) x (img_shape)
     true_state_seqs = np.concatenate([path['env_infos']['true_state'] for path in env_paths]) # (N x T) x 2
     if plot:
@@ -135,6 +136,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Train CPC model')
+    parser.add_argument('env_name', type=str)
     parser.add_argument('exp_name', type=str, help='name of the experiment: '
                                                    'data will be loaded from meta_mb/unsupervised_learning/cpc/data/$exp_name')
     parser.add_argument('num_rollout', type=int, help='number of rollouts to use during training')
@@ -144,13 +146,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.env_name == 'ip':
+        raw_env = InvertedPendulumEnv()
+        state_shape = 4
+    elif args.env_name == 'pt':
+        raw_env = PointEnv()
+        state_shape = 2
 
-    raw_env = PointEnv()
     policy = RepeatRandom(2, 2, repeat=3)
     encoder_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', args.exp_name)
 
     #
     # collect_img_and_truestate(raw_env, policy, num_rollouts=8, plot=True)
+    # import pdb; pdb.set_trace()
     freeze_encoding = not args.e2e
     if freeze_encoding:
         save_name='supervised%d' % args.num_rollout
@@ -158,7 +166,7 @@ if __name__ == "__main__":
         save_name = 'supervised_unfrozen%d' % args.num_rollout
 
     train_regression(raw_env, policy, encoder_path, epochs=args.epoch, batch_size=64, lr=1e-3, img_shape=(64, 64, 3),
-                     state_shape=2, num_rollouts=args.num_rollout, freeze_encoding=freeze_encoding, save_name=save_name,
+                     state_shape=state_shape, num_rollouts=args.num_rollout, freeze_encoding=freeze_encoding, save_name=save_name,
                      vae=args.vae, code_size=32)
 
-    # print_prediction(os.path.join(encoder_path, save_name + '.h5'), raw_env, policy, num_rollouts=2, max_path_length=16)
+    print_prediction(os.path.join(encoder_path, save_name + '.h5'), raw_env, policy, num_rollouts=2, max_path_length=16)

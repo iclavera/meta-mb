@@ -148,6 +148,7 @@ class RNNMPCController(Serializable):
                 self._hidden_state[i].c[dones] = z_h.c
                 self._hidden_state[i].h[dones] = z_h.h
             else:
+                import pdb; pdb.set_trace()
                 self._hidden_state[i][dones] = z_h
 
     def repeat_hidden(self, hidden, n):

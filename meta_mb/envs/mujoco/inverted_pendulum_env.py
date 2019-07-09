@@ -15,8 +15,9 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         ob = self._get_obs()
         notdone = np.isfinite(ob).all() and (np.abs(ob[1]) <= .2)
         done = not notdone
-        reward = int(notdone)
+        # reward = int(notdone)
         # done = False
+        reward = self._get_reward()
         return ob, reward, done, {}
 
     def reset_model(self):
@@ -27,6 +28,11 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
     def _get_obs(self):
         return np.concatenate([self.sim.data.qpos, self.sim.data.qvel]).ravel()
+
+    def _get_reward(self):
+        old_ob = self._get_obs()
+        reward = -((old_ob[1]) ** 2)
+        return reward
 
     def viewer_setup(self):
         v = self.viewer
