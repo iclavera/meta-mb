@@ -4,6 +4,7 @@ from gym.envs.mujoco.mujoco_env import MujocoEnv
 
 import numpy as np
 from gym import utils
+import tensorflow as tf
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
     def __init__(self, random_reset=True):
@@ -40,6 +41,9 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
     def reward(self, obs, act, obs_next):
         return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
+
+    def tf_reward(self, obs, act, obs_next):
+        return - tf.norm(obs_next[..., :2] - np.array([2, 2]), axis = -1)
 
     def _get_obs(self):
         return self.sim.data.qpos.ravel()

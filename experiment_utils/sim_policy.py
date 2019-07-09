@@ -3,6 +3,8 @@ import tensorflow as tf
 import argparse
 from meta_mb.samplers.utils import rollout
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]=""
 
 if __name__ == "__main__":
 
@@ -33,6 +35,7 @@ if __name__ == "__main__":
         data = joblib.load(pkl_path)
         policy = data['policy']
         env = data['env']
+        import pdb; pdb.set_trace()
         for _ in range(args.num_rollouts):
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,

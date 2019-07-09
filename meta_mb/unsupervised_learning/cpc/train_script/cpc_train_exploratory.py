@@ -10,6 +10,7 @@ import time
 
 from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
+from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
 from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_seq
@@ -23,20 +24,20 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, batch_size=32, code_size=32, epochs=30,
                                   image_shape=(64, 64, 3),  num_rollouts=32, max_path_length=16,
-                                  encoder_arch='default', context_network='stack', lr=1e-3):
+                                  encoder_arch='default', context_network='stack', lr=1e-3, terms=1):
     img_seqs = collect_img(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length, image_shape=image_shape)
     train_seq, val_seq = train_test_split(img_seqs)
-    train_data = CPCDataGenerator(train_seq, batch_size, terms=1, negative_samples=negative_samples, predict_terms=1)
-    validation_data = CPCDataGenerator(val_seq, batch_size, terms=1, negative_samples=negative_samples, predict_terms=1)
+    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=1)
+    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=1)
     #
     #
     # for (x, y), labels in train_data:
-    #     plot_seq(x, y, labels, name='point_mass_seq')
+    #     plot_seq(x, y, labels, name='ip-seq')
     #     break
     # import pdb; pdb.set_trace()
 
     # Create the model
-    model = network_cpc(image_shape=image_shape, terms=1, predict_terms=1, negative_samples=negative_samples,
+    model = network_cpc(image_shape=image_shape, terms=terms, predict_terms=1, negative_samples=negative_samples,
                         code_size=code_size, learning_rate=lr, encoder_arch=encoder_arch, context_network=context_network)
 
     # Callbacks
@@ -75,12 +76,14 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
 
     args = parser.parse_args()
+    # from meta_mb.envs.mujoco.point_pos import PointEnv
+    # raw_env = PointEnv()
+    raw_env = InvertedPendulumEnv()
 
-    raw_env = PointEnv()
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'neg-%d%s' % (args.negative_samples, args.run_suffix)
+    exp_name = 'ip-neg-%d%s' % (args.negative_samples, args.run_suffix)
 
     train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=1024, batch_size=32,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr)

@@ -155,5 +155,6 @@ class Trainer(object):
         return dict(itr=itr, policy=self.policy, env=self.env, dynamics_model=self.dynamics_model, reward_model=self.reward_model)
 
     def log_diagnostics(self, paths, prefix):
-        self.env.log_diagnostics(paths, prefix)
+        if hasattr(self.env, 'log_diagnostics'):
+            self.env.log_diagnostics(paths, prefix)
         self.policy.log_diagnostics(paths, prefix)

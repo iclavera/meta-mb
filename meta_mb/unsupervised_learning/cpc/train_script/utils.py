@@ -29,7 +29,7 @@ class RepeatRandom(Policy):
 def collect_img(raw_env, policy, num_rollouts=32, max_path_length=16, image_shape=(64, 64, 3)):
     # Create environment and sampler
     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, img_size=image_shape)
-    sampler = BaseSampler(env, policy, num_rollouts, max_path_length,)
+    sampler = BaseSampler(env, policy, num_rollouts, max_path_length, ignore_done=True)
 
     # Sampling data from the given exploratory policy and create a data iterator
     env_paths = sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-', random=True)

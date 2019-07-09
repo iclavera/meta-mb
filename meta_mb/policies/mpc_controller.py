@@ -47,7 +47,7 @@ class MPCController(Serializable):
         self.action_space_dims = env.action_space.shape[0]
 
         # make sure that enc has reward function
-        assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+        # assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         if use_graph:
             self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')

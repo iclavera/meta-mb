@@ -18,7 +18,7 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, num_rollouts, max_path_length):
+    def __init__(self, env, policy, num_rollouts, max_path_length, ignore_done = False):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
@@ -27,6 +27,8 @@ class BaseSampler(object):
 
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
+
+        self.ignore_done = ignore_done
 
     def obtain_samples(self, log=False, log_prefix='', random=False):
         """
@@ -76,7 +78,7 @@ class BaseSampler(object):
             next_obs, reward, done, env_info = self.env.step(action)
 
             ts += 1
-            done = done or ts >= self.max_path_length
+            done = done and not self.ignore_done or ts >= self.max_path_length
             if done:
                 next_obs = self.env.reset()
                 ts = 0

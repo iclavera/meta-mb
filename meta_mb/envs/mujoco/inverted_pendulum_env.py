@@ -11,11 +11,11 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         MujocoEnv.__init__(self, 'inverted_pendulum.xml', 2)
 
     def step(self, a):
-        reward = 1.0
         self.do_simulation(a, self.frame_skip)
         ob = self._get_obs()
         notdone = np.isfinite(ob).all() and (np.abs(ob[1]) <= .2)
         done = not notdone
+        reward = int(notdone)
         # done = False
         return ob, reward, done, {}
 
@@ -29,15 +29,31 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         return np.concatenate([self.sim.data.qpos, self.sim.data.qvel]).ravel()
 
     def viewer_setup(self):
-        # v = self.viewer
-        # v.cam.trackbodyid = 0
-        # v.cam.distance = self.model.stat.extent
-        pass
+        v = self.viewer
+        v.cam.fixedcamid = 0
+        v.cam.trackbodyid = 0
+        v.cam.distance = self.model.stat.extent * 1.5
 
 
 if __name__ == "__main__":
     env = InvertedPendulumEnv()
-    env.reset()
-    for _ in range(1000):
-        env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    # env.reset()
+    # for _ in range(1000):
+    #     env.render()
+    #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    # env.render()
+    # env.viewer_setup()
+    import matplotlib.pyplot as plt
+    k = 1
+    plt.figure(figsize=(60, 9))
+    for i in range(3):
+        env.reset()
+        for __ in range(20):
+            img = env.render(mode='rgb_array')
+            plt.subplot(3, 20, k)
+            k += 1
+            plt.imshow(img)
+            # env.render()
+            env.step(env.action_space.sample())
+
+    plt.savefig('invertedpendelum_traj.png')
