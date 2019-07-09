@@ -103,9 +103,9 @@ class BPTTSampler(BaseSampler):
         policy.reset(dones=[True] * self.num_rollouts)
 
         # initial reset of meta_envs
-        # init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
-        init_obses = [self.env.init_obs.copy() + np.random.uniform(-0.005, 0.005, size=23) for _ in
-                    range(self.num_rollouts)]
+        init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
+        # init_obses = [self.env.init_obs.copy() + np.random.uniform(-0.005, 0.005, size=23) for _ in
+        #             range(self.num_rollouts)]
 
         sess = tf.get_default_session()
         observations, actions, means, log_stds, rewards = sess.run([self._observations_var,
