@@ -187,7 +187,7 @@ if __name__ == '__main__':
                 'valid_split_ratio': [0.1],
                 'rolling_average_persitency': [0.99],
                 'initial_random_samples': [False],
-                'initial_sinusoid_samples': [True],
+                'initial_sinusoid_samples': [False],
 
                 # Dynamics Model
                 'recurrent': [False],
@@ -238,7 +238,7 @@ if __name__ == '__main__':
                 'valid_split_ratio': [0.1],
                 'rolling_average_persitency': [0.99],
                 'initial_random_samples': [False],
-                'initial_sinusoid_samples': [True],
+                'initial_sinusoid_samples': [False],
 
                 # Dynamics Model
                 'recurrent': [True],

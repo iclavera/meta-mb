@@ -85,7 +85,7 @@ class Trainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
                 elif self.initial_sinusoid_samples and itr == 0:
                     logger.log("Obtaining sinusoidal samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+                    env_paths = self.sampler.obtain_samples(log=True, sinusoid=True, sinusoidlog_prefix='')
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
