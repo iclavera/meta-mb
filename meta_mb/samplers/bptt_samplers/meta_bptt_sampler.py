@@ -104,7 +104,15 @@ class MetaBPTTSampler(BaseSampler):
         policy.reset(dones=[True] * self.num_rollouts)
 
         # initial reset of meta_envs
-        init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
+        # init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
+
+         #Peg
+         #init_obs = np.array(
+         #   [-0.07318277, -0.11606423, 1.54337565, -1.11586585, 1.4049322, - 1.69791869,
+         #    -0.01773921, 0., 0., 0., 0., 0.,
+         #    0., 0., -0.29127532, -0.0929903, 0.05638084, -0.2185227,
+         #    -0.0253987, 0.0681465, -0.23636235, -0.09055804, 0.12782067])
+        init_obs = [self.env.init_obs.copy() + np.random.uniform(-0.005, 0.005, size=23) for _ in range(self.num_rollouts)]
 
         sess = tf.get_default_session()
         observations, actions, means, log_stds, rewards = sess.run([self._observations_var,
@@ -113,7 +121,7 @@ class MetaBPTTSampler(BaseSampler):
                                                                     self._log_stds_var,
                                                                     self._rewards_var
                                                                     ],
-                                                                    feed_dict={self._initial_obs_ph: init_obses}
+                                                                    feed_dict={self._initial_obs_ph: init_obs}
                                                                     )
 
         means = np.array(means).transpose((1, 0, 2))
