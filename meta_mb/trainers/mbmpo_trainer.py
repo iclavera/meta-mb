@@ -133,6 +133,8 @@ class Trainer(object):
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
+                logger.record_tabular('Time-Data', time.time() - time_env_sampling_start)
+
                 ''' --------------- fit dynamics model --------------- '''
 
                 time_fit_start = time.time()

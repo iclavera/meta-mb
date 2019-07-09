@@ -6,26 +6,44 @@ plt.style.use('ggplot')
 import matplotlib
 matplotlib.use('TkAgg')
 
-
 SMALL_SIZE = 20
-MEDIUM_SIZE = 22
-BIGGER_SIZE = 26
+MEDIUM_SIZE = 24
+BIGGER_SIZE = 28
+BIG_SIZE = 30
 LINEWIDTH = 3
+YELLOW = '#FBC15E'
+BLUE = '#348ABD'
 
-plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
-plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
+
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
-colors = prop_cycle.by_key()['color']
-COLORS = dict(ours=colors.pop(0))
-LEGEND_ORDER = {'ppo': 0, 'sac': 1, 'me-ppo': 2, 'me-trpo': 3, 'mbmpo': 4, 'a-me-ppo': 5}
+# colors = prop_cycle.by_key()['color']
+# colors.remove(YELLOW)
+# colors.remove(BLUE)
+# colors = [YELLOW, BLUE] + colors
+colors = [
+    (31, 119, 180),
+    (255, 127, 14),
+    (44, 160, 44),  # GREEN
+    (214, 39, 40),  # RED
+    (0, 0, 0),
+    (137, 137, 137), # DARK GREY
+    (199, 199, 199),
+    (188, 189, 34), (219, 219, 141), (23, 190, 207), (158, 218, 229)
+]
+for idx, color in enumerate(colors):
+    colors[idx] = '#%02x%02x%02x' % color
+COLORS = dict()
+LEGEND_ORDER = {'0.1': 0, '0.5': 1, '1': 2, '2': 3}
 
-data_path = './data/corl_data/time_comparison/'
+data_path = './data/corl_data/ablations/time'
 
 exps_data = load_exps_data([data_path])
 
@@ -66,11 +84,6 @@ x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25e4],
             'Walker2d': [0, 25e4],
             'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 25e4],
             'HalfCheetah': [0, 25e4],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 50e4],
-            'Ant': [0, 50e4],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 25e4],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 25e4],
-            'Hopper': [0, 25e4],
             }
 
 def prepare_data_for_plot(exp_data,
@@ -96,8 +109,8 @@ def prepare_data_for_plot(exp_data,
                 assert type(sup_y_key) is list
                 for key in sup_y_key:
                     if key in exp['progress'].keys():
-                        env_time = sampling_time[exp['flat_params']['env']]
-                        x_y_tuples.extend(list(zip(exp['progress']['Data-TimeSoFar']/env_time, exp['progress'][key])))
+                        env_time = sampling_time[exp['flat_params']['env']] * exp['flat_params']['simulation_sleep_frac']
+                        x_y_tuples.extend(list(zip(exp['progress']['Data-EnvSampler-TimeStepsCtr'], exp['progress'][key])))
                         break
             else:
                 raise NotImplementedError
@@ -156,8 +169,9 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
-    fig.tight_layout(pad=4.0, w_pad=2, h_pad=6, rect=[0, 0, 1, 1])
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(14, 8))
+    axarr = np.reshape(axarr, (num_rows, num_columns))
+    fig.tight_layout(pad=5.0, w_pad=1, h_pad=2, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -190,7 +204,8 @@ def plot_from_exps(exp_data,
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
-            axarr[r, c].set_ylabel(y_label if y_label else y_key)
+            if c == 0:
+                axarr[r, c].set_ylabel(y_label if y_label else y_key)
             if x_limits is not None:
                 axarr[r, c].set_xlim(*x_limits)
             if y_limits is not None:
@@ -213,14 +228,15 @@ def plot_from_exps(exp_data,
 
 
 # filter_dict = {'fast_lr': 0.001, 'path_length':200}
+
 filter_dict = {}
+keep_array = [exp['flat_params']['simulation_sleep_frac'] != 0.1 for exp in exps_data]
+exps_data_filtered = np.array(exps_data)
+exps_data_filtered = exps_data_filtered[keep_array]
 
-exps_data_filtered = filter(exps_data, filter_dict)
-
-
-plot_from_exps(exps_data,
+plot_from_exps(exps_data_filtered,
                split_figures_by='env.$class',
-               split_plots_by='algo',
+               split_plots_by='simulation_sleep_frac',
                y_key='train-AverageReturn',
                x_key='Time',
                filters=filter_dict,
@@ -233,8 +249,8 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_samples.png',
-               num_rows=2,
+               plot_name='./ablations_time.png',
+               num_rows=1,
                report_max_performance=False,
                log_scale=False,
                round_x=5000,

@@ -271,6 +271,8 @@ def valid_experiment(params, algo):
             'dynamics_learning_rate': [0.0005],
             'step_size': [0.01]
         }
+    elif algo == 'a-mb-mpo-pr2':
+        return True
 
     else:
         raise NotImplementedError

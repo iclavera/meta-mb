@@ -8,25 +8,41 @@ matplotlib.use('TkAgg')
 
 
 SMALL_SIZE = 20
-MEDIUM_SIZE = 22
-BIGGER_SIZE = 26
+MEDIUM_SIZE = 24
+BIGGER_SIZE = 28
+BIG_SIZE = 30
 LINEWIDTH = 3
 YELLOW = '#FBC15E'
 BLUE = '#348ABD'
 
-plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
-plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
+
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
-colors = prop_cycle.by_key()['color']
-colors.remove(YELLOW)
-colors.remove(BLUE)
-colors = [YELLOW, BLUE] + colors
+# colors = prop_cycle.by_key()['color']
+# colors.remove(YELLOW)
+# colors.remove(BLUE)
+# colors = [YELLOW, BLUE] + colors
+colors = [
+    (255, 128, 14),  # BLUE
+    (0, 107, 164),  # ORANGE
+    # (171, 171, 171),  # GREY
+    # (89, 89, 89),  # LIGHT GREY
+    (137, 137, 137),  # VERY DARK GREY
+    (95, 158, 209),  # LIGHT BLUE
+    # (163, 200, 236), # VERY LIGHT BLUE
+    # (255, 188, 121),  # LIGHT ORANGE
+    (200, 82, 0),  # RED
+    (207, 207, 207),  # LIGHT GREY
+]
+for idx, color in enumerate(colors):
+    colors[idx] = '#%02x%02x%02x' % color
 COLORS = dict()
 LEGEND_ORDER = {'exploration': 0, 'no-exploration': 1}
 
@@ -168,10 +184,9 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(20, 8))
-    if num_rows == 1:
-        axarr = np.expand_dims(axarr, axis=0)
-    fig.tight_layout(pad=4.0, w_pad=4, h_pad=6, rect=[0, 0, 1, 1])
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(11, 16))
+    axarr = np.reshape(axarr, (num_rows, num_columns))
+    fig.tight_layout(pad=5.0, w_pad=0, h_pad=3, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -222,7 +237,7 @@ def plot_from_exps(exp_data,
         if y_limits is None:
             axarr[r, c].set_ylim([y_axis_min, y_axis_max])
 
-    fig.legend(loc='lower center', ncol=4, bbox_transform=plt.gcf().transFigure)
+    fig.legend(loc='lower center', ncol=1, bbox_transform=plt.gcf().transFigure)
     fig.savefig(plot_name)
 
 
@@ -248,7 +263,7 @@ plot_from_exps(exps_data,
                x_label='Time-steps',
                y_label='Average Return',
                plot_name='./comparison_exploration.png',
-               num_rows=1,
+               num_rows=2,
                report_max_performance=False,
                log_scale=False,
                round_x=5000,
