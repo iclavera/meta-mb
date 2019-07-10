@@ -70,23 +70,28 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Train CPC model')
     parser.add_argument('negative_samples', type=int, help='number of negative samples')
+    parser.add_argument('terms', type=int, help='number of time steps in the history')
     parser.add_argument('--epochs', type=int, default=20, help='number of epochs to train the model for')
     parser.add_argument('--run_suffix', type=str, default='')
     parser.add_argument('--context_network', type=str, default='stack')
     parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--ptsize', type=int, default=2)
+    parser.add_argument('--code_size', type=int, default=32)
 
     args = parser.parse_args()
-    # from meta_mb.envs.mujoco.point_pos import PointEnv
-    # raw_env = PointEnv()
-    raw_env = InvertedPendulumEnv()
+    from meta_mb.envs.mujoco.point_pos import PointEnv
+    raw_env = PointEnv(ptsize=args.ptsize)
+
+    # raw_env = InvertedPendulumEnv()
 
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'ip-neg-%d%s' % (args.negative_samples, args.run_suffix)
+    exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix)
 
     train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=1024, batch_size=32,
-                                  context_network=args.context_network, epochs=args.epochs, lr=args.lr)
+                                  context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
+                                  code_size=args.code_size)
 
 
 

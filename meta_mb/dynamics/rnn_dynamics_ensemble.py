@@ -67,6 +67,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=2)
+            nn_input = tf.split(self.nn_input, self.num_models, axis=0)
 
             # create RNN
             rnns = []
@@ -82,7 +83,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
-                              input_var=self.nn_input,
+                              input_var=nn_input[i],
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               weight_normalization=weight_normalization,
                               cell_type=cell_type,
@@ -104,7 +105,6 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph] + self.hidden_state_ph,
                                                               [self.delta_pred] + self.next_hidden_state_var)
-
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=True):
@@ -382,10 +382,16 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         obs, act = np.expand_dims(obs, 1), np.expand_dims(act, 1)
 
         if self.normalize_input:
+            obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
+            hidden_state = [hidden_state for _ in range(self.num_models)]
             obs, act = self._normalize_data(obs, act)
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
             delta, *next_hidden_state = self.f_delta_pred(obs, act, *hidden_state)
-            delta = denormalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
+            delta = np.array(delta)
+            delta = self._denormalize_data(delta)
         else:
+            obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
             delta, *next_hidden_state = self.f_delta_pred(obs, act, *hidden_state)
 
         delta = delta[:, 0, :, :]
@@ -398,6 +404,15 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             # randomly selecting the prediction of one model in each row
             idx = np.random.randint(0, self.num_models, size=batch_size)
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
+            if len(hidden_state[0]) == 2:
+                cell = np.stack([next_hidden_state[model_id][0][row] for row,
+                                            model_id in enumerate(idx)], axis=0)
+                hidden = np.stack([next_hidden_state[model_id][1][row] for row,
+                                            model_id in enumerate(idx)], axis=0)
+                next_hidden_state = tf.nn.rnn_cell.LSTMStateTuple(cell, hidden)
+            else:
+                next_hidden_state = np.stack([next_hidden_state[model_id][row] for row,
+                                                                model_id in enumerate(idx)], axis=0)
         elif pred_type == 'mean':
             pred_obs = np.mean(pred_obs, axis=-1)
         elif pred_type == 'all':
@@ -477,7 +492,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         return next_batch, iterator
 
-    def get_initial_hidden(self, batch_size):
+    def get_initial_hidden(self, batch_size, batch=True):
         sess = tf.get_default_session()
         _zero_states = sess.run(self._zero_state)
         all_hidden = []
@@ -500,7 +515,10 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                 else:
                     hidden = np.concatenate([state] * batch_size)
             all_hidden.append(hidden)
-        return all_hidden
+        if not batch:
+            return all_hidden[0]
+        else:
+            return all_hidden
 
     def compute_normalization(self, obs, act, delta):
         assert len(obs) == len(act) == len(delta) == self.num_models

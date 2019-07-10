@@ -140,15 +140,21 @@ class RNNMPCController(Serializable):
         if dones is None:
             dones = [True]
         if self._hidden_state is None:
-            self._hidden_state = self.dynamics_model.get_initial_hidden(batch_size=len(dones))
+            self._hidden_state = self.dynamics_model.get_initial_hidden(batch_size=len(dones), batch=False)
 
-        zero_hidden_state = self.dynamics_model.get_initial_hidden(batch_size=1)
-        for i, z_h in enumerate(zero_hidden_state):
-            if isinstance(z_h, LSTMStateTuple):
-                self._hidden_state[i].c[dones] = z_h.c
-                self._hidden_state[i].h[dones] = z_h.h
-            else:
-                self._hidden_state[i][dones] = z_h
+        zero_hidden_state = self.dynamics_model.get_initial_hidden(batch_size=1, batch=False)
+        if isinstance(zero_hidden_state, LSTMStateTuple):
+            self._hidden_state.c[dones] = zero_hidden_state.c
+            self._hidden_state.h[dones] = zero_hidden_state.h
+        elif len(zero_hidden_state) == 1:
+            self._hidden_state[dones] = zero_hidden_state
+        else:
+            for i, z_h in enumerate(zero_hidden_state):
+                if isinstance(z_h, LSTMStateTuple):
+                    self._hidden_state[i].c[dones] = z_h.c
+                    self._hidden_state[i].h[dones] = z_h.h
+                else:
+                    self._hidden_state[i][dones] = z_h
 
     def repeat_hidden(self, hidden, n):
         LSTMStateTuple = tf.nn.rnn_cell.LSTMStateTuple
