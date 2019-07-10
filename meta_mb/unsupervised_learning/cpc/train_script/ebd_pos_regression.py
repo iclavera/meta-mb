@@ -139,10 +139,11 @@ if __name__ == "__main__":
     parser.add_argument('env_name', type=str)
     parser.add_argument('exp_name', type=str, help='name of the experiment: '
                                                    'data will be loaded from meta_mb/unsupervised_learning/cpc/data/$exp_name')
-    parser.add_argument('num_rollout', type=int, help='number of rollouts to use during training')
+    parser.add_argument('--num_rollout', type=int, default=1024, help='number of rollouts to use during training')
     parser.add_argument('--epoch', type=int, default=20, help='number of epochs to train for')
     parser.add_argument('--vae', action='store_true', help='if a vae is used instead of CPC')
     parser.add_argument('--e2e', action='store_true', help='not freeze the encoding and train end to end')
+    parser.add_argument('--code_size', type=int, default=32)
 
     args = parser.parse_args()
 
@@ -167,6 +168,6 @@ if __name__ == "__main__":
 
     train_regression(raw_env, policy, encoder_path, epochs=args.epoch, batch_size=64, lr=1e-3, img_shape=(64, 64, 3),
                      state_shape=state_shape, num_rollouts=args.num_rollout, freeze_encoding=freeze_encoding, save_name=save_name,
-                     vae=args.vae, code_size=32)
+                     vae=args.vae, code_size=args.code_size)
 
     print_prediction(os.path.join(encoder_path, save_name + '.h5'), raw_env, policy, num_rollouts=2, max_path_length=16)

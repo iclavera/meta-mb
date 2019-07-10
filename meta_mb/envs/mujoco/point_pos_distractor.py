@@ -7,14 +7,10 @@ from gym import utils
 import tensorflow as tf
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
-    def __init__(self, random_reset=True, ptsize=2):
+    def __init__(self, random_reset=True, small=False):
         utils.EzPickle.__init__(self)
-        if ptsize==2:
-            MujocoEnv.__init__(self,os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos.xml'), 2)
-        elif ptsize==1:
-            MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos_small.xml'), 2)
-        elif ptsize==4:
-            MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos_large.xml'), 2)
+        if
+        MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos.xml'), 2)
 
         self.random_reset = random_reset
 
@@ -25,7 +21,7 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
         ob = self._get_obs()
         done =  False
-        return ob, np.linalg.norm(ob - np.array([2, 2])), done, {}
+        return ob, self.reward(None, None, ob), done, {}
 
     def reset_model(self, pos=None):
         if pos is None:
@@ -40,7 +36,7 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def reward(self, obs, act, obs_next):
-        return -np.linalg.norm(obs_next[:, :2] - np.array([2, 2]), axis=-1)
+        return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
 
     def tf_reward(self, obs, act, obs_next):
         return - tf.norm(obs_next[..., :2] - np.array([2, 2]), axis = -1)
