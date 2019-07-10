@@ -20,8 +20,6 @@ from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
 from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
-from meta_mb.envs.mujoco.point_pos import PointEnv
-from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
 import os
@@ -46,14 +44,19 @@ def run_experiment(**config):
     config_sess.gpu_options.per_process_gpu_memory_fraction = config.get('gpu_frac', 0.95)
     sess = tf.Session(config=config_sess)
     with sess.as_default() as sess:
+        if 'distractor' in exp_dir:
+            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
+        else:
+            from meta_mb.envs.mujoco.point_pos import PointEnv
+
         if config['use_image']:
             if config['encoder'] == 'cpc':
                 encoder = CPCEncoder(path=model_path)
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
-            env = ImgWrapperEnv(NormalizedEnv(PointEnv(ptsize=config['ptsize'])), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
+            env = ImgWrapperEnv(NormalizedEnv(PointEnv(ptsize=config['ptsize'], random_reset=False)), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
-            env = NormalizedEnv(config['env'](ptsize=config['ptsize']))
+            env = NormalizedEnv(PointEnv(ptsize=config['ptsize'], random_reset=False))
 
 
         if config['recurrent']:

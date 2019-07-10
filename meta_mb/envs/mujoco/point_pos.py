@@ -46,14 +46,14 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
     def reward(self, obs, act, obs_next):
         if obs_next.ndim == 2:
-            return -np.linalg.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
+            return -np.linalg.norm(obs_next - np.array([2, 2]), axis=1)
         elif obs_next.ndim == 1:
-            return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
+            return -np.linalg.norm(obs_next - np.array([2, 2]))
         else:
             raise NotImplementedError
 
     def tf_reward(self, obs, act, obs_next):
-        return - tf.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
+        return - tf.norm(obs_next - np.array([2, 2]), axis=1)
 
     def _get_obs(self):
         return self.sim.data.qpos.ravel()

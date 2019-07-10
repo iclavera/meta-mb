@@ -8,7 +8,7 @@ from meta_mb.logger import logger
 
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
-    def __init__(self, random_reset=True):
+    def __init__(self, random_reset=True, ptsize=2):
         utils.EzPickle.__init__(self)
         MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets',
                                               'point_pos_distractor.xml'), 2)
