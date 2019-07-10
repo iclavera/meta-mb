@@ -21,6 +21,8 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom, i
 from meta_mb.unsupervised_learning.vae import VAE
 from meta_mb.utils import Serializable
 
+import os
+os.environ['CUDA_VISIBLE_DEVICES']='0, 1'
 
 def collect_img_and_truestate(raw_env, policy, num_rollouts=1024, max_path_length=16, plot=False):
     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1)
@@ -99,13 +101,14 @@ def train_regression(raw_env, policy, encoder_path, epochs, batch_size, lr, img_
 
     x, y = collect_img_and_truestate(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length)
     if vae:
+        import pdb; pdb.set_trace()
         sess = tf.InteractiveSession()
-        encoder = VAE(latent_dim=code_size, lr=lr)
+        encoder = VAE(latent_dim=code_size, lr=lr, decoder_bernoulli=True)
         saver = tf.train.Saver()
         saver.restore(sess, os.path.join(encoder_path, 'vae'))
         x = encoder.encode(x)
 
-        model = build_model_vae(state_shape, lr, code_size=32)
+        model = build_model_vae(state_shape, lr, code_size=code_size)
     else:
         model = build_model(os.path.join(encoder_path, 'encoder.h5'), img_shape, state_shape, lr,
                             freeze_encoding=freeze_encoding)
@@ -144,6 +147,8 @@ if __name__ == "__main__":
     parser.add_argument('--vae', action='store_true', help='if a vae is used instead of CPC')
     parser.add_argument('--e2e', action='store_true', help='not freeze the encoding and train end to end')
     parser.add_argument('--code_size', type=int, default=32)
+    parser.add_argument('--ptsize', type=int, default=2)
+    parser.add_argument('--distractor', action='store_true')
 
     args = parser.parse_args()
 
@@ -151,7 +156,11 @@ if __name__ == "__main__":
         raw_env = InvertedPendulumEnv()
         state_shape = 4
     elif args.env_name == 'pt':
-        raw_env = PointEnv()
+        if args.distractor:
+            from met_mb.envs.mujoco.point_pos_distractor import PointEnv
+        else:
+            from meta_mb.envs.mujoco.point_pos import PointEnv
+        raw_env = PointEnv(ptsize=args.ptsize)
         state_shape = 2
 
     policy = RepeatRandom(2, 2, repeat=3)

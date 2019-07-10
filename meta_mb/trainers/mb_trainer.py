@@ -137,9 +137,9 @@ class Trainer(object):
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
                 logger.log("Saving snapshot...")
-                params = self.get_itr_snapshot(itr)
+                #params = self.get_itr_snapshot(itr)
                 self.log_diagnostics(env_paths, '')
-                logger.save_itr_params(itr, params)
+                #logger.save_itr_params(itr, params)
                 logger.log("Saved")
 
                 logger.dumpkvs()

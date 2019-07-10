@@ -25,7 +25,7 @@ from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3'
 
 EXP_NAME = 'PTMASS'
 
@@ -34,7 +34,8 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 def run_experiment(**config):
     # exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
-    exp_dir = '%s-ptsize=%d-codesize=%d%s' % (config['encoder'], config['ptsize'], config['latent_dim'], config['suffix'])
+    #exp_dir = '%s-ptsize=%d-codesize=%d%s' % (config['encoder'], config['ptsize'], config['latent_dim'], config['suffix'])
+    exp_dir = '%s-distractor%s' % (config['encoder'], config['suffix'])
     model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_dir, 'encoder.h5' if config['encoder'] == 'cpc' else 'vae')
     exp_dir = os.path.join(os.getcwd(), 'data', exp_dir)
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -47,9 +48,9 @@ def run_experiment(**config):
     with sess.as_default() as sess:
         if config['use_image']:
             if config['encoder'] == 'cpc':
-                encoder = CPCEncoder(path=config['model_path'])
+                encoder = CPCEncoder(path=model_path)
             elif config['encoder'] == 'vae':
-                encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=config['model_path'])
+                encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
             env = ImgWrapperEnv(NormalizedEnv(PointEnv(ptsize=config['ptsize'])), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
             env = NormalizedEnv(config['env'](ptsize=config['ptsize']))
@@ -156,7 +157,6 @@ def run_experiment(**config):
             initial_random_samples=config['initial_random_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
-            initial_sinusoid_samples=config['initial_sinusoid_samples'],
             sess=sess,
         )
         algo.train()
@@ -169,7 +169,7 @@ if __name__ == '__main__':
                 'seed': [5],
 
                 # Problem
-                'ptsize': [1, 2, 4],  # 'HalfCheetahEnv'
+                'ptsize': [2],  # 'HalfCheetahEnv'
                 'max_path_length': [32],
                 'normalize': [False],
                  'n_itr': [50],
@@ -187,7 +187,6 @@ if __name__ == '__main__':
                 'valid_split_ratio': [0.1],
                 'rolling_average_persitency': [0.99],
                 'initial_random_samples': [False],
-                'initial_sinusoid_samples': [False],
 
                 # Dynamics Model
                 'recurrent': [False],
@@ -199,7 +198,7 @@ if __name__ == '__main__':
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [64],
                 'cell_type': ['lstm'],
-                'use_reward_model': [False],
+                'use_reward_model': [True],
 
                 # Reward Model
                 'reward_model_epochs': [15],
@@ -213,8 +212,8 @@ if __name__ == '__main__':
 
                 'use_image': [True],
                 # 'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
-                'encoder': ['cpc', 'vae'],
-                'latent_dim': [32, 8],
+                'encoder': ['vae', 'cpc'],
+                'latent_dim': [32],
 
     }
 

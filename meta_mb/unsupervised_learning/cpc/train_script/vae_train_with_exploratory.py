@@ -78,7 +78,7 @@ if __name__ == "__main__":
     exp_name = 'vae-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'vae-distractor%s' % args.run_suffix
 
     train_with_exploratory_policy(raw_env, policy, exp_name, num_rollouts=1024, batch_size=32,
-                                  epochs=args.epochs, lr=args.lr, beta=args.beta, bnl_decoder=args.bnl_decoder)
+                                  epochs=args.epochs, lr=args.lr, beta=args.beta, bnl_decoder=args.bnl_decoder, code_size=args.code_size)
 
 
 
