@@ -5,13 +5,12 @@ import tensorflow as tf
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import MLPDynamicsEnsemble as ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.reward_model.mlp_reward_ensemble import MLPRewardEnsemble
-from meta_mb.samplers.base import BaseSampler
+from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.utils.utils import ClassEncoder
@@ -51,7 +50,6 @@ def run_experiment(**config):
         else:
             env = NormalizedEnv(config['env']())
 
-
         if config['recurrent']:
             dynamics_model = RNNDynamicsEnsemble(
                 name="dyn_model",
@@ -64,7 +62,6 @@ def run_experiment(**config):
                 batch_size=config['batch_size_model'],
                 normalize_input=True,
             )
-
 
             reward_model = MLPRewardEnsemble(
                 name="rew_model",
@@ -89,7 +86,7 @@ def run_experiment(**config):
                 use_cem=config['use_cem'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model'],
-                reward_model=reward_model if config['use_reward_model'] else None
+                reward_model=None, #reward_model if config['use_reward_model'] else None
             )
 
         else:
@@ -132,15 +129,15 @@ def run_experiment(**config):
                 reward_model= reward_model if config['use_reward_model'] else None
             )
 
-        sampler = BaseSampler(
+        sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=config['max_path_length'],
-            #n_parallel=config['n_parallel'],
+            n_parallel=config['n_parallel'],
         )
 
-        sample_processor = ModelSampleProcessor()
+        sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
 
         algo = Trainer(
             env=env,
@@ -150,10 +147,8 @@ def run_experiment(**config):
             sampler=sampler,
             dynamics_sample_processor=sample_processor,
             n_itr=config['n_itr'],
-            initial_random_samples=config['initial_random_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
-            initial_sinusoid_samples=config['initial_sinusoid_samples'],
             sess=sess,
         )
         algo.train()
@@ -170,31 +165,29 @@ if __name__ == '__main__':
 
                 # Problem
                 'env': [make_pt_env],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
+                'max_path_length': [50],
                 'normalize': [False],
                  'n_itr': [50],
                 'discount': [1.],
 
                 # Policy
-                'n_candidates': [1000], # K
+                'n_candidates': [500], # K
                 'horizon': [10], # Tau
                 'use_cem': [False],
                 'num_cem_iters': [5],
 
                 # Training
                 'num_rollouts': [5],
-                'learning_rate': [0.001],
+                'learning_rate': [1e-3],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.99],
-                'initial_random_samples': [False],
-                'initial_sinusoid_samples': [False],
+                'rolling_average_persitency': [0.4],
 
                 # Dynamics Model
-                'recurrent': [False],
-                'num_models': [2],
+                'recurrent': [True],
+                'num_models': [3],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, 500,)],
-                'dynamic_model_epochs': [15],
+                'hidden_sizes_model': [(500,)],
+                'dynamic_model_epochs': [200],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [64],
@@ -267,4 +260,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_ip, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

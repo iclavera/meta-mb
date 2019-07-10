@@ -30,7 +30,6 @@ class Trainer(object):
             n_itr,
             start_itr=0,
             initial_random_samples=True,
-            initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
             reward_model_max_epochs=200,
@@ -48,7 +47,6 @@ class Trainer(object):
         self.reward_model_max_epochs = reward_model_max_epochs
 
         self.initial_random_samples = initial_random_samples
-        self.initial_sinusoid_samples = initial_sinusoid_samples
 
         if sess is None:
             sess = tf.Session()
@@ -69,9 +67,9 @@ class Trainer(object):
         with self.sess.as_default() as sess:
 
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
-            # sess.run(tf.variables_initializer(tf.global_variables()))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.variables_initializer(tf.global_variables()))
 
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
@@ -83,9 +81,6 @@ class Trainer(object):
                 if self.initial_random_samples and itr == 0:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                elif self.initial_sinusoid_samples and itr == 0:
-                    logger.log("Obtaining sinusoidal samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, sinusoid=True, sinusoidlog_prefix='')
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')

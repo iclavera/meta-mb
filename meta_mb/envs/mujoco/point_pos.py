@@ -1,19 +1,23 @@
 from meta_mb.meta_envs.base import MetaEnv
 import os
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-
 import numpy as np
 from gym import utils
 import tensorflow as tf
+from meta_mb.logger import logger
+
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
     def __init__(self, random_reset=True, ptsize=2):
         utils.EzPickle.__init__(self)
-        if ptsize==2:
+        if ptsize == 2:
+
             MujocoEnv.__init__(self,os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos.xml'), 2)
-        elif ptsize==1:
+
+        elif ptsize == 1:
             MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos_small.xml'), 2)
-        elif ptsize==4:
+
+        elif ptsize == 4:
             MujocoEnv.__init__(self, os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'point_pos_large.xml'), 2)
 
         self.random_reset = random_reset
@@ -22,10 +26,11 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         desired_pos = self.get_xy() + np.clip(a, -20, 20) / 30.
         desired_pos = np.clip(desired_pos, -2.8, 2.8)
         self.reset_model(pos=desired_pos)
+        ob = self._get_obs().copy()
 
-        ob = self._get_obs()
-        done =  False
-        return ob, np.linalg.norm(ob - np.array([2, 2])), done, {}
+        reward = self.reward(None, None, ob)
+        done = False
+        return ob, reward, done, dict(distance=-reward)
 
     def reset_model(self, pos=None):
         if pos is None:
@@ -40,18 +45,20 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def reward(self, obs, act, obs_next):
-        return -np.linalg.norm(obs_next[:, :2] - np.array([2, 2]), axis=-1)
+        if obs_next.ndim == 2:
+            return -np.linalg.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
+        elif obs_next.ndim == 1:
+            return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
+        else:
+            raise NotImplementedError
 
     def tf_reward(self, obs, act, obs_next):
-        return - tf.norm(obs_next[..., :2] - np.array([2, 2]), axis = -1)
+        return - tf.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
 
     def _get_obs(self):
         return self.sim.data.qpos.ravel()
 
     def viewer_setup(self):
-        # v = self.viewer
-        # v.cam.trackbodyid = 0
-        # v.cam.distance = self.model.stat.extent
         pass
 
     def render(self, mode='human', width=100, height=100):
@@ -63,6 +70,17 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
     def get_xy(self):
         return self.sim.data.qpos.ravel()
+
+    # def log_diagnostics(self, paths, prefix=''):
+    #     """
+    #     Logs env-specific diagnostic information
+    #
+    #     Args:
+    #         paths (list) : list of all paths collected with this env during this iteration
+    #         prefix (str) : prefix for logger
+    #     """
+    #     final_distance = [path['env_infos']['distance'] for path in paths]
+    #     logger.logkv(prefix + 'AvgFinalDistance', np.mean(final_distance))
 
 
 if __name__ == "__main__":
