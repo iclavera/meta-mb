@@ -23,19 +23,19 @@ from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1, 2, 3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3, 4, 5, 6, 7'
 
-EXP_NAME = 'PTMASS'
+EXP_NAME = 'PTMASS-SIZE'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
     # exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
-    #exp_dir = '%s-ptsize=%d-codesize=%d%s' % (config['encoder'], config['ptsize'], config['latent_dim'], config['suffix'])
-    exp_dir = '%s-distractor%s' % (config['encoder'], config['suffix'])
+    exp_dir = '%s-ptsize=%d-codesize=%d%s' % (config['encoder'], config['ptsize'], config['latent_dim'], config['suffix'])
+    #exp_dir = '%s-distractor%s' % (config['encoder'], config['suffix'])
     model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_dir, 'encoder.h5' if config['encoder'] == 'cpc' else 'vae')
-    exp_dir = os.path.join(os.getcwd(), 'data', exp_dir)
+    exp_dir = os.path.join(os.getcwd(), 'data', EXP_NAME, exp_dir)
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -172,7 +172,7 @@ if __name__ == '__main__':
                 'seed': [5],
 
                 # Problem
-                'ptsize': [2],  # 'HalfCheetahEnv'
+                'ptsize': [1, 2, 4],  # 'HalfCheetahEnv'
                 'max_path_length': [32],
                 'normalize': [False],
                  'n_itr': [40],
@@ -215,8 +215,8 @@ if __name__ == '__main__':
 
                 'use_image': [True],
                 # 'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
-                'encoder': ['vae'],
-                'latent_dim': [32],
+                'encoder': ['cpc', 'vae'],
+                'latent_dim': [8, 32],
 
     }
 
