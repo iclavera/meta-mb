@@ -1,10 +1,10 @@
 from meta_mb.meta_envs.base import MetaEnv
 import os
 from gym.envs.mujoco.mujoco_env import MujocoEnv
-
 import numpy as np
 from gym import utils
 import tensorflow as tf
+
 
 class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
     def __init__(self, random_reset=True):
@@ -15,17 +15,13 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
 
     def step(self, a):
         desired_pos = self.get_xy() + np.clip(a, -20, 20) / 30.
-        # for _ in range(40):
-        #     self.do_simulation(desired_pos, self.frame_skip)
-        #     if np.linalg.norm(desired_pos - self.get_xy()) < 0.01 and np.linalg.norm(
-        #             self.sim.data.qvel.ravel()) < 1e-3:
-        #         break
         desired_pos = np.clip(desired_pos, -2.8, 2.8)
         self.reset_model(pos=desired_pos)
-
         ob = self._get_obs()
-        done =  False
-        return ob, self.reward(None, None, ob), done, {}
+
+        reward = self.reward(None, None, ob)
+        done = False
+        return ob, reward, done, dict(distance=-reward)
 
     def reset_model(self, pos=None):
         if pos is None:
@@ -40,10 +36,15 @@ class PointEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def reward(self, obs, act, obs_next):
-        return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
+        if obs_next.ndim == 2:
+            return -np.linalg.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
+        elif obs_next.ndim == 1:
+            return -np.linalg.norm(obs_next[:2] - np.array([2, 2]))
+        else:
+            raise NotImplementedError
 
     def tf_reward(self, obs, act, obs_next):
-        return - tf.norm(obs_next[..., :2] - np.array([2, 2]), axis = -1)
+        return - tf.norm(obs_next[:, :2] - np.array([2, 2]), axis=1)
 
     def _get_obs(self):
         return self.sim.data.qpos.ravel()
