@@ -23,7 +23,7 @@ from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1, 2, 3'
 
 EXP_NAME = 'PTMASS'
 
@@ -175,7 +175,7 @@ if __name__ == '__main__':
                 'ptsize': [2],  # 'HalfCheetahEnv'
                 'max_path_length': [32],
                 'normalize': [False],
-                 'n_itr': [50],
+                 'n_itr': [40],
                 'discount': [1.],
 
                 # Policy
@@ -215,7 +215,7 @@ if __name__ == '__main__':
 
                 'use_image': [True],
                 # 'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
-                'encoder': ['vae', 'cpc'],
+                'encoder': ['vae'],
                 'latent_dim': [32],
 
     }

@@ -136,11 +136,11 @@ class Trainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
-                logger.log("Saving snapshot...")
-                #params = self.get_itr_snapshot(itr)
+                # logger.log("Saving snapshot...")
+                # params = self.get_itr_snapshot(itr)
                 self.log_diagnostics(env_paths, '')
-                #logger.save_itr_params(itr, params)
-                logger.log("Saved")
+                # logger.save_itr_params(itr, params)
+                # logger.log("Saved")
 
                 logger.dumpkvs()
                 if itr == 0:
