@@ -157,7 +157,7 @@ if __name__ == "__main__":
         state_shape = 4
     elif args.env_name == 'pt':
         if args.distractor:
-            from met_mb.envs.mujoco.point_pos_distractor import PointEnv
+            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
         else:
             from meta_mb.envs.mujoco.point_pos import PointEnv
         raw_env = PointEnv(ptsize=args.ptsize)

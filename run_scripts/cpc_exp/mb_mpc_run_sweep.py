@@ -24,9 +24,9 @@ from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'ip-rnn-state'
+EXP_NAME = 'IP'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     }
 
     config_ip = {
-                'seed': [5],
+                'seed': [5, 6],
 
                 # Problem
                 'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
@@ -242,7 +242,7 @@ if __name__ == '__main__':
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [64],
                 'cell_type': ['lstm'],
-                'use_reward_model': [False],
+                'use_reward_model': [True],
 
                 # Reward Model
                 'reward_model_epochs': [15],
@@ -252,7 +252,7 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [False],
+                'use_image': [True, False],
                 'model_path': ['meta_mb/unsupervised_learning/cpc/data/ip-neg-15/encoder.h5'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
