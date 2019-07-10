@@ -6,24 +6,47 @@ plt.style.use('ggplot')
 import matplotlib
 matplotlib.use('TkAgg')
 
+SMALL_SIZE = 32
+MEDIUM_SIZE = 36
+BIGGER_SIZE = 44
+BIG_SIZE = 44
+LINEWIDTH = 8
+MARKER = None
+ALPHA=0.15
 
-SMALL_SIZE = 20
-MEDIUM_SIZE = 22
-BIGGER_SIZE = 26
-LINEWIDTH = 3
-YELLOW = '#FBC15E'
-BLUE = '#348ABD'
-
-plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
-plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('legend', fontsize=BIG_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
-colors = prop_cycle.by_key()['color']
+colors = [
+    (255, 128, 14),  # BLUE
+    (0, 107, 164),  # ORANGE
+    # (171, 171, 171),  # GREY
+    # (89, 89, 89),  # LIGHT GREY
+    (137, 137, 137),  # VERY DARK GREY
+    (95, 158, 209),  # LIGHT BLUE
+    # (163, 200, 236), # VERY LIGHT BLUE
+    # (255, 188, 121),  # LIGHT ORANGE
+    (200, 82, 0),  # RED
+    (207, 207, 207),  # LIGHT GREY
+]  # COLOR-BLIND
+colors = [
+    (31, 119, 180),
+    (255, 127, 14),
+    (44, 160, 44),  # GREEN
+    (214, 39, 40),  # RED
+    (0, 0, 0),
+    (137, 137, 137), # DARK GREY
+    (199, 199, 199),
+    (188, 189, 34), (219, 219, 141), (23, 190, 207), (158, 218, 229)
+]
+for idx, color in enumerate(colors):
+    colors[idx] = '#%02x%02x%02x' % color
 COLORS = dict()
 LEGEND_ORDER = {'a-me-trpo': 0, 'a-me-ppo':1, 'a-mb-mpo': 2, 'a-mb-mpc': 3,
                 'me-trpo': 4, 'me-ppo': 5, 'mb-mpo': 6, 'mb-mpc': 7,
@@ -151,11 +174,18 @@ def get_color(label):
 
 
 def get_linestyle(label):
-    asynch = True if label[:2] == 'a-' else False
-    if asynch:
+    if label.startswith('a'):
         return '-'
-    else:
+    elif label.startswith('m'):
         return '--'
+    else:
+        return ':'
+
+def get_marker(label):
+    if label.startswith('a'):
+        return MARKER
+    else:
+        return None
 
 
 def plot_from_exps(exp_data,
@@ -183,8 +213,9 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 16))
-    fig.tight_layout(pad=8.0, w_pad=4, h_pad=6, rect=[0, 0, 1, 1])
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(48, 16))
+    axarr = np.reshape(axarr, (num_rows, num_columns))
+    fig.tight_layout(pad=8.0, w_pad=1, h_pad=3, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -209,18 +240,23 @@ def plot_from_exps(exp_data,
 
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
+            if _label.startswith('a-'):
+                _label = 'asynch-' + _label[2:]
             if log_scale:
                 axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
-                                     color=get_color(label),  linestyle=get_linestyle(label))
+                                     color=get_color(label),  linestyle=get_linestyle(label),
+                                     marker=get_marker(label), markersize=10)
             else:
                 axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH,
-                                 color=get_color(label), linestyle=get_linestyle(label))
+                                 color=get_color(label), linestyle=get_linestyle(label),
+                                 marker=get_marker(label), markersize=10)
 
-            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
+            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=ALPHA, color=get_color(label))
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
-            axarr[r, c].set_ylabel(y_label if y_label else y_key)
+            if c == 0:
+                axarr[r, c].set_ylabel(y_label if y_label else y_key)
             if x_limits is not None:
                 axarr[r, c].set_xlim(*x_limits)
             if y_limits is not None:
@@ -267,8 +303,8 @@ plot_from_exps(exps_data,
                x_label='Time (min)',
                y_label='Average Return',
                # plot_name='./comparison_time_no_sampling_time.png',
-               plot_name='./comparison_time.png',
-               num_rows=2,
+               plot_name='./comparison_time.pdf',
+               num_rows=1,
                report_max_performance=False,
                log_scale=False,
                round_x=5,

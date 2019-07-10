@@ -10,25 +10,193 @@ import shutil
 
 def valid_experiment(params, algo):
     if algo == 'mb-mpo':
-        values = {
-              'num_rollouts': [10],
-              'rolling_average_persitency': [0.9],
-              }
+        if params['env']['$class'] == 'meta_mb.envs.mb_envs.ant.AntEnv':
+            values = {
+                  'meta_batch_size': [20],
+                  'rolling_average_persitency': [0.4],
+                    'dynamics_learning_rate': [0.0005]
+                  }
+        else:
+            values = {
+                      'meta_batch_size': [20],
+                      'rolling_average_persitency': [0.4],
+                      'dynamics_learning_rate': [0.001]
+                  }
 
     elif algo == 'me-ppo':
-        values = {
-            'num_rollouts': [10],
-            'rolling_average_persitency': [0.4],
-            'clip_eps': [0.2],
-            'num_ppo_steps': [5],
-            'learning_rate': [0.0003]
-        }
+        if params['env']['$class'] == 'meta_mb.envs.mb_envs.ant.AntEnv':
+            values = {
+                'num_rollouts': [10],
+                'rolling_average_persitency': [0.4],
+                'dynamics_learning_rate': [0.0005]
+            }
+        else:
+            values = {
+                'rolling_average_persitency': [0.4],
+                'dynamics_learning_rate': [0.0005],
+            }
+        # values = {
+        #     'num_rollouts': [10],
+        #     'rolling_average_persitency': [0.9],
+        #     'clip_eps': [0.2],
+        #     'num_ppo_steps': [5],
+        #     'learning_rate': [0.0003]
+        # }
+
+    elif algo == 'me-trpo':
+        if params['env']['$class'] == 'meta_mb.envs.mb_envs.ant.AntEnv':
+            values = {
+                'rolling_average_persitency': [0.4],
+                'dynamics_learning_rate': [0.001]
+            }
+        else:
+            values = {
+                'rolling_average_persitency': [0.4],
+                'dynamics_learning_rate': [0.001]
+            }
+        # #Previous:
+        # values = {
+        #     'num_rollouts': [10],
+        #     'rolling_average_persitency': [0.9],
+        #     'clip_eps': [0.2],
+        #     'num_ppo_steps': [5],
+        #     'learning_rate': [0.0003]
+        # }
 
     elif algo == 'a-me-ppo':
-        values = {
-            'simulation_sleep_frac': [1],
-            'rolling_average_persitency': [0.4],
-        }
+        # # Half-Cheetah:
+        if params['env'] == 'HalfCheetah':
+            values = {
+                'clip_eps': [0.2],
+                'rolling_average_persitency': [0.4],
+                'dynamics_learning_rate': [0.0005],
+            }
+        elif params['env'] == 'Ant':
+            raise NotImplementedError
+        # # Ant:
+        # values = {
+        #     'clip_eps': [0.2],
+        #     'rolling_average_persitency': [0.1],
+        #     'dynamics_learning_rate': [0.0005],
+        # }
+        elif params['env'] == 'Hopper':
+            raise NotImplementedError
+
+        elif params['env'] == 'Walker2d':
+            values = {
+                'clip_eps': [0.2],
+                'rolling_average_persitency': [0.99],
+                'dynamics_learning_rate': [0.0005],
+            }
+
+    elif algo == 'a-me-trpo':
+        if params['env'] == 'HalfCheetah':
+            values = {
+                'rolling_average_persistency': [0.4],
+                'dynamics_learning_rate': [0.0005],
+                'step_size': [0.01]
+            }
+            # values = {
+            #     'rolling_average_persitency': [0.1],
+            #     'dynamics_learning_rate': [0.001],
+            # }
+
+            # values = {
+            #     'rolling_average_persitency': [0.4],
+            #     'dynamics_learning_rate': [0.0005],
+            # }
+        elif params['env'] == 'Ant':
+            values = {
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.0005],
+                'step_size': [0.02],
+            }
+
+        elif params['env'] == 'Walker2d':
+            values = {
+                'rolling_average_persistency': [0.4],
+                'dynamics_learning_rate': [0.0005],
+                'step_size': [0.01]
+            }
+            # values = {
+            #     'env': ['Walker2d'],
+            #     'step_size': [0.05],
+            #     'rolling_average_persitency': [0.99],
+            #     'dynamics_learning_rate': [0.001],
+            # }
+
+            # values = {
+            #     'env': ['Walker2d'],
+            #     'step_size': [0.05],
+                # 'rolling_average_persitency': [0.04],
+                # 'dynamics_learning_rate': [0.0005],
+            # }
+
+        elif params['env'] == 'Hopper':
+            values = {
+                'env': ['Hopper'],
+                'step_size': [0.02],
+                'rolling_average_persitency': [0.9],
+                'dynamics_learning_rate': [0.0005],
+                }
+        else:
+            raise NotImplementedError
+
+    elif algo == 'a-mb-mpo':
+        if params['env'] == 'HalfCheetah':
+            values = {
+                'step_size': [0.05],
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.001],
+
+            }
+            # values = {
+            #     'fraction_meta_batch_size': [0.05],
+            #     'rolling_average_persitency': [0.1],
+            #     'dynamics_learning_rate': [0.0005],
+            # }
+        elif params['env'] == 'Ant':
+            values = {
+                'step_size': [0.05],
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.001],
+
+            }
+            # values = {
+            #     'fraction_meta_batch_size': [0.05],
+            #     'rolling_average_persitency': [0.1],
+            #     'dynamics_learning_rate': [0.0005],
+            # }
+
+        elif params['env'] == 'Walker2d':
+            # values = {
+            #     'env': ['Walker2d'],
+            #     'fraction_meta_batch_size': [0.05],
+            #     'rolling_average_persitency': [0.9],
+            #     'dynamics_learning_rate': [0.0005],
+            # }
+            values = {
+                'step_size': [0.05],
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.0005],
+
+            }
+
+        elif params['env'] == 'Hopper':
+            # values = {
+            #     'env': ['Hopper'],
+            #     'fraction_meta_batch_size': [0.05],
+            #     'rolling_average_persitency': [0.4],
+            #     'dynamics_learning_rate': [0.0005],
+            # }
+            values = {
+                'step_size': [0.05],
+                'rolling_average_persitency': [0.1],
+                'dynamics_learning_rate': [0.001],
+
+            }
+        else:
+            raise NotImplementedError
 
     elif algo == 'ppo':
         values = {
@@ -37,6 +205,51 @@ def valid_experiment(params, algo):
              'num_ppo_steps': [5],
              'learning_rate': [0.001]
         }
+
+    elif algo == 'trpo':
+        values = {}
+
+    elif algo == 'reg':
+        values = {
+            'algo': ['me-trpo'],
+            'num_models': [5],
+            'num_grad_policy_per_step': [2],
+            'num_epochs_per_step': [1],
+            'repeat_steps': [25],
+            'rolling_average_persitency': [0.9],
+            'exp_tag': ['regularization']
+        }
+
+    elif algo == 'no-reg':
+        values = {
+            'algo': ['me-trpo'],
+            'steps_per_iter': [[30, 30]],
+            'num_models': [5],
+            'rolling_average_persitency': [0.9],
+            'exp_tag': ['no-regularization']
+        }
+
+    elif algo == 'expl':
+        values = {
+            'algo': ['me-trpo'],
+            'num_rollouts': [10],
+            'grad_steps_per_rollout': [4],
+            'rolling_average_persitency': [0.9],
+            'exp_tag': ['exploration']
+        }
+
+    elif algo == 'no-expl':
+        values = {
+            'algo': ['me-trpo'],
+            'num_rollouts': [10],
+            'steps_per_iter': [40],
+            'rolling_average_persitency': [0.9],
+            'exp_tag': ['no-exploration']
+        }
+
+    elif algo == 'a-mb-mpo-pr2':
+        return True
+
 
     else:
         raise NotImplementedError

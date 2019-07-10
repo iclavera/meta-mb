@@ -7,26 +7,41 @@ import matplotlib
 matplotlib.use('TkAgg')
 
 
-SMALL_SIZE = 20
-MEDIUM_SIZE = 22
-BIGGER_SIZE = 26
-LINEWIDTH = 3
-YELLOW = '#FBC15E'
-BLUE = '#348ABD'
+SMALL_SIZE = 32
+MEDIUM_SIZE = 36
+BIGGER_SIZE = 44
+BIG_SIZE = 44
+LINEWIDTH = 8
+MARKER = None
+ALPHA=0.15
 
-plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
-plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('legend', fontsize=BIG_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
+
+
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
-colors = prop_cycle.by_key()['color']
-colors.remove(YELLOW)
-colors.remove(BLUE)
-colors = [YELLOW, BLUE] + colors
+# colors = prop_cycle.by_key()['color']
+# colors.remove(YELLOW)
+# colors.remove(BLUE)
+# colors = [YELLOW, BLUE] + colors
+colors = [
+    (31, 119, 180),
+    (255, 127, 14),
+    (44, 160, 44),  # GREEN
+    (214, 39, 40),  # RED
+    (0, 0, 0),
+    (137, 137, 137), # DARK GREY
+    (199, 199, 199),
+    (188, 189, 34), (219, 219, 141), (23, 190, 207), (158, 218, 229)
+]
+for idx, color in enumerate(colors):
+    colors[idx] = '#%02x%02x%02x' % color
 COLORS = dict()
 LEGEND_ORDER = {'exploration': 0, 'no-exploration': 1}
 
@@ -130,17 +145,9 @@ def prepare_data_for_plot(exp_data,
 def sorting_legend(label):
     return LEGEND_ORDER[label]
 
-
 def get_color(label):
     if label not in COLORS.keys():
-        if YELLOW in colors:
-            colors.remove(YELLOW)
-            COLORS[label] = YELLOW
-        elif BLUE in colors:
-            COLORS[label] = BLUE
-            colors.remove(BLUE)
-        else:
-            COLORS[label] = colors.pop(0)
+        COLORS[label] = colors.pop(0)
     return COLORS[label]
 
 
@@ -168,10 +175,9 @@ def plot_from_exps(exp_data,
     num_columns = len(exps_per_plot.keys())
     assert num_columns % num_rows == 0
     num_columns = num_columns // num_rows
-    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(20, 8))
-    if num_rows == 1:
-        axarr = np.expand_dims(axarr, axis=0)
-    fig.tight_layout(pad=4.0, w_pad=4, h_pad=6, rect=[0, 0, 1, 1])
+    fig, axarr = plt.subplots(num_rows, num_columns, figsize=(24, 12))
+    axarr = np.reshape(axarr, (num_rows, num_columns))
+    fig.tight_layout(pad=5.0, w_pad=1, h_pad=2, rect=[0, 0, 1, 1])
 
     # iterate over subfigures
     for i, (default_plot_title, plot_exps) in enumerate(sorted(exps_per_plot.items())):
@@ -204,7 +210,8 @@ def plot_from_exps(exp_data,
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
-            axarr[r, c].set_ylabel(y_label if y_label else y_key)
+            if c == 0:
+                axarr[r, c].set_ylabel(y_label if y_label else y_key)
             if x_limits is not None:
                 axarr[r, c].set_xlim(*x_limits)
             if y_limits is not None:
@@ -222,7 +229,7 @@ def plot_from_exps(exp_data,
         if y_limits is None:
             axarr[r, c].set_ylim([y_axis_min, y_axis_max])
 
-    fig.legend(loc='lower center', ncol=4, bbox_transform=plt.gcf().transFigure)
+    fig.legend(loc='lower center', ncol=2, bbox_transform=plt.gcf().transFigure)
     fig.savefig(plot_name)
 
 
@@ -247,7 +254,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_exploration.png',
+               plot_name='./comparison_exploration.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,

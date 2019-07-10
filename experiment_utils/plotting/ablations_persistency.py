@@ -13,8 +13,6 @@ BIG_SIZE = 44
 LINEWIDTH = 8
 MARKER = None
 ALPHA=0.15
-YELLOW = '#FBC15E'
-BLUE = '#348ABD'
 
 plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -42,10 +40,11 @@ colors = [
 ]
 for idx, color in enumerate(colors):
     colors[idx] = '#%02x%02x%02x' % color
-COLORS = dict()
-LEGEND_ORDER = {'regularization': 0, 'no-regularization': 1}
 
-data_path = './data/corl_data/regularization_comparison/'
+COLORS = dict()
+LEGEND_ORDER = {'0.1': 0, '0.4': 1, '0.9': 2, '0.99': 3}
+
+data_path = './data/corl_data/ablations/persistency'
 
 exps_data = load_exps_data([data_path])
 
@@ -82,15 +81,10 @@ round_plot = {'a-me-ppo': {'Hopper': 5000,
 
          }
 
-x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 10e4],
-            'Walker2d': [0, 10e4],
-            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 10e4],
-            'HalfCheetah': [0, 10e4],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 10e4],
-            'Ant': [0, 10e4],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 10e4],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 10e4],
-            'Hopper': [0, 10e4],
+x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 25e4],
+            'Walker2d': [0, 25e4],
+            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 25e4],
+            'HalfCheetah': [0, 25e4],
             }
 
 def prepare_data_for_plot(exp_data,
@@ -145,10 +139,12 @@ def prepare_data_for_plot(exp_data,
 def sorting_legend(label):
     return LEGEND_ORDER[label]
 
+
 def get_color(label):
     if label not in COLORS.keys():
         COLORS[label] = colors.pop(0)
     return COLORS[label]
+
 
 def plot_from_exps(exp_data,
                    filters={},
@@ -159,7 +155,7 @@ def plot_from_exps(exp_data,
                    sup_y_key=None,
                    plot_name='./bad-models.png',
                    subfigure_titles=None,
-                   plot_labels=['interleaved policy learning', 'in-order policy learning'],
+                   plot_labels=None,
                    x_label=None,
                    y_label=None,
                    num_rows=1,
@@ -205,7 +201,7 @@ def plot_from_exps(exp_data,
             else:
                 axarr[r, c].plot(x, y_mean, label=_label, linewidth=LINEWIDTH, color=get_color(label))
 
-            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
+            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=ALPHA, color=get_color(label))
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
@@ -228,7 +224,7 @@ def plot_from_exps(exp_data,
         if y_limits is None:
             axarr[r, c].set_ylim([y_axis_min, y_axis_max])
 
-    fig.legend(loc='lower center', ncol=2, bbox_transform=plt.gcf().transFigure)
+    fig.legend(loc='lower center', ncol=4, bbox_transform=plt.gcf().transFigure)
     fig.savefig(plot_name)
 
 
@@ -240,7 +236,7 @@ exps_data_filtered = filter(exps_data, filter_dict)
 
 plot_from_exps(exps_data,
                split_figures_by='env.$class',
-               split_plots_by='exp_tag',
+               split_plots_by='rolling_average_persitency',
                y_key='train-AverageReturn',
                x_key='Time',
                filters=filter_dict,
@@ -253,7 +249,7 @@ plot_from_exps(exps_data,
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_regularization.pdf',
+               plot_name='./ablations_persistency.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,

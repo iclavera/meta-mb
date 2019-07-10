@@ -7,10 +7,11 @@ import json
  python /home/ignasi/GitRepos/meta-mb/experiment_utils/save_videos.py data/s3/mbmpo-pieter/ --speedup 4 -n 1 --max_path_length 300 --ignore_done
 """
 
+
 def modify_json(json_file, exp_name):
-    json_file['exp_tag'] = 'a-me-ppo'
+    json_file['exp_tag'] = 'a-me-trpo'
     json_file['async'] = True
-    json_file['algo'] = 'a-me-ppo'
+    json_file['algo'] = 'a-me-trpo'
     return json_file
 
 
@@ -26,10 +27,5 @@ if __name__ == "__main__":
         json_path = os.path.join(exp_path['exp_name'], 'params.json')
         new_json_file = modify_json(json_file, exp_path['exp_name'])
         json.dump(new_json_file, open(json_path, 'w'))
-
-
-
-
-
 
 

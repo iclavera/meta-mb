@@ -16,7 +16,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'bptt-a-me-trpo-4'
+EXP_NAME = 'bptt-a-me-trpo-ablations'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -174,15 +174,15 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.1, 0.4, 0.9, 0.99,
+            0.1, 0.4,
         ],
 
         'seed': [1, 2, 3, 4],
         'n_itr': [1250],
         'num_rollouts': [1],
 
-        'simulation_sleep_frac': [1],
-        'env': ['Hopper', 'Ant'],
+        'simulation_sleep_frac': [0.1, 0.5, 2],
+        'env': ['HalfCheetah', 'Walker2d'],
 
         # Problem Conf
 
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'step_size': [0.01, 0.02, 0.05],
+        'step_size': [0.01],
         'imagined_num_rollouts': [50],
         'scope': [None],
         'exp_tag': ['a-me-trpo'],  # For changes besides hyperparams
