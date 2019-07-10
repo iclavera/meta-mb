@@ -1,6 +1,7 @@
 from meta_mb.meta_envs.base import MetaEnv
 import os
 from gym.envs.mujoco.mujoco_env import MujocoEnv
+import tensorflow as tf
 
 import numpy as np
 from gym import utils
@@ -14,9 +15,9 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         self.do_simulation(a, self.frame_skip)
         ob = self._get_obs()
         notdone = np.isfinite(ob).all() and (np.abs(ob[1]) <= .2)
-        done = not notdone
+        # done = not notdone
         # reward = int(notdone)
-        # done = False
+        done = False
         reward = self._get_reward()
         return ob, reward, done, {}
 
@@ -39,6 +40,16 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         v.cam.fixedcamid = 0
         v.cam.trackbodyid = 0
         v.cam.distance = self.model.stat.extent * 1.5
+
+    def reward(self, obs, acts, next_obs):
+        assert obs.ndim == 2
+        assert obs.shape == next_obs.shape
+        assert obs.shape[0] == acts.shape[0]
+        return -(obs[:, 1]) ** 2
+
+    def tf_reward(self, obs, acts, next_obs):
+        return - tf.square(obs[:, 1])
+
 
 
 if __name__ == "__main__":

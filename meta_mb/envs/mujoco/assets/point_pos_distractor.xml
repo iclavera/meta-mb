@@ -24,13 +24,13 @@
       <joint name='bally' type='slide' axis='0 1 0' pos='0 0 0' damping="15"/>
     </body>
     <body name="dis1" pos="0 0 0">
-      <geom name="dis1" type="box" size="0.4" pos="0 0 0.4" />
+      <geom name="dis1_geom" type="box" size="0.4 0.4 0.4" pos="0 0 0.4" rgba="0 1 0 1"/>
       <joint name='dis1x' type='slide' axis='1 0 0' pos='0 0 0' damping="15"/>
-      <joint name='dis2y' type='slide' axis='0 1 0' pos='0 0 0' damping="15"/>
+      <joint name='dis1y' type='slide' axis='0 1 0' pos='0 0 0' damping="15"/>
     </body>
     <body name="dis2" pos="0 0 0">
-      <geom name="dis2" type="sphere" size="0.5" pos="0 0 0.5" rgba="1 0 0 1" />
-      <joint name='dis1x' type='slide' axis='1 0 0' pos='0 0 0' damping="15"/>
+      <geom name="dis2_geom" type="sphere" size="0.5" pos="0 0 0.5" rgba="1 0 0 1" />
+      <joint name='dis2x' type='slide' axis='1 0 0' pos='0 0 0' damping="15"/>
       <joint name='dis2y' type='slide' axis='0 1 0' pos='0 0 0' damping="15"/>
     </body>
   </worldbody>

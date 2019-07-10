@@ -34,11 +34,13 @@ class Trainer(object):
             dynamics_model_max_epochs=200,
             reward_model_max_epochs=200,
             reward_model=None,
+            reward_sample_processor=None
             ):
         self.env = env
         self.sampler = sampler
         self.dynamics_sample_processor = dynamics_sample_processor
         self.dynamics_model = dynamics_model
+        self.reward_sample_processor = reward_sample_processor
         self.reward_model = reward_model
         self.policy = policy
         self.n_itr = n_itr
@@ -85,6 +87,7 @@ class Trainer(object):
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
+
                 # import pdb; pdb.set_trace()
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
@@ -94,6 +97,7 @@ class Trainer(object):
                 time_env_samp_proc = time.time()
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths,
                                                                               log=True, log_prefix='EnvTrajs-')
+
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                 ''' --------------- fit dynamics model --------------- '''
@@ -112,6 +116,8 @@ class Trainer(object):
                 time_fitrew_start = time.time()
 
                 if self.reward_model is not None:
+                    if self.reward_sample_processor is not None:
+                        samples_data = self.reward_sample_processor.process_samples(env_paths, log=False)
                     logger.log("Training reward model for %i epochs ..." % (self.reward_model_max_epochs))
                     self.reward_model.fit(samples_data['observations'],
                                             samples_data['actions'],

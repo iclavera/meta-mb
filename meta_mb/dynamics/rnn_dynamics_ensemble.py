@@ -168,7 +168,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         self._networks = rnns
 
-    def fit(self, obs, act, obs_next, reward=None, epochs=1000, compute_normalization=True, valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False):
+    def fit(self, obs, act, obs_next, reward=None, epochs=1000, compute_normalization=True, valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -352,13 +352,24 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                 logger.log('Stopping DynamicsEnsemble Training since valid_loss_rolling_average decreased')
                 break
             valid_loss_rolling_average_prev = valid_loss_rolling_average
-
+        #
+        # """ ------- Tabular Logging ------- """
+        # if log_tabular:
+        #     logger.logkv('AvgModelEpochTime', np.mean(epoch_times))
+        #     assert len(epochs_per_model) == self.num_models
+        #     logger.logkv('AvgEpochsPerModel', np.mean(epochs_per_model))
+        #     logger.logkv('StdEpochsPerModel', np.std(epochs_per_model))
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv('AvgModelEpochTime', np.mean(epoch_times))
+            logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
             assert len(epochs_per_model) == self.num_models
-            logger.logkv('AvgEpochsPerModel', np.mean(epochs_per_model))
-            logger.logkv('StdEpochsPerModel', np.std(epochs_per_model))
+            logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
+            logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
+            logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
+            logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
+            logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(batch_losses))
+            logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
+            logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
     def predict(self, obs, act, hidden_state, pred_type='rand'):
         """

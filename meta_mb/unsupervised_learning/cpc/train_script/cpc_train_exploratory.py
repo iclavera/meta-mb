@@ -76,18 +76,24 @@ if __name__ == "__main__":
     parser.add_argument('--context_network', type=str, default='stack')
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--ptsize', type=int, default=2)
+    parser.add_argument('--distractor', action='store_true')
     parser.add_argument('--code_size', type=int, default=32)
 
     args = parser.parse_args()
-    from meta_mb.envs.mujoco.point_pos import PointEnv
-    raw_env = PointEnv(ptsize=args.ptsize)
+    if args.distractor:
+        from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
+        raw_env = PointEnv()
+    else:
+        from meta_mb.envs.mujoco.point_pos import PointEnv
+        raw_env = PointEnv(ptsize=args.ptsize)
 
     # raw_env = InvertedPendulumEnv()
 
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix)
+
+    exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
 
     train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=1024, batch_size=32,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,

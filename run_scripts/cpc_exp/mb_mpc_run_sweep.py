@@ -26,7 +26,7 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'ptmass-state'
+EXP_NAME = 'ip-rnn-state'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -86,7 +86,7 @@ def run_experiment(**config):
                 use_cem=config['use_cem'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model'],
-                reward_model=None, #reward_model if config['use_reward_model'] else None
+                reward_model= reward_model if config['use_reward_model'] else None
             )
 
         else:
@@ -146,6 +146,7 @@ def run_experiment(**config):
             reward_model=reward_model if config['use_reward_model'] else None,
             sampler=sampler,
             dynamics_sample_processor=sample_processor,
+            reward_sample_processor=ModelSampleProcessor(recurrent=False),
             n_itr=config['n_itr'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
@@ -165,8 +166,8 @@ if __name__ == '__main__':
 
                 # Problem
                 'env': [make_pt_env],  # 'HalfCheetahEnv'
-                'max_path_length': [50],
-                'normalize': [False],
+                'max_path_length': [32],
+                'normalize': [True],
                  'n_itr': [50],
                 'discount': [1.],
 
@@ -184,7 +185,7 @@ if __name__ == '__main__':
 
                 # Dynamics Model
                 'recurrent': [True],
-                'num_models': [3],
+                'num_models': [2],
                 'hidden_nonlinearity_model': ['relu'],
                 'hidden_sizes_model': [(500,)],
                 'dynamic_model_epochs': [200],
@@ -229,21 +230,19 @@ if __name__ == '__main__':
                 'num_rollouts': [5],
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.99],
-                'initial_random_samples': [False],
-                'initial_sinusoid_samples': [False],
+                'rolling_average_persitency': [0.4],
 
                 # Dynamics Model
                 'recurrent': [True],
                 'num_models': [2],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, 500,)],
-                'dynamic_model_epochs': [15],
+                'hidden_sizes_model': [(500, )],
+                'dynamic_model_epochs': [200],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [64],
                 'cell_type': ['lstm'],
-                'use_reward_model': [True],
+                'use_reward_model': [False],
 
                 # Reward Model
                 'reward_model_epochs': [15],
@@ -260,4 +259,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_ip, EXP_NAME, INSTANCE_TYPE)
