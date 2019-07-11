@@ -60,7 +60,7 @@ def run_experiment(**config):
                 cell_type=config['cell_type'],
                 num_models=config['num_models'],
                 batch_size=config['batch_size_model'],
-                normalize_input=True,
+                normalize_input=config['normalize'],
             )
 
             reward_model = MLPRewardEnsemble(
@@ -161,54 +161,54 @@ if __name__ == '__main__':
     def make_pt_env():
         return PointEnv(random_reset=False)
 
-    config = {
-                'seed': [5],
-
-                # Problem
-                'env': [make_pt_env],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
-                'normalize': [True],
-                 'n_itr': [50],
-                'discount': [1.],
-
-                # Policy
-                'n_candidates': [500], # K
-                'horizon': [10], # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
-
-                # Training
-                'num_rollouts': [5],
-                'learning_rate': [1e-3],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
-
-                # Dynamics Model
-                'recurrent': [True],
-                'num_models': [2],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500,)],
-                'dynamic_model_epochs': [200],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [64],
-                'cell_type': ['lstm'],
-                'use_reward_model': [False],
-
-                # Reward Model
-                'reward_model_epochs': [15],
-
-                #  Other
-                'n_parallel': [1],
-
-                # representation learning
-
-                'use_image': [False],
-                'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
-                'encoder': ['cpc'],
-                'latent_dim': [32],
-
-    }
+    # config = {
+    #             'seed': [5],
+    #
+    #             # Problem
+    #             'env': [make_pt_env],  # 'HalfCheetahEnv'
+    #             'max_path_length': [32],
+    #             'normalize': [True],
+    #              'n_itr': [50],
+    #             'discount': [1.],
+    #
+    #             # Policy
+    #             'n_candidates': [500], # K
+    #             'horizon': [10], # Tau
+    #             'use_cem': [False],
+    #             'num_cem_iters': [5],
+    #
+    #             # Training
+    #             'num_rollouts': [5],
+    #             'learning_rate': [1e-3],
+    #             'valid_split_ratio': [0.1],
+    #             'rolling_average_persitency': [0.4],
+    #
+    #             # Dynamics Model
+    #             'recurrent': [True],
+    #             'num_models': [2],
+    #             'hidden_nonlinearity_model': ['relu'],
+    #             'hidden_sizes_model': [(500,)],
+    #             'dynamic_model_epochs': [200],
+    #             'backprop_steps': [100],
+    #             'weight_normalization_model': [False],  # FIXME: Doesn't work
+    #             'batch_size_model': [64],
+    #             'cell_type': ['lstm'],
+    #             'use_reward_model': [False],
+    #
+    #             # Reward Model
+    #             'reward_model_epochs': [15],
+    #
+    #             #  Other
+    #             'n_parallel': [1],
+    #
+    #             # representation learning
+    #
+    #             'use_image': [False],
+    #             'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
+    #             'encoder': ['cpc'],
+    #             'latent_dim': [32],
+    #
+    # }
 
     config_ip = {
                 'seed': [5, 6],
@@ -216,14 +216,14 @@ if __name__ == '__main__':
                 # Problem
                 'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [32],
-                'normalize': [False],
+                'normalize': [True],
                  'n_itr': [50],
                 'discount': [1.],
 
                 # Policy
                 'n_candidates': [1000], # K
                 'horizon': [10], # Tau
-                'use_cem': [False],
+                'use_cem': [True],
                 'num_cem_iters': [5],
 
                 # Training
@@ -252,7 +252,7 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [True, False],
+                'use_image': [False],
                 'model_path': ['meta_mb/unsupervised_learning/cpc/data/ip-neg-15/encoder.h5'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],

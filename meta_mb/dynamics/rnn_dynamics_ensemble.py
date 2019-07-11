@@ -33,6 +33,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
                  backprop_steps=50,
+                 path_length=32,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -56,6 +57,14 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
+        self.path_length = path_length
+
+        # store RNN config
+        self.hidden_sizes = hidden_sizes
+        self.hidden_nonlinearity = hidden_nonlinearity
+        self.output_nonlinearity = output_nonlinearity
+        self.weight_normalization = weight_normalization
+        self.cell_type = cell_type
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name):
@@ -64,6 +73,8 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             self.act_ph = tf.placeholder(tf.float32, shape=(None, None, action_space_dims), name='act_ph')
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, None, obs_space_dims),
                                            name='delta_ph')
+
+            self._create_stats_vars()
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=2)
@@ -80,16 +91,15 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                 with tf.variable_scope('model_{}'.format(i)):
                     rnn = RNN(name,
                               output_dim=self.obs_space_dims,
-                              hidden_sizes=hidden_sizes,
-                              hidden_nonlinearity=hidden_nonlinearity,
-                              output_nonlinearity=output_nonlinearity,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
                               input_var=nn_input[i],
                               input_dim=self.obs_space_dims + self.action_space_dims,
-                              weight_normalization=weight_normalization,
-                              cell_type=cell_type,
+                              weight_normalization=self.weight_normalization,
+                              cell_type=self.cell_type,
                               )
                     rnns.append(rnn)
-
                 delta_preds.append(rnn.output_var)
                 self.hidden_state_ph.append(rnn.state_var)
                 self.next_hidden_state_var.append(rnn.next_state_var)
@@ -135,13 +145,13 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=2)
                     rnn = RNN(name,
                               output_dim=self.obs_space_dims,
-                              hidden_sizes=hidden_sizes,
-                              hidden_nonlinearity=hidden_nonlinearity,
-                              output_nonlinearity=output_nonlinearity,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
                               input_var=nn_input,
                               input_dim=self.obs_space_dims + self.action_space_dims,
-                              weight_normalization=weight_normalization,
-                              cell_type=cell_type,
+                              weight_normalization=self.weight_normalization,
+                              cell_type=self.cell_type,
                               state_var=self.hidden_state_ph[i],
                               reuse=True,
                               )
@@ -371,6 +381,59 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
+    def predict_sym(self, obs_ph, act_ph, hidden_state_ph): # pred_type='rand'
+        original_obs = obs_ph
+
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm), self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
+        obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0), self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
+        hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i]) for i in range(len(hidden_state_ph.c))]
+
+        delta_preds = []
+        next_hidden_states = []
+
+        for i in range(self.num_models):
+            with tf.variable_scope('model_{}'.format(i), reuse=True):
+                assert self.normalize_input
+                # in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
+                # in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                in_obs_var = obs_ph[i]
+                in_act_var = act_ph[i]
+                input_var = tf.concat([in_obs_var, in_act_var], axis=-1)
+                rnn = RNN(self.name,
+                          output_dim=self.obs_space_dims,
+                          hidden_sizes=self.hidden_sizes,
+                          hidden_nonlinearity=self.hidden_nonlinearity,
+                          output_nonlinearity=self.output_nonlinearity,
+                          input_var=input_var,
+                          input_dim=self.obs_space_dims + self.action_space_dims,
+                          weight_normalization=self.weight_normalization,
+                          cell_type=self.cell_type,
+                          state_var=hidden_state_ph[i],
+                          )
+
+                # delta_pred = rnn.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                delta_pred = rnn.output_var
+                delta_preds.append(delta_pred)
+                next_hidden_states.append(rnn.next_state_var)
+
+        delta_preds = tf.concat(delta_preds, axis=0)
+        next_hidden_states_c = [hs.c for hs in next_hidden_states]
+        next_hidden_states_h = [hs.h for hs in next_hidden_states]
+        next_hidden_states = tf.nn.rnn_cell.LSTMStateTuple(tf.concat(next_hidden_states_c, axis=0), tf.concat(next_hidden_states_h, axis=0))
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
+
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+
+        return next_obs[:, 0, ...], next_hidden_states
+
+
     def predict(self, obs, act, hidden_state, pred_type='rand'):
         """
         Predict the batch of next observations given the batch of current observations and actions
@@ -393,6 +456,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         obs, act = np.expand_dims(obs, 1), np.expand_dims(act, 1)
 
         if self.normalize_input:
+            # import pdb; pdb.set_trace()
             obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
             hidden_state = [hidden_state for _ in range(self.num_models)]
             obs, act = self._normalize_data(obs, act)
@@ -538,12 +602,63 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         # store means and std in dict
         self.normalization = []
+        feed_dict = {}
         for i in range(self.num_models):
             normalization = OrderedDict()
             normalization['obs'] = (np.mean(obs[i], axis=0), np.std(obs[i], axis=0))
             normalization['delta'] = (np.mean(delta[i], axis=0), np.std(delta[i], axis=0))
             normalization['act'] = (np.mean(act[i], axis=0), np.std(act[i], axis=0))
             self.normalization.append(normalization)
+        #     feed_dict.update({self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
+        #                       self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+        #                       self._mean_act_ph[i]: self.normalization[i]['act'][0],
+        #                       self._std_act_ph[i]: self.normalization[i]['act'][1],
+        #                       self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+        #                       self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+        #                       }
+        #                      )
+        # sess = tf.get_default_session()
+        # sess.run(self._assignations, feed_dict=feed_dict)
+
+    def _create_stats_vars(self):
+        self._mean_obs_var, self._std_obs_var, self._mean_obs_ph, self._std_obs_ph = [], [], [], []
+        self._mean_act_var, self._std_act_var, self._mean_act_ph, self._std_act_ph = [], [], [], []
+        self._mean_delta_var, self._std_delta_var, self._mean_delta_ph, self._std_delta_ph = [], [], [], []
+        self._assignations = []
+        for i in range(self.num_models):
+            self._mean_obs_var.append(tf.get_variable('mean_obs_%d' % i, shape=(self.obs_space_dims, self.path_length),
+                                                      dtype=tf.float32, initializer=tf.zeros_initializer,
+                                                      trainable=False))
+            self._std_obs_var.append(tf.get_variable('std_obs_%d' % i, shape=(self.obs_space_dims, self.path_length),
+                                                     dtype=tf.float32, initializer=tf.ones_initializer,
+                                                     trainable=False))
+            self._mean_act_var.append(tf.get_variable('mean_act_%d' % i, shape=(self.action_space_dims, self.path_length),
+                                                      dtype=tf.float32, initializer=tf.zeros_initializer,
+                                                      trainable=False))
+            self._std_act_var.append(tf.get_variable('std_act_%d' % i, shape=(self.action_space_dims, self.path_length),
+                                                     dtype=tf.float32, initializer=tf.ones_initializer,
+                                                     trainable=False))
+            self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims, self.path_length),
+                                                        dtype=tf.float32, initializer=tf.zeros_initializer,
+                                                        trainable=False))
+            self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims, self.path_length),
+                                                       dtype=tf.float32, initializer=tf.ones_initializer,
+                                                       trainable=False))
+
+            self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims, self.path_length)))
+            self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims, self.path_length)))
+            self._mean_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims, self.path_length)))
+            self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims, self.path_length)))
+            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims, self.path_length)))
+            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims, self.path_length)))
+
+            self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
+                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
+                                       tf.assign(self._mean_act_var[i], self._mean_act_ph[i]),
+                                       tf.assign(self._std_act_var[i], self._std_act_ph[i]),
+                                       tf.assign(self._mean_delta_var[i], self._mean_delta_ph[i]),
+                                       tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
+                                       ])
 
     def _normalize_data(self, obs, act, delta=None):
         assert len(obs) == len(act) == self.num_models
@@ -574,3 +689,25 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                                        self.normalization[i]['delta'][1])
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
+
+
+    def set_shared_params(self, state):
+        self.normalization = state['normalization']
+        feed_dict = {}
+        for i in range(self.num_models):
+            feed_dict.update({
+                self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
+                self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+                self._mean_act_ph[i]: self.normalization[i]['act'][0],
+                self._std_act_ph[i]: self.normalization[i]['act'][1],
+                self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+                self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+            })
+        sess = tf.get_default_session()
+        sess.run(self._assignations, feed_dict=feed_dict)
+        for i in range(len(self._networks)):
+            self._networks[i].set_params(state['networks_params'][i])
+
+
+    def hidden_state_fn(self, hidden_state, fn, *args, **kwargs):
+        return tf.nn.rnn_cell.LSTMStateTuple(fn(hidden_state.c, *args, **kwargs), fn(hidden_state.h, *args, **kwargs))
