@@ -414,7 +414,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                           state_var=hidden_state_ph[i],
                           )
 
-                delta_pred = rnn.output_var[:, 0, ...] * self._std_delta_var[i] + self._mean_delta_var[i]
+                delta_pred = rnn.output_var[:, 0, :] * self._std_delta_var[i] + self._mean_delta_var[i]
                 # delta_pred = rnn.output_var
                 delta_preds.append(delta_pred)
                 next_hidden_states.append(rnn.next_state_var)
@@ -428,7 +428,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         perm_inv = tf.invert_permutation(perm)
         next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
 
-        next_obs = original_obs[:, 0, ...] + tf.gather(delta_preds, perm_inv)
+        next_obs = original_obs[:, 0, :] + tf.gather(delta_preds, perm_inv)
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
 
         return next_obs, next_hidden_states
