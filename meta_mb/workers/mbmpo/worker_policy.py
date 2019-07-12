@@ -68,38 +68,30 @@ class WorkerPolicy(Worker):
 
             """ -------------------- Sampling --------------------------"""
 
-            #time_sampling = time.time()
             paths = self.model_sampler.obtain_samples(log=True, log_prefix='Policy-', buffer=None)
-            #time_sampling = time.time() - time_sampling
 
             """ ----------------- Processing Samples ---------------------"""
 
-            #time_sample_proc = time.time()
             samples_data = self.model_sample_processor.process_samples(
                 paths,
                 log='all',
                 log_prefix='Policy-'
             )
             all_samples_data.append(samples_data)
-            #time_sample_proc = time.time() - time_sample_proc
 
             self.log_diagnostics(sum(list(paths.values()), []), prefix='Policy-')
 
             """ ------------------- Inner Policy Update --------------------"""
 
-            #time_algo_adapt = time.time()
             if step < self.num_inner_grad_steps:
                 self.algo._adapt(samples_data)
-            #time_algo_adapt = time.time() - time_algo_adapt
 
         """ ------------------ Outer Policy Update ---------------------"""
 
         if self.verbose:
             logger.log("Policy is optimizing...")
         # This needs to take all samples_data so that it can construct graph for meta-optimization.
-        #time_algo_opt = time.time()
         self.algo.optimize_policy(all_samples_data, prefix='Policy-')
-        #time_algo_opt = time.time() - time_algo_opt
 
         time_step = time.time() - time_step
         self.policy = self.model_sampler.policy

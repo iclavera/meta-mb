@@ -6,8 +6,11 @@ from collections import OrderedDict
 
 
 class WorkerData(Worker):
-    def __init__(self, num_rollouts_per_iter, simulation_sleep):
-        super().__init__()
+    def __init__(self, num_rollouts_per_iter, simulation_sleep, video=False):
+        if video:
+            super().__init__(snapshot_mode='gap', snapshot_gap=int(1250*simulation_sleep/5/30))
+        else:
+            super().__init__()
         self.num_rollouts_per_iter = num_rollouts_per_iter
         self.simulation_sleep = simulation_sleep
         self.env = None
@@ -24,17 +27,15 @@ class WorkerData(Worker):
             feed_dict
     ):
 
-        #from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
-        from meta_mb.samplers.bptt_samplers.meta_bptt_sampler import MetaBPTTSampler
+        from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
         from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
         env = pickle.loads(env_pickle)
         policy = pickle.loads(policy_pickle)
         baseline = pickle.loads(baseline_pickle)
-        dynamics_model = pickle.loads(dynamics_model_pickle)
 
         self.env = env
-        self.env_sampler = MetaBPTTSampler(env=env, policy=policy, dynamics_model=dynamics_model, **feed_dict['env_sampler'])
+        self.env_sampler = MetaSampler(env=env, policy=policy, **feed_dict['env_sampler'])
         self.dynamics_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             **feed_dict['dynamics_sample_processor']

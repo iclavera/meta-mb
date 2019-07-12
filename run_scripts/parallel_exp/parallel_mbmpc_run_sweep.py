@@ -12,8 +12,8 @@ from multiprocessing import Process, Pipe
 from tensorflow import ConfigProto
 import pickle
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-halfcheetah-ant-det-mbmpc'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'graph-a-mbmpc'
 
 def init_vars(sender, config_sess, policy, dynamics_model):
     import tensorflow as tf
@@ -32,7 +32,7 @@ def init_vars(sender, config_sess, policy, dynamics_model):
 
 
 def run_experiment(**config):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '-' + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -161,29 +161,29 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'rolling_average_persitency': [0.1, 0.4],
+        'rolling_average_persitency': [0.01, 0.1, 0.4],
 
         'seed': [1, 2],
 
-        'n_itr': [101*20],
+        'n_itr': [1250],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah', 'Ant'], #['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
+        'env': ['Ant', 'HalfCheetah'], #['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
 
         # Problem
-        'probabilistic_dynamics': [False],
-        'max_path_length': [50],
+        'probabilistic_dynamics': [False, True],
+        'max_path_length': [200],
         'normalize': [False],
         'discount': [1.],
 
         # Policy
         'n_candidates': [1000], # K ###
-        'horizon': [20], # Tau ###
-        'use_cem': [False],
+        'horizon': [10], # Tau ###
+        'use_cem': [False,],
         'num_cem_iters': [5],
 
         # Training
-        'dynamics_learning_rate': [5e-4, 0.001],
+        'dynamics_learning_rate': [5e-4, 1e-3],
         'valid_split_ratio': [0.1],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
@@ -195,7 +195,7 @@ if __name__ == '__main__':
         'dynamics_output_nonlinearity': [None],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dynamic_model_epochs': [50],  # UNUSED
-        'dynamics_buffer_size': [25000],
+        'dynamics_buffer_size': [10000],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'dynamics_batch_size': [64],
