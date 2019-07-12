@@ -10,6 +10,7 @@ import time
 
 from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
+from meta_mb.envs.mujoco.inverted_pendulum_env import  InvertedPendulumEnv
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.vae import VAE
 from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img, RepeatRandom, init_uninit_vars
@@ -53,6 +54,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Train VAE')
+    parser.add_argument('--env', type=str)
     parser.add_argument('--bnl_decoder', action='store_true')
     parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train the model for')
     parser.add_argument('--run_suffix', type=str, default='')
@@ -65,17 +67,23 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.distractor:
-        from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
-        raw_env = PointEnv()
+    if args.env == 'pt':
+        if args.distractor:
+            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
+            raw_env = PointEnv()
+        else:
+            from meta_mb.envs.mujoco.point_pos import PointEnv
+            raw_env = PointEnv(ptsize=args.ptsize)
+    elif args.env == 'ip':
+        raw_env = InvertedPendulumEnv()
     else:
-        from meta_mb.envs.mujoco.point_pos import PointEnv
-        raw_env = PointEnv(ptsize=args.ptsize)
+        raise NotImplementedError
 
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'vae-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'vae-distractor%s' % args.run_suffix
+    # exp_name = 'vae-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'vae-distractor%s' % args.run_suffix
+    exp_name = 'ip%s' % args.run_suffix
 
     train_with_exploratory_policy(raw_env, policy, exp_name, num_rollouts=1024, batch_size=32,
                                   epochs=args.epochs, lr=args.lr, beta=args.beta, bnl_decoder=args.bnl_decoder, code_size=args.code_size)

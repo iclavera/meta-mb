@@ -24,11 +24,11 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, batch_size=32, code_size=32, epochs=30,
                                   image_shape=(64, 64, 3),  num_rollouts=32, max_path_length=16,
-                                  encoder_arch='default', context_network='stack', lr=1e-3, terms=1):
+                                  encoder_arch='default', context_network='stack', lr=1e-3, terms=1, predict_terms=1):
     img_seqs = collect_img(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length, image_shape=image_shape)
     train_seq, val_seq = train_test_split(img_seqs)
-    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=1)
-    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=1)
+    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
+    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
     #
     #
     # for (x, y), labels in train_data:
@@ -69,9 +69,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Train CPC model')
+    parser.add_argument('env', type=str, help='name of the environment to use')
     parser.add_argument('negative_samples', type=int, help='number of negative samples')
     parser.add_argument('terms', type=int, help='number of time steps in the history')
-    parser.add_argument('--epochs', type=int, default=20, help='number of epochs to train the model for')
+    parser.add_argument('predict_terms', type=int, help='number of time steps ahead')
+    parser.add_argument('--epochs', type=int, default=30, help='number of epochs to train the model for')
     parser.add_argument('--run_suffix', type=str, default='')
     parser.add_argument('--context_network', type=str, default='stack')
     parser.add_argument('--lr', type=float, default=1e-3)
@@ -80,24 +82,28 @@ if __name__ == "__main__":
     parser.add_argument('--code_size', type=int, default=32)
 
     args = parser.parse_args()
-    if args.distractor:
-        from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
-        raw_env = PointEnv()
-    else:
-        from meta_mb.envs.mujoco.point_pos import PointEnv
-        raw_env = PointEnv(ptsize=args.ptsize)
 
-    # raw_env = InvertedPendulumEnv()
+    if args.env == 'pt':
+        if args.distractor:
+            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
+            raw_env = PointEnv()
+        else:
+            from meta_mb.envs.mujoco.point_pos import PointEnv
+            raw_env = PointEnv(ptsize=args.ptsize)
+    elif args.env == 'ip':
+        raw_env = InvertedPendulumEnv()
+    else:
+        raise NotImplementedError
 
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-
-    exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
+    exp_name = 'ip-neg%d-hist%d-fut%d-code%d%s' % (args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
+    # exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
 
     train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=1024, batch_size=32,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
-                                  code_size=args.code_size)
+                                  code_size=args.code_size, predict_terms=args.predict_terms)
 
 
 

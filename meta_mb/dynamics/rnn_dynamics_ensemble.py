@@ -387,7 +387,8 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
         perm = tf.random.shuffle(perm)
         obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm), self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
-        obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0), self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
+        obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0), \
+                                          self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
         hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i]) for i in range(len(hidden_state_ph.c))]
 
         delta_preds = []

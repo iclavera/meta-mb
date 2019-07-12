@@ -11,6 +11,7 @@ from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.reward_model.mlp_reward_ensemble import MLPRewardEnsemble
 from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.utils.utils import ClassEncoder
@@ -22,6 +23,7 @@ from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
 from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
+from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
@@ -32,7 +34,12 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    exp_name = 'use_graph%s' % config.get('use_graph')
+    exp_name = 'ip-neg%d-hist%d-fut%d-code%d%d' %(config['negative'], config['history'], config['future'],
+                                                  config['latent_dim'], config['seed'])
+    model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
+                              'vae' if config['encoder'] == 'vae' else 'encoder.h5')
+
+    #exp_name = 'stack3_vae_%s' % config['model_path'].split('/')[-2] #'use_graph%s' % config.get('use_graph')
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -44,12 +51,15 @@ def run_experiment(**config):
     with sess.as_default() as sess:
         if config['use_image']:
             if config['encoder'] == 'cpc':
-                encoder = CPCEncoder(path=config['model_path'])
+                encoder = CPCEncoder(path=model_path)
             elif config['encoder'] == 'vae':
-                encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=config['model_path'])
+                encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
             env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
             env = NormalizedEnv(config['env']())
+
+        if config['obs_stack'] > 1:
+            env = ObsStackEnv(env, time_steps=config['obs_stack'])
 
         if config['recurrent']:
             dynamics_model = RNNDynamicsEnsemble(
@@ -131,12 +141,11 @@ def run_experiment(**config):
                 reward_model= reward_model if config['use_reward_model'] else None
             )
 
-        sampler = Sampler(
+        sampler = BaseSampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=config['max_path_length'],
-            n_parallel=config['n_parallel'],
         )
 
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
@@ -213,7 +222,7 @@ if __name__ == '__main__':
     # }
 
     config_ip = {
-                'seed': [5],
+                'seed': [1, 2],
 
                 # Problem
                 'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
@@ -221,13 +230,14 @@ if __name__ == '__main__':
                 'normalize': [True],
                  'n_itr': [50],
                 'discount': [1.],
+                'obs_stack': [3],
 
                 # Policy
                 'n_candidates': [1000], # K
                 'horizon': [10], # Tau
                 'use_cem': [False],
                 'num_cem_iters': [5],
-                'use_graph': [False],
+                'use_graph': [True],
 
                 # Training
                 'num_rollouts': [5],
@@ -236,8 +246,8 @@ if __name__ == '__main__':
                 'rolling_average_persitency': [0.4],
 
                 # Dynamics Model
-                'recurrent': [True],
-                'num_models': [2],
+                'recurrent': [False],
+                'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
                 'hidden_sizes_model': [(500, )],
                 'dynamic_model_epochs': [200],
@@ -255,10 +265,13 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [False],
-                'model_path': ['meta_mb/unsupervised_learning/cpc/data/ip-neg-15/encoder.h5'],
+                'use_image': [True],
+                # 'model_path': ['ip-neg-15'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
+                'negative': [5, 15],
+                'history': [1, 3],
+                'future': [1, 3],
 
     }
 
