@@ -3,7 +3,7 @@ from numbers import Number
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
+# import tensorflow_probability as tfp
 # from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
@@ -283,7 +283,9 @@ class SAC(Algo):
         input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
         q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
+        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target,
+                                                                 predictions=q_value,
+                                                                 weights=0.5)
                                     for q_value in q_values_var]
 
         self.q_optimizers = [tf.train.AdamOptimizer(
@@ -374,7 +376,7 @@ class SAC(Algo):
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s"%(key,metric_name), metric_fn(values))
@@ -394,9 +396,14 @@ class SAC(Algo):
 
     def optimize_policy(self, buffer, timestep, grad_steps, log=True):
         sess = tf.get_default_session()
+        if type(buffer) is dict:
+            value_dict = buffer
+            assert grad_steps == 1
+        else:
+            value_dict = buffer.random_batch(self.sampler_batch_size)
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.sampler_batch_size))
+                                         value_dict=value_dict)
             sess.run(self.training_ops, feed_dict)
             if log:
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)

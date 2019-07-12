@@ -24,6 +24,7 @@ def format_samples_for_training(samples):
     outputs = np.concatenate((rewards, delta_obs), axis=-1)
     return inputs, outputs
 
+
 class Trainer(object):
     """
     Performs steps for MAML
@@ -50,7 +51,7 @@ class Trainer(object):
             policy,
             n_itr,
             rollout_length_params,
-            num_model_rollouts = 1,
+            num_model_rollouts=1,
             # start_itr=0,
             sess=None,
             n_initial_exploration_steps=1e3,
@@ -112,8 +113,9 @@ class Trainer(object):
 
         with self.sess.as_default() as sess:
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.global_variables_initializer())
             start_time = time.time()
             self.saver = tf.train.Saver(write_version=tf.train.SaverDef.V2, max_to_keep=10, pad_step_number=True)
 
@@ -130,47 +132,61 @@ class Trainer(object):
                     paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                     samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                     self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                        samples_data['dones'], samples_data['next_observations'])
-        
+                                                       samples_data['dones'], samples_data['next_observations'])
 
             for itr in range(self.start_itr, self.n_itr):
                 self.itr = itr
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
-                logger.log("Sampling set of tasks/goals for this meta-batch...")
                 time_step = 0
+                self.dynamics_model.update_buffer(samples_data['observations'],
+                                                  samples_data['actions'],
+                                                  samples_data['next_observations']
+                                                  )
+                logger.log("Training the model...")
+                self.dynamics_model.fit()
                 for _ in range(self.epoch_length // self.model_train_freq):
-                    for _ in range(self.rollout_length):
-                        max_t = self.max_model_t if itr > 100 else 1e10
-                        model_metrics = self._train_model(batch_size=256, epochs=300000, max_grad_updates=1000000, holdout_ratio=0.2, max_t=max_t)
-                        random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
-                        actions_from_policy = self.policy.get_actions(random_states)[0]
-                        next_obs, rewards, term, info = self.step(random_states, actions_from_policy, deterministic=self.model_deterministic)
-                        term = term.reshape((-1))
-                        # rewards = rewards.reshape((-1))
-                        rewards = self.env.reward(random_states, actions_from_policy, next_obs)
-                        self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, term, next_obs)
+                    logger.log("Sampling...")
+                    random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
+                    actions_from_policy, _ = self.policy.get_actions(random_states)
+                    next_obs, rewards, term, info = self.step(random_states,
+                                                              actions_from_policy,
+                                                              deterministic=self.model_deterministic)
+                    term = term.reshape((-1))
+                    # rewards = rewards.reshape((-1))
+                    rewards = self.env.reward(random_states, actions_from_policy, next_obs)
+                    self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, term, next_obs)
                     self.set_rollout_length(itr)
 
+                    logger.log("Optimizing the policy...")
                     for _ in range(self.model_train_freq):
                         time_step += 1
                         for _ in range(self.n_train_repeats):
                             batch_size = 256
-                            env_batch_size = int(batch_size*self.real_ratio)
+                            env_batch_size = int(batch_size * self.real_ratio)
                             model_batch_size = batch_size - env_batch_size
                             env_batch = self.env_replay_buffer.random_batch(env_batch_size)
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            self.algo.do_training(itr * 1000 + time_step, batch)
+                            # self.algo.do_training(itr * 1000 + time_step, batch)
+                            self.algo.optimize_policy(batch, itr, 1)
+
+                """ -------------------------- Sample Data from the Real Environmnet --------------------------------"""
+                logger.log("Sampling from the real env...")
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                        samples_data['dones'], samples_data['next_observations'])
-                paths = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
+                self.env_replay_buffer.add_samples(samples_data['observations'],
+                                                   samples_data['actions'],
+                                                   samples_data['rewards'],
+                                                   samples_data['dones'],
+                                                   samples_data['next_observations']
+                                                   )
+                paths = self.env_sampler.obtain_samples(log=True,
+                                                        log_prefix='eval-',
+                                                        deterministic=True)
                 _ = self.env_sample_processor.process_samples(paths, log='all', log_prefix='eval-')
 
-                # self.saver.save(sess, os.path.join(self.restore_path, ''))
                 self.log_diagnostics(paths, prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
@@ -191,19 +207,18 @@ class Trainer(object):
         logger.log("Training finished")
         self.sess.close()
 
-
     def termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
         if self.env_name == 'AntEnv':
             x = next_obs[:, 0]
-            not_done = 	np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
+            not_done = np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
             done = ~not_done
         elif self.env_name == 'HalfCheetahEnv' or 'Walker2dEnv':
             done = np.array([False]).repeat(obs.shape[0])
         elif self.env_name == 'HopperEnv':
             height = next_obs[:, 0]
             angle = next_obs[:, 1]
-            not_done =  np.isfinite(next_obs).all(axis=-1) \
+            not_done = np.isfinite(next_obs).all(axis=-1) \
                         * np.abs(next_obs[:,1:] < 100).all(axis=-1) \
                         * (height > .7) \
                         * (np.abs(angle) < .2)
@@ -216,17 +231,15 @@ class Trainer(object):
         return done
 
     def _get_logprob(self, x, means, variances):
-
         k = x.shape[-1]
         log_prob = -1/2 * (k * np.log(2*np.pi) + np.log(variances).sum(-1) + (np.power(x-means, 2)/variances).sum(-1))
 
         ## [ batch_size ]
         prob = np.exp(log_prob).sum(0)
         log_prob = np.log(prob)
-        stds = np.std(means,0).mean(-1)
+        stds = np.std(means, 0).mean(-1)
 
         return log_prob, stds
-
 
     def _train_model(self, **kwargs):
         env_samples = self.env_replay_buffer.all_samples()
@@ -243,44 +256,37 @@ class Trainer(object):
         else:
             return_single = False
 
-        inputs = np.concatenate((obs, act), axis=-1)
-        ensemble_model_means, ensemble_model_vars = self.dynamics_model.predict(inputs, factored=True)
-        ensemble_model_means[:,:,1:] += obs
-        ensemble_model_stds = np.sqrt(ensemble_model_vars)
-
-        if deterministic:
-            ensemble_samples = ensemble_model_means
-        else:
-            ensemble_samples = ensemble_model_means + np.random.normal(size=ensemble_model_means.shape) * ensemble_model_stds
+        next_obs = self.dynamics_model.predict(obs, act)
+        rewards = self.env.reward(obs, act, next_obs)
 
         #### choose one model from ensemble
-        num_models, batch_size, _ = ensemble_model_means.shape
-        model_inds = self.dynamics_model.random_inds(batch_size)
-        batch_inds = np.arange(0, batch_size)
-        samples = ensemble_samples[model_inds, batch_inds]
-        model_means = ensemble_model_means[model_inds, batch_inds]
-        model_stds = ensemble_model_stds[model_inds, batch_inds]
+        # num_models, batch_size, _ = ensemble_model_means.shape
+        # model_inds = self.dynamics_model.random_inds(batch_size)
+        # batch_inds = np.arange(0, batch_size)
+        # samples = ensemble_samples[model_inds, batch_inds]
+        # model_means = ensemble_model_means[model_inds, batch_inds]
+        # model_stds = ensemble_model_stds[model_inds, batch_inds]
         ####
 
-        log_prob, dev = self._get_logprob(samples, ensemble_model_means, ensemble_model_vars)
+        # log_prob, dev = self._get_logprob(samples, ensemble_model_means, ensemble_model_vars)
 
-        rewards, next_obs = samples[:,:1], samples[:,1:]
+        # rewards, next_obs = samples[:, :1], samples[:, 1:]
         terminals = self.termination_fn(obs, act, next_obs)
         ## add terminal reward and stds
-        batch_size = model_means.shape[0]
-        return_means = np.concatenate((model_means[:,:1], terminals, model_means[:,1:]), axis=-1)
-        return_stds = np.concatenate((model_stds[:,:1], np.zeros((batch_size,1)), model_stds[:,1:]), axis=-1)
+        # batch_size = model_means.shape[0]
+        # return_means = np.concatenate((model_means[:, :1], terminals, model_means[:,1:]), axis=-1)
+        # return_stds = np.concatenate((model_stds[:, :1], np.zeros((batch_size,1)), model_stds[:,1:]), axis=-1)
+        #
+        # if return_single:
+        #     next_obs = next_obs[0]
+        #     return_means = return_means[0]
+        #     return_stds = return_stds[0]
+        #     rewards = rewards[0]
+        #     terminals = terminals[0]
 
-        if return_single:
-            next_obs = next_obs[0]
-            return_means = return_means[0]
-            return_stds = return_stds[0]
-            rewards = rewards[0]
-            terminals = terminals[0]
-
-        info = {'mean': return_means, 'std': return_stds, 'log_prob': log_prob, 'dev': dev}
+        # info = {'mean': return_means, 'std': return_stds, 'log_prob': log_prob, 'dev': dev}
+        info = {}
         return next_obs, rewards, terminals, info
-
 
     def set_rollout_length(self, itr):
         min_epoch, max_epoch, min_length, max_length = self.rollout_length_params
@@ -292,7 +298,6 @@ class Trainer(object):
             y = dx * (max_length - min_length) + min_length
 
         self.rollout_length = int(y)
-
 
     def get_itr_snapshot(self, itr):
         """

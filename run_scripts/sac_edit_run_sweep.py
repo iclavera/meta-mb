@@ -2,13 +2,12 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'MBPO2'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'mbpo-4'
 import sys
 sys.path.append('/home/vioichigo/meta-mb/tf_mbpo/mbpo/handful-of-trails')
 
-from pdb import set_trace as st
-from meta_mb.algos.sac_edit import SAC_MB
+from meta_mb.algos.sac import SAC
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
@@ -20,26 +19,9 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 
-from dmbrl.modeling.layers import FC
-from dmbrl.modeling.models import BNN
-
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
-
-def construct_model(obs_dim=11, act_dim=3, rew_dim=1, num_networks=7, num_elites=5):
-	print('[ BNN ] Observation dim {} | Action dim: {}'.format(obs_dim, act_dim))
-	params = {'name': 'BNN', 'num_networks': num_networks, 'num_elites': num_elites}
-	model = BNN(params)
-
-	model.add(FC(200, input_dim=obs_dim+act_dim, activation="swish", weight_decay=0.000025))
-	model.add(FC(200, activation="swish", weight_decay=0.00005))
-	model.add(FC(200, activation="swish", weight_decay=0.000075))
-	model.add(FC(200, activation="swish", weight_decay=0.000075))
-	model.add(FC(obs_dim+rew_dim, weight_decay=0.0001))
-	model.finalize(tf.train.AdamOptimizer, {"learning_rate": 0.001})
-	return model
 
 
 def run_experiment(**kwargs):
@@ -95,16 +77,17 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        dynamics_model = construct_model(env.observation_space.shape[0], 
-                                        env.action_space.shape[0], 
-                                        rew_dim=1, 
-                                        num_networks=kwargs['num_models'], 
-                                        num_elites=kwargs['num_elites'],
-                                        )
+        dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
+                                                 env=env,
+                                                 rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                 num_models=kwargs['num_models'],
+                                                 hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                 learning_rate=kwargs['dynamics_learning_rate'],
+                                                 buffer_size=kwargs['dynamics_buffer_size'],
+                                                )
 
-
-
-        algo = SAC_MB(
+        algo = SAC(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
@@ -113,9 +96,7 @@ def run_experiment(**kwargs):
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
-            num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-            prediction_type=kwargs['prediction_type'],
-            T=kwargs['T'],
+            target_entropy=kwargs['target_entropy']
         )
 
         trainer = Trainer(
@@ -150,9 +131,9 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [11],
+        'seed': [11, 22],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HalfCheetahEnv, HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -164,13 +145,14 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # replay_buffer
-        'env_replay_buffer_max_size': [1e6],
+        'env_replay_buffer_max_size': [1e4, 5e4],
         'model_replay_buffer_max_size': [2e6],
+        'rolling_average_persitency': [0.4, 0.9],
 
         # Problem Conf
-        'n_itr': [3000],
-        'n_train_repeats': [8],
-        'max_path_length': [101],
+        'n_itr': [300],
+        'n_train_repeats': [2, 20],
+        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
@@ -179,21 +161,25 @@ if __name__ == '__main__':
         'reward_scale': [1],
 
         # Dynamics Model
-        'num_models': [7],
-        'num_elites': [5],
+        'num_models': [5],
+        'dynamics_learning_rate': [3e-4],
+        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dynamics_buffer_size': [5e4],
+        'dynamics_hidden_sizes': [(200, 200, 200, 200)],
 
         'num_actions_per_next_observation': [3],
-        'prediction_type':['mean'],
+        'prediction_type': ['mean'],
         'T': [3],
         'n_initial_exploration_steps': [5e3],
         'rollout_length_params': [[20, 150, 1, 1]],
         'model_reset_freq': [1000],
-        'model_train_freq': [25],
+        'model_train_freq': [250],
         'rollout_batch_size': [100e3],
         'real_ratio': [0.05],
         'max_model_t': [1e10],
-        'epoch_length': [100],
-        'restore_path': ['']
+        'epoch_length': [1000],
+        'restore_path': [''],
+        'target_entropy': [-3, -0.75],
 
         }
 
