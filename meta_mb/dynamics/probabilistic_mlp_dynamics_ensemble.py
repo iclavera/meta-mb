@@ -21,7 +21,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                  hidden_sizes=(512, 512),
                  hidden_nonlinearity='swish',
                  output_nonlinearity=None,
-                 batch_size=500,
+                 batch_size=256,
                  learning_rate=0.001,
                  weight_normalization=False,  # Doesn't work
                  normalize_input=True,
@@ -52,6 +52,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self._dataset_train = None
         self._dataset_test = None
         self.hidden_sizes = hidden_sizes
+        self.timesteps_counter = 0
+        self.used_timesteps_counter = 0
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
@@ -187,64 +189,59 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                                                                 self.var_pred_model_batches_stack)
 
         self._networks = mlps
+        self._predict_obs = self.predict_sym(self.obs_ph, self.act_ph)
 
-    def predict(self, obs, act, pred_type='rand', deterministic=False):
+    def predict_sym(self, obs_ph, act_ph):
         """
-        Predict the batch of next observations given the batch of current observations and actions
-        :param obs: observations - numpy array of shape (n_samples, ndim_obs)
-        :param act: actions - numpy array of shape (n_samples, ndim_act)
-        :param pred_type:  prediction type
-                   - rand: choose one of the models randomly
-                   - mean: mean prediction of all models
-                   - all: returns the prediction of all the models
-                   - (int): returns the prediction of the i-th model
-        :return: pred_obs_next: predicted batch of next observations -
-                                shape:  (n_samples, ndim_obs) - in case of 'rand' and 'mean' mode
-                                        (n_samples, ndim_obs, n_models) - in case of 'all' mode
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
         """
-        assert obs.shape[0] == act.shape[0]
-        assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
-        assert act.ndim == 2 and act.shape[1] == self.action_space_dims
+        original_obs = obs_ph
 
-        obs_original = obs
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
-        obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
-        if self.normalize_input:
-            obs, act = self._normalize_data(obs, act)
-            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
-            delta = np.array(self.f_delta_pred(obs, act))
-            var = np.array(self.f_var_pred(obs, act))
-            if not deterministic:
-                delta = np.random.normal(delta, np.sqrt(var))
-            delta = self._denormalize_data(delta)
-        else:
-            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
-            delta = np.array(self.f_delta_pred(obs, act))
-            var = np.array(self.f_var_pred(obs, act))
-            if not deterministic:
-                delta = np.random.normal(delta, np.sqrt(var))
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name + '/model_{}'.format(i),
+                              output_dim=2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
 
-        assert delta.ndim == 3
+                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                    std = tf.exp(logvar/2)
+                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * std
 
-        delta = np.clip(delta, -1e3, 1e3)
+                    # denormalize delta_pred
+                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
 
-        pred_obs = obs_original[:, :, None] + delta
+        delta_preds = tf.concat(delta_preds, axis=0)
 
-        batch_size = delta.shape[0]
-        if pred_type == 'rand':
-            # randomly selecting the prediction of one model in each row
-            idx = np.random.randint(0, self.num_models, size=batch_size)
-            pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
-        elif pred_type == 'mean':
-            pred_obs = np.mean(pred_obs, axis=2)
-        elif pred_type == 'all':
-            pass
-        elif type(pred_type) is int:
-            assert 0 <= pred_type < self.num_models
-            pred_obs = pred_obs[:, :, pred_type]
-        else:
-            NotImplementedError('pred_type must be one of [rand, mean, all]')
-        return pred_obs
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        # nex_obs = clip(obs + delta_pred)
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
+
 
     def predict_batches(self, obs_batches, act_batches, deterministic=True):
         """
