@@ -246,7 +246,7 @@ if __name__ == '__main__':
                 'rolling_average_persitency': [0.4],
 
                 # Dynamics Model
-                'recurrent': [False],
+                'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
                 'hidden_sizes_model': [(500, )],
@@ -255,7 +255,7 @@ if __name__ == '__main__':
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [64],
                 'cell_type': ['lstm'],
-                'use_reward_model': [True],
+                'use_reward_model': [False],
 
                 # Reward Model
                 'reward_model_epochs': [15],
@@ -265,7 +265,7 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [True],
+                'use_image': [False],
                 # 'model_path': ['ip-neg-15'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],

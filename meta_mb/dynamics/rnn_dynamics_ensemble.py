@@ -113,7 +113,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph] + self.hidden_state_ph,
-                                                              [self.delta_pred] + self.next_hidden_state_var)
+                                                 [self.delta_pred] + self.next_hidden_state_var)
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=True):
@@ -176,6 +176,9 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                                                                             [self.delta_pred_model_batches_stack] + self.next_hidden_state_batches)
 
         self._networks = rnns
+        self._next_obs_pred, self._next_hidden_pred = self.predict_sym(self.obs_ph,
+                                                                       self.act_ph,
+                                                                       self.hidden_state_ph[0])
 
     def fit(self, obs, act, obs_next, reward=None, epochs=1000, compute_normalization=True, valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
@@ -389,7 +392,8 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm), self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
         obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0), \
                                           self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
-        hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i]) for i in range(len(hidden_state_ph.c))]
+        hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i])
+                           for i in range(len(hidden_state_ph.c))]
 
         delta_preds = []
         next_hidden_states = []
@@ -414,7 +418,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                           state_var=hidden_state_ph[i],
                           )
 
-                delta_pred = rnn.output_var[:, 0, ...] * self._std_delta_var[i] + self._mean_delta_var[i]
+                delta_pred = rnn.output_var[:, 0, :] * self._std_delta_var[i] + self._mean_delta_var[i]
                 # delta_pred = rnn.output_var
                 delta_preds.append(delta_pred)
                 next_hidden_states.append(rnn.next_state_var)
@@ -428,7 +432,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         perm_inv = tf.invert_permutation(perm)
         next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
 
-        next_obs = original_obs[:, 0, ...] + tf.gather(delta_preds, perm_inv)
+        next_obs = original_obs[:, 0, :] + tf.gather(delta_preds, perm_inv)
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
 
         return next_obs, next_hidden_states
@@ -451,8 +455,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
-        obs_original = obs
-
+        """
         obs, act = np.expand_dims(obs, 1), np.expand_dims(act, 1)
 
         if self.normalize_input:
@@ -495,6 +498,12 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             pass
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
+        """
+        sess = tf.get_default_session()
+        pred_obs, next_hidden_state = sess.run(self._next_obs_pred, self._next_hidden_pred,
+                                               feed_dict={self.obs_ph: obs,
+                                                          self.act_ph:act,
+                                                          self.hidden_state_ph[0]: hidden_state})
         return pred_obs, next_hidden_state
 
     def predict_batches(self, obs_batches, act_batches):

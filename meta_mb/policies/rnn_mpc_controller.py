@@ -208,7 +208,6 @@ class RNNMPCController(Serializable):
         return cand_a[range(m), np.argmax(returns, axis=1)]
 
     def build_rs_graph(self):
-        # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
         returns = 0  # (batch_size * n_candidates,)
         act = tf.random.uniform(
             shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
@@ -220,14 +219,13 @@ class RNNMPCController(Serializable):
 
         hidden_state = self.repeat_hidden_sym(self.hidden_state_ph, self.n_candidates)
 
-
         for t in range(self.horizon):
             # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
             # mean, var = dynamics_dist['mean'], dynamics_dist['var']
             # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
             next_observation, hidden_state = \
-                self.dynamics_model.predict_sym(tf.expand_dims(observation, -2),
-                                                tf.expand_dims(act[t], -2),
+                self.dynamics_model.predict_sym(tf.expand_dims(observation, axis=1),
+                                                tf.expand_dims(act[t], axis=1),
                                                 hidden_state)
 
             if not self.use_reward_model:
