@@ -7,11 +7,7 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mujoco.walker2d_env import Walker2DEnv
 from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
-from meta_mb.envs.mujoco.hopper_env import HopperEnv
-# from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.trainers.parallel_mbmpo_trainer import ParallelTrainer
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
@@ -19,7 +15,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-5e-4-mbmpo'
+EXP_NAME = 'parallel-mbmpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -174,6 +170,7 @@ def run_base(exp_dir, **kwargs):
         num_rollouts_per_iter=int(kwargs['meta_batch_size'] * kwargs['fraction_meta_batch_size']),
         config=config,
         simulation_sleep=simulation_sleep,
+        sampler_str=kwargs['sampler_str'],
     )
 
     trainer.train()
@@ -191,7 +188,7 @@ if __name__ == '__main__':
 
         'seed': [1, 2],
 
-        'n_itr': [401*20],
+        'n_itr': [1250],
         'num_rollouts': [1],
         'simulation_sleep_frac': [1],
         'env': ['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
@@ -230,6 +227,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tanh],
         'policy_output_nonlinearity': [None],
+        'sampler_str': ['bptt'],
 
         # Meta-Algo
         'meta_batch_size': [20],  # Note: It has to be multiple of num_models

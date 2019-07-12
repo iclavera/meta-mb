@@ -11,8 +11,12 @@ class Worker(object):
     def __init__(
             self,
             verbose=True,
+            snapshot_mode='last',
+            snapshot_gap=1,
     ):
         self.verbose = verbose
+        self.snapshot_mode = snapshot_mode
+        self.snapshot_gap = snapshot_gap
 
     def construct_from_feed_dict(self, *args, **kwargs):
         raise NotImplementedError
@@ -39,7 +43,8 @@ class Worker(object):
         time_start = time.time()
 
         self.name = current_process().name
-        logger.configure(dir=exp_dir + '/' + self.name, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
+        logger.configure(dir=exp_dir + '/' + self.name, format_strs=['csv', 'stdout', 'log'],
+                         snapshot_mode=self.snapshot_mode, snapshot_gap=self.snapshot_gap)
 
         self.n_itr = n_itr
         self.queue_prev = queue_prev

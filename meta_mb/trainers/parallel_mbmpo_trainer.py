@@ -38,7 +38,7 @@ class ParallelTrainer(object):
             simulation_sleep,
             initial_random_samples=True,
             start_itr=0,
-            sampler_str='mbmpo',
+            sampler_str='bptt',
             ):
 
         self.initial_random_samples = initial_random_samples
