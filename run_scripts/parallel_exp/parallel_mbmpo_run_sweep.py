@@ -186,7 +186,7 @@ if __name__ == '__main__':
         ],
         'rolling_average_persitency': [0.99],
 
-        'seed': [1, 2],
+        'seed': [1, 2, 3, 4],
 
         'n_itr': [1250],
         'num_rollouts': [1],

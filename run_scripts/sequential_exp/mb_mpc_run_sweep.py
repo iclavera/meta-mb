@@ -12,9 +12,9 @@ import json
 import os
 import tensorflow as tf
 
-EXP_NAME = 'mb-mpc-blue-train'
 
-INSTANCE_TYPE = 'c4.2xlarge'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'sequential-mbmpc'
 
 
 def run_experiment(**config):
@@ -99,35 +99,35 @@ if __name__ == '__main__':
                 'seed': [5],
 
                 # Problem
-                'env': [HalfCheetahEnv],  # 'HalfCheetahEnv'
+                'env': [AntEnv, HalfCheetahEnv], #AntEnv, Walker2dEnv, HopperEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [200],
                 'normalize': [False],
                  'n_itr': [50],
                 'discount': [1.],
 
                 # Policy
-                'n_candidates': [2000], # K
+                'n_candidates': [1000], # K
                 'horizon': [20], # Tau
-                'use_cem': [False],
+                'use_cem': [False,],
                 'num_cem_iters': [5],
 
                 # Training
-                'num_rollouts': [5],
-                'dynamics_learning_rate': [0.001],
+                'num_rollouts': [20],
+                'dynamics_learning_rate': [5e-4, 0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
+                'rolling_average_persitency': [0.1, 0.4, 0.99],
                 'initial_random_samples': [True],
                 'initial_sinusoid_samples': [False],
 
                 # Dynamics Model
-                'probabilistic_dynamics': [True],
+                'probabilistic_dynamics': [True, False],
                 'recurrent': [False],
                 'num_models': [5],
                 'dynamics_hidden_nonlinearity': ['swish'],
                 'dynamics_output_nonlinearity': [None],
                 'dynamics_hidden_sizes': [(512, 512, 512)],
                 'dynamic_model_epochs': [50],
-                'dynamics_buffer_size': [25000],
+                'dynamics_buffer_size': [10000],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'dynamics_batch_size': [64],
