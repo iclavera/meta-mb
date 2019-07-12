@@ -269,7 +269,7 @@ if __name__ == '__main__':
                 # 'model_path': ['ip-neg-15'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
-                'negative': [5, 15],
+                'negative': [10],
                 'history': [1, 3],
                 'future': [1, 3],
 
