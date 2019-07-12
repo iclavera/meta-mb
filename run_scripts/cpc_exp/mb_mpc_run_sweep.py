@@ -32,7 +32,8 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
+    exp_name = 'use_graph%s' % config.get('use_graph')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -86,7 +87,8 @@ def run_experiment(**config):
                 use_cem=config['use_cem'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model'],
-                reward_model= reward_model if config['use_reward_model'] else None
+                reward_model= reward_model if config['use_reward_model'] else None,
+                use_graph=config['use_graph']
             )
 
         else:
@@ -211,7 +213,7 @@ if __name__ == '__main__':
     # }
 
     config_ip = {
-                'seed': [5, 6],
+                'seed': [5],
 
                 # Problem
                 'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
@@ -223,8 +225,9 @@ if __name__ == '__main__':
                 # Policy
                 'n_candidates': [1000], # K
                 'horizon': [10], # Tau
-                'use_cem': [True],
+                'use_cem': [False],
                 'num_cem_iters': [5],
+                'use_graph': [False],
 
                 # Training
                 'num_rollouts': [5],

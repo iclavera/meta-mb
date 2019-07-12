@@ -18,7 +18,7 @@ class RNNMPCController(Serializable):
             percent_elites=0.05,
             use_reward_model=False,
             alpha=0.1,
-            use_graph=True,
+            use_graph=False,
     ):
         self.dynamics_model = dynamics_model
         self.reward_model = reward_model
