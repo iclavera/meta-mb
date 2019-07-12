@@ -18,7 +18,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0, 1, 2, 3"
 
 
 
@@ -37,7 +37,7 @@ def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, b
     # import pdb; pdb.set_trace()
 
     # Create the model
-    model = network_cpc(image_shape=image_shape, terms=terms, predict_terms=1, negative_samples=negative_samples,
+    model = network_cpc(image_shape=image_shape, terms=terms, predict_terms=predict_terms, negative_samples=negative_samples,
                         code_size=code_size, learning_rate=lr, encoder_arch=encoder_arch, context_network=context_network)
 
     # Callbacks
