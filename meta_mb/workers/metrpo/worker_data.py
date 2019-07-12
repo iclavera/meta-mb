@@ -6,7 +6,7 @@ from meta_mb.workers.base import Worker
 class WorkerData(Worker):
     def __init__(self, simulation_sleep, video=False):
         if video:
-            super().__init__(snapshot_mode='gap', snapshot_gap=int(30/1250/simulation_sleep))  # FIXME
+            super().__init__(snapshot_mode='gap', snapshot_gap=int(1250*simulation_sleep/5/30))
         else:
             super().__init__()
         self.simulation_sleep = simulation_sleep

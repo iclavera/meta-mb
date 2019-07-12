@@ -8,7 +8,6 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
-from meta_mb.algos.trpo import TRPO
 from meta_mb.trainers.metrpo_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
@@ -21,7 +20,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-me-ppo'
+EXP_NAME = 'sequential-mbppo'
 
 
 def run_experiment(**kwargs):
@@ -70,7 +69,7 @@ def run_experiment(**kwargs):
             n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = METRPOSampler(
+        model_sampler = BPTTSampler( #METRPOSampler(
             env=env,
             policy=policy,
             dynamics_model=dynamics_model,
@@ -167,7 +166,7 @@ if __name__ == '__main__':
         'clip_eps': [0.2],# 0.3, 0.1],
         'learning_rate': [1e-3, 3e-4],# 5e-4],
         'num_ppo_steps': [5, 10],
-        'imagined_num_rollouts': [50], #50],
+        'imagined_num_rollouts': [50],
         'sample_from_buffer': [True],
         'scope': [None],
         'exp_tag': ['me-ppo'],  # For changes besides hyperparams
