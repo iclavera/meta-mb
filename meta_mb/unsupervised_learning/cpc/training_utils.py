@@ -8,7 +8,8 @@ class SaveEncoder(keras.callbacks.Callback):
 
     def on_train_begin(self, logs={}):
         self.max_acc = -1.
-        self.encoder = self.model.layers[1].layer
+        self.encoder = self.model.layers[2].layers[1].layer
+        self.context = self.model.layers[2]
 
     def on_epoch_end(self, epoch, logs={}):
         cur_acc = logs.get('val_categorical_accuracy')
@@ -17,6 +18,7 @@ class SaveEncoder(keras.callbacks.Callback):
             self.max_acc = cur_acc
             self.encoder.save(os.path.join(self.output_dir, 'encoder.h5'))
             self.model.save(os.path.join(self.output_dir, 'cpc.h5'))
+            self.context.save(os.path.join(self.output_dir, 'context.h5'))
 
 def make_periodic_lr(lr_schedule):
     def periodic_lr(epoch, lr):

@@ -93,7 +93,7 @@ class CPCLayer(keras.layers.Layer):
 
 
 def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, learning_rate, encoder_arch='default',
-                context_network='stack'):
+                context_network='stack', context_size=512):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
 
@@ -109,15 +109,23 @@ def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, 
     encoder_model = keras.models.Model(encoder_input, encoder_output, name='encoder')
     encoder_model.summary()
 
-    # Define rest of model
+    # Define context network
     x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]))
     x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
     if context_network == 'stack':
         context = keras.layers.Reshape((code_size * terms,))(x_encoded)
         context = keras.layers.Dense(512, activation='relu')(context)
+        # context = keras.layers.Dense(context_size, name='context_output')(context)
     elif context_network == 'rnn':
         context = network_autoregressive(x_encoded)
-    preds = network_prediction(context, code_size, predict_terms)
+        context = keras.layers.Dense(context_size, name='context_output')(context)
+
+    context_network = keras.models.Model(x_input, context, name='context_network')
+    context_network.summary()
+
+    # Define rest of the model
+    context_output = context_network(x_input)
+    preds = network_prediction(context_output, code_size, predict_terms)
 
     y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]))
     y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)

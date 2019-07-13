@@ -6,7 +6,7 @@ from gym.spaces import Box
 class ImgWrapperEnv(Serializable):
     def __init__(self, env, vae=None,
                  use_img=True, img_size=(64, 64, 3),
-                 latent_dim=None, time_steps=4):
+                 latent_dim=None, time_steps=4, time_major=False):
 
         Serializable.quick_init(self, locals())
         assert len(img_size) == 3
@@ -18,14 +18,19 @@ class ImgWrapperEnv(Serializable):
         self._num_chan = img_size[-1]
         self._latent_dim = latent_dim
         self._time_steps = time_steps
+        self._time_major = time_major # if stack the timesteps in the first dimension
 
     def step(self, action):
         true_state = np.copy(self._wrapped_env._get_obs())
         _, reward, done, info = self._wrapped_env.step(action)
         info['true_state'] = true_state
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-        self._obs[:, :, self._num_chan:] = self._obs[:, :, :-self._num_chan]
-        self._obs[:, :, :self._num_chan] = obs
+        if not self._time_major:
+            self._obs[:, :, self._num_chan:] = self._obs[:, :, :-self._num_chan]
+            self._obs[:, :, :self._num_chan] = obs
+        else:
+            self._obs[1:, ...] = self._obs[:-1, ...]
+            self._obs[:1, ...] = obs
 
         if self._vae is not None:
             obs = self._vae.encode(self._obs).reshape((self._latent_dim,))
@@ -38,9 +43,13 @@ class ImgWrapperEnv(Serializable):
 
     def reset(self):
         _ = self._wrapped_env.reset()
-        self._obs = np.zeros(self._img_size[:-1] + (self._num_chan * self._time_steps,))
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
-        self._obs[:, :, :self._num_chan] = obs
+        if not self._time_major:
+            self._obs = np.zeros(self._img_size[:-1] + (self._num_chan * self._time_steps,))
+            self._obs[:, :, :self._num_chan] = obs
+        else:
+            self._obs = np.zeros((self._time_steps,) + self._img_size)
+            self._obs[:1, ...] = obs
 
         if self._vae is not None:
             obs = self._vae.encode(self._obs).reshape((self._latent_dim,))
