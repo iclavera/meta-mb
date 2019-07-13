@@ -433,8 +433,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             next_hidden_states_h = [hs.h for hs in next_hidden_states]
             next_hidden_states = tf.nn.rnn_cell.LSTMStateTuple(tf.concat(next_hidden_states_c, axis=0),
                                                                tf.concat(next_hidden_states_h, axis=0))
-
-        # unshuffle
+            # unshuffle
             perm_inv = tf.invert_permutation(perm)
             next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
 
