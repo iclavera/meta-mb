@@ -230,30 +230,30 @@ if __name__ == '__main__':
                 'normalize': [True],
                  'n_itr': [50],
                 'discount': [1.],
-                'obs_stack': [3],
+                'obs_stack': [1],
 
                 # Policy
-                'n_candidates': [1000], # K
-                'horizon': [10], # Tau
+                'n_candidates': [1000],  # K
+                'horizon': [10],  # Tau
                 'use_cem': [False],
                 'num_cem_iters': [5],
                 'use_graph': [True],
 
                 # Training
-                'num_rollouts': [5],
+                'num_rollouts': [20],
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
+                'rolling_average_persitency': [0.1],
 
                 # Dynamics Model
                 'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, )],
-                'dynamic_model_epochs': [200],
+                'hidden_sizes_model': [(16,)],
+                'dynamic_model_epochs': [50],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [64],
+                'batch_size_model': [10],
                 'cell_type': ['lstm'],
                 'use_reward_model': [False],
 

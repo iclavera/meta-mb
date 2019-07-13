@@ -73,17 +73,18 @@ class RNNMPCController(Serializable):
     def get_actions(self, observations):
         if self.use_graph:
             sess = tf.get_default_session()
-            actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations,
-                                                               self.hidden_state_c_ph: self._hidden_state.c,
-                                                               self.hidden_state_h_ph: self._hidden_state.h})
+            actions, next_hidden = sess.run([self.optimal_action, self.next_hidden],
+                                            feed_dict={self.obs_ph: observations,
+                                                       self.hidden_state_c_ph: self._hidden_state.c,
+                                                       self.hidden_state_h_ph: self._hidden_state.h})
         else:
             if self.use_cem:
-                actions = self.get_cem_action(observations)
+                actions, next_hidden = self.get_cem_action(observations)
             else:
-                actions = self.get_rs_action(observations)
+                actions, next_hidden = self.get_rs_action(observations)
 
-        _, self._hidden_state = self.dynamics_model.predict(np.array(observations), actions, self._hidden_state)
-
+        # _, self._hidden_state = self.dynamics_model.predict(np.array(observations), actions, self._hidden_state)
+        self._hidden_state = next_hidden
         return actions, dict()
 
     def get_random_action(self, n):
@@ -180,7 +181,6 @@ class RNNMPCController(Serializable):
             # var = var * self.alpha + (1 - self.alpha) * elite_var
             mean, var = elite_mean, elite_var
 
-
         self.optimal_action = tf.squeeze(mean[0], axis=1)
 
     def get_rs_action(self, observations):
@@ -197,6 +197,9 @@ class RNNMPCController(Serializable):
 
         for t in range(h):
             next_observation, hidden_state = self.dynamics_model.predict(observation, a[t], hidden_state)
+            if t == 0:
+                cand_c = hidden_state.c.reshape((m, n, -1))
+                cand_h = hidden_state.h.reshape((m, n, -1))
             if self.use_reward_model:
                 assert self.reward_model is not None
                 rewards = self.reward_model.predict(observation, a[t], next_observation)
@@ -205,7 +208,9 @@ class RNNMPCController(Serializable):
             returns += self.discount ** t * rewards
             observation = next_observation
         returns = returns.reshape(m, n)
-        return cand_a[range(m), np.argmax(returns, axis=1)]
+        next_hidden = tf.nn.rnn_cell.LSTMStateTuple(cand_c[range(m), np.argmax(returns, axis=1)],
+                                                    cand_h[range(m), np.argmax(returns, axis=1)])
+        return cand_a[range(m), np.argmax(returns, axis=1)], next_hidden
 
     def build_rs_graph(self):
         returns = 0  # (batch_size * n_candidates,)
@@ -220,13 +225,17 @@ class RNNMPCController(Serializable):
         hidden_state = self.repeat_hidden_sym(self.hidden_state_ph, self.n_candidates)
 
         for t in range(self.horizon):
-            # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
-            # mean, var = dynamics_dist['mean'], dynamics_dist['var']
-            # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
             next_observation, hidden_state = \
                 self.dynamics_model.predict_sym(tf.expand_dims(observation, axis=1),
                                                 tf.expand_dims(act[t], axis=1),
                                                 hidden_state)
+            if t == 0:
+                cand_c = tf.reshape(hidden_state.c, [tf.shape(self.obs_ph)[0],
+                                                     self.n_candidates,
+                                                     self.dynamics_model.hidden_sizes[0]])
+                cand_h = tf.reshape(hidden_state.h, [tf.shape(self.obs_ph)[0],
+                                                     self.n_candidates,
+                                                     self.dynamics_model.hidden_sizes[0]])
 
             if not self.use_reward_model:
                 assert self.reward_model is None
@@ -241,6 +250,8 @@ class RNNMPCController(Serializable):
         cand_a = tf.reshape(act[0], [-1, self.n_candidates, self.action_space_dims])  # (batch_size, n_candidates, act_dims)
         idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
         self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+        self.next_hidden = tf.nn.rnn_cell.LSTMStateTuple(tf.squeeze(tf.batch_gather(cand_c, idx), axis=1),
+                                                         tf.squeeze(tf.batch_gather(cand_h, idx), axis=1))
 
     def get_params_internal(self, **tags):
         return []
