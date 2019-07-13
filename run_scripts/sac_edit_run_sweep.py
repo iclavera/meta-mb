@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'mbpo-4'
+EXP_NAME = 'mbpo-5'
 import sys
 sys.path.append('/home/vioichigo/meta-mb/tf_mbpo/mbpo/handful-of-trails')
 
@@ -46,10 +46,11 @@ def run_experiment(**kwargs):
                             action_dim=int(np.prod(env.action_space.shape))
                             ) for i in range(2)]
 
-        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                   obs_dim=int(np.prod(env.observation_space.shape)),
-                                   action_dim=int(np.prod(env.action_space.shape))
-                                   ) for i in range(2)]
+        Q_targets = [
+                    ValueFunction(name="q_fun_target_%d" % i,
+                                  obs_dim=int(np.prod(env.observation_space.shape)),
+                                  action_dim=int(np.prod(env.action_space.shape))
+                                  ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -116,7 +117,6 @@ def run_experiment(**kwargs):
             rollout_length_params=kwargs['rollout_length_params'],
             rollout_batch_size=kwargs['rollout_batch_size'],
             model_train_freq=kwargs['model_train_freq'],
-            model_reset_freq=kwargs['model_reset_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
             max_model_t=kwargs['max_model_t'],
@@ -133,7 +133,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [11, 22],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, HopperEnv],
+        'env': [HopperEnv, HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -145,13 +145,13 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # replay_buffer
-        'env_replay_buffer_max_size': [1e4, 5e4],
-        'model_replay_buffer_max_size': [2e6],
-        'rolling_average_persitency': [0.4, 0.9],
+        'env_replay_buffer_max_size': [5e6],
+        'model_replay_buffer_max_size': [5e6],
+        'rolling_average_persitency': [0.9, 0.4],
 
         # Problem Conf
         'n_itr': [300],
-        'n_train_repeats': [2, 20],
+        'n_train_repeats': [20],
         'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
@@ -163,7 +163,7 @@ if __name__ == '__main__':
         # Dynamics Model
         'num_models': [5],
         'dynamics_learning_rate': [3e-4],
-        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_hidden_nonlinearity': ['swish'],
         'dynamics_buffer_size': [5e4],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
 
@@ -172,7 +172,6 @@ if __name__ == '__main__':
         'T': [3],
         'n_initial_exploration_steps': [5e3],
         'rollout_length_params': [[20, 150, 1, 1]],
-        'model_reset_freq': [1000],
         'model_train_freq': [250],
         'rollout_batch_size': [100e3],
         'real_ratio': [0.05],

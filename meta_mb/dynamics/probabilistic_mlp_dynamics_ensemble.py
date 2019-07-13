@@ -149,6 +149,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
+            self.mse_losses = []
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
@@ -168,14 +169,18 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                 var = tf.exp(logvar)
                 inv_var = tf.exp(-logvar)
 
-                loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
-                loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
+                mse_loss = tf.reduce_mean(tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean), axis=-1), axis=-1)
+                self.mse_losses.append(mse_loss)
+                loss = tf.reduce_mean(tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar,
+                                                    axis=-1), axis=-1)
+                loss += (0.01 * tf.reduce_sum(self.max_logvar) - 0.01 * tf.reduce_sum(self.min_logvar))
 
                 delta_preds.append(mean)
                 var_preds.append(var)
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
 
+            self.mse_losses = tf.reduce_mean(self.mse_losses)
             self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
             self.var_pred_model_batches_stack = tf.concat(var_preds, axis=0)
 
@@ -241,7 +246,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         next_obs = original_obs + tf.gather(delta_preds, perm_inv)
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
         return next_obs
-
 
     def predict_batches(self, obs_batches, act_batches, deterministic=True):
         """

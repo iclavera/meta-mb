@@ -361,7 +361,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             valid_split_ratio=None,
             rolling_average_persitency=None,
             verbose=False,
-            log_tabular=False,
+            log_tabular=True,
             prefix=''):
 
         """
