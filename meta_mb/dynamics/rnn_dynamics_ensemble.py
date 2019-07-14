@@ -113,7 +113,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph] + self.hidden_state_ph,
-                                                              [self.delta_pred] + self.next_hidden_state_var)
+                                                 [self.delta_pred] + self.next_hidden_state_var)
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=True):
@@ -171,9 +171,13 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
             # tensor_utils
             self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
-                                                                             self.act_model_batches_stack_ph] +
-                                                                            self.hidden_state_ph,
-                                                                            [self.delta_pred_model_batches_stack] + self.next_hidden_state_batches)
+                                                                self.act_model_batches_stack_ph] +
+                                                                self.hidden_state_ph,
+                                                                [self.delta_pred_model_batches_stack] + self.next_hidden_state_batches)
+
+        self._next_obs_pred, self._next_hidden_pred = self.predict_sym(self.obs_ph,
+                                                                       self.act_ph,
+                                                                       self.hidden_state_ph[0])
 
         self._networks = rnns
 
@@ -386,53 +390,57 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
         perm = tf.random.shuffle(perm)
-        obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm), self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
-        obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0), \
+        obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm),\
+                                          tf.gather(act_ph, perm),\
+                                          self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
+        obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0),\
+                                          tf.split(act_ph, self.num_models, axis=0), \
                                           self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
-        hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i]) for i in range(len(hidden_state_ph.c))]
+        hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i])
+                           for i in range(len(hidden_state_ph.c))]
 
         delta_preds = []
         next_hidden_states = []
+        with tf.variable_scope(self.name, reuse=True):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    # in_obs_var = obs_ph[i]
+                    # in_act_var = act_ph[i]
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=-1)
+                    rnn = RNN(self.name,
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              weight_normalization=self.weight_normalization,
+                              cell_type=self.cell_type,
+                              state_var=hidden_state_ph[i],
+                              reuse=True,
+                              )
 
-        for i in range(self.num_models):
-            with tf.variable_scope('model_{}'.format(i), reuse=True):
-                assert self.normalize_input
-                in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
-                in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                # in_obs_var = obs_ph[i]
-                # in_act_var = act_ph[i]
-                input_var = tf.concat([in_obs_var, in_act_var], axis=-1)
-                rnn = RNN(self.name,
-                          output_dim=self.obs_space_dims,
-                          hidden_sizes=self.hidden_sizes,
-                          hidden_nonlinearity=self.hidden_nonlinearity,
-                          output_nonlinearity=self.output_nonlinearity,
-                          input_var=input_var,
-                          input_dim=self.obs_space_dims + self.action_space_dims,
-                          weight_normalization=self.weight_normalization,
-                          cell_type=self.cell_type,
-                          state_var=hidden_state_ph[i],
-                          )
+                    delta_pred = rnn.output_var[:, 0, :] * self._std_delta_var[i] + self._mean_delta_var[i]
+                    # delta_pred = rnn.output_var
+                    delta_preds.append(delta_pred)
+                    next_hidden_states.append(rnn.next_state_var)
 
-                delta_pred = rnn.output_var[:, 0, :] * self._std_delta_var[i] + self._mean_delta_var[i]
-                # delta_pred = rnn.output_var
-                delta_preds.append(delta_pred)
-                next_hidden_states.append(rnn.next_state_var)
+            delta_preds = tf.concat(delta_preds, axis=0)
+            next_hidden_states_c = [hs.c for hs in next_hidden_states]
+            next_hidden_states_h = [hs.h for hs in next_hidden_states]
+            next_hidden_states = tf.nn.rnn_cell.LSTMStateTuple(tf.concat(next_hidden_states_c, axis=0),
+                                                               tf.concat(next_hidden_states_h, axis=0))
+            # unshuffle
+            perm_inv = tf.invert_permutation(perm)
+            next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
 
-        delta_preds = tf.concat(delta_preds, axis=0)
-        next_hidden_states_c = [hs.c for hs in next_hidden_states]
-        next_hidden_states_h = [hs.h for hs in next_hidden_states]
-        next_hidden_states = tf.nn.rnn_cell.LSTMStateTuple(tf.concat(next_hidden_states_c, axis=0), tf.concat(next_hidden_states_h, axis=0))
-
-        # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
-
-        next_obs = original_obs[:, 0, :] + tf.gather(delta_preds, perm_inv)
-        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+            next_obs = original_obs[:, 0, :] + tf.gather(delta_preds, perm_inv)
+            next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
 
         return next_obs, next_hidden_states
-
 
     def predict(self, obs, act, hidden_state, pred_type='rand'):
         """
@@ -451,8 +459,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
-        obs_original = obs
-
+        """
         obs, act = np.expand_dims(obs, 1), np.expand_dims(act, 1)
 
         if self.normalize_input:
@@ -495,6 +502,13 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             pass
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
+        """
+        sess = tf.get_default_session()
+
+        pred_obs, next_hidden_state = sess.run([self._next_obs_pred, self._next_hidden_pred],
+                                               feed_dict={self.obs_ph: np.expand_dims(obs, axis=1),
+                                                          self.act_ph: np.expand_dims(act, axis=1),
+                                                          self.hidden_state_ph[0]: hidden_state})
         return pred_obs, next_hidden_state
 
     def predict_batches(self, obs_batches, act_batches):
