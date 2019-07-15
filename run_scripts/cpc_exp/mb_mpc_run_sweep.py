@@ -15,7 +15,7 @@ from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.utils.utils import ClassEncoder
-from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder
+from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
@@ -34,12 +34,22 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    exp_name = 'ip-neg%d-hist%d-fut%d-code%d%d' %(config['negative'], config['history'], config['future'],
-                                                  config['latent_dim'], config['seed'])
-    model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
-                              'vae' if config['encoder'] == 'vae' else 'encoder.h5')
 
-    #exp_name = 'stack3_vae_%s' % config['model_path'].split('/')[-2] #'use_graph%s' % config.get('use_graph')
+
+    if 'model_path' in config:
+        exp_name = config['model_path'] + '_rnnmodel'
+        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
+                                  'vae' if config['encoder'] == 'vae' else
+                                  'encoder.h5' if not config['use_context_net'] else
+                                  'context.h5')
+    else:
+        exp_name = 'ip-neg%d-hist%d-fut%d-code%d%d' % (config['negative'], config['history'], config['future'],
+                                                       config['latent_dim'], config['seed'])
+        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
+                                  'vae' if config['encoder'] == 'vae' else
+                                  'encoder.h5' if not config['use_context_net'] else
+                                  'context.h5')
+
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -51,10 +61,17 @@ def run_experiment(**config):
     with sess.as_default() as sess:
         if config['use_image']:
             if config['encoder'] == 'cpc':
-                encoder = CPCEncoder(path=model_path)
+                if config['use_context_net']:
+                    encoder = CPCContextNet(path=model_path)
+                    env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=config['history'], vae=encoder,
+                                        latent_dim=config['latent_dim'], time_major=True)
+                else:
+                    encoder = CPCEncoder(path=model_path)
+                    env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder,
+                                        latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
-            env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
+                env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
             env = NormalizedEnv(config['env']())
 
@@ -243,19 +260,19 @@ if __name__ == '__main__':
                 'num_rollouts': [20],
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.1],
+                'rolling_average_persitency': [0.4],
 
                 # Dynamics Model
-                'recurrent': [True],
+                'recurrent': [False],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(16,)],
+                'hidden_sizes_model': [(500,)],
                 'dynamic_model_epochs': [50],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [10],
+                'batch_size_model': [64],
                 'cell_type': ['lstm'],
-                'use_reward_model': [False],
+                'use_reward_model': [True],
 
                 # Reward Model
                 'reward_model_epochs': [15],
@@ -265,14 +282,70 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [False],
+                'use_image': [True],
                 # 'model_path': ['ip-neg-15'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
                 'negative': [10],
-                'history': [1, 3],
-                'future': [1, 3],
+                'history': [3],
+                'future': [1],
+                'use_context_net': [True]
 
     }
 
-    run_sweep(run_experiment, config_ip, EXP_NAME, INSTANCE_TYPE)
+    config_ip_rnn = {
+                'seed': [1],
+
+                # Problem
+                'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
+                'max_path_length': [32],
+                'normalize': [True],
+                 'n_itr': [50],
+                'discount': [1.],
+                'obs_stack': [1],
+
+                # Policy
+                'n_candidates': [1000],  # K
+                'horizon': [10],  # Tau
+                'use_cem': [False],
+                'num_cem_iters': [5],
+                'use_graph': [True],
+
+                # Training
+                'num_rollouts': [5],
+                'learning_rate': [0.001],
+                'valid_split_ratio': [0.1],
+                'rolling_average_persitency': [0.4],
+
+                # Dynamics Model
+                'recurrent': [True],
+                'num_models': [5],
+                'hidden_nonlinearity_model': ['relu'],
+                'hidden_sizes_model': [(500,)],
+                'dynamic_model_epochs': [200],
+                'backprop_steps': [100],
+                'weight_normalization_model': [False],  # FIXME: Doesn't work
+                'batch_size_model': [10],
+                'cell_type': ['lstm'],
+                'use_reward_model': [True],
+
+                # Reward Model
+                'reward_model_epochs': [15],
+
+                #  Other
+                'n_parallel': [1],
+
+                # representation learning
+
+                'use_image': [True],
+                'model_path': ['ip-neg10-hist3-fut3-code322'],
+                'encoder': ['cpc'],
+                'latent_dim': [32],
+                'negative': [10],
+                'history': [3],
+                'future': [1],
+                'use_context_net': [False]
+
+    }
+
+    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)

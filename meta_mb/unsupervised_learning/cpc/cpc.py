@@ -93,7 +93,7 @@ class CPCLayer(keras.layers.Layer):
 
 
 def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, learning_rate, encoder_arch='default',
-                context_network='stack', context_size=512):
+                context_network='stack', context_size=32):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
 
@@ -115,7 +115,7 @@ def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, 
     if context_network == 'stack':
         context = keras.layers.Reshape((code_size * terms,))(x_encoded)
         context = keras.layers.Dense(512, activation='relu')(context)
-        # context = keras.layers.Dense(context_size, name='context_output')(context)
+        context = keras.layers.Dense(context_size, name='context_output')(context)
     elif context_network == 'rnn':
         context = network_autoregressive(x_encoded)
         context = keras.layers.Dense(context_size, name='context_output')(context)
@@ -155,5 +155,15 @@ class CPCEncoder:
 
     def encode(self, imgs):
         if imgs.ndim == len(self.image_shape):
+            return self.encoder.predict(imgs[None, ...])[0]
+        return self.encoder.predict(imgs)
+
+class CPCContextNet:
+    def __init__(self, path, image_shape=(64, 64, 3)):
+        self.encoder = keras.models.load_model(path)
+        self.image_shape = image_shape
+
+    def encode(self, imgs):
+        if imgs.ndim == 1 + len(self.image_shape):
             return self.encoder.predict(imgs[None, ...])[0]
         return self.encoder.predict(imgs)
