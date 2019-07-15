@@ -1,4 +1,5 @@
 from meta_mb.utils.serializable import Serializable
+from meta_mb.optimizers.mpc_tau_optimizer import MPCTauOptimizer
 import tensorflow as tf
 import numpy as np
 
@@ -12,9 +13,11 @@ class MPCController(Serializable):
             reward_model=None,
             discount=1,
             use_cem=False,
+            use_opt=True,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
+            num_opt_iters=8,
             percent_elites=0.1,
             use_reward_model=False,
             alpha=0.1,
@@ -28,7 +31,9 @@ class MPCController(Serializable):
         self.n_candidates = n_candidates
         self.horizon = horizon
         self.use_cem = use_cem
+        self.use_opt = use_opt
         self.num_cem_iters = num_cem_iters
+        self.num_opt_iters = num_opt_iters
         self.percent_elites = percent_elites
         self.num_elites = int(percent_elites * n_candidates)
         self.env = env
@@ -51,11 +56,15 @@ class MPCController(Serializable):
 
         if use_graph:
             self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+            self.batch_size_ph = tf.placeholder(dtype=tf.int32, shape=(), name='batch_size')
             self.optimal_action = None
-            if not use_cem:
-                self.build_rs_graph()
-            else:
+            if use_opt:
+                self.tau_optimizer = MPCTauOptimizer()
+                self.build_opt_graph()
+            elif use_cem:
                 self.build_cem_graph()
+            else:
+                self.build_rs_graph()
 
     @property
     def vectorized(self):
@@ -70,8 +79,11 @@ class MPCController(Serializable):
     def get_actions(self, observations):
         if self.use_graph:
             sess = tf.get_default_session()
-            actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
-        else:
+            if self.use_opt:
+                actions = self.tau_optimizer.optimize(input_val_dict={'obs': observations})
+            else:
+                actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
+        else:  # deprecated
             if self.use_cem:
                 actions = self.get_cem_action(observations)
             else:
@@ -170,6 +182,52 @@ class MPCController(Serializable):
             var = var * self.alpha + (1 - self.alpha) * elite_var
 
         self.optimal_action = tf.squeeze(mean[0], axis=1)
+
+    def build_opt_graph(self):
+        # Initialization
+        returns = 0
+        tau_shape = tf.stack([self.horizon, self.batch_size_ph*self.n_candidates, self.action_space_dims])
+        tau_rand = tf.random.uniform(
+            shape=tau_shape,
+            minval=self.env.action_space.low,
+            maxval=self.env.action_space.high,
+        )
+
+        tau = tf.get_variable(
+            name='tau',
+            shape=tau_shape,
+            trainable=True,
+            validate_shape=False,
+        )
+
+        assign_op = tf.assign(tau, tau_rand, validate_shape=False)
+
+        # Equivalent to np.repeat
+        observation = tf.reshape(
+            tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
+            [-1, self.obs_space_dims]
+        )
+
+        for t in range(self.horizon):
+            next_observation = self.dynamics_model.predict_sym(observation, tau[t])
+            assert self.reward_model is None
+            rewards = self.unwrapped_env.tf_reward(observation, tau[t], next_observation)
+            returns += self.discount ** t * rewards
+            observation = next_observation
+
+        returns = tf.reshape(returns, (-1, self.n_candidates))  # (batch_size, n_candidates)
+
+        cand_a = tf.reshape(tau[0], [-1, self.n_candidates, self.action_space_dims])  # (batch_size, n_candidates, act_dims)
+        idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
+        optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
+
+        self.tau_optimizer.build_graph(
+            loss=-returns,
+            var_list=[tau],
+            assign_op=assign_op,
+            result_op=optimal_action,
+            input_ph_dict={'obs': self.obs_ph},
+        )
 
     def get_cem_action(self, observations):
 
