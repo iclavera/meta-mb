@@ -1,4 +1,5 @@
 from meta_mb.logger import logger
+import numpy as np
 from meta_mb.optimizers.base import Optimizer
 from meta_mb.utils import Serializable
 import tensorflow as tf
@@ -11,7 +12,7 @@ class MPCTauOptimizer(Optimizer, Serializable):
             tf_optimizer_args=None,
             learning_rate=1e-3,
             max_epochs=1,
-            verbose=True,
+            verbose=False,
     ):
         Serializable.quick_init(self, locals())
         if tf_optimizer_args is None:
@@ -25,14 +26,14 @@ class MPCTauOptimizer(Optimizer, Serializable):
         self._loss = None
         self._input_ph_dict = None
 
-    def build_graph(self, loss, var_list, assign_op, result_op, input_ph_dict, *args, **kwargs):
+    def build_graph(self, loss, var_list, init_op, result_op, input_ph_dict, *args, **kwargs):
         assert isinstance(loss, tf.Tensor)
         assert isinstance(input_ph_dict, dict)
 
         self._input_ph_dict = input_ph_dict
         self._loss = loss
         self._train_op = self._tf_optimizer.minimize(loss, var_list=var_list)
-        self._assign_op = assign_op
+        self._init_op = init_op
         self._result_op = result_op
 
     def loss(self, input_val_dict):
@@ -43,19 +44,22 @@ class MPCTauOptimizer(Optimizer, Serializable):
 
     def optimize(self, input_val_dict):
         sess = tf.get_default_session()
+        sess.run(self._init_op)
         feed_dict = self.create_feed_dict(input_val_dict)
 
-        sess.run(self._assign_op, feed_dict)
         loss_before_opt = None
+        loss_array = []
         for epoch in range(self._max_epochs):
             loss, _ = sess.run([self._loss, self._train_op], feed_dict)
 
-            if not loss_before_opt: loss_before_opt = loss
+            #if not loss_before_opt: loss_before_opt = loss
 
-            if self._verbose:
-                logger.log(f"return = {-loss} at epoch {epoch}")
+            loss_array.append(loss)
 
-        result = sess.run([self._result_op], feed_dict)  # ????
+        if self._verbose:
+            print(np.stack(loss_array, axis=-1))
+
+        result = sess.run(self._result_op, feed_dict)
 
         return result
 
