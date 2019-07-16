@@ -57,7 +57,8 @@ class MPCTauOptimizer(Optimizer, Serializable):
             loss_array.append(loss)
 
         if self._verbose:
-            print(np.stack(loss_array, axis=-1))
+            loss_array = np.stack(loss_array, axis=-1)
+            print(loss_array[:, 1:] - loss_array[:, :-1])
 
         result = sess.run(self._result_op, feed_dict)
 

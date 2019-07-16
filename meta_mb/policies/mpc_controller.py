@@ -296,7 +296,7 @@ class MPCController(Serializable):
         returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
         for t in range(self.horizon):
-            next_obs = self.dynamics_model.predict_sym(obs, tau[t])
+            next_obs = self.dynamics_model.predict_batches_sym(obs, tau[t])
             assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
             returns += self.discount ** t * rewards

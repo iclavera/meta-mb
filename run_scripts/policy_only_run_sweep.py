@@ -91,11 +91,11 @@ if __name__ == '__main__':
 
         # Policy
         'n_candidates': [1000], # K
-        'horizon': [20], # Tau
+        'horizon': [5], # Tau
         'use_cem': [False],
         'num_cem_iters': [5],
         'use_opt': [True, False],
-        'num_opt_iters': [10],
+        'num_opt_iters': [10,],
         'opt_learning_rate': [1e-3],
 
         # Training
