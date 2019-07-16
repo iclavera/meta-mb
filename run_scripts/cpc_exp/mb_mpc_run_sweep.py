@@ -29,7 +29,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'CP'
+EXP_NAME = 'IP/rnn_state'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -38,7 +38,8 @@ def run_experiment(**config):
 
 
     if 'model_path' in config:
-        exp_name = config['model_path'] + '_rnnmodel'
+        # exp_name = config['model_path'] + '_rnnmodel'
+        exp_name = ''
         model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
@@ -50,8 +51,8 @@ def run_experiment(**config):
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
-        exp_name =  'len=125-' + exp_name
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
+        # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + (exp_name or config.get('exp_name', ''))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -281,11 +282,11 @@ if __name__ == '__main__':
                 'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(32,)],
-                'dynamic_model_epochs': [200],
+                'hidden_sizes_model': [(32,), (16,)],
+                'dynamic_model_epochs': [50],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [10],
+                'batch_size_model': [20],
                 'cell_type': ['lstm'],
                 'use_reward_model': [True],
 
@@ -297,7 +298,7 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [True],
+                'use_image': [False],
                 'model_path': ['ip-neg10-hist3-fut3-code322'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
