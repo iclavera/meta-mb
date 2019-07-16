@@ -1,7 +1,7 @@
 import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe, Queue, Event
-from meta_mb.workers.metrpo.worker_data import WorkerData
+from meta_mb.workers.real_pr2.metrpo.worker_data import WorkerData
 from meta_mb.workers.metrpo.worker_model import WorkerModel
 from meta_mb.workers.metrpo.worker_policy import WorkerPolicy
 
