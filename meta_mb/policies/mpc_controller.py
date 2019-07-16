@@ -10,12 +10,12 @@ class MPCController(Serializable):
             self,
             name,
             env,
-            num_rollouts,
             dynamics_model,
+            num_rollouts=None,
             reward_model=None,
             discount=1,
             use_cem=False,
-            use_opt=True,
+            use_opt=False,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
@@ -298,7 +298,6 @@ class MPCController(Serializable):
         for t in range(self.horizon):
             next_obs = self.dynamics_model.predict_sym(obs, tau[t])
             assert self.reward_model is None
-            # rewards = -tf.norm(tau[t])
             rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
             returns += self.discount ** t * rewards
             obs = next_obs
