@@ -27,7 +27,7 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
 EXP_NAME = 'CP'
 
@@ -50,7 +50,7 @@ def run_experiment(**config):
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
-
+        exp_name =  'len=125-' + exp_name
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -254,6 +254,7 @@ if __name__ == '__main__':
 
     config_ip_rnn = {
                 'seed': [1],
+                'run_suffix': [''],
 
                 # Problem
                 'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
@@ -280,7 +281,7 @@ if __name__ == '__main__':
                 'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500,)],
+                'hidden_sizes_model': [(32,)],
                 'dynamic_model_epochs': [200],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
@@ -309,11 +310,11 @@ if __name__ == '__main__':
 
     config_cp = {
         'seed': [1],
-        'run_suffix': [''],
+        'run_suffix': ['1', '2'],
 
         # Problem
         'env': [make_dm_cpb_env],  # 'HalfCheetahEnv'
-        'max_path_length': [1000],
+        'max_path_length': [125],
         'normalize': [True],
         'n_itr': [50],
         'discount': [1.],
@@ -322,7 +323,7 @@ if __name__ == '__main__':
         # Policy
         'n_candidates': [1000],  # K
         'horizon': [12],  # Tau
-        'use_cem': [False],
+        'use_cem': [True, False],
         'num_cem_iters': [5],
         'use_graph': [True],
 
@@ -357,10 +358,10 @@ if __name__ == '__main__':
         'encoder': ['cpc'],
         'latent_dim': [32],
         'negative': [10],
-        'history': [1],
+        'history': [3],
         'future': [1],
         'use_context_net': [False]
 
     }
 
-    run_sweep(run_experiment, config_cp, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)

@@ -18,7 +18,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-# os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 
 
