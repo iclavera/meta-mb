@@ -20,9 +20,11 @@ class ImgWrapperEnv(Serializable):
         self._time_steps = time_steps
         self._time_major = time_major # if stack the timesteps in the first dimension
 
+        self.true_state = None
+
     def step(self, action):
-        true_state = np.copy(self._wrapped_env._get_obs())
-        _, reward, done, info = self._wrapped_env.step(action)
+        true_state = np.copy(self.true_state)#(self._wrapped_env._get_obs())
+        self.true_state, reward, done, info = self._wrapped_env.step(action)
         info['true_state'] = true_state
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
         if not self._time_major:
@@ -42,7 +44,7 @@ class ImgWrapperEnv(Serializable):
         return obs, reward, done, info
 
     def reset(self):
-        _ = self._wrapped_env.reset()
+        self.true_state = self._wrapped_env.reset()
         obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
         if not self._time_major:
             self._obs = np.zeros(self._img_size[:-1] + (self._num_chan * self._time_steps,))

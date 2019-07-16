@@ -19,6 +19,7 @@ from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
+from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
 from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
 from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
@@ -26,9 +27,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'IP'
+EXP_NAME = 'CP'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -43,8 +44,8 @@ def run_experiment(**config):
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
     else:
-        exp_name = 'ip-neg%d-hist%d-fut%d-code%d%d' % (config['negative'], config['history'], config['future'],
-                                                       config['latent_dim'], config['seed'])
+        exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (config['negative'], config['history'], config['future'],
+                                                       config['latent_dim'], config['run_suffix'])
         model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
@@ -189,54 +190,12 @@ if __name__ == '__main__':
     def make_pt_env():
         return PointEnv(random_reset=False)
 
-    # config = {
-    #             'seed': [5],
-    #
-    #             # Problem
-    #             'env': [make_pt_env],  # 'HalfCheetahEnv'
-    #             'max_path_length': [32],
-    #             'normalize': [True],
-    #              'n_itr': [50],
-    #             'discount': [1.],
-    #
-    #             # Policy
-    #             'n_candidates': [500], # K
-    #             'horizon': [10], # Tau
-    #             'use_cem': [False],
-    #             'num_cem_iters': [5],
-    #
-    #             # Training
-    #             'num_rollouts': [5],
-    #             'learning_rate': [1e-3],
-    #             'valid_split_ratio': [0.1],
-    #             'rolling_average_persitency': [0.4],
-    #
-    #             # Dynamics Model
-    #             'recurrent': [True],
-    #             'num_models': [2],
-    #             'hidden_nonlinearity_model': ['relu'],
-    #             'hidden_sizes_model': [(500,)],
-    #             'dynamic_model_epochs': [200],
-    #             'backprop_steps': [100],
-    #             'weight_normalization_model': [False],  # FIXME: Doesn't work
-    #             'batch_size_model': [64],
-    #             'cell_type': ['lstm'],
-    #             'use_reward_model': [False],
-    #
-    #             # Reward Model
-    #             'reward_model_epochs': [15],
-    #
-    #             #  Other
-    #             'n_parallel': [1],
-    #
-    #             # representation learning
-    #
-    #             'use_image': [False],
-    #             'model_path': ['meta_mb/unsupervised_learning/cpc/data/neg-15rand_reset/encoder.h5'],
-    #             'encoder': ['cpc'],
-    #             'latent_dim': [32],
-    #
-    # }
+    def make_dm_cpb_env():
+        from dm_control import suite
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
+                                                 keys=['position', 'velocity']), amount=8)
+        return raw_env
+
 
     config_ip = {
                 'seed': [1, 2],
@@ -348,4 +307,60 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)
+    config_cp = {
+        'seed': [1],
+        'run_suffix': [''],
+
+        # Problem
+        'env': [make_dm_cpb_env],  # 'HalfCheetahEnv'
+        'max_path_length': [1000],
+        'normalize': [True],
+        'n_itr': [50],
+        'discount': [1.],
+        'obs_stack': [3],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [False],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.4],
+
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500,)],
+        'dynamic_model_epochs': [50],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+
+        # Reward Model
+        'reward_model_epochs': [15],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        # 'model_path': ['ip-neg-15'],
+        'encoder': ['cpc'],
+        'latent_dim': [32],
+        'negative': [10],
+        'history': [1],
+        'future': [1],
+        'use_context_net': [False]
+
+    }
+
+    run_sweep(run_experiment, config_cp, EXP_NAME, INSTANCE_TYPE)

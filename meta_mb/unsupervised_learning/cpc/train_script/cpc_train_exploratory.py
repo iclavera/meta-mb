@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 import time
 
-
+from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
 from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
 from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
@@ -18,7 +18,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+# os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 
 
@@ -29,8 +29,8 @@ def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, b
     train_seq, val_seq = train_test_split(img_seqs)
     train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
     validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
-    #
-    #
+
+
     # for (x, y), labels in train_data:
     #     plot_seq(x, y, labels, name='ip-seq')
     #     break
@@ -81,6 +81,8 @@ if __name__ == "__main__":
     parser.add_argument('--distractor', action='store_true')
     parser.add_argument('--code_size', type=int, default=32)
 
+    parser.add_argument('--max_path_length', type=int, default=16)
+
     args = parser.parse_args()
 
     if args.env == 'pt':
@@ -92,18 +94,23 @@ if __name__ == "__main__":
             raw_env = PointEnv(ptsize=args.ptsize)
     elif args.env == 'ip':
         raw_env = InvertedPendulumEnv()
+    elif args.env == 'dm_cpb':
+        from dm_control import suite
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
+                                                 keys=['position', 'velocity']), amount=8)
     else:
         raise NotImplementedError
 
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    exp_name = 'ip-neg%d-hist%d-fut%d-code%d%s' % (args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
+    # exp_name = 'cartpole'
+    exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
     # exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
 
-    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=1024, batch_size=32,
+    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=128, batch_size=32,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
-                                  code_size=args.code_size, predict_terms=args.predict_terms)
+                                  code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=args.max_path_length)
 
 
 
