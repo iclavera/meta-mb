@@ -5,7 +5,8 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.envs.mb_envs import HalfCheetahEnv, HopperEnv, AntEnv, Walker2dEnv
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, HopperEnv, AntEnv, Walker2dEnv
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 # from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.utils.utils import ClassEncoder
@@ -33,8 +34,22 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        data = joblib.load(config['model_path'])
-        dynamics_model = data['dynamics_model']
+        if config.get('model_path', None) is None:
+            dynamics_model = MLPDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                num_models=config['num_models'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
+        else:
+            data = joblib.load(config['model_path'])
+            dynamics_model = data['dynamics_model']
 
         policy = MPCController(
             name="policy",
@@ -45,6 +60,7 @@ def run_experiment(**config):
             horizon=config['horizon'],
             use_cem=config['use_cem'],
             use_opt=config['use_opt'],
+            use_opt_w_policy=config['use_opt_w_policy'],
             num_cem_iters=config['num_cem_iters'],
             num_opt_iters=config['num_opt_iters'],
             opt_learning_rate=config['opt_learning_rate'],
@@ -71,6 +87,7 @@ def run_experiment(**config):
             initial_random_samples=config['initial_random_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
+            fit_model=config['fit_model'],
         )
         algo.train()
 
@@ -80,10 +97,14 @@ if __name__ == '__main__':
 
     config = {
         'seed': [1],
-        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
+        # HalfCheetah
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
+        # InvertedPendulum
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
+        'fit_model': [True],
 
         # Problem
-        'env': [HalfCheetahEnv],
+        'env': [InvertedPendulumEnv],
         'max_path_length': [100],
         'normalize': [False],
          'n_itr': [50],
@@ -91,20 +112,32 @@ if __name__ == '__main__':
 
         # Policy
         'n_candidates': [1000], # K
-        'horizon': [5], # Tau
+        'horizon': [20], # Tau
         'use_cem': [False],
         'num_cem_iters': [5],
-        'use_opt': [True, False],
-        'num_opt_iters': [10,],
-        'opt_learning_rate': [1e-3],
+        'use_opt': [False],
+        'use_opt_w_policy': [True],
+        'num_opt_iters': [10, 20, 40,],
+        'opt_learning_rate': [1e-3, 1e-4, 1e-2],
 
         # Training
         'num_rollouts': [20],
-        'initial_random_samples': [True],
-        'initial_sinusoid_samples': [False],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.99],
+        'initial_random_samples': [False],
+        'initial_sinusoid_samples': [True],
 
         # Dynamics Model
+        'recurrent': [False],
+        'num_models': [1],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
         'dynamic_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
 
         #  Other
         'n_parallel': [1],
