@@ -29,7 +29,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'IP/rnn_state'
+EXP_NAME = 'PT/rnn_cpc'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -89,6 +89,8 @@ def run_experiment(**config):
                 backprop_steps=config['backprop_steps'],
                 cell_type=config['cell_type'],
                 num_models=config['num_models'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                valid_split_ratio=config['valid_split_ratio'],
                 batch_size=config['batch_size_model'],
                 normalize_input=config['normalize'],
             )
@@ -273,16 +275,72 @@ if __name__ == '__main__':
                 'use_graph': [True],
 
                 # Training
-                'num_rollouts': [5],
+                'num_rollouts': [40],
                 'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
+                'rolling_average_persitency': [0.4, 0.8],
 
                 # Dynamics Model
                 'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(32,), (16,)],
+                'hidden_sizes_model': [(500, ), (32, )],
+                'dynamic_model_epochs': [50],
+                'backprop_steps': [100],
+                'weight_normalization_model': [False],  # FIXME: Doesn't work
+                'batch_size_model': [10],
+                'cell_type': ['lstm'],
+                'use_reward_model': [True],
+
+                # Reward Model
+                'reward_model_epochs': [15],
+
+                #  Other
+                'n_parallel': [1],
+
+                # representation learning
+
+                'use_image': [True],
+                'model_path': ['ip-neg10-hist3-fut3-code321'],
+                'encoder': ['cpc'],
+                'latent_dim': [32],
+                'negative': [10],
+                'history': [3],
+                'future': [1],
+                'use_context_net': [False]
+
+    }
+
+    config_pt_rnn = {
+                'seed': [1],
+                'run_suffix': [''],
+
+                # Problem
+                'env': [make_pt_env],  # 'HalfCheetahEnv'
+                'max_path_length': [32],
+                'normalize': [True],
+                 'n_itr': [50],
+                'discount': [1.],
+                'obs_stack': [1],
+
+                # Policy
+                'n_candidates': [1000],  # K
+                'horizon': [10],  # Tau
+                'use_cem': [False],
+                'num_cem_iters': [5],
+                'use_graph': [True],
+
+                # Training
+                'num_rollouts': [50],
+                'learning_rate': [0.001],
+                'valid_split_ratio': [0.1],
+                'rolling_average_persitency': [0.4, 0.99],
+
+                # Dynamics Model
+                'recurrent': [True],
+                'num_models': [5],
+                'hidden_nonlinearity_model': ['relu'],
+                'hidden_sizes_model': [(500, ), (32, )],
                 'dynamic_model_epochs': [50],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
@@ -298,8 +356,8 @@ if __name__ == '__main__':
 
                 # representation learning
 
-                'use_image': [False],
-                'model_path': ['ip-neg10-hist3-fut3-code322'],
+                'use_image': [True],
+                'model_path': ['cpc-ptsize=2-codesize=321'],
                 'encoder': ['cpc'],
                 'latent_dim': [32],
                 'negative': [10],
@@ -365,4 +423,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_pt_rnn, EXP_NAME, INSTANCE_TYPE)

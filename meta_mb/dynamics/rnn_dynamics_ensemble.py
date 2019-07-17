@@ -353,7 +353,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
                 if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
                     idx_to_remove.append(i)
                     epochs_per_model.append(epoch)
-                    logger.log('Stopping Training of Model %i since its valid_loss_rolling_average decreased'%i)
+                    logger.log('At Epoch %d, Stopping Training of Model %i since its valid_loss_rolling_average decreased'%(epoch, i))
 
             grads_op_to_do = [op for idx, op in enumerate(self._gradients_vars) if idx not in idx_to_remove]
             train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
