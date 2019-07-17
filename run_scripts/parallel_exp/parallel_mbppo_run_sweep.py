@@ -15,8 +15,8 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-5e-4-mbppo'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'parallel-mbppo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -162,6 +162,7 @@ def run_base(exp_dir, **kwargs):
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
+        sampler_str=kwargs['sampler'],
     )
 
     trainer.train()
@@ -175,16 +176,16 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99,
+            0.4, 0.9,
         ],
 
-        'seed': [1, 2,],
-        'n_itr': [401*20],
+        'seed': [1, 2],
+        'n_itr': [1250],
         'num_rollouts': [1],
+        'sampler': ['bptt'],
 
         'simulation_sleep_frac': [1],
-
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'env': ['Walker2d', 'Hopper'],
 
         # Problem Conf
         'algo': ['meppo'],
@@ -194,7 +195,7 @@ if __name__ == '__main__':
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'log_real_performance': [True],
+        'log_real_performance': [True],  # UNUSED
         'steps_per_iter': [1],  # UNUSED
 
         # Real Env Sampling
@@ -206,7 +207,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [5e-4],
+        'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
@@ -220,12 +221,11 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3],
+        'learning_rate': [1e-3, 4e-5],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],
         'exp_tag': ['timing-parallel-mbppo'],  # For changes besides hyperparams
-
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -7,7 +7,6 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.algos.ppo import PPO
 from meta_mb.algos.trpo import TRPO
 from meta_mb.trainers.metrpo_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
@@ -21,7 +20,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-me-trpo'
+EXP_NAME = 'sequential-metrpo'
 
 
 def run_experiment(**kwargs):
@@ -70,7 +69,7 @@ def run_experiment(**kwargs):
             n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = METRPOSampler(
+        model_sampler = BPTTSampler(
             env=env,
             policy=policy,
             dynamics_model=dynamics_model,
@@ -140,7 +139,7 @@ if __name__ == '__main__':
         'steps_per_iter': [(50, 50)],
 
         # Real Env Sampling
-        'num_rollouts': [5, 10, 20],
+        'num_rollouts': [20],
         'n_parallel': [5],
 
         # Dynamics Model
@@ -152,7 +151,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4, 0.1],
+        'rolling_average_persitency': [0.9, 0.4],
         'deterministic': [False],
 
         # Policy

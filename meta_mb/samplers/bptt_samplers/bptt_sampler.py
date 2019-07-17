@@ -85,7 +85,7 @@ class BPTTSampler(BaseSampler):
         self._means_var = means
         self._log_stds_var = log_stds
 
-    def obtain_samples(self, log=False, log_prefix='', buffer=None):
+    def obtain_samples(self, log=False, log_prefix='', buffer=None, random=False):
         """
         Collect batch_size trajectories from each task
 
@@ -104,6 +104,8 @@ class BPTTSampler(BaseSampler):
 
         # initial reset of meta_envs
         init_obses = np.array([self.env.reset() for _ in range(self.num_rollouts)])
+        # init_obses = [self.env.init_obs.copy() + np.random.uniform(-0.005, 0.005, size=23) for _ in
+        #             range(self.num_rollouts)]
 
         sess = tf.get_default_session()
         observations, actions, means, log_stds, rewards = sess.run([self._observations_var,

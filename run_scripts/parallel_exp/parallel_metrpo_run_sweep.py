@@ -16,7 +16,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamics
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = '2x-all-1-0.99-1-5e-4-metrpo'
+EXP_NAME = 'parallel-metrpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         ],
 
         'seed': [1, 2,],
-        'n_itr': [401*20],
+        'n_itr': [1250],
         'num_rollouts': [1],
 
         'simulation_sleep_frac': [1],

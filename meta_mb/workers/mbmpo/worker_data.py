@@ -6,8 +6,11 @@ from collections import OrderedDict
 
 
 class WorkerData(Worker):
-    def __init__(self, num_rollouts_per_iter, simulation_sleep):
-        super().__init__()
+    def __init__(self, num_rollouts_per_iter, simulation_sleep, video=False):
+        if video:
+            super().__init__(snapshot_mode='gap', snapshot_gap=int(1250*simulation_sleep/5/30))
+        else:
+            super().__init__()
         self.num_rollouts_per_iter = num_rollouts_per_iter
         self.simulation_sleep = simulation_sleep
         self.env = None

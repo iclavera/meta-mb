@@ -8,10 +8,11 @@ matplotlib.use('TkAgg')
 
 SMALL_SIZE = 32
 MEDIUM_SIZE = 36
-BIGGER_SIZE = 40
+BIGGER_SIZE = 44
 BIG_SIZE = 44
-LINEWIDTH = 5
-MARKER = 'o'
+LINEWIDTH = 8
+MARKER = None
+ALPHA=0.15
 
 plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
 plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -239,6 +240,8 @@ def plot_from_exps(exp_data,
 
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
+            if _label.startswith('a-'):
+                _label = 'asynch-' + _label[2:]
             if log_scale:
                 axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
                                      color=get_color(label),  linestyle=get_linestyle(label),
@@ -248,7 +251,7 @@ def plot_from_exps(exp_data,
                                  color=get_color(label), linestyle=get_linestyle(label),
                                  marker=get_marker(label), markersize=10)
 
-            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=0.2, color=get_color(label))
+            axarr[r, c].fill_between(x, y_mean + y_std, y_mean - y_std, alpha=ALPHA, color=get_color(label))
 
             # axis labels
             axarr[r, c].set_xlabel(x_label if x_label else x_key)
@@ -300,7 +303,7 @@ plot_from_exps(exps_data,
                x_label='Time (min)',
                y_label='Average Return',
                # plot_name='./comparison_time_no_sampling_time.png',
-               plot_name='./comparison_time.png',
+               plot_name='./comparison_time.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,

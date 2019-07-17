@@ -9,15 +9,16 @@ from meta_mb.envs.mb_envs import *
 from meta_mb.meta_algos.trpo_maml import TRPOMAML
 from meta_mb.trainers.mbmpo_trainer import Trainer
 from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
+from meta_mb.samplers.bptt_samplers.meta_bptt_sampler import MetaBPTTSampler
+# from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
 from meta_mb.samplers.meta_samplers.maml_sample_processor import MAMLSampleProcessor
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.samplers.mbmpo_samplers.mbmpo_sampler import MBMPOSampler
 from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'performance-sequential-2-mb-mpo'
+EXP_NAME = 'sequential-mbmpo'
 
 
 def run_experiment(**kwargs):
@@ -68,7 +69,7 @@ def run_experiment(**kwargs):
             parallel=kwargs['parallel'],
         )
 
-        model_sampler = MBMPOSampler(
+        model_sampler = MetaBPTTSampler(
             env=env,
             policy=policy,
             rollouts_per_meta_task=kwargs['rollouts_per_meta_task'],
@@ -146,7 +147,7 @@ if __name__ == '__main__':
         'meta_steps_per_iter': [(50, 50)],
 
         # Real Env Sampling
-        'parallel': [True],
+        'parallel': [False],
         'fraction_meta_batch_size': [.5],
         'real_env_rollouts_per_meta_task': [1],
 

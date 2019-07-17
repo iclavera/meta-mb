@@ -37,12 +37,13 @@ class ParallelTrainer(object):
             simulation_sleep,
             initial_random_samples=True,
             start_itr=0,
-            sampler_str='metrpo',
+            sampler_str='bptt',
+            video=False,
     ):
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
-            WorkerData(simulation_sleep=simulation_sleep),
+            WorkerData(simulation_sleep=simulation_sleep, video=video),
             WorkerModel(),
             WorkerPolicy(algo_str=algo_str, sampler_str=sampler_str),
         ]

@@ -198,12 +198,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
             self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
 
-            assert self.next_batch is None
+            # assert self.next_batch is None
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
                                                                  batch_size=self.batch_size)
-            assert self.normalization is None
+            # assert self.normalization is None
             if self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
                                            self._dataset_train['act'],

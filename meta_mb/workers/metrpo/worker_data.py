@@ -4,8 +4,11 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerData(Worker):
-    def __init__(self, simulation_sleep):
-        super().__init__()
+    def __init__(self, simulation_sleep, video=False):
+        if video:
+            super().__init__(snapshot_mode='gap', snapshot_gap=int(1250*simulation_sleep/5/30))
+        else:
+            super().__init__()
         self.simulation_sleep = simulation_sleep
         self.env = None
         self.env_sampler = None
@@ -72,6 +75,10 @@ class WorkerData(Worker):
         logger.logkv('Data-TimeStep', time_step)
         logger.logkv('Data-TimeSleep', time_sleep)
 
+        # save snapshot
+        params = self.get_itr_snapshot()
+        logger.save_itr_params(self.itr_counter, params)
+
     def _synch(self, policy_state_pickle):
         time_synch = time.time()
         policy_state = pickle.loads(policy_state_pickle)
@@ -93,3 +100,8 @@ class WorkerData(Worker):
         if self.itr_counter >= self.n_itr:
             self.stop_cond.set()
 
+    def get_itr_snapshot(self):
+        """
+        Gets the current policy and env for storage
+        """
+        return dict(itr=self.itr_counter, policy=self.env_sampler.policy, env=self.env)
