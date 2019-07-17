@@ -19,6 +19,8 @@ class PR2ReachEnv(MetaEnv, Serializable):
                  max_torques=[3] * 7):
         Serializable.quick_init(self, locals())
 
+        self.norm = 1000
+
         self.exp_type = exp_type
         if exp_type == 'shape_joints':
             self.goal = np.array([ 3.48729010e-01,  9.44079044e-02,  1.45437872e+00, -1.55104661e+00,
@@ -112,10 +114,20 @@ class PR2ReachEnv(MetaEnv, Serializable):
 
         elif exp_type == 'peg':
              raise NotImplementedError
+        elif exp_type == 'bottle':
+            self.init_qpos = np.array([0.09536639, -0.05727076,  1.07930878, -1.04463866,  1.71724862, -2.00068935,
+                                     -1.04508426])
+            self.init_obs = np.array([0.09536639, -0.05727076,  1.07930878, -1.04463866,  1.71724862, -2.00068935,
+                                     -1.04508426,  0.,          0.,          0.,          0.,          0.,
+                                      0.,          0.,         -0.27317487,  0.06260623,  0.12906069, -0.1010125,
+                                      0.14036395,  0.1370379,  -0.16080087, -0.00439068,  0.20217985])
+            self.goal = np.array([-0.27337845,  0.0623045,   0.08042455,
+                                  -0.10072089,  0.13381461,  0.09027978,
+                                  -0.16556836, -0.00824566,  0.15118447])
 
         elif exp_type == 'reach':
             self.init_qpos = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
-                                       1.31405443e+00, -1.54883181e+00])
+                                       1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
 
             self.init_obs = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
                                       1.31405443e+00, -1.54883181e+00, 1.43069760e-01, 0, 0, 0, 0, 0, 0, 0,
@@ -260,6 +272,9 @@ class PR2ReachEnv(MetaEnv, Serializable):
         reward_vel = -self.vel_penalty * np.square(np.linalg.norm(ob[7:14]))
         reward_ctrl = -self.torque_penalty * np.square(np.linalg.norm(action))
         _norm_end = np.linalg.norm((ob[-9:] - self.goal[-9:]))
+
+        self.norm = _norm_end
+
         scaled_norm_end = 3 * _norm_end
         if self.exp_type == 'shape_joints':
             norm_end = np.linalg.norm(ob[:7] - self.goal[:7]) + scaled_norm_end
@@ -288,6 +303,8 @@ class PR2ReachEnv(MetaEnv, Serializable):
                 dtype=str(action.dtype),
                 cmd="action",
             )
+            if self.norm < 0.07 and self.exp_type == 'bottle':
+                action[6] = 9
             self.socket.send_json(md, 0 | zmq.SNDMORE)
             self.socket.send(action, 0, copy=True, track=False)
             ob = self._get_obs()
