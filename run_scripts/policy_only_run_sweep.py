@@ -16,7 +16,7 @@ import tensorflow as tf
 import joblib
 
 
-EXP_NAME = 'mb-mpc'
+EXP_NAME = 'mb-mpc-hc'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -104,7 +104,7 @@ if __name__ == '__main__':
         'fit_model': [True],
 
         # Problem
-        'env': [InvertedPendulumEnv],
+        'env': [HalfCheetahEnv], #[InvertedPendulumEnv],
         'max_path_length': [100],
         'normalize': [False],
          'n_itr': [50],
@@ -118,7 +118,7 @@ if __name__ == '__main__':
         'use_opt': [False],
         'use_opt_w_policy': [True],
         'num_opt_iters': [10, 20, 40,],
-        'opt_learning_rate': [1e-3, 1e-4, 1e-2],
+        'opt_learning_rate': [1e-3, 1e-2],
 
         # Training
         'num_rollouts': [20],

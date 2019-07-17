@@ -302,7 +302,7 @@ class MPCController(Serializable):
             trainable=True,
         )
 
-        assign_op = tf.assign(tau, tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high))
+        clip_op = tf.assign(tau, tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high))
         returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
         for t in range(self.horizon):
@@ -316,7 +316,7 @@ class MPCController(Serializable):
             loss=-returns,
             var_list=[tau],
             init_op=tf.initializers.variables([tau]),
-            assign_op=assign_op,
+            clip_op=clip_op,
             result_op=tau[0] + tf.random_normal(tf.shape(tau[0]), mean=0.0, stddev=0.1),
             input_ph_dict={'obs': self.obs_ph,},
         )
@@ -333,9 +333,16 @@ class MPCController(Serializable):
         )
         p_bar_log_std = tf.get_variable(
             'p_bar_std',
-            shape=(self.action_space_dims, 1),
+            shape=(1, self.action_space_dims),
             dtype=tf.float32,
             trainable=False,
+        )
+        lmbda = tf.get_variable(
+            'lambda',
+            shape=(),
+            initializer=tf.initializers.ones,
+            dtype=tf.float32,
+            trainable=True,
         )
         old_dist_policy = self.policy.distribution_info_sym(obs)
         init_op = [
@@ -347,6 +354,7 @@ class MPCController(Serializable):
         for t in range(self.horizon):
             dist_policy = self.policy.distribution_info_sym(obs)
             act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
             if t == 0:
                 result_op = act
                 p_info_dict = dist_policy
@@ -356,18 +364,19 @@ class MPCController(Serializable):
             returns += self.discount ** t * rewards
             obs = next_obs
 
-        surrogate_loss = -returns + self.policy.distribution.kl_sym(
+        kl = tf.multiply(lmbda, self.policy.distribution.kl_sym(
             p_info_dict,
             dict(mean=p_bar_mean, log_std=p_bar_log_std),
-        )
+        ))
 
         self.tau_optimizer.build_graph(
-            loss=surrogate_loss,
+            loss=-returns + kl,
             var_list=list(self.policy.get_params().values()),
             init_op=init_op,
-            assign_op=tf.no_op(),
             result_op=result_op,
             input_ph_dict={'obs': self.obs_ph},
+            lmbda=lmbda,
+            loss_dual=-kl,
         )
 
     def get_cem_action(self, observations):
