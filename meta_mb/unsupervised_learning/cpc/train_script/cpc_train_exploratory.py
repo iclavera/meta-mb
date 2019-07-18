@@ -19,7 +19,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"]="4, 5"
 
 
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     exp_name = '%s-neg%d-hist%d-fut%d-code%d%s' % (args.env, args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
     # exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
 
-    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=10, batch_size=8,
+    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=256, batch_size=8,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
                                   code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=max_path_length, negative_same_traj=negative_same_traj)
 
