@@ -29,7 +29,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'PT/rnn_cpc'
+EXP_NAME = 'IP/rnn_cpc2'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -275,17 +275,17 @@ if __name__ == '__main__':
                 'use_graph': [True],
 
                 # Training
-                'num_rollouts': [40],
-                'learning_rate': [0.001],
+                'num_rollouts': [20],
+                'learning_rate': [0.01, 0.001, 0.0001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4, 0.8],
+                'rolling_average_persitency': [0.8, 0.95],
 
                 # Dynamics Model
                 'recurrent': [True],
                 'num_models': [5],
                 'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, ), (32, )],
-                'dynamic_model_epochs': [50],
+                'hidden_sizes_model': [(500, )],
+                'dynamic_model_epochs': [30],
                 'backprop_steps': [100],
                 'weight_normalization_model': [False],  # FIXME: Doesn't work
                 'batch_size_model': [10],
@@ -303,7 +303,7 @@ if __name__ == '__main__':
                 'use_image': [True],
                 'model_path': ['ip-neg10-hist3-fut3-code321'],
                 'encoder': ['cpc'],
-                'latent_dim': [32],
+                'latent_dim': [32,],
                 'negative': [10],
                 'history': [3],
                 'future': [1],
@@ -423,4 +423,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_pt_rnn, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)

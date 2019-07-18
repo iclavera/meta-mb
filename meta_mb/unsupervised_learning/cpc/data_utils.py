@@ -4,10 +4,11 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 class CPCDataGenerator(object):
-    def __init__(self, img_seqs, batch_size, terms, negative_samples=1, predict_terms=1):
+    def __init__(self, img_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0):
         self.batch_size = batch_size
         self.data = img_seqs
         self.negative_samples = negative_samples
+        self.negative_same_traj = negative_same_traj
         self.predict_terms = predict_terms
         self.terms = terms
 
@@ -57,6 +58,17 @@ class CPCDataGenerator(object):
         neg_idx_n = np.stack([np.random.choice(seq_index[seq_index!=i], size=(self.predict_terms, self.negative_samples))
                               for i in idx_n])
         neg_idx_t = np.random.randint(0, self.n_step, (self.batch_size, self.predict_terms, self.negative_samples))
+
+        if self.negative_same_traj > 0:
+            neg_idx_n2 = np.stack([i * np.ones(shape=(self.predict_terms, self.negative_same_traj), dtype=int) for i in idx_n])
+            neg_idx_t2 = np.random.randint(0, self.n_step, (self.batch_size, self.predict_terms, self.negative_same_traj))
+            equal_positive = neg_idx_t2 == y_idx_t[:, :, None]
+            neg_idx_t2[equal_positive] = np.mod(neg_idx_t2[equal_positive] + np.random.randint(1, self.n_step - 1, size=neg_idx_t2[equal_positive].shape),
+                                                self.n_step)
+
+            neg_idx_n = np.concatenate([neg_idx_n, neg_idx_n2], axis = -1)
+            neg_idx_t = np.concatenate([neg_idx_t, neg_idx_t2], axis=-1)
+
         y_images_neg = self.data[neg_idx_n, neg_idx_t]
 
         # concatenate positive samples with negative ones

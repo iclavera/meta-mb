@@ -1,3 +1,4 @@
+from dm_control import suite
 import numpy as np
 import keras
 import os
@@ -22,13 +23,15 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 
 
-def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, batch_size=32, code_size=32, epochs=30,
+def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, negative_same_traj=0, batch_size=32, code_size=32, epochs=30,
                                   image_shape=(64, 64, 3),  num_rollouts=32, max_path_length=16,
                                   encoder_arch='default', context_network='stack', lr=1e-3, terms=1, predict_terms=1):
     img_seqs = collect_img(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length, image_shape=image_shape)
     train_seq, val_seq = train_test_split(img_seqs)
-    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
-    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples, predict_terms=predict_terms)
+    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples,
+                                  predict_terms=predict_terms, negative_same_traj=negative_same_traj)
+    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples,
+                                       predict_terms=predict_terms, negative_same_traj=negative_same_traj)
 
 
     # for (x, y), labels in train_data:
@@ -80,10 +83,12 @@ if __name__ == "__main__":
     parser.add_argument('--ptsize', type=int, default=2)
     parser.add_argument('--distractor', action='store_true')
     parser.add_argument('--code_size', type=int, default=32)
-
-    parser.add_argument('--max_path_length', type=int, default=16)
+    #
+    # parser.add_argument('--max_path_length', type=int, default=16)
 
     args = parser.parse_args()
+
+    negative_same_traj = 0
 
     if args.env == 'pt':
         if args.distractor:
@@ -92,12 +97,27 @@ if __name__ == "__main__":
         else:
             from meta_mb.envs.mujoco.point_pos import PointEnv
             raw_env = PointEnv(ptsize=args.ptsize)
+        max_path_length = 16
     elif args.env == 'ip':
         raw_env = InvertedPendulumEnv()
-    elif args.env == 'dm_cpb':
-        from dm_control import suite
+        max_path_length = 16
+    elif args.env == 'cartpole_balance':
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
                                                  keys=['position', 'velocity']), amount=8)
+        max_path_length = 125
+    elif args.env == 'cartpole_swingup':
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'swingup')),
+                                                 keys=['position', 'velocity']), amount=8)
+        max_path_length = 125
+    elif args.env == 'reacher_easy':
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy')),
+                                                 keys=['position', 'velocity', 'to_target']), amount=4)
+        negative_same_traj = args.negative_samples // 3
+        max_path_length = 250
+    elif args.env == 'cheetah_run':
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run')),
+                                                 keys=['position', 'velocity']), amount=4)
+        max_path_length = 250
     else:
         raise NotImplementedError
 
@@ -105,12 +125,12 @@ if __name__ == "__main__":
     policy = RepeatRandom(2, 2, repeat=3)
 
     # exp_name = 'cartpole'
-    exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
+    exp_name = '%s-neg%d-hist%d-fut%d-code%d%s' % (args.env, args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
     # exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
 
-    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=128, batch_size=32,
+    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=10, batch_size=8,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
-                                  code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=args.max_path_length)
+                                  code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=max_path_length, negative_same_traj=negative_same_traj)
 
 
 
