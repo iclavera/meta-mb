@@ -5,12 +5,11 @@ from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
-from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
-from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
+
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
 from meta_mb.envs.blue.blue_env import BlueEnv
-from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+
 from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
 from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
 from meta_mb.meta_envs.rl2_env import rl2env
