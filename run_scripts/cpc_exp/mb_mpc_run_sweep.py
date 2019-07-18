@@ -19,6 +19,7 @@ from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
+from meta_mb.envs.envs_util import make_env
 from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
 from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
@@ -35,23 +36,32 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-
-
-    if 'model_path' in config:
-        # exp_name = config['model_path'] + '_rnnmodel'
-        exp_name = ''
-        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
+    exp_name = ''
+    if isinstance(config['env'], str):
+        folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
+                                                           config['latent_dim'], config['run_suffix'])
+        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', folder,
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
+        raw_env = make_env(config['env'])
+
     else:
-        exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (config['negative'], config['history'], config['future'],
-                                                       config['latent_dim'], config['run_suffix'])
-        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
-                                  'vae' if config['encoder'] == 'vae' else
-                                  'encoder.h5' if not config['use_context_net'] else
-                                  'context.h5')
-        # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
+        raw_env = config['env']()
+        if 'model_path' in config:
+            # exp_name = config['model_path'] + '_rnnmodel'
+            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
+                                      'vae' if config['encoder'] == 'vae' else
+                                      'encoder.h5' if not config['use_context_net'] else
+                                      'context.h5')
+        else:
+            exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (config['negative'], config['history'], config['future'],
+                                                           config['latent_dim'], config['run_suffix'])
+            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
+                                      'vae' if config['encoder'] == 'vae' else
+                                      'encoder.h5' if not config['use_context_net'] else
+                                      'context.h5')
+            # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + (exp_name or config.get('exp_name', ''))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -65,17 +75,17 @@ def run_experiment(**config):
             if config['encoder'] == 'cpc':
                 if config['use_context_net']:
                     encoder = CPCContextNet(path=model_path)
-                    env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=config['history'], vae=encoder,
+                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
                                         latent_dim=config['latent_dim'], time_major=True)
                 else:
                     encoder = CPCEncoder(path=model_path)
-                    env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder,
+                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, vae=encoder,
                                         latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
                 env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
-            env = NormalizedEnv(config['env']())
+            env = NormalizedEnv(raw_env)
 
         if config['obs_stack'] > 1:
             env = ObsStackEnv(env, time_steps=config['obs_stack'])
@@ -423,4 +433,59 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)
+    config_envs = {
+        'seed': [1, 2],
+        'run_suffix': ['1'],
+
+        # Problem
+        'env': ['reacher_easy', 'cheetah_run', 'cartpole_swingup'],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [3],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.4],
+
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500,)],
+        'dynamic_model_epochs': [50],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+
+        # Reward Model
+        'reward_model_epochs': [15],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        # 'model_path': ['ip-neg-15'],
+        'encoder': ['cpc'],
+        'latent_dim': [32],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False]
+
+    }
+
+    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
