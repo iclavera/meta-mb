@@ -33,6 +33,7 @@ class PolicyOnlyTrainer(object):
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
+            fit_model = True
     ):
         self.env = env
         self.sampler = sampler
@@ -42,6 +43,7 @@ class PolicyOnlyTrainer(object):
         self.n_itr = n_itr
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
+        self.fit_model = fit_model
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -65,15 +67,7 @@ class PolicyOnlyTrainer(object):
 
                 time_env_sampling_start = time.time()
 
-                if self.initial_random_samples and itr == 0:
-                    logger.log("Obtaining random samples from the environment...")
-                    env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                elif self.initial_sinusoid_samples and itr == 0:
-                    logger.log("Obtaining sinusoidal samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
-                else:
-                    logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+                env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
@@ -84,17 +78,19 @@ class PolicyOnlyTrainer(object):
                                                                               log=True, log_prefix='EnvTrajs-')
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
-                ''' --------------- fit dynamics model --------------- '''
+                if self.fit_model:
 
-                time_fit_start = time.time()
+                    ''' --------------- fit dynamics model --------------- '''
 
-                logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
-                self.dynamics_model.fit(samples_data['observations'],
-                                        samples_data['actions'],
-                                        samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+                    time_fit_start = time.time()
 
-                logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
+                    logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
+                    self.dynamics_model.fit(samples_data['observations'],
+                                            samples_data['actions'],
+                                            samples_data['next_observations'],
+                                            epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+
+                    logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)

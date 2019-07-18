@@ -1,5 +1,5 @@
 from meta_mb.utils.serializable import Serializable
-from meta_mb.utils.utils import compile_function
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.optimizers.mpc_tau_optimizer import MPCTauOptimizer
 import tensorflow as tf
 import numpy as np
@@ -16,6 +16,7 @@ class MPCController(Serializable):
             discount=1,
             use_cem=False,
             use_opt=False,
+            use_opt_w_policy=False,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
@@ -31,10 +32,11 @@ class MPCController(Serializable):
         self.dynamics_model = dynamics_model
         self.reward_model = reward_model
         self.discount = discount
-        self.n_candidates = n_candidates
-        self.horizon = horizon
         self.use_cem = use_cem
         self.use_opt = use_opt
+        self.use_opt_w_policy = use_opt_w_policy
+        self.n_candidates = n_candidates
+        self.horizon = horizon
         self.num_cem_iters = num_cem_iters
         self.num_opt_iters = num_opt_iters
         self.opt_learning_rate = opt_learning_rate
@@ -62,7 +64,19 @@ class MPCController(Serializable):
         if use_graph:
             self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
             self.optimal_action = None
-            if use_opt:
+            if use_opt_w_policy:
+                self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+                self.policy = GaussianMLPPolicy(
+                    name='gaussian-mlp-policy',
+                    obs_dim=self.obs_space_dims,
+                    action_dim=self.action_space_dims,
+                    hidden_sizes=(64, 64),
+                    learn_std=True,
+                    hidden_nonlinearity=tf.tanh,
+                    output_nonlinearity=None,
+                )
+                self.build_opt_graph_w_policy()
+            elif use_opt:
                 self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
                 self.build_opt_graph()
             elif use_cem:
@@ -83,7 +97,7 @@ class MPCController(Serializable):
     def get_actions(self, observations):
         if self.use_graph:
             sess = tf.get_default_session()
-            if self.use_opt:
+            if self.use_opt or self.use_opt_w_policy:
                 actions = self.tau_optimizer.optimize({'obs': observations})
             else:
                 actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
@@ -280,19 +294,15 @@ class MPCController(Serializable):
     """
 
     def build_opt_graph(self):
-        tau_rand = tf.random.uniform(
-            shape=(self.horizon, self.num_envs, self.action_space_dims),
-            minval=self.env.action_space.low,
-            maxval=self.env.action_space.high,
-        )
-
         tau = tf.get_variable(
             'tau',
             shape=(self.horizon, self.num_envs, self.action_space_dims),
             dtype=tf.float32,
-            trainable=True
+            initializer=tf.initializers.random_uniform(minval=self.env.action_space.low, maxval=self.env.action_space.high),
+            trainable=True,
         )
 
+        clip_op = tf.assign(tau, tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high))
         returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
         for t in range(self.horizon):
@@ -305,9 +315,68 @@ class MPCController(Serializable):
         self.tau_optimizer.build_graph(
             loss=-returns,
             var_list=[tau],
-            init_op=tf.assign(tau, tau_rand),
-            result_op=tau[0],
+            init_op=tf.initializers.variables([tau]),
+            clip_op=clip_op,
+            result_op=tau[0] + tf.random_normal(tf.shape(tau[0]), mean=0.0, stddev=0.1),
             input_ph_dict={'obs': self.obs_ph,},
+        )
+
+    def build_opt_graph_w_policy(self):
+        assert self.policy is not None
+        returns = tf.zeros(shape=(self.num_envs,))
+        obs = self.obs_ph
+        p_bar_mean = tf.get_variable(
+            'p_bar_mean',
+            shape=(self.num_envs, self.action_space_dims),
+            dtype=tf.float32,
+            trainable=False,
+        )
+        p_bar_log_std = tf.get_variable(
+            'p_bar_std',
+            shape=(1, self.action_space_dims),
+            dtype=tf.float32,
+            trainable=False,
+        )
+        lmbda = tf.get_variable(
+            'lambda',
+            shape=(),
+            initializer=tf.initializers.ones,
+            dtype=tf.float32,
+            trainable=True,
+        )
+        old_dist_policy = self.policy.distribution_info_sym(obs)
+        init_op = [
+            tf.assign(p_bar_mean, old_dist_policy['mean']),
+            tf.assign(p_bar_log_std, old_dist_policy['log_std']),
+        ]
+        result_op = None
+        p_info_dict = None
+        for t in range(self.horizon):
+            dist_policy = self.policy.distribution_info_sym(obs)
+            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
+            if t == 0:
+                result_op = act
+                p_info_dict = dist_policy
+            next_obs = self.dynamics_model.predict_batches_sym(obs, act)
+            assert self.reward_model is None
+            rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
+            returns += self.discount ** t * rewards
+            obs = next_obs
+
+        kl = tf.multiply(lmbda, self.policy.distribution.kl_sym(
+            p_info_dict,
+            dict(mean=p_bar_mean, log_std=p_bar_log_std),
+        ))
+
+        self.tau_optimizer.build_graph(
+            loss=-returns + kl,
+            var_list=list(self.policy.get_params().values()),
+            init_op=init_op,
+            result_op=result_op,
+            input_ph_dict={'obs': self.obs_ph},
+            lmbda=lmbda,
+            loss_dual=-kl,
         )
 
     def get_cem_action(self, observations):
