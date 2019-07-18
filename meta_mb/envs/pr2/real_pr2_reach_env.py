@@ -13,13 +13,14 @@ class PR2ReachEnv(MetaEnv, Serializable):
     PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
     def __init__(self,
-                 exp_type='shape_mod',
+                 exp_type='lego_mod',
                  torque_penalty=1.25e-1,
                  vel_penalty=1.25e-1,
                  max_torques=[3] * 7):
         Serializable.quick_init(self, locals())
 
         self.norm = 1000
+        self.twist = False
 
         self.exp_type = exp_type
         if exp_type == 'shape_joints':
@@ -115,15 +116,15 @@ class PR2ReachEnv(MetaEnv, Serializable):
         elif exp_type == 'peg':
              raise NotImplementedError
         elif exp_type == 'bottle':
-            self.init_qpos = np.array([0.09536639, -0.05727076,  1.07930878, -1.04463866,  1.71724862, -2.00068935,
-                                     -1.04508426])
-            self.init_obs = np.array([0.09536639, -0.05727076,  1.07930878, -1.04463866,  1.71724862, -2.00068935,
-                                     -1.04508426,  0.,          0.,          0.,          0.,          0.,
-                                      0.,          0.,         -0.27317487,  0.06260623,  0.12906069, -0.1010125,
-                                      0.14036395,  0.1370379,  -0.16080087, -0.00439068,  0.20217985])
-            self.goal = np.array([-0.27337845,  0.0623045,   0.08042455,
-                                  -0.10072089,  0.13381461,  0.09027978,
-                                  -0.16556836, -0.00824566,  0.15118447])
+            self.init_qpos = np.array([0.18183799, -0.00313001,  1.04819995, -1.65050409,  1.4029654,  -2.00656306,
+                                     -1.56096953])
+            self.init_obs = np.array([0.18183799, -0.00313001,  1.04819995, -1.65050409,  1.4029654,  -2.00656306,
+                                     -1.56096953,  0.,          0.,          0.,          0.,          0.,
+                                      0.,          0.,         -0.4438997,   0.05199452,  0.13091329, -0.27168314,
+                                      0.121496,    0.13251639, -0.33714511, -0.01929635,  0.20388515])
+            self.goal = np.array([-0.44355924,  0.04856733,  0.08182383,
+                                  -0.270975,    0.11838888,  0.08823441,
+                                  -0.33709145, -0.02286455,  0.14991858])
 
         elif exp_type == 'reach':
             self.init_qpos = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
@@ -135,8 +136,9 @@ class PR2ReachEnv(MetaEnv, Serializable):
                                       -2.03442785e-01, 1.59440809e-01, 1.02890217e-02,
                                       -3.07411827e-01, 1.18937711e-01, 7.99029507e-02])
 
-            self.goal = np.array([-0.30982005,  0.71146246,  0.21908543, -0.14216614,
-                                   0.78684261,  0.26139753, -0.20410874,  0.64335638,  0.31437626])
+            self.goal = np.array([-0.30982005,  0.71146246,  0.21908543,
+                                  -0.14216614,  0.78684261,  0.26139753,
+                                  -0.20410874,  0.64335638,  0.31437626])
 
             """
             Reach Goal
@@ -273,6 +275,9 @@ class PR2ReachEnv(MetaEnv, Serializable):
         reward_ctrl = -self.torque_penalty * np.square(np.linalg.norm(action))
         _norm_end = np.linalg.norm((ob[-9:] - self.goal[-9:]))
 
+        if self.twist:
+            _norm_end = 0.06
+
         self.norm = _norm_end
 
         scaled_norm_end = 3 * _norm_end
@@ -283,6 +288,9 @@ class PR2ReachEnv(MetaEnv, Serializable):
             norm_end = np.linalg.norm((ob[-9:] - self.goal))
         else:
             raise NotImplementedError
+
+        if self.twist:
+            norm_end = _norm_end
 
         if self.exp_type == 'lego':
             reward_dist = -(np.square(norm_end) + np.log(np.square(norm_end) + alpha))
@@ -303,8 +311,10 @@ class PR2ReachEnv(MetaEnv, Serializable):
                 dtype=str(action.dtype),
                 cmd="action",
             )
-            if self.norm < 0.07 and self.exp_type == 'bottle':
-                action[6] = 9
+            if self.norm < 0.01 and self.exp_type == 'bottle':
+                self.twist = True
+            if self.twist:
+                action[6] = 11
             self.socket.send_json(md, 0 | zmq.SNDMORE)
             self.socket.send(action, 0, copy=True, track=False)
             ob = self._get_obs()
@@ -369,6 +379,7 @@ class PR2ReachEnv(MetaEnv, Serializable):
         self.socket.send_json(md, 0 | zmq.SNDMORE)  # buffer
         self.socket.send(qpos, 0, copy=True, track=False)
         obs = self._get_obs()
+        self.twist = False
         return obs
 
     def _get_obs(self):
