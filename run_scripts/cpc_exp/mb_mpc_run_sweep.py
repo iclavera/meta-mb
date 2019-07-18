@@ -44,10 +44,11 @@ def run_experiment(**config):
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
-        raw_env = make_env(config['env'])
+        raw_env, max_path_length = make_env(config['env'])
 
     else:
         raw_env = config['env']()
+        max_path_length = config['max_path_length']
         if 'model_path' in config:
             # exp_name = config['model_path'] + '_rnnmodel'
             model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
@@ -176,7 +177,7 @@ def run_experiment(**config):
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
-            max_path_length=config['max_path_length'],
+            max_path_length=max_path_length,
         )
 
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
@@ -311,9 +312,9 @@ if __name__ == '__main__':
                 # representation learning
 
                 'use_image': [True],
-                'model_path': ['ip-neg10-hist3-fut3-code321'],
+                'model_path': ['ip-neg10-hist3-fut1-code82'],
                 'encoder': ['cpc'],
-                'latent_dim': [32,],
+                'latent_dim': [8,],
                 'negative': [10],
                 'history': [3],
                 'future': [1],
@@ -488,4 +489,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_ip_rnn, EXP_NAME, INSTANCE_TYPE)
