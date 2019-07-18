@@ -8,10 +8,8 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 import time
 
-from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
+from  meta_mb.envs.envs_util import make_env
 from meta_mb.envs.normalized_env import NormalizedEnv
-from meta_mb.envs.mujoco.point_pos import PointEnv
-from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
 from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_seq
@@ -88,39 +86,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    negative_same_traj = 0
 
-    if args.env == 'pt':
-        if args.distractor:
-            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
-            raw_env = PointEnv()
-        else:
-            from meta_mb.envs.mujoco.point_pos import PointEnv
-            raw_env = PointEnv(ptsize=args.ptsize)
-        max_path_length = 16
-    elif args.env == 'ip':
-        raw_env = InvertedPendulumEnv()
-        max_path_length = 16
-    elif args.env == 'cartpole_balance':
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
-                                                 keys=['position', 'velocity']), amount=8)
-        max_path_length = 125
-    elif args.env == 'cartpole_swingup':
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'swingup')),
-                                                 keys=['position', 'velocity']), amount=8)
-        max_path_length = 125
-    elif args.env == 'reacher_easy':
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy')),
-                                                 keys=['position', 'velocity', 'to_target']), amount=4)
-        negative_same_traj = args.negative_samples // 3
-        max_path_length = 250
-    elif args.env == 'cheetah_run':
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run')),
-                                                 keys=['position', 'velocity']), amount=4)
-        max_path_length = 250
-    else:
-        raise NotImplementedError
-
+    raw_env, max_path_length = make_env(args.env, args.distractor, args.ptsize)
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
