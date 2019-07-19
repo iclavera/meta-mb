@@ -179,7 +179,6 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
             max_path_length=max_path_length,
         )
-
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
 
         algo = Trainer(
@@ -209,6 +208,9 @@ if __name__ == '__main__':
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
                                                  keys=['position', 'velocity']), amount=8)
         return raw_env
+
+    def make_ip_env_novel():
+        return InvertedPendulumEnv(include_vel=False)
 
 
     config_ip = {
@@ -271,10 +273,10 @@ if __name__ == '__main__':
                 'run_suffix': [''],
 
                 # Problem
-                'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
+                'env': [InvertedPendulumEnv], #[InvertedPendulumEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [32],
                 'normalize': [True],
-                 'n_itr': [50],
+                 'n_itr': [30],
                 'discount': [1.],
                 'obs_stack': [1],
 
@@ -287,13 +289,13 @@ if __name__ == '__main__':
 
                 # Training
                 'num_rollouts': [20],
-                'learning_rate': [0.01, 0.001, 0.0001],
+                'learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.8, 0.95],
+                'rolling_average_persitency': [0.95],
 
                 # Dynamics Model
                 'recurrent': [True],
-                'num_models': [5],
+                'num_models': [1],
                 'hidden_nonlinearity_model': ['relu'],
                 'hidden_sizes_model': [(500, )],
                 'dynamic_model_epochs': [30],
@@ -307,14 +309,14 @@ if __name__ == '__main__':
                 'reward_model_epochs': [15],
 
                 #  Other
-                'n_parallel': [1],
+                'n_parallel': [5],
 
                 # representation learning
 
                 'use_image': [True],
                 'model_path': ['ip-neg10-hist3-fut3-code321'],
                 'encoder': ['cpc'],
-                'latent_dim': [32,],
+                'latent_dim': [32],
                 'negative': [10],
                 'history': [3],
                 'future': [1],
@@ -478,7 +480,7 @@ if __name__ == '__main__':
 
         # representation learning
 
-        'use_image': [False],
+        'use_image': [True, False],
         # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [32],

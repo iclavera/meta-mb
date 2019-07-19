@@ -7,6 +7,7 @@ import os
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
+from  meta_mb.envs.envs_util import make_env
 from meta_mb.envs.img_wrapper_env import ImgWrapperEnv
 from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.mujoco.point_pos import PointEnv
@@ -32,12 +33,14 @@ def collect_img_and_truestate(raw_env, policy, num_rollouts=1024, max_path_lengt
     env_paths = sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-', random=True, )
     img_seqs = np.concatenate([path['observations'] for path in env_paths])  # (N x T) x (img_shape)
     true_state_seqs = np.concatenate([path['env_infos']['true_state'] for path in env_paths]) # (N x T) x 2
+
     if plot:
         counter = 1
-        plt.figure(figsize=(64, 16))
+        plt.figure(figsize=(8, 16))
         for i in range(4):
-            for img, state in zip(img_seqs[i * 16 : i * 16 + 16], true_state_seqs[i * 16 : i * 16 + 16]):
-                ax = plt.subplot(4, 16, counter)
+            for img, state in zip([img_seqs[i * max_path_length], img_seqs[i * max_path_length + max_path_length - 1]],
+                                  [true_state_seqs[i * max_path_length], true_state_seqs[i * max_path_length + max_path_length -1]]):
+                ax = plt.subplot(4, 2, counter)
                 plt.imshow(img)
                 ax.set_title(state)
                 counter += 1
@@ -152,23 +155,32 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # if args.env_name == 'ip':
+    #     raw_env = InvertedPendulumEnv()
+    #     state_shape = 4
+    # elif args.env_name == 'pt':
+    #     if args.distractor:
+    #         from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
+    #     else:
+    #         from meta_mb.envs.mujoco.point_pos import PointEnv
+    #     raw_env = PointEnv(ptsize=args.ptsize)
+    #     state_shape = 2
+
+    raw_env, _ = make_env(args.env_name)
+
     if args.env_name == 'ip':
-        raw_env = InvertedPendulumEnv()
-        state_shape = 4
+        state_shape=4
     elif args.env_name == 'pt':
-        if args.distractor:
-            from meta_mb.envs.mujoco.point_pos_distractor import PointEnv
-        else:
-            from meta_mb.envs.mujoco.point_pos import PointEnv
-        raw_env = PointEnv(ptsize=args.ptsize)
-        state_shape = 2
+        states_shape = 2
+    elif args.env_name == 'reacher_easy':
+        states_shape = 7
 
     policy = RepeatRandom(2, 2, repeat=3)
     encoder_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', args.exp_name)
 
     #
-    # collect_img_and_truestate(raw_env, policy, num_rollouts=8, plot=True)
-    # import pdb; pdb.set_trace()
+    collect_img_and_truestate(raw_env, policy, num_rollouts=4, plot=True, max_path_length=100)
+    import pdb; pdb.set_trace()
     freeze_encoding = not args.e2e
     if freeze_encoding:
         save_name='supervised%d' % args.num_rollout
