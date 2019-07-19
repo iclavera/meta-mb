@@ -6,6 +6,7 @@ from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, HopperEnv, AntEnv, Walker2dEnv
 # from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 # from meta_mb.envs.blue.full_blue_env import FullBlueEnv
@@ -16,7 +17,7 @@ import tensorflow as tf
 import joblib
 
 
-EXP_NAME = 'mb-mpc-hc'
+EXP_NAME = 'mb-mpc-vis-hc'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -35,7 +36,7 @@ def run_experiment(**config):
         env = config['env']()
 
         if config.get('model_path', None) is None:
-            dynamics_model = MLPDynamicsEnsemble(
+            dynamics_model = ProbMLPDynamicsEnsemble(
                 name="dyn_model",
                 env=env,
                 learning_rate=config['learning_rate'],
@@ -85,6 +86,7 @@ def run_experiment(**config):
             dynamics_sample_processor=sample_processor,
             n_itr=config['n_itr'],
             initial_random_samples=config['initial_random_samples'],
+            initial_sinusoid_samples=config['initial_sinusoid_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
             fit_model=config['fit_model'],
@@ -104,7 +106,7 @@ if __name__ == '__main__':
         'fit_model': [True],
 
         # Problem
-        'env': [HalfCheetahEnv], #[InvertedPendulumEnv],
+        'env': [HalfCheetahEnv], #InvertedPendulumEnv],
         'max_path_length': [100],
         'normalize': [False],
          'n_itr': [50],
@@ -117,7 +119,7 @@ if __name__ == '__main__':
         'num_cem_iters': [5],
         'use_opt': [False],
         'use_opt_w_policy': [True],
-        'num_opt_iters': [10, 20, 40,],
+        'num_opt_iters': [10], #20, 40,],
         'opt_learning_rate': [1e-3, 1e-2],
 
         # Training
@@ -125,8 +127,8 @@ if __name__ == '__main__':
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
-        'initial_random_samples': [False],
-        'initial_sinusoid_samples': [True],
+        'initial_random_samples': [True],
+        'initial_sinusoid_samples': [False],
 
         # Dynamics Model
         'recurrent': [False],
