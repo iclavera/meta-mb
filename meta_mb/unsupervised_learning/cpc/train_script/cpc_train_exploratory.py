@@ -31,11 +31,11 @@ def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, n
     validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples,
                                        predict_terms=predict_terms, negative_same_traj=negative_same_traj)
 
-
-    # for (x, y), labels in train_data:
-    #     plot_seq(x, y, labels, name='ip-seq')
-    #     break
-    # import pdb; pdb.set_trace()
+    train_data.next()
+    for (x, y), labels in train_data:
+        plot_seq(x, y, labels, name='reacher-seq')
+        break
+    import pdb; pdb.set_trace()
 
     # Create the model
     model = network_cpc(image_shape=image_shape, terms=terms, predict_terms=predict_terms, negative_samples=negative_samples,
@@ -86,6 +86,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    negative_same_traj = 0
+    if args.env == 'reacher_easy':
+        negative_same_traj = args.negative_samples // 3
 
     raw_env, max_path_length = make_env(args.env, args.distractor, args.ptsize)
     normalized_env = NormalizedEnv(raw_env)
@@ -97,7 +100,8 @@ if __name__ == "__main__":
 
     train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=10, batch_size=8,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
-                                  code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=max_path_length, negative_same_traj=negative_same_traj)
+                                  code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=max_path_length,
+                                  negative_same_traj=negative_same_traj)
 
 
 

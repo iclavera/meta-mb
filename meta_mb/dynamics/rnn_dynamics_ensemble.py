@@ -393,6 +393,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         obs_ph, act_ph, hidden_state_ph = tf.gather(obs_ph, perm),\
                                           tf.gather(act_ph, perm),\
                                           self.hidden_state_fn(hidden_state_ph, tf.gather, perm)
+
         obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0),\
                                           tf.split(act_ph, self.num_models, axis=0), \
                                           self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)

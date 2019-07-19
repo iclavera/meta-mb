@@ -182,6 +182,10 @@ class RNNMPCController(Serializable):
             mean, var = elite_mean, elite_var
 
         self.optimal_action = tf.squeeze(mean[0], axis=1)
+        _, self.next_hidden = \
+            self.dynamics_model.predict_sym(tf.expand_dims(self.obs_ph, axis=1),
+                                            tf.expand_dims(self.optimal_action, axis=1),
+                                            self.hidden_state_ph)
 
     def get_rs_action(self, observations):
         n = self.n_candidates
@@ -322,7 +326,7 @@ class RNNMPCController(Serializable):
     def repeat_sym(self, tensor, n_times):
         """
         :param tensor: two dimensional tensor nxd
-        :return: a (n x n_times x d) tensor
+        :return: a (n x n_times) x d tensor
         """
         ret = tf.reshape(
             tf.tile(tf.expand_dims(tensor, -1), [1, n_times, 1]),

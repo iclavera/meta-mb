@@ -74,13 +74,13 @@ class CPCDataGenerator(object):
         # concatenate positive samples with negative ones
         y_images = np.concatenate([y_images_pos[:, :, None, ...], y_images_neg], axis=2)
 
-        pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + 1)).astype('int32')
+        pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + self.negative_same_traj + 1)).astype('int32')
         pos_neg_label[:, :, 0] = 1
 
         # permute the batch so that positive samples are at random places
         rand_idx_n = np.arange(self.batch_size)[:, None, None]
         rand_idx_t = np.arange(self.predict_terms)[None, :, None]
-        rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + 1)
+        rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + self.negative_same_traj + 1)
                                            for i in range(self.predict_terms)]) for j in range(self.batch_size)])
 
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)

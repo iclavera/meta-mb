@@ -7,9 +7,11 @@ import numpy as np
 from gym import utils
 
 class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, include_vel=True):
+        self.include_vel = include_vel
         utils.EzPickle.__init__(self)
         MujocoEnv.__init__(self, 'inverted_pendulum.xml', 2)
+
 
     def step(self, a):
         self.do_simulation(a, self.frame_skip)
@@ -28,7 +30,10 @@ class InvertedPendulumEnv(MetaEnv, MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def _get_obs(self):
-        return np.concatenate([self.sim.data.qpos, self.sim.data.qvel]).ravel()
+        if self.include_vel:
+            return np.concatenate([self.sim.data.qpos, self.sim.data.qvel]).ravel()
+        else:
+            return np.concatenate([self.sim.data.qpos]).ravel()
 
     def _get_reward(self):
         old_ob = self._get_obs()
