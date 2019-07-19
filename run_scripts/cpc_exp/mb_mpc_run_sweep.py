@@ -28,7 +28,7 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
 EXP_NAME = 'IP/rnn_cpc2'
 
@@ -44,10 +44,11 @@ def run_experiment(**config):
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
-        raw_env = make_env(config['env'])
+        raw_env, max_path_length = make_env(config['env'])
 
     else:
         raw_env = config['env']()
+        max_path_length = config['max_path_length']
         if 'model_path' in config:
             # exp_name = config['model_path'] + '_rnnmodel'
             model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
@@ -176,7 +177,7 @@ def run_experiment(**config):
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
-            max_path_length=config['max_path_length'],
+            max_path_length=max_path_length,
         )
 
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
@@ -438,7 +439,7 @@ if __name__ == '__main__':
         'run_suffix': ['1'],
 
         # Problem
-        'env': ['reacher_easy', 'cheetah_run', 'cartpole_swingup'],
+        'env': ['reacher_easy'],#, 'cheetah_run', 'cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -477,7 +478,7 @@ if __name__ == '__main__':
 
         # representation learning
 
-        'use_image': [True],
+        'use_image': [False],
         # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [32],

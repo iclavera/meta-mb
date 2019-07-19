@@ -29,7 +29,7 @@ def make_env(env, distractor=False, ptsize=2):
     elif env == 'reacher_easy':
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy')),
                                                  keys=['position', 'velocity', 'to_target']), amount=4)
-        negative_same_traj = args.negative_samples // 3
+        #negative_same_traj = args.negative_samples // 3
         max_path_length = 250
     elif env == 'cheetah_run':
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run')),
