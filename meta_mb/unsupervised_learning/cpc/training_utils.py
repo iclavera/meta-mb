@@ -8,8 +8,8 @@ class SaveEncoder(keras.callbacks.Callback):
 
     def on_train_begin(self, logs={}):
         self.max_acc = -1.
-        self.encoder = self.model.layers[2].layers[1].layer
-        self.context = self.model.layers[2]
+        self.encoder = self.model.get_layer('context_network').layers[1].layer
+        self.context = self.model.get_layer('context_network')
 
     def on_epoch_end(self, epoch, logs={}):
         cur_acc = logs.get('val_categorical_accuracy')

@@ -34,8 +34,8 @@ def collect_img(raw_env, policy, num_rollouts=32, max_path_length=16, image_shap
     # Sampling data from the given exploratory policy and create a data iterator
     env_paths = sampler.obtain_samples(log=True, log_prefix='Data-EnvSampler-', random=True)
     img_seqs = np.stack([path['observations'] for path in env_paths])  # N x T x (img_shape)
-
-    return img_seqs
+    actions = np.stack([path['actions'] for path in env_paths])
+    return img_seqs, actions
 
 
 def init_uninit_vars(sess):

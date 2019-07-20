@@ -4,17 +4,18 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 class CPCDataGenerator(object):
-    def __init__(self, img_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0):
+    def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0):
         self.batch_size = batch_size
-        self.data = img_seqs
+        self.images = img_seqs
+        self.actions = action_seqs
         self.negative_samples = negative_samples
         self.negative_same_traj = negative_same_traj
         self.predict_terms = predict_terms
         self.terms = terms
 
-        self.n_seqs = self.data.shape[0]
-        self.n_step = self.data.shape[1]
-        self.n_chunks = self.data.shape[1] - self.terms - self.predict_terms + 1 # number of chunks in each time sequence
+        self.n_seqs = self.images.shape[0]
+        self.n_step = self.images.shape[1]
+        self.n_chunks = self.images.shape[1] - self.terms - self.predict_terms + 1 # number of chunks in each time sequence
         self.n_samples = self.n_seqs * self.n_chunks
 
         assert self.negative_same_traj < self.negative_samples
@@ -44,7 +45,9 @@ class CPCDataGenerator(object):
             start_idx_t += 1
 
         # gather the x_images
-        x_images = self.data[idx_n[:, None], x_idx_t]
+        x_images = self.images[idx_n[:, None], x_idx_t]
+        # gather the actions
+        actions = self.actions[idx_n[:, None], x_idx_t]
 
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
         # get tht positive samples for y_images
@@ -53,7 +56,7 @@ class CPCDataGenerator(object):
             y_idx_t = np.concatenate([y_idx_t, start_idx_t], axis=-1)
             start_idx_t += 1
 
-        y_images_pos = self.data[idx_n[:, None], y_idx_t]
+        y_images_pos = self.images[idx_n[:, None], y_idx_t]
 
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)
@@ -71,7 +74,7 @@ class CPCDataGenerator(object):
             neg_idx_n = np.concatenate([neg_idx_n, neg_idx_n2], axis = -1)
             neg_idx_t = np.concatenate([neg_idx_t, neg_idx_t2], axis=-1)
 
-        y_images_neg = self.data[neg_idx_n, neg_idx_t]
+        y_images_neg = self.images[neg_idx_n, neg_idx_t]
 
         # concatenate positive samples with negative ones
         y_images = np.concatenate([y_images_pos[:, :, None, ...], y_images_neg], axis=2)
@@ -87,7 +90,7 @@ class CPCDataGenerator(object):
 
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
 
-        return [x_images, y_images[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
+        return [x_images, actions, y_images[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
 
 def plot_seq(x, y, labels, name=''):
     """

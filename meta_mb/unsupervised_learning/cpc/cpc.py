@@ -92,8 +92,8 @@ class CPCLayer(keras.layers.Layer):
         return input_shape[1][:3]
 
 
-def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, learning_rate, encoder_arch='default',
-                context_network='stack', context_size=32):
+def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
+                learning_rate, encoder_arch='default', context_network='stack', context_size=32):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
 
@@ -111,20 +111,29 @@ def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, 
 
     # Define context network
     x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]))
+    action_input = keras.layers.Input((terms, action_dim))
     x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
+
     if context_network == 'stack':
         context = keras.layers.Reshape((code_size * terms,))(x_encoded)
+        if include_action:
+            action_flat = keras.layers.Reshape((action_dim * terms, ))(action_input)
+            context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
         context = keras.layers.Dense(512, activation='relu')(context)
         context = keras.layers.Dense(context_size, name='context_output')(context)
     elif context_network == 'rnn':
         context = network_autoregressive(x_encoded)
+        if include_action:
+            action_flat = keras.layers.Reshape((action_dim * terms,))(action_input)
+            context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
+            context = keras.layers.Dense(512, activation='relu')(context)
         context = keras.layers.Dense(context_size, name='context_output')(context)
 
-    context_network = keras.models.Model(x_input, context, name='context_network')
+    context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
     context_network.summary()
 
     # Define rest of the model
-    context_output = context_network(x_input)
+    context_output = context_network([x_input, action_input])
     preds = network_prediction(context_output, code_size, predict_terms)
 
     y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]))
@@ -136,7 +145,7 @@ def network_cpc(image_shape, terms, predict_terms, negative_samples, code_size, 
     logits = CPCLayer()([preds, y_encoded])
 
     # Model
-    cpc_model = keras.models.Model(inputs=[x_input, y_input], outputs=logits)
+    cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
 
     # Compile model
     cpc_model.compile(

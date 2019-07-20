@@ -21,24 +21,25 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 
 
-def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, negative_same_traj=0, batch_size=32, code_size=32, epochs=30,
+def train_with_exploratory_policy(raw_env, policy, exp_name, negative_samples, include_action, negative_same_traj=0, batch_size=32, code_size=32, epochs=30,
                                   image_shape=(64, 64, 3),  num_rollouts=32, max_path_length=16,
                                   encoder_arch='default', context_network='stack', lr=1e-3, terms=1, predict_terms=1):
-    img_seqs = collect_img(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length, image_shape=image_shape)
-    train_seq, val_seq = train_test_split(img_seqs)
-    train_data = CPCDataGenerator(train_seq, batch_size, terms=terms, negative_samples=negative_samples,
+    img_seqs, action_seqs = collect_img(raw_env, policy, num_rollouts=num_rollouts, max_path_length=max_path_length, image_shape=image_shape)
+    train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
+    train_data = CPCDataGenerator(train_img, train_action, batch_size, terms=terms, negative_samples=negative_samples,
                                   predict_terms=predict_terms, negative_same_traj=negative_same_traj)
-    validation_data = CPCDataGenerator(val_seq, batch_size, terms=terms, negative_samples=negative_samples,
+    validation_data = CPCDataGenerator(val_img, val_action, batch_size, terms=terms, negative_samples=negative_samples,
                                        predict_terms=predict_terms, negative_same_traj=negative_same_traj)
 
-    train_data.next()
-    for (x, y), labels in train_data:
-        plot_seq(x, y, labels, name='reacher-seq')
-        break
-    import pdb; pdb.set_trace()
+    # train_data.next()
+    # for (x, y), labels in train_data:
+    #     plot_seq(x[0], y, labels, name='reacher-seq')
+    #     break
+    # import pdb; pdb.set_trace()
 
     # Create the model
-    model = network_cpc(image_shape=image_shape, terms=terms, predict_terms=predict_terms, negative_samples=negative_samples,
+    model = network_cpc(image_shape=image_shape, action_dim=raw_env.action_space.shape[0], include_action=include_action,
+                        terms=terms, predict_terms=predict_terms, negative_samples=negative_samples,
                         code_size=code_size, learning_rate=lr, encoder_arch=encoder_arch, context_network=context_network)
 
     # Callbacks
@@ -94,11 +95,10 @@ if __name__ == "__main__":
     normalized_env = NormalizedEnv(raw_env)
     policy = RepeatRandom(2, 2, repeat=3)
 
-    # exp_name = 'cartpole'
-    exp_name = '%s-neg%d-hist%d-fut%d-code%d%s' % (args.env, args.negative_samples, args.terms, args.predict_terms, args.code_size, args.run_suffix)
-    # exp_name = 'cpc-ptsize=%d-codesize=%d%s' % (args.ptsize, args.code_size, args.run_suffix) if not args.distractor else 'cpc-distractor%s' % args.run_suffix
+    exp_name = '%s-neg%d-hist%d-fut%d-code%d-action-%s' % (args.env, args.negative_samples, args.terms,
+                                                           args.predict_terms, args.code_size, args.run_suffix)
 
-    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, num_rollouts=10, batch_size=8,
+    train_with_exploratory_policy(raw_env, policy, exp_name, args.negative_samples, include_action=True, num_rollouts=512, batch_size=32,
                                   context_network=args.context_network, epochs=args.epochs, lr=args.lr, terms=args.terms,
                                   code_size=args.code_size, predict_terms=args.predict_terms, max_path_length=max_path_length,
                                   negative_same_traj=negative_same_traj)
