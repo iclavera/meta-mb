@@ -17,6 +17,8 @@ class CPCDataGenerator(object):
         self.n_chunks = self.data.shape[1] - self.terms - self.predict_terms + 1 # number of chunks in each time sequence
         self.n_samples = self.n_seqs * self.n_chunks
 
+        assert self.negative_same_traj < self.negative_samples
+
     def __iter__(self):
         return self
 
@@ -55,9 +57,9 @@ class CPCDataGenerator(object):
 
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)
-        neg_idx_n = np.stack([np.random.choice(seq_index[seq_index!=i], size=(self.predict_terms, self.negative_samples))
+        neg_idx_n = np.stack([np.random.choice(seq_index[seq_index!=i], size=(self.predict_terms, self.negative_samples - self.negative_same_traj))
                               for i in idx_n])
-        neg_idx_t = np.random.randint(0, self.n_step, (self.batch_size, self.predict_terms, self.negative_samples))
+        neg_idx_t = np.random.randint(0, self.n_step, (self.batch_size, self.predict_terms, self.negative_samples - self.negative_same_traj))
 
         if self.negative_same_traj > 0:
             neg_idx_n2 = np.stack([i * np.ones(shape=(self.predict_terms, self.negative_same_traj), dtype=int) for i in idx_n])
@@ -74,13 +76,13 @@ class CPCDataGenerator(object):
         # concatenate positive samples with negative ones
         y_images = np.concatenate([y_images_pos[:, :, None, ...], y_images_neg], axis=2)
 
-        pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + self.negative_same_traj + 1)).astype('int32')
+        pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + 1)).astype('int32')
         pos_neg_label[:, :, 0] = 1
 
         # permute the batch so that positive samples are at random places
         rand_idx_n = np.arange(self.batch_size)[:, None, None]
         rand_idx_t = np.arange(self.predict_terms)[None, :, None]
-        rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + self.negative_same_traj + 1)
+        rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + 1)
                                            for i in range(self.predict_terms)]) for j in range(self.batch_size)])
 
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
