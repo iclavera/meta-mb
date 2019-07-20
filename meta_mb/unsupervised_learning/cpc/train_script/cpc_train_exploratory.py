@@ -20,7 +20,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+# os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 INSTANCE_TYPE = 'c4.2xlarge'
 EXP_NAME = 'envs_action'
 
@@ -49,6 +49,7 @@ def train_with_exploratory_policy(**config):
     #     plot_seq(x[0], y, labels, name='reacher-seq')
     #     break
     # import pdb; pdb.set_trace()
+
 
     # Create the model
     model = network_cpc(image_shape=config['image_shape'], action_dim=raw_env.action_space.shape[0], include_action=config['include_action'],
@@ -119,7 +120,6 @@ if __name__ == "__main__":
     }
 
     run_sweep(train_with_exploratory_policy, config, EXP_NAME, INSTANCE_TYPE)
-
 
 
 

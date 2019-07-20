@@ -33,7 +33,6 @@ def make_env(env, distractor=False, ptsize=2):
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy')),
                                                  keys=['position', 'velocity', 'to_target']), amount=4)
-        # negative_same_traj = args.negative_samples // 3
         max_path_length = 250
     elif env == 'cheetah_run':
         from dm_control import suite

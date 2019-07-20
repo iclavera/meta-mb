@@ -28,7 +28,7 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
 EXP_NAME = 'envs_action'
 
@@ -181,7 +181,6 @@ def run_experiment(**config):
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=max_path_length,
-            # n_parallel=config['n_parallel']
         )
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
 
@@ -453,6 +452,7 @@ if __name__ == '__main__':
         'run_suffix': ['1', '2'],
 
         # Problem
+
         'env': ['ip', 'cartpole_balance', 'cartpole_swingup', 'reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
@@ -492,7 +492,7 @@ if __name__ == '__main__':
 
         # representation learning
 
-        'use_image': [True],
+        'use_image': [True, False],
         # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [8],
