@@ -30,7 +30,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'IP/rnn_cpc2'
+EXP_NAME = 'envs_action'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -38,9 +38,12 @@ INSTANCE_TYPE = 'c4.2xlarge'
 def run_experiment(**config):
     exp_name = ''
     if isinstance(config['env'], str):
-        folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
-                                                           config['latent_dim'], config['run_suffix'])
-        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', folder,
+        folder = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-%s' % (config['env'], config['negative'], config['history'], \
+                                                                   config['future'], config['latent_dim'], \
+                                                                   config['include_action'], config['run_suffix'])
+        # folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
+        #                                                    config['latent_dim'], config['run_suffix'])
+        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
                                   'vae' if config['encoder'] == 'vae' else
                                   'encoder.h5' if not config['use_context_net'] else
                                   'context.h5')
@@ -199,6 +202,14 @@ def run_experiment(**config):
 
 
 if __name__ == '__main__':
+    # import argparse
+    #
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('EXP_NAME', type=str)
+    #
+    # args = parser.parse_args()
+
+
     # -------------------- Define Variants -----------------------------------
 
     def make_pt_env():
@@ -438,11 +449,11 @@ if __name__ == '__main__':
     }
 
     config_envs = {
-        'seed': [1, 2],
-        'run_suffix': ['1'],
+        'seed': [1],
+        'run_suffix': ['1', '2'],
 
         # Problem
-        'env': ['reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
+        'env': ['ip', 'cartpole_balance', 'cartpole_swingup', 'reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -484,11 +495,12 @@ if __name__ == '__main__':
         'use_image': [True],
         # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
-        'latent_dim': [32],
+        'latent_dim': [8],
         'negative': [10],
         'history': [3],
         'future': [3],
-        'use_context_net': [False]
+        'use_context_net': [False],
+        'include_action': [True, False]
 
     }
 
