@@ -1,6 +1,6 @@
 from meta_mb.utils.serializable import Serializable
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.policies.probabilistic_gaussian_mlp_policy import ProbGaussianMLPPolicy
+from meta_mb.policies.distributions.diagonal_gaussian import DiagonalGaussian
 from meta_mb.optimizers.mpc_tau_optimizer import MPCTauOptimizer
 import tensorflow as tf
 import numpy as np
@@ -18,7 +18,8 @@ class MPCController(Serializable):
             use_cem=False,
             use_opt=False,
             use_opt_w_policy=False,
-            probabilistic_policy=False,
+            initializer_str='uniform',
+            kl_coef=1,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
@@ -37,7 +38,8 @@ class MPCController(Serializable):
         self.use_cem = use_cem
         self.use_opt = use_opt
         self.use_opt_w_policy = use_opt_w_policy
-        self.probabilistic_policy = probabilistic_policy
+        self.initializer_str = initializer_str
+        self.kl_coef = kl_coef
         self.n_candidates = n_candidates
         self.horizon = horizon
         self.num_cem_iters = num_cem_iters
@@ -63,40 +65,46 @@ class MPCController(Serializable):
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+        assert use_graph
 
-        if use_graph:
-            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-            self.optimal_action = None
-            if use_opt_w_policy:
-                self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
-                # policy_factory = ProbGaussianMLPPolicy if probabilistic_policy else GaussianMLPPolicy
-                self.policy = GaussianMLPPolicy(
-                    name='gaussian-mlp-policy',
-                    obs_dim=self.obs_space_dims,
-                    action_dim=self.action_space_dims,
-                    hidden_sizes=(64, 64),
-                    learn_std=True,
-                    hidden_nonlinearity=tf.tanh,
-                    output_nonlinearity=None,
-                )
-                self.build_opt_graph_w_policy()
-            elif use_opt:
+        self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
+        self.optimal_action = None
+        if use_opt_w_policy:
+            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+            self.policy = GaussianMLPPolicy(
+                name='gaussian-mlp-policy',
+                obs_dim=self.obs_space_dims,
+                action_dim=self.action_space_dims,
+                hidden_sizes=(64, 64),
+                learn_std=True,
+                hidden_nonlinearity=tf.tanh,  # TODO: tunable?
+                output_nonlinearity=tf.tanh,  # TODO: scale to match action space range later
+            )
+            self.build_opt_graph_w_policy()
+        elif use_opt:
+            if initializer_str == 'uniform':
                 self.tau_mean_val = np.random.uniform(
                     low=self.env.action_space.low,
                     high=self.env.action_space.high,
                     size=(self.horizon, self.num_envs, self.action_space_dims),
                 )
-                self.tau_mean_ph = tf.placeholder(
-                    dtype=tf.float32,
-                    shape=np.shape(self.tau_mean_val),
-                    name='tau_mean',
+            elif initializer_str == 'zeros':
+                self.tau_mean_val = np.zeros(
+                    (self.horizon, self.num_envs, self.action_space_dims),
                 )
-                self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
-                self.build_opt_graph()
-            elif use_cem:
-                self.build_cem_graph()
             else:
-                self.build_rs_graph()
+                raise NotImplementedError('initializer_str must be uniform or zeros')
+            self.tau_mean_ph = tf.placeholder(
+                dtype=tf.float32,
+                shape=np.shape(self.tau_mean_val),
+                name='tau_mean',
+            )
+            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+            self.build_opt_graph()
+        elif use_cem:
+            self.build_cem_graph()
+        else:
+            self.build_rs_graph()
 
     @property
     def vectorized(self):
@@ -108,25 +116,33 @@ class MPCController(Serializable):
 
         return self.get_actions(observation)
 
-    def get_actions(self, observations):
+    def get_actions(self, observations, do_grads_plots=False):
         sess = tf.get_default_session()
         if self.use_opt_w_policy:
-            actions, tau_mean_val_0, tau_log_std_val_0 = self.tau_optimizer.optimize({'obs': observations})
+            actions, tau_mean_val_0, tau_log_std_val_0, kl_0 = self.tau_optimizer.optimize({'obs': observations})
         elif self.use_opt:
-            actions, tau_mean_val, tau_log_std_val_0 = self.tau_optimizer.optimize({'obs': observations, 'tau_mean': self.tau_mean_val})
-            tau_mean_val_0 = tau_mean_val[0]
+            actions, tau_mean_val, tau_log_std_val_0, kl_0 = self.tau_optimizer.optimize(
+                {'obs': observations, 'tau_mean': self.tau_mean_val},
+                do_plots=do_grads_plots,
+            )
+            tau_mean_val_0 = tau_mean_val[0][0]
             # rotate
-            self.tau_mean_val = np.concatenate([
-                tau_mean_val[1:],
-                np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high, size=(1, self.num_envs, self.action_space_dims)),
-            ], axis=0)
+            if self.initializer_str == 'uniform':
+                self.tau_mean_val = np.concatenate([
+                    tau_mean_val[1:],
+                    np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high, size=(1, self.num_envs, self.action_space_dims)),
+                ], axis=0)
+            else:
+                self.tau_mean_val = np.concatenate([
+                    tau_mean_val[1:],
+                    np.zeros((1, self.num_envs, self.action_space_dims)),
+                ], axis=0)
         else:  # CEM or RS
             actions, = sess.run([self.optimal_action], feed_dict={self.obs_ph: observations})
-            tau_mean_val_0 = None
-            tau_log_std_val_0 = None
+            return actions, []
 
-        # return actions, [dict(mean=mean, std=std) for mean, std in zip(tau_mean_val, np.exp(tau_log_std_val))]
-        return actions, [dict(mean=tau_mean_val_0, std=np.exp(tau_log_std_val_0))]
+        return actions, [dict(mean=tau_mean_val_0, std=np.exp(tau_log_std_val_0), kl=kl_0)]
+
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,
@@ -310,7 +326,6 @@ class MPCController(Serializable):
             stop_gradients=self.model_params,
         )
         return tau + tf.multiply(self.opt_learning_rate, grads_tau), returns
-    """
 
     def build_opt_graph(self):
         # tau_mean = tf.get_variable(
@@ -357,6 +372,7 @@ class MPCController(Serializable):
             result_op=tau[0],
             input_ph_dict={'obs': self.obs_ph,},
         )
+    """
 
     def build_opt_graph(self):
         mean_var = tf.get_variable(
@@ -372,23 +388,53 @@ class MPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
-        self.log_std_var = tf.maximum(log_std_var, np.log(1e-6))
+        # log_std_var = tf.maximum(log_std_var, np.log(1e-6))
+        old_mean_var = tf.get_variable(
+            'old_tau_mean',
+            shape=(self.horizon, self.num_envs, self.action_space_dims),
+            dtype=tf.float32,
+            trainable=False,
+        )
+        old_log_std_var = tf.get_variable(
+            'old_tau_log_std',
+            shape=(1, 1, self.action_space_dims),
+            dtype=tf.float32,
+            trainable=False,
+        )
+        init_ops = [
+            tf.assign(mean_var, self.tau_mean_ph),
+            tf.assign(old_mean_var, self.tau_mean_ph),
+            tf.assign(old_log_std_var, log_std_var),
+        ]
         tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
         tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
+        # TODO: rather than clipping, add penalty to actions outside valid range
         returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
         for t in range(self.horizon):
             next_obs = self.dynamics_model.predict_batches_sym(obs, tau[t])
-            assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
             returns += self.discount ** t * rewards
             obs = next_obs
 
+        kl = tf.reduce_sum(DiagonalGaussian(-1).kl_sym(
+            old_dist_info_vars=dict(
+                mean=tf.reshape(old_mean_var, [-1, self.action_space_dims]),
+                log_std=tf.reshape(old_log_std_var, [-1, self.action_space_dims]),
+            ),
+            new_dist_info_vars=dict(
+                mean=tf.reshape(mean_var, [-1, self.action_space_dims]),
+                log_std=tf.reshape(log_std_var, [-1, self.action_space_dims]),
+            ),
+        ), axis=0)/self.num_envs  # to match returns = reduce_sum(returns)/self.num_envs
+
+        neg_returns = tf.reduce_mean(-returns, axis=0)
+
         self.tau_optimizer.build_graph(
-            loss=tf.reduce_mean(-returns, axis=0),
-            init_op=tf.assign(mean_var, self.tau_mean_ph),
+            loss=neg_returns+self.kl_coef*kl,
+            init_op=[init_ops],
             var_list=[mean_var, log_std_var],
-            result_op=[tau[0], mean_var, log_std_var[0]],
+            result_op=[tau[0], mean_var, log_std_var[0][0], kl],
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph},
         )
 
@@ -396,14 +442,14 @@ class MPCController(Serializable):
         assert self.policy is not None
         returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
-        p_bar_mean = tf.get_variable(
-            'p_bar_mean',
+        old_mean_var = tf.get_variable(
+            'old_policy_mean',
             shape=(self.num_envs, self.action_space_dims),
             dtype=tf.float32,
             trainable=False,
         )
-        p_bar_log_std = tf.get_variable(
-            'p_bar_log_std',
+        old_log_std_var = tf.get_variable(
+            'old_policy_log_std',
             shape=(1, self.action_space_dims),
             dtype=tf.float32,
             trainable=False,
@@ -417,8 +463,8 @@ class MPCController(Serializable):
         # )
         old_dist_policy = self.policy.distribution_info_sym(obs)
         init_op = [
-            tf.assign(p_bar_mean, old_dist_policy['mean']),
-            tf.assign(p_bar_log_std, old_dist_policy['log_std']),
+            tf.assign(old_mean_var, old_dist_policy['mean']),
+            tf.assign(old_log_std_var, old_dist_policy['log_std']),
         ]
         result_op = None
         p_info_dict = None
@@ -426,26 +472,27 @@ class MPCController(Serializable):
             dist_policy = self.policy.distribution_info_sym(obs)
             act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
             act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
+            # TODO: penalize rather than clipping
             next_obs = self.dynamics_model.predict_batches_sym(obs, act)
-            if t == 0:
-                result_op = [act, dist_policy['mean'][0], dist_policy['log_std'][0]]
-                p_info_dict = dist_policy
-            assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
             returns += self.discount ** t * rewards
             obs = next_obs
+            if t == 0:
+                result_op = [act, dist_policy['mean'][0], dist_policy['log_std'][0]]
+                p_info_dict = dist_policy
 
-        kl = self.policy.distribution.kl_sym(
+        kl = tf.reduce_mean(self.policy.distribution.kl_sym(
             p_info_dict,
-            dict(mean=p_bar_mean, log_std=p_bar_log_std),
-        )
-        # lmbda_kl = tf.multiply(lmbda, kl)
+            dict(mean=old_mean_var, log_std=old_log_std_var),
+        ), axis=0)
+
+        neg_returns = tf.reduce_mean(-returns, axis=0)
 
         self.tau_optimizer.build_graph(
-            loss=tf.reduce_mean(-returns + kl, axis=0),
+            loss=neg_returns+self.kl_coef*kl,
             var_list=list(self.policy.get_params().values()),
             init_op=init_op,
-            result_op=result_op,
+            result_op=result_op + [kl],
             input_ph_dict={'obs': self.obs_ph},
             #lmbda=lmbda,
             #loss_dual=tf.reduce_mean(-lmbda_kl, axis=0),
