@@ -117,7 +117,6 @@ class MPCController(Serializable):
         return self.get_actions(observation)
 
     def get_actions(self, observations, do_grads_plots=False):
-        sess = tf.get_default_session()
         if self.use_opt_w_policy:
             actions, tau_mean_val_0, tau_log_std_val_0, kl_0 = self.tau_optimizer.optimize({'obs': observations})
         elif self.use_opt:
@@ -138,11 +137,11 @@ class MPCController(Serializable):
                     np.zeros((1, self.num_envs, self.action_space_dims)),
                 ], axis=0)
         else:  # CEM or RS
+            sess = tf.get_default_session()
             actions, = sess.run([self.optimal_action], feed_dict={self.obs_ph: observations})
             return actions, []
 
         return actions, [dict(mean=tau_mean_val_0, std=np.exp(tau_log_std_val_0), kl=kl_0)]
-
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,
@@ -236,144 +235,6 @@ class MPCController(Serializable):
 
         self.optimal_action = tf.squeeze(mean[0], axis=1)
 
-    """
-    def build_opt_graph(self):
-        # Initialization
-        returns = 0
-        tau = tf.random.uniform(
-            shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.action_space_dims],
-            minval=self.env.action_space.low,
-            maxval=self.env.action_space.high,
-        )
-
-        # Equivalent to np.repeat
-        observation = tf.reshape(
-            tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
-            [-1, self.obs_space_dims]
-        )
-        observation = tf.stop_gradient(observation)
-
-        for epoch in range(self.num_opt_iters):
-            # compute return with current trajectories
-            for t in range(self.horizon):
-                next_observation = self.dynamics_model.predict_sym(observation, tau[t])
-                next_observation = tf.stop_gradient(next_observation)
-                assert self.reward_model is None
-                rewards = self.unwrapped_env.tf_reward(observation, tau[t], next_observation)
-                returns += self.discount ** t * rewards
-                observation = next_observation
-
-            # optimize trajectories
-            grads_tau, = tf.gradients(ys=returns, xs=[tau,])
-            tau += tf.multiply(self.opt_learning_rate, grads_tau)
-
-        returns = tf.reshape(returns, (-1, self.n_candidates))  # (batch_size, n_candidates)
-
-        cand_a = tf.reshape(tau[0], [-1, self.n_candidates, self.action_space_dims])  # (batch_size, n_candidates, act_dims)
-        idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
-        self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
-
-    def build_opt_graph(self):
-        # Initialization
-        returns = 0
-        tau = tf.random.uniform(
-            shape=[self.horizon, tf.shape(self.obs_ph)[0], self.action_space_dims],
-            minval=self.env.action_space.low,
-            maxval=self.env.action_space.high,
-        )
-
-        # observation = tf.stop_gradient(self.obs_ph)
-        observation = self.obs_ph
-        observation_seq = [observation]
-
-        # compute return with current trajectories
-        for t in range(self.horizon):
-            next_observation = self.dynamics_model.predict_sym(observation, tau[t])
-            # next_observation = tf.stop_gradient(next_observation)
-            observation_seq.append(next_observation)
-            assert self.reward_model is None
-            rewards = self.unwrapped_env.tf_reward(observation, tau[t], next_observation)
-            returns += self.discount ** t * rewards
-            observation = next_observation
-
-        grads_tau, = tf.gradients(ys=returns, xs=[tau,])
-        tau += tf.multiply(self.opt_learning_rate, grads_tau)
-
-        new_returns = 0
-        for t in range(self.horizon):
-            rewards = self.unwrapped_env.tf_reward(observation_seq[t], tau[t], observation_seq[t+1])
-            new_returns += self.discount ** t * rewards
-
-        self.optimal_action = tau[0]
-        self.returns = returns
-        self.new_returns = new_returns
-
-    def opt_tau_sym(self, obs, tau):
-        if self.model_params is None:
-            self.model_params = sum([list(nn.get_params().values()) for nn in self.dynamics_model._networks], [])
-
-        returns = 0
-        for t in range(self.horizon):
-            next_obs = self.dynamics_model.predict_sym(obs, tau[t])
-            assert self.reward_model is None
-            rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
-
-        grads_tau, = tf.gradients(
-            ys=returns,
-            xs=[tau,],
-            stop_gradients=self.model_params,
-        )
-        return tau + tf.multiply(self.opt_learning_rate, grads_tau), returns
-
-    def build_opt_graph(self):
-        # tau_mean = tf.get_variable(
-        #     'tau_mean',
-        #     shape=(self.num_envs, self.action_space_dims),
-        #     dtype=tf.float32,
-        #     trainable=True,
-        # )
-        # tau_std = tf.get_variable(
-        #     'tau_std',
-        #     shape=(self.num_envs, self.action_space_dims),
-        #     dtype=tf.float32,
-        #     trainable=True,
-        # )
-        # tau = tau_mean + tf.multiply(tf.random.normal((self.num_envs, self.action_space_dims)), tau_std)
-        tau = tf.get_variable(
-            'tau',
-            shape=(self.horizon, self.num_envs, self.action_space_dims),
-            dtype=tf.float32,
-            initializer=tf.initializers.random_uniform(minval=self.env.action_space.low, maxval=self.env.action_space.high),
-            trainable=True,
-        )
-        tf.assign(tau, tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high))
-        returns = tf.zeros(shape=(self.num_envs,))
-        obs = self.obs_ph
-        for t in range(self.horizon):
-            next_obs = self.dynamics_model.predict_batches_sym(obs, tau[t])
-            assert self.reward_model is None
-            rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
-
-        self.tau_optimizer.build_graph(
-            loss=tf.reduce_mean(-returns, axis=0),
-            var_list=[tau],
-            # init_op=tf.assign(tau, tf.concat([
-            #     tau[1:],
-            #     tf.random_uniform(
-            #         (1, self.num_envs, self.action_space_dims),
-            #         minval=self.env.action_space.low,
-            #         maxval=self.env.action_space.high,
-            #     )
-            # ], axis=0)),
-            result_op=tau[0],
-            input_ph_dict={'obs': self.obs_ph,},
-        )
-    """
-
     def build_opt_graph(self):
         mean_var = tf.get_variable(
             'tau_mean',
@@ -432,7 +293,7 @@ class MPCController(Serializable):
 
         self.tau_optimizer.build_graph(
             loss=neg_returns+self.kl_coef*kl,
-            init_op=[init_ops],
+            init_op=init_ops,
             var_list=[mean_var, log_std_var],
             result_op=[tau[0], mean_var, log_std_var[0][0], kl],
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph},
@@ -498,33 +359,7 @@ class MPCController(Serializable):
             #loss_dual=tf.reduce_mean(-lmbda_kl, axis=0),
         )
 
-    # def build_opt_graph_w_policy(self):
-    #     assert self.policy is not None
-    #     returns = tf.zeros(shape=(self.num_envs,))
-    #     obs = self.obs_ph
-    #     result_op = None
-    #     for t in range(self.horizon):
-    #         dist_policy = self.policy.distribution_info_sym(obs)
-    #         act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-    #         act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
-    #         if t == 0:
-    #             result_op = act
-    #         next_obs = self.dynamics_model.predict_batches_sym(obs, act)
-    #         assert self.reward_model is None
-    #         rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
-    #         returns += self.discount ** t * rewards
-    #         obs = next_obs
-    #
-    #     self.tau_optimizer.build_graph(
-    #         # loss=tf.reduce_mean(tf.multiply(sum_likelihood, tf.stop_gradient(-returns) + ), axis=0),
-    #         loss=-tf.reduce_mean(returns), axis=0),
-    #         var_list=list(self.policy.get_params().values()),
-    #         result_op=result_op,
-    #         input_ph_dict={'obs': self.obs_ph},
-    #     )
-
     def get_cem_action(self, observations):
-
         n = self.n_candidates
         m = len(observations)
         h = self.horizon
