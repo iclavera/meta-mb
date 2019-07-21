@@ -137,7 +137,7 @@ if __name__ == '__main__':
         'env': [AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [250],
+        'n_itr': [65],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
