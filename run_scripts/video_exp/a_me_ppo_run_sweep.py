@@ -186,7 +186,7 @@ if __name__ == '__main__':
         'sampler': ['bptt'],
 
         'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'Hopper', 'HalfCheetah', 'Ant'],
+        'env': ['Hopper', 'Ant'],
 
         # Problem Conf
         'algo': ['meppo'],
