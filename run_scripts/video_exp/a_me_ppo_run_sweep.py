@@ -171,63 +171,21 @@ def run_base(exp_dir, **kwargs):
 
 if __name__ == '__main__':
 
-    sweep_params = {
+    params_json_path = os.getcwd() + '/data/corl_data/video_params/a-me-ppo-HalfCheetah.json'
+    with open(params_json_path, 'r') as f:
+        data = json.loads(f.read())
+        if "args_data" in data:
+            del data["args_data"]
+        data['exp_name'] = params_json_path.split('/')[-1].split('.')[0]
+        data['baseline'] = LinearFeatureBaseline
+        data['policy_hidden_nonlinearity'] = tanh
+        data['algo'] = 'meppo'
+        data['n_itr'] = 1000
 
-        'flags_need_query': [
-            [False, False, False],
-        ],
-        'rolling_average_persitency': [
-            0.4, #0.9,
-        ],
-
-        'seed': [1],
-        'n_itr': [800],
-        'num_rollouts': [1],
-        'sampler': ['bptt'],
-
-        'simulation_sleep_frac': [1],
-        'env': ['Hopper', 'Ant'],
-
-        # Problem Conf
-        'algo': ['meppo'],
-        'baseline': [LinearFeatureBaseline],
-        'max_path_length': [200],
-        'discount': [0.99],
-        'gae_lambda': [1],
-        'normalize_adv': [True],
-        'positive_adv': [False],
-        'log_real_performance': [True],  # UNUSED
-        'steps_per_iter': [1],  # UNUSED
-
-        # Real Env Sampling
-        'n_parallel': [1],
-
-        # Dynamics Model
-        'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512, 512)],
-        'dyanmics_hidden_nonlinearity': ['relu'],
-        'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-3],
-        'dynamics_batch_size': [256,],
-        'dynamics_buffer_size': [10000],
-        'deterministic': [False],
-        'loss_str': ['MSE'],
-
-        # Policy
-        'policy_hidden_sizes': [(64, 64)],
-        'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': [tanh],
-        'policy_output_nonlinearity': [None],
-
-        # Algo
-        'clip_eps': [0.3],
-        'learning_rate': [1e-3,],
-        'num_ppo_steps': [5],
-        'imagined_num_rollouts': [50,],
-        'scope': [None],
-        'exp_tag': ['parallel-mbppo'],  # For changes besides hyperparams
-    }
+    for k, v in data.items():
+        data[k] = [v]
+    print(data)
+    sweep_params = data
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
 
