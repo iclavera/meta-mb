@@ -20,12 +20,12 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'bptt-sequential-metrpo'
+EXP_NAME = 'video-sequential-metrpo'
 
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + kwargs.get('exp_name', '')
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='gap', snapshot_gap=1)
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -122,14 +122,14 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1,],# 2, 3, 4],
+        'seed': [1],
 
         'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv,], #[HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
-        'n_itr': [65],
+        'n_itr': [500],
         'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9,],# 0.4],
+        'rolling_average_persitency': [0.9],
         'deterministic': [False],
 
         # Policy
@@ -162,7 +162,7 @@ if __name__ == '__main__':
 
         # Algo
         'step_size': [0.01],# 0.3, 0.1],
-        'imagined_num_rollouts': [50], #50],
+        'imagined_num_rollouts': [50],
         'sample_from_buffer': [True],
         'scope': [None],
         'exp_tag': ['me_trpo_all'],  # For changes besides hyperparams

@@ -7,7 +7,11 @@ from meta_mb.utils import utils
 from pyprind import ProgBar
 import numpy as np
 import time
+import os
 import itertools
+import matplotlib.pyplot as plt
+from math import ceil
+from itertools import accumulate
 
 
 class Sampler(BaseSampler):
@@ -31,7 +35,7 @@ class Sampler(BaseSampler):
             max_path_length,
             n_parallel=1,
             vae=None,
-
+            do_plots=False,
     ):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
@@ -40,6 +44,7 @@ class Sampler(BaseSampler):
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
+        self.do_plots = do_plots
 
         # setup vectorized environment
 
@@ -47,6 +52,8 @@ class Sampler(BaseSampler):
             self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
         else:
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
+
+        self._global_step = 0
 
     def update_tasks(self):
         pass
@@ -66,6 +73,7 @@ class Sampler(BaseSampler):
         """
 
         # initial setup / preparation
+        self._global_step += 1
         paths = []
 
         n_samples = 0
@@ -80,6 +88,9 @@ class Sampler(BaseSampler):
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
 
+        init_obses = obses
+        taus, tau_mean, tau_std, obs_real, reward_real,  loss_kl = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
+
         while n_samples < self.total_samples:
 
             # execute policy
@@ -92,7 +103,8 @@ class Sampler(BaseSampler):
                 agent_infos = {}
             elif deterministic:
                 actions, agent_infos = policy.get_actions(obses)
-                actions = [a_i['mean'] for a_i in agent_infos]
+                raise NotImplementedError
+                # actions = [a_i['mean'] for a_i in agent_infos]
             elif sinusoid:
                 action_space = self.env.action_space.shape[0]
                 num_envs = self.vec_env.num_envs
@@ -100,13 +112,23 @@ class Sampler(BaseSampler):
                 agent_infos = dict()
             else:
                 obses = np.array(obses)
-                actions, agent_infos = policy.get_actions(obses)
+                actions, agent_infos = policy.get_actions(obses)# , do_grads_plots=(n_samples==0))
+                assert len(actions) == len(obses)  # (num_rollouts, space_dims)
             policy_time += time.time() - t
 
             # step environments
             t = time.time()
             next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
             env_time += time.time() - t
+
+            if self.do_plots and not random and not sinusoid:
+                taus.append(actions)  # actions = (num_envs, act_space_dims)
+                obs_real.append(next_obses[0])
+                reward_real.append(rewards[0])
+                tau_mean.append(agent_infos[0]['mean'])
+                tau_std.append(agent_infos[0]['std'])
+                loss_kl.append(agent_infos[0]['kl'])
+            agent_infos = []
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
@@ -148,6 +170,76 @@ class Sampler(BaseSampler):
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
+
+        if not self.do_plots:
+            return paths
+
+        # Plotting: compare real and imaginary performance
+        if not random and not sinusoid:
+            tau, obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], [], []
+            obses = init_obses
+            for actions in taus:
+                next_obses, agent_infos = policy.dynamics_model.predict_batches(obses, actions, deterministic=False, return_infos=True)
+                tau.append(actions[0])
+                obs_hall.append(next_obses[0])
+                obs_hall_mean.append(agent_infos[0]['mean'])
+                obs_hall_std.append(agent_infos[0]['std'])
+                reward_hall.append(self.env.reward(obses[0][None], actions[0][None], next_obses[0][None]))
+                obses = next_obses
+
+            x = np.arange(self.max_path_length)
+            obs_space_dims = self.env.observation_space.shape[0]
+            action_space_dims = self.env.action_space.shape[0]
+            obs_hall = np.transpose(np.asarray(obs_hall))
+            obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
+            obs_hall_std = np.transpose(np.asarray(obs_hall_std))
+            obs_real = np.transpose(np.asarray(obs_real))
+            tau = np.transpose(np.asarray(tau))
+            tau_mean = np.transpose(np.asarray(tau_mean))
+            tau_std = np.transpose(np.asarray(tau_std))
+            n_subplots = obs_space_dims + action_space_dims + 2
+            nrows = ceil(np.sqrt(n_subplots))
+            ncols = ceil(n_subplots/nrows)
+            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex='col', figsize=(80, 20))
+            axes = axes.flatten()
+
+            # obs_ymin = np.min([obs_hall - obs_hall_std, obs_real]) + 0.1
+            # obs_ymax = np.max([obs_hall + obs_hall_std, obs_real]) - 0.1
+            for i in range(obs_space_dims):  # split by observation space dimension
+                ax = axes[i]
+                ax.plot(x, obs_hall[i], label=f'obs_{i}_dyn')
+                ax.plot(x, obs_real[i], label=f'obs_{i}_env', marker='o')
+                ax.fill_between(x, obs_hall_mean[i] + obs_hall_std[i], obs_hall_mean[i] - obs_hall_std[i], alpha=0.2)
+                # ax.set_ylim([obs_ymin, obs_ymax])
+
+            for i in range(action_space_dims):
+                ax = axes[i+obs_space_dims]
+                ax.plot(x, tau[i], label=f'act_{i}', color='r')
+                ax.fill_between(x, tau_mean[i] + tau_std[i], tau_mean[i] - tau_std[i], color='r', alpha=0.2)
+                ax.set_ylim([self.env.action_space.low[i]-0.1, self.env.action_space.high[i]+0.1])
+
+            ax = axes[obs_space_dims+action_space_dims]
+            ax.plot(x, reward_hall, label='reward_dyn')
+            ax.plot(x, reward_real, label='reward_env', marker='o')
+            # ax.plot(x, loss_reward, label='reward_planning')  # FIXME: == reward_env??
+            ax.plot(x, loss_kl, label='kl_planning')
+            ax.legend()
+
+            ax = axes[obs_space_dims+action_space_dims+1]
+            ax.plot(x, list(accumulate(reward_hall)), label='reward_dyn')
+            ax.plot(x, list(accumulate(reward_real)), label='reward_env', marker='o')
+            # ax.plot(x, list(accumulate(loss_reward)), label='reward_planning')
+            ax.legend()
+
+            fig.suptitle(f'{self._global_step}')
+
+            # plt.show()
+            plt.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
+            logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))
+
+        else:
+            self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
+            os.makedirs(self.save_dir, exist_ok=True)
 
         return paths
 

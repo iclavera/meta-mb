@@ -1,5 +1,6 @@
 import joblib
 import json
+import os
 import numpy as np
 import tensorflow as tf
 import argparse
@@ -21,9 +22,11 @@ def valid_experiment(params):
     # 'env': [{'$class': 'meta_mb.envs.mujoco.ant_env.AntEnv'}]}
     # 'env': [{'$class': 'meta_mb.envs.mujoco.hopper_env.HopperEnv'}]}
     # #
+    return True
     values = {'max_path_length': [200],
-              'num_rollouts': [100],
-              'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]}
+              'num_rollouts': [1, 20],
+              # 'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]
+    }
 
 
     for k, v in values.items():
@@ -38,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("path", type=str)
     parser.add_argument('--max_path_length', '-l', type=int, default=None,
                         help='Max length of rollout')
-    parser.add_argument('--num_rollouts', '-n', type=int, default=5,
+    parser.add_argument('--num_rollouts', '-n', type=int, default=1,
                         help='Max length of rollout')
     parser.add_argument('--speedup', type=float, default=1,
                         help='Speedup')
@@ -57,6 +60,7 @@ if __name__ == "__main__":
     # import tensorflow as tf
     # with tf.Session():
     #     [rest of the code]
+    # from tensorflow.python.ops.gen_math_ops import tanh
 
     experimet_paths = load_exps_data(args.path, gap=args.gap_pkl, max=args.max_pkl)
     for exp_path in experimet_paths:
@@ -71,10 +75,14 @@ if __name__ == "__main__":
                         policy.switch_to_pre_update()
                     env = data['env']
                     video_filename = pkl_path.split('.')[0] + '.mp4'
-                    paths = rollout(env, policy, max_path_length=max_path_length, animated=False, speedup=args.speedup,
-                                    video_filename=video_filename, save_video=True, ignore_done=args.ignore_done,
+                    if os.path.exists(video_filename):
+                        print(f'{video_filename} is skipped. ')
+                    else:
+                        print(f'saving to video {video_filename}')
+                        paths = rollout(env, policy, max_path_length=max_path_length, animated=False, speedup=args.speedup,
+                                        video_filename=video_filename, save_video=True, ignore_done=args.ignore_done,
                                         stochastic=args.stochastic, num_rollouts=args.num_rollouts)
-                    print('Average Returns: ', np.mean([sum(path['rewards']) for path in paths]))
+                        print('Average Returns: ', np.mean([sum(path['rewards']) for path in paths]))
                 tf.reset_default_graph()
 
 

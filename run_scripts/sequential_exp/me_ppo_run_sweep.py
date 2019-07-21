@@ -20,7 +20,7 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sequential-mbppo'
+EXP_NAME = 'bptt-sequential-mbppo'
 
 
 def run_experiment(**kwargs):
@@ -124,11 +124,11 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1,],# 2, 3, 4],
 
         'algo': ['me-ppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
+        'env': [AntEnv],# AntEnv, Walker2dEnv, HopperEnv],
 
         # Problem Conf
         'n_itr': [65],
@@ -164,8 +164,8 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.2],# 0.3, 0.1],
-        'learning_rate': [1e-3, 3e-4],# 5e-4],
-        'num_ppo_steps': [5, 10],
+        'learning_rate': [1e-3,],# 3e-4],# 5e-4],
+        'num_ppo_steps': [5,],# 10],
         'imagined_num_rollouts': [50],
         'sample_from_buffer': [True],
         'scope': [None],

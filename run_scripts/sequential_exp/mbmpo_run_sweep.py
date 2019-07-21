@@ -18,7 +18,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sequential-mbmpo'
+EXP_NAME = 'bptt-sequential-mbmpo'
 
 
 def run_experiment(**kwargs):
@@ -130,11 +130,11 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2, 3, 4],
+        'seed': [1, ],#2, 3, 4],
 
         'algo': ['mb-mpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv],
+        'env': [AntEnv, ],#Walker2dEnv, HalfCheetahEnv, HopperEnv],
 
         # Problem Conf
         'n_itr': [65],
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [25000],
-        'rolling_average_persitency': [0.9, 0.4],
+        'rolling_average_persitency': [0.9], #0.4],
         'deterministic': [False],
 
         # Policy
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         'meta_batch_size': [20],  # Note: It has to be multiple of num_models
         'rollouts_per_meta_task': [50],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001, 0.0005],
+        'inner_lr': [0.001, ],#0.0005],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
