@@ -92,7 +92,7 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
+        'env': ['ip'],
         'image_shape': [(64, 64, 3)],
         'num_rollouts': [512],
 

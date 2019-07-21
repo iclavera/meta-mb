@@ -110,8 +110,8 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
     encoder_model.summary()
 
     # Define context network
-    x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]))
-    action_input = keras.layers.Input((terms, action_dim))
+    x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]), name='x_input')
+    action_input = keras.layers.Input((terms, action_dim), name='action_input')
     x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
 
     if context_network == 'stack':
@@ -136,7 +136,8 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
     context_output = context_network([x_input, action_input])
     preds = network_prediction(context_output, code_size, predict_terms)
 
-    y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]))
+    y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]),
+                                 name = 'y_input')
     y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
     y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
     y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
@@ -158,8 +159,11 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
     return cpc_model
 
 class CPCEncoder:
-    def __init__(self, path, image_shape=(64, 64, 3)):
-        self.encoder = keras.models.load_model(path)
+    def __init__(self, path, model=None, image_shape=(64, 64, 3)):
+        if model is None:
+            self.encoder = keras.models.load_model(path)
+        else:
+            self.encoder = model
         self.image_shape = image_shape
 
     def encode(self, imgs):
@@ -168,8 +172,11 @@ class CPCEncoder:
         return self.encoder.predict(imgs)
 
 class CPCContextNet:
-    def __init__(self, path, image_shape=(64, 64, 3)):
-        self.encoder = keras.models.load_model(path)
+    def __init__(self, path, model=None, image_shape=(64, 64, 3)):
+        if model is None:
+            self.encoder = keras.models.load_model(path)
+        else:
+            self.encoder = model
         self.image_shape = image_shape
 
     def encode(self, imgs):

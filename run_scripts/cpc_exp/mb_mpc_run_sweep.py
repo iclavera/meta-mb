@@ -1,6 +1,7 @@
 import gym
 import json
 import os
+import keras
 import tensorflow as tf
 
 from experiment_utils.run_sweep import run_sweep
@@ -13,7 +14,7 @@ from meta_mb.reward_model.mlp_reward_ensemble import MLPRewardEnsemble
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.trainers.mb_trainer import Trainer
+from meta_mb.trainers.mb_trainer_withencoder import Trainer
 from meta_mb.utils.utils import ClassEncoder
 from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
@@ -54,18 +55,26 @@ def run_experiment(**config):
         max_path_length = config['max_path_length']
         if 'model_path' in config:
             # exp_name = config['model_path'] + '_rnnmodel'
-            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', config['model_path'],
+            folder = config['model_path']
+            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
                                       'vae' if config['encoder'] == 'vae' else
                                       'encoder.h5' if not config['use_context_net'] else
                                       'context.h5')
         else:
             exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (config['negative'], config['history'], config['future'],
                                                            config['latent_dim'], config['run_suffix'])
-            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', exp_name,
+            folder = exp_name
+            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
                                       'vae' if config['encoder'] == 'vae' else
                                       'encoder.h5' if not config['use_context_net'] else
                                       'context.h5')
             # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
+
+    from meta_mb.unsupervised_learning.cpc.cpc import CPCLayer
+    from meta_mb.unsupervised_learning.cpc.training_utils import cross_entropy_loss
+    cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
+                                        custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
+
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + (exp_name or config.get('exp_name', ''))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -78,11 +87,11 @@ def run_experiment(**config):
         if config['use_image']:
             if config['encoder'] == 'cpc':
                 if config['use_context_net']:
-                    encoder = CPCContextNet(path=model_path)
+                    encoder = CPCContextNet(path=model_path, model=cpc_model.get_layer('context_network'))
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
                                         latent_dim=config['latent_dim'], time_major=True)
                 else:
-                    encoder = CPCEncoder(path=model_path)
+                    encoder = CPCEncoder(path=model_path, model=cpc_model.get_layer('context_network').layers[1].layer)
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, vae=encoder,
                                         latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
@@ -196,6 +205,9 @@ def run_experiment(**config):
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
             sess=sess,
+
+            cpc_model=cpc_model,
+            cpc_model_epoch=config['cpc_model_epoch']
         )
         algo.train()
 
@@ -453,7 +465,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
+        'env': ['ip'], #, 'cheetah_run', 'cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -500,7 +512,8 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True]
+        'include_action': [True],
+        'cpc_model_epoch':[5],
 
     }
 

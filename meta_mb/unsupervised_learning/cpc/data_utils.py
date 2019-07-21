@@ -30,6 +30,15 @@ class CPCDataGenerator(object):
     def __len__(self):
         return self.n_samples // self.batch_size
 
+    def update_dataset(self, img_seqs, action_seqs):
+        self.images = np.concatenate([self.images, img_seqs])
+        self.actions = np.concatenate([self.actions, action_seqs])
+
+        self.n_seqs = self.images.shape[0]
+        self.n_step = self.images.shape[1]
+        self.n_chunks = self.images.shape[1] - self.terms - self.predict_terms + 1  # number of chunks in each time sequence
+        self.n_samples = self.n_seqs * self.n_chunks
+
     def next(self):
         """
         :return: [x_images, y_images], labels
