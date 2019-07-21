@@ -21,6 +21,7 @@ def valid_experiment(params):
     # 'env': [{'$class': 'meta_mb.envs.mujoco.ant_env.AntEnv'}]}
     # 'env': [{'$class': 'meta_mb.envs.mujoco.hopper_env.HopperEnv'}]}
     # #
+    return True
     values = {'max_path_length': [200],
               'num_rollouts': [100],
               'env': [{'$class': 'meta_mb.envs.mujoco.walker2d_env.Walker2DEnv'}]}
