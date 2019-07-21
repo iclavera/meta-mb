@@ -78,6 +78,7 @@ def run_sweep(run_experiment, sweep_params, exp_name, instance_type='c4.xlarge')
 
 
 def run_sweep_multi_gpu(run_method, params, repeat=1, num_cpu=multiprocessing.cpu_count(), num_gpu=2, exps_per_gpu=2):
+    print("running %d variants" % len(list(itertools.product(*[value for value in params.values()]))))
     sweeper = Sweeper(params, repeat, include_name=True)
     gpu_frac = 0.9 / exps_per_gpu
     num_runs = num_gpu * exps_per_gpu

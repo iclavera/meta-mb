@@ -1,4 +1,3 @@
-from dm_control import suite
 import numpy as np
 import json
 import keras
@@ -90,10 +89,10 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     config = {
-        'run_suffix': [1, 2],
+        'run_suffix': [1],
 
         # env config
-        'env': ['ip', 'cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
         'image_shape': [(64, 64, 3)],
         'num_rollouts': [512],
 
@@ -109,7 +108,7 @@ if __name__ == "__main__":
         'context_network': ['stack'],
         'code_size': [8],
         'negative_samples': [10],
-        'include_action': [True, False],
+        'include_action': [True],
 
 
         # training config

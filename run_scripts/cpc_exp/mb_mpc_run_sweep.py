@@ -449,11 +449,11 @@ if __name__ == '__main__':
 
     config_envs = {
         'seed': [1],
-        'run_suffix': ['1', '2'],
+        'run_suffix': ['1'],
 
         # Problem
 
-        'env': ['ip', 'cartpole_balance', 'cartpole_swingup', 'reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'], #, 'cheetah_run', 'cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -492,7 +492,7 @@ if __name__ == '__main__':
 
         # representation learning
 
-        'use_image': [True, False],
+        'use_image': [True],
         # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [8],
@@ -500,7 +500,7 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True, False]
+        'include_action': [True]
 
     }
 
