@@ -40,10 +40,15 @@ class Trainer(object):
             reward_model_max_epochs=200,
             reward_model=None,
             reward_sample_processor=None,
-            cpc_model_epoch=5,
-            cpc_model_lr=1e-4,
+            
+            cpc_initial_epoch=30,
+            cpc_initial_lr = 1e-3,
+            cpc_epoch=5,
+            cpc_lr=1e-4,
             cpc_batch_size=32,
             cpc_negative_same_traj=0,
+            cpc_initial_sampler=None,
+            cpc_train_interval=1
             ):
         self.env = env
         self.sampler = sampler
@@ -58,10 +63,14 @@ class Trainer(object):
         self.reward_model_max_epochs = reward_model_max_epochs
 
         self.cpc_model = cpc_model
-        self.cpc_model_epoch = cpc_model_epoch
+        self.cpc_initial_epoch = cpc_initial_epoch
+        self.cpc_initial_lr = cpc_initial_lr
+        self.cpc_epoch = cpc_epoch
+        self.cpc_lr = cpc_lr
         self.cpc_batch_size = cpc_batch_size
         self.cpc_negative_same_traj = cpc_negative_same_traj
-        self.cpc_model_lr = cpc_model_lr
+        self.cpc_initial_sampler=cpc_initial_sampler
+        self.cpc_train_interval = cpc_train_interval
 
         self.initial_random_samples = initial_random_samples
 
@@ -90,6 +99,41 @@ class Trainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
 
             start_time = time.time()
+
+            ''' --------------- Pretrain CPC on exploratory data --------------- '''
+            if self.cpc_initial_epoch > 0:
+                terms = self.cpc_model.get_layer('x_input').input_shape[1]
+                predict_terms = self.cpc_model.get_layer('y_input').input_shape[1]
+                negative_samples = self.cpc_model.get_layer('y_input').input_shape[2] - 1
+
+                env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
+                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
+
+                train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=terms,
+                                              negative_samples=negative_samples,
+                                              predict_terms=predict_terms,
+                                              negative_same_traj=self.cpc_negative_same_traj)
+                validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=terms,
+                                                   negative_samples=negative_samples,
+                                                   predict_terms=predict_terms,
+                                                   negative_same_traj=self.cpc_negative_same_traj)
+
+                callbacks = [
+                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
+                    # SaveEncoder(output_dir),
+                    keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
+
+                # Train the model
+                self.cpc_model.fit_generator(
+                    generator=train_data,
+                    steps_per_epoch=len(train_data),
+                    validation_data=validation_data,
+                    validation_steps=len(validation_data),
+                    epochs=self.cpc_initial_epoch,
+                    verbose=1,
+                    callbacks=callbacks
+                )
+
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
@@ -103,27 +147,10 @@ class Trainer(object):
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
-                if self.cpc_model_epoch > 0:
-                    img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:-1]  # N x T x (img_shape)
-                    action_seqs = np.stack([path['actions'] for path in env_paths])[1:]
-                    train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
-                    print(train_img.shape, val_img.shape)
-
-                    if itr == 0: # create the iterator for the first time
-                        terms = self.cpc_model.get_layer('x_input').input_shape[1]
-                        predict_terms = self.cpc_model.get_layer('y_input').input_shape[1]
-                        negative_samples = self.cpc_model.get_layer('y_input').input_shape[2] - 1
-                        train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=terms,
-                                                      negative_samples=negative_samples,
-                                                      predict_terms=predict_terms,
-                                                      negative_same_traj=self.cpc_negative_same_traj)
-                        validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=terms,
-                                                           negative_samples=negative_samples,
-                                                           predict_terms=predict_terms,
-                                                           negative_same_traj=self.cpc_negative_same_traj)
-                    else: # amend to the dataset instead if it's already created
-                        train_data.update_dataset(train_img, train_action)
-                        validation_data.update_dataset(val_img, val_action)
+                if self.cpc_epoch > 0:
+                    train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
+                    train_data.update_dataset(train_img, train_action)
+                    validation_data.update_dataset(val_img, val_action)
 
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
@@ -166,10 +193,9 @@ class Trainer(object):
 
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
-                if self.cpc_model_epoch > 0 and train_data.n_seqs > 5:
-
-                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=2, verbose=1),
-                                 keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_model_lr / (10 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
+                if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
+                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1, restore_best_weights=True),
+                                 keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
                                  #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
                                  # SaveEncoder(output_dir),
                                  keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
@@ -180,7 +206,7 @@ class Trainer(object):
                         steps_per_epoch=len(train_data),
                         validation_data=validation_data,
                         validation_steps=len(validation_data),
-                        epochs=self.cpc_model_epoch,
+                        epochs=self.cpc_epoch,
                         verbose=1,
                         callbacks=callbacks
                     )
@@ -218,3 +244,10 @@ class Trainer(object):
         if hasattr(self.env, 'log_diagnostics'):
             self.env.log_diagnostics(paths, prefix)
         self.policy.log_diagnostics(paths, prefix)
+
+    def get_seqs(self, env_paths):
+        img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:, :-1]  # N x T x (img_shape)
+        action_seqs = np.stack([path['actions'] for path in env_paths])[:, 1:]
+        train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
+
+        return train_img, val_img, train_action, val_action

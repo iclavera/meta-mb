@@ -4,7 +4,8 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
 class CPCDataGenerator(object):
-    def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0):
+    def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0,
+                 max_num_seq=512):
         self.batch_size = batch_size
         self.images = img_seqs
         self.actions = action_seqs
@@ -17,6 +18,8 @@ class CPCDataGenerator(object):
         self.n_step = self.images.shape[1]
         self.n_chunks = self.images.shape[1] - self.terms - self.predict_terms + 1 # number of chunks in each time sequence
         self.n_samples = self.n_seqs * self.n_chunks
+
+        self.max_num_seq = max_num_seq
 
         assert self.negative_same_traj < self.negative_samples
 
@@ -34,9 +37,12 @@ class CPCDataGenerator(object):
         self.images = np.concatenate([self.images, img_seqs])
         self.actions = np.concatenate([self.actions, action_seqs])
 
+        if self.images.shape[0] > self.max_num_seq:
+            self.images = self.images[-self.max_num_seq:]
+            self.actions = self.actions[-self.max_num_seq:]
+
         self.n_seqs = self.images.shape[0]
         self.n_step = self.images.shape[1]
-        self.n_chunks = self.images.shape[1] - self.terms - self.predict_terms + 1  # number of chunks in each time sequence
         self.n_samples = self.n_seqs * self.n_chunks
 
     def next(self):

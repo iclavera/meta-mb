@@ -29,9 +29,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-#os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'envs_finetune'
+EXP_NAME = 'envs_finetune2'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -77,9 +77,11 @@ def run_experiment(**config):
         # cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
         #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
         from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
-        cpc_model = network_cpc((64, 64, 3), 1, True, config['history'], config['future'], config['negative'],
-                           code_size=config['latent_dim'],
-                           learning_rate=1e-3, encoder_arch='default', context_network='stack', context_size=32)
+        cpc_model = network_cpc((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
+                                config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
+                                learning_rate=config['cpc_initial_lr'], encoder_arch='default',
+                                context_network='stack', context_size=32)
+        # cpc_model.load_weights(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'))
     else:
         cpc_model = None
 
@@ -199,6 +201,12 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
             max_path_length=max_path_length,
         )
+        sampler_initial_cpc = BaseSampler(
+            env=env,
+            policy=policy,
+            num_rollouts=config['cpc_num_initial_rollouts'],
+            max_path_length=max_path_length,
+        )
         sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
 
         algo = Trainer(
@@ -215,8 +223,12 @@ def run_experiment(**config):
             sess=sess,
 
             cpc_model=cpc_model,
-            cpc_model_epoch=config['cpc_model_epoch'],
-            cpc_model_lr=config['cpc_model_lr']
+            cpc_epoch=config['cpc_epoch'],
+            cpc_lr=config['cpc_lr'],
+            cpc_initial_epoch=config['cpc_initial_epoch'],
+            cpc_initial_lr = config['cpc_initial_lr'],
+            cpc_negative_same_traj=config['negative'] // 3 if config['env'] == 'reacher_easy' else 0,
+            cpc_initial_sampler=sampler_initial_cpc
         )
         algo.train()
 
@@ -481,7 +493,7 @@ if __name__ == '__main__':
 
         'env': ['cartpole_swingup', 'cartpole_balance', 'reacher_easy'],
         'normalize': [True],
-        'n_itr': [250],
+        'n_itr': [150],
         'discount': [1.],
         'obs_stack': [3],
 
@@ -519,7 +531,6 @@ if __name__ == '__main__':
         # representation learning
 
         'use_image': [True],
-        # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [8],
         'negative': [10],
@@ -527,8 +538,11 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [True],
-        'cpc_model_epoch': [10],
-        'cpc_model_lr': [1e-3]
+        'cpc_epoch': [10, 0],
+        'cpc_lr': [3e-4],
+        'cpc_initial_epoch': [30],
+        'cpc_initial_lr': [1e-3],
+        'cpc_num_initial_rollouts': [512]
 
     }
 
