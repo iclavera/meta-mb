@@ -230,12 +230,19 @@ if __name__ == '__main__':
     #     'exp_tag': ['parallel-mbppo'],  # For changes besides hyperparams
     # }
     #
-    params_json_path = os.getcwd() + '/data/video_params/a-me-ppo-HalfCheetah.json'
+    params_json_path = os.getcwd() + '/data/corl_data/video_params/a-me-ppo-HalfCheetah.json'
     with open(params_json_path, 'r') as f:
         data = json.loads(f.read())
         if "args_data" in data:
             del data["args_data"]
         data['exp_name'] = params_json_path.split('/')[-1].split('.')[0]
+        data['baseline'] = LinearFeatureBaseline
+        data['policy_hidden_nonlinearity'] = tanh
+        data['algo'] = 'meppo'
+
+    for k, v in data.items():
+        data[k] = [v]
+    print(data)
     sweep_params = data
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
