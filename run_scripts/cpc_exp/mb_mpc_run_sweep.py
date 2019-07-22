@@ -527,7 +527,7 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [True],
-        'cpc_model_epoch': [5, 10],
+        'cpc_model_epoch': [10],
         'cpc_model_lr': [1e-3]
 
     }

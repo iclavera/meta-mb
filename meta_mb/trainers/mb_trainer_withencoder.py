@@ -168,7 +168,7 @@ class Trainer(object):
                 time_cpc_start = time.time()
                 if self.cpc_model_epoch > 0 and train_data.n_seqs > 5:
 
-                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=1, verbose=1),
+                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=2, verbose=1),
                                  keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_model_lr / (10 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
                                  #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
                                  # SaveEncoder(output_dir),
