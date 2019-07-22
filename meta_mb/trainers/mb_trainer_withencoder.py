@@ -41,6 +41,7 @@ class Trainer(object):
             reward_model=None,
             reward_sample_processor=None,
             cpc_model_epoch=5,
+            cpc_model_lr=1e-4,
             cpc_batch_size=32,
             cpc_negative_same_traj=0,
             ):
@@ -60,6 +61,7 @@ class Trainer(object):
         self.cpc_model_epoch = cpc_model_epoch
         self.cpc_batch_size = cpc_batch_size
         self.cpc_negative_same_traj = cpc_negative_same_traj
+        self.cpc_model_lr = cpc_model_lr
 
         self.initial_random_samples = initial_random_samples
 
@@ -164,7 +166,7 @@ class Trainer(object):
                 time_cpc_start = time.time()
                 if train_data.n_seqs > 100:
 
-                    callbacks = [keras.callbacks.LearningRateScheduler(lambda epoch, lr: 1e-4, verbose=1), # TODO: better lr schedule
+                    callbacks = [keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_model_lr, verbose=1), # TODO: better lr schedule
                                  #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
                                  # SaveEncoder(output_dir),
                                  keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]

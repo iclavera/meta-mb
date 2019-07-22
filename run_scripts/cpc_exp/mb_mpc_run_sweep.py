@@ -207,7 +207,8 @@ def run_experiment(**config):
             sess=sess,
 
             cpc_model=cpc_model,
-            cpc_model_epoch=config['cpc_model_epoch']
+            cpc_model_epoch=config['cpc_model_epoch'],
+            cpc_model_lr=config['cpc_model_lr']
         )
         algo.train()
 
@@ -465,7 +466,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
+        'env': ['cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -512,8 +513,9 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True, False],
-        'cpc_model_epoch':[5],
+        'include_action': [True],
+        'cpc_model_epoch':[2, 5, 10],
+        'cpc_model_lr': [1e-3, 1e-4, 1e-5]
 
     }
 

@@ -92,7 +92,7 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
+        'env': ['cartpole_swingup'],
         'image_shape': [(64, 64, 3)],
         'num_rollouts': [512],
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         'context_network': ['stack'],
         'code_size': [8],
         'negative_samples': [10],
-        'include_action': [True, False],
+        'include_action': [True],
 
 
         # training config
