@@ -215,7 +215,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50,],  # UNUSED
-        'dynamics_learning_rate': [5e-4],
+        'dynamics_learning_rate': [1e-3, 5e-4],
         'dynamics_batch_size': [256],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
