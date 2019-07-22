@@ -103,25 +103,27 @@ class Trainer(object):
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
-                img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:-1]  # N x T x (img_shape)
-                action_seqs = np.stack([path['actions'] for path in env_paths])[1:]
-                train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
+                if self.cpc_model_epoch > 0:
+                    img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:-1]  # N x T x (img_shape)
+                    action_seqs = np.stack([path['actions'] for path in env_paths])[1:]
+                    train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
+                    print(train_img.shape, val_img.shape)
 
-                if itr == 0: # create the iterator for the first time
-                    terms = self.cpc_model.get_layer('x_input').input_shape[1]
-                    predict_terms = self.cpc_model.get_layer('y_input').input_shape[1]
-                    negative_samples = self.cpc_model.get_layer('y_input').input_shape[2] - 1
-                    train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=terms,
-                                                  negative_samples=negative_samples,
-                                                  predict_terms=predict_terms,
-                                                  negative_same_traj=self.cpc_negative_same_traj)
-                    validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=terms,
-                                                       negative_samples=negative_samples,
-                                                       predict_terms=predict_terms,
-                                                       negative_same_traj=self.cpc_negative_same_traj)
-                else: # amend to the dataset instead if it's already created
-                    train_data.update_dataset(train_img, train_action)
-                    validation_data.update_dataset(val_img, val_action)
+                    if itr == 0: # create the iterator for the first time
+                        terms = self.cpc_model.get_layer('x_input').input_shape[1]
+                        predict_terms = self.cpc_model.get_layer('y_input').input_shape[1]
+                        negative_samples = self.cpc_model.get_layer('y_input').input_shape[2] - 1
+                        train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=terms,
+                                                      negative_samples=negative_samples,
+                                                      predict_terms=predict_terms,
+                                                      negative_same_traj=self.cpc_negative_same_traj)
+                        validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=terms,
+                                                           negative_samples=negative_samples,
+                                                           predict_terms=predict_terms,
+                                                           negative_same_traj=self.cpc_negative_same_traj)
+                    else: # amend to the dataset instead if it's already created
+                        train_data.update_dataset(train_img, train_action)
+                        validation_data.update_dataset(val_img, val_action)
 
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
@@ -164,9 +166,10 @@ class Trainer(object):
 
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
-                if train_data.n_seqs > 100:
+                if self.cpc_model_epoch > 0 and train_data.n_seqs > 5:
 
-                    callbacks = [keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_model_lr, verbose=1), # TODO: better lr schedule
+                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=1, verbose=1),
+                                 keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_model_lr / (10 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
                                  #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
                                  # SaveEncoder(output_dir),
                                  keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]

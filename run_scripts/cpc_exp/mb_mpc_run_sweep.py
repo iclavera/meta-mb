@@ -70,10 +70,18 @@ def run_experiment(**config):
                                       'context.h5')
             # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
 
-    from meta_mb.unsupervised_learning.cpc.cpc import CPCLayer
-    from meta_mb.unsupervised_learning.cpc.training_utils import cross_entropy_loss
-    cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
-                                        custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
+
+    if config['use_image']:
+        # from meta_mb.unsupervised_learning.cpc.cpc import CPCLayer
+        # from meta_mb.unsupervised_learning.cpc.training_utils import cross_entropy_loss
+        # cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
+        #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
+        from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
+        cpc_model = network_cpc((64, 64, 3), 1, True, config['history'], config['future'], config['negative'],
+                           code_size=config['latent_dim'],
+                           learning_rate=1e-3, encoder_arch='default', context_network='stack', context_size=32)
+    else:
+        cpc_model = None
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + (exp_name or config.get('exp_name', ''))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -237,60 +245,6 @@ if __name__ == '__main__':
         return InvertedPendulumEnv(include_vel=False)
 
 
-    config_ip = {
-                'seed': [1, 2],
-
-                # Problem
-                'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
-                'normalize': [True],
-                 'n_itr': [50],
-                'discount': [1.],
-                'obs_stack': [1],
-
-                # Policy
-                'n_candidates': [1000],  # K
-                'horizon': [10],  # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
-                'use_graph': [True],
-
-                # Training
-                'num_rollouts': [20],
-                'learning_rate': [0.001],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
-
-                # Dynamics Model
-                'recurrent': [False],
-                'num_models': [5],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500,)],
-                'dynamic_model_epochs': [50],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [64],
-                'cell_type': ['lstm'],
-                'use_reward_model': [True],
-
-                # Reward Model
-                'reward_model_epochs': [15],
-
-                #  Other
-                'n_parallel': [1],
-
-                # representation learning
-
-                'use_image': [True],
-                # 'model_path': ['ip-neg-15'],
-                'encoder': ['cpc'],
-                'latent_dim': [32],
-                'negative': [10],
-                'history': [3],
-                'future': [1],
-                'use_context_net': [True]
-
-    }
 
     config_ip_rnn = {
                 'seed': [1],
@@ -460,15 +414,74 @@ if __name__ == '__main__':
 
     }
 
-    config_envs = {
+    config_envs_cheetah = {
         'seed': [1],
         'run_suffix': ['1'],
 
         # Problem
 
-        'env': ['cartpole_swingup'],
+        'env': ['cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [1],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [20],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [10],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.4],
+
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [1],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500,)],
+        'dynamic_model_epochs': [50],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [128],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+
+        # Reward Model
+        'reward_model_epochs': [15],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [False],
+        # 'model_path': ['ip-neg-15'],
+        'encoder': ['cpc'],
+        'latent_dim': [8],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'cpc_model_epoch':[0],
+        'cpc_model_lr': [1e-3]
+
+    }
+
+    config_envs = {
+        'seed': [1],
+        'run_suffix': ['1', '2'],
+
+        # Problem
+
+        'env': ['cartpole_swingup', 'cartpole_balance', 'reacher_easy'],
+        'normalize': [True],
+        'n_itr': [250],
         'discount': [1.],
         'obs_stack': [3],
 
@@ -514,8 +527,8 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [True],
-        'cpc_model_epoch':[2, 5, 10],
-        'cpc_model_lr': [1e-3, 1e-4, 1e-5]
+        'cpc_model_epoch': [5, 10],
+        'cpc_model_lr': [1e-3]
 
     }
 
