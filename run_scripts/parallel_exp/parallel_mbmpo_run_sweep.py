@@ -184,7 +184,7 @@ if __name__ == '__main__':
             [False, False, False],
             # [True, True, True],
         ],
-        'rolling_average_persitency': [0.99],
+        'rolling_average_persitency': [0.9, 0.4],
 
         'seed': [1, 2, 3, 4],
 
@@ -233,7 +233,7 @@ if __name__ == '__main__':
         'meta_batch_size': [20],  # Note: It has to be multiple of num_models
         'rollouts_per_meta_task': [20,],
         'num_inner_grad_steps': [1],
-        'inner_lr': [0.001],
+        'inner_lr': [0.001, 5e-4],
         'inner_type': ['log_likelihood'],
         'step_size': [0.01],
         'exploration': [False],
