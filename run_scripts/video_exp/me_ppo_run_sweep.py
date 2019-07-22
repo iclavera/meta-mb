@@ -24,8 +24,8 @@ EXP_NAME = 'video-me-ppo'
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print(f'================ starting exp {exp_dir} ==================')
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='gap', snapshot_gap=1)
-    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_eys=True, cls=ClassEncoder)
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='gap', snapshot_gap=5)
+    json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv, HopperEnv, AntEnv, Walker2dEnv],
 
         # Problem Conf
-        'n_itr': [40],
+        'n_itr': [50],
         'max_path_length': [200,],
         'discount': [0.99],
         'gae_lambda': [1],
