@@ -21,11 +21,11 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'envs_action'
+EXP_NAME = 'envs_finetune'
 
 
 def train_with_exploratory_policy(**config):
-    exp_name = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-%s' % (config['env'], config['negative_samples'], config['terms'],
+    exp_name = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-finetune-%s' % (config['env'], config['negative_samples'], config['terms'],
                                                                  config['predict_terms'], config['code_size'],
                                                                  config['include_action'], config['run_suffix'])
 
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['ip'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
         'image_shape': [(64, 64, 3)],
         'num_rollouts': [512],
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         'context_network': ['stack'],
         'code_size': [8],
         'negative_samples': [10],
-        'include_action': [True],
+        'include_action': [True, False],
 
 
         # training config

@@ -31,7 +31,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'envs_action'
+EXP_NAME = 'envs_finetune'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -39,7 +39,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 def run_experiment(**config):
     exp_name = ''
     if isinstance(config['env'], str):
-        folder = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-%s' % (config['env'], config['negative'], config['history'], \
+        folder = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-finetune-%s' % (config['env'], config['negative'], config['history'], \
                                                                    config['future'], config['latent_dim'], \
                                                                    config['include_action'], config['run_suffix'])
         # folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
@@ -465,7 +465,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['ip'], #, 'cheetah_run', 'cartpole_swingup'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -512,7 +512,7 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True],
+        'include_action': [True, False],
         'cpc_model_epoch':[5],
 
     }

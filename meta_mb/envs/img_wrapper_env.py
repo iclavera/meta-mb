@@ -36,6 +36,7 @@ class ImgWrapperEnv(Serializable):
 
         if self._vae is not None:
             obs = self._vae.encode(self._obs).reshape((self._latent_dim,))
+            info['image'] = np.copy(self._obs)
         else:
             # np.copy is important! otherwise this will keep returning the same object that gets modified again and again
             # which will result in observation returned in the trajectory always be the same

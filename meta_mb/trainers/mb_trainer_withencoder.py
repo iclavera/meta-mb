@@ -101,8 +101,8 @@ class Trainer(object):
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
-                img_seqs = np.stack([path['observations'] for path in env_paths])  # N x T x (img_shape)
-                action_seqs = np.stack([path['actions'] for path in env_paths])
+                img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:-1]  # N x T x (img_shape)
+                action_seqs = np.stack([path['actions'] for path in env_paths])[1:]
                 train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
 
                 if itr == 0: # create the iterator for the first time
@@ -162,7 +162,7 @@ class Trainer(object):
 
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
-                if train_data.n_seqs > 10:
+                if train_data.n_seqs > 100:
 
                     callbacks = [keras.callbacks.LearningRateScheduler(lambda epoch, lr: 1e-4, verbose=1), # TODO: better lr schedule
                                  #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
