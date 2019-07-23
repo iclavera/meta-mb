@@ -175,6 +175,8 @@ class Trainer(object):
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
                     for _ in range(self.rollout_length):
+                        max_t = self.max_model_t if itr > 100 else 1e10
+                        model_metrics = self._train_model(batch_size=256, epochs=300000, max_grad_updates=1000000, holdout_ratio=0.2, max_t=max_t)
                         random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
                         actions_from_policy = self.policy.get_actions(random_states)[0]
                         next_obs = self.dynamics_model.predict(random_states, actions_from_policy)
@@ -215,8 +217,8 @@ class Trainer(object):
                 logger.log("Saved")
 
                 logger.dumpkvs()
-                if itr == 0:
-                    sess.graph.finalize()
+                # if itr == 0:
+                #     sess.graph.finalize()
 
         logger.log("Training finished")
         self.sess.close()
