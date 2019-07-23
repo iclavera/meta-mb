@@ -18,7 +18,7 @@ import tensorflow as tf
 import joblib
 
 
-EXP_NAME = 'mb-mpc-vis'
+EXP_NAME = 'bptt-mb-mpc'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -117,6 +117,7 @@ def run_experiment(**config):
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
             fit_model=config['fit_model'],
+            plot_freq=config['plot_freq'],
         )
         algo.train()
 
@@ -132,12 +133,13 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
         'delta_policy': [True],
+        'plot_freq': [10],
 
         # Problem
-        'env': [HalfCheetahEnv], #[HalfCheetahEnv, InvertedPendulumEnv],
-        'max_path_length': [100],
+        'env': [InvertedPendulumEnv],
+        'max_path_length': [200],
         'normalize': [False],
-         'n_itr': [40],
+         'n_itr': [41],
         'discount': [1.],
 
         # Policy

@@ -54,6 +54,10 @@ class MPCDeltaController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
+        """
+        self.optimal_action always contain actions executed throughout the sampled trajectories. 
+        It is the first row of tau, where tau is used for looking-ahead planning. 
+        """
         self.optimal_action = None
         if use_opt_w_policy:
             self.deltas_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
@@ -89,20 +93,33 @@ class MPCDeltaController(Serializable):
 
         return self.get_actions(observation)
 
-    def get_actions(self, observations):
+    def get_actions(self, observations, return_first_info=False):
+        agent_infos = []
+
         if self.use_opt_w_policy:
-            actions, tau_mean_val_0 = self.deltas_optimizer.optimize({'obs': observations})
+            actions, act_mean_val_0,  = self.deltas_optimizer.optimize({'obs': observations})
         else:
-            actions, deltas_mean_val, neg_returns, kl = self.deltas_optimizer.optimize(
+            # info to plot action executed in the fist env (observation)
+            if return_first_info:
+                sess = tf.get_default_session()
+                prev_action = sess.run(self.optimal_action[0])
+
+            actions, deltas_mean_val, neg_returns, reg = self.deltas_optimizer.optimize(
                 {'obs': observations, 'deltas_mean': self.deltas_mean_val},
             )
+
+            if return_first_info:
+                mean_val_0 = deltas_mean_val[0]
+                log_std_val = sess.run(self.log_std_var)
+                agent_infos = [dict(mean=prev_action + mean_val_0, std=np.exp(log_std_val))]
+
             # rotate
             self.deltas_mean_val = np.concatenate([
                 deltas_mean_val[1:],
                 np.zeros((1, self.num_envs, self.action_space_dims)),
             ], axis=0)
 
-        return actions, []
+        return actions, agent_infos
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,
@@ -119,8 +136,8 @@ class MPCDeltaController(Serializable):
         return actions
 
     def build_opt_graph(self):
-        actions_first_var = tf.get_variable(
-            'actions_first',
+        self.optimal_action = tf.get_variable(
+            'optimal_action',
             shape=(self.num_envs, self.action_space_dims),
             dtype=tf.float32,
             trainable=False,
@@ -140,7 +157,7 @@ class MPCDeltaController(Serializable):
         )
         # log_std_var = tf.maximum(log_std_var, np.log(1e-6))
         deltas = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
-        acts, obs = actions_first_var, self.obs_ph
+        acts, obs = self.optimal_action, self.obs_ph
         returns = tf.zeros(shape=(self.num_envs,))
         for t in range(self.horizon):
             acts = acts + deltas[t]
@@ -158,9 +175,11 @@ class MPCDeltaController(Serializable):
             loss=neg_returns+self.reg_coef*reg,
             init_op=[tf.assign(mean_var, self.deltas_mean_ph)],
             var_list=[mean_var, log_std_var],
-            result_op=[tf.assign_add(actions_first_var, deltas[0]), mean_var, neg_returns, reg],
+            result_op=[tf.assign_add(self.optimal_action, deltas[0]), mean_var, neg_returns, reg],
             input_ph_dict={'obs': self.obs_ph, 'deltas_mean': self.deltas_mean_ph},
         )
+
+        self.mean_var, self.log_std_var = mean_var, log_std_var
 
     def build_opt_graph_w_policy(self):
         assert self.policy is not None

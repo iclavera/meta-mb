@@ -35,7 +35,6 @@ class Sampler(BaseSampler):
             max_path_length,
             n_parallel=1,
             vae=None,
-            do_plots=False,
     ):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
@@ -44,7 +43,6 @@ class Sampler(BaseSampler):
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
-        self.do_plots = do_plots
 
         # setup vectorized environment
 
@@ -59,7 +57,7 @@ class Sampler(BaseSampler):
         pass
 
     def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, sinusoid=False,
-                       verbose=False):
+                       verbose=False, plot_first_rollout=False):
         """
         Collect batch_size trajectories from each task
 
@@ -88,8 +86,9 @@ class Sampler(BaseSampler):
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
 
-        init_obses = obses
-        taus, tau_mean, tau_std, obs_real, reward_real,  loss_kl = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
+        if plot_first_rollout:
+            init_obs = obses[0]
+            tau, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
 
         while n_samples < self.total_samples:
 
@@ -100,19 +99,18 @@ class Sampler(BaseSampler):
                 obses = self.vae.encode(obses)
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
-                agent_infos = {}
-            elif deterministic:
-                actions, agent_infos = policy.get_actions(obses)
-                raise NotImplementedError
-                # actions = [a_i['mean'] for a_i in agent_infos]
+                agent_infos = []
             elif sinusoid:
                 action_space = self.env.action_space.shape[0]
                 num_envs = self.vec_env.num_envs
                 actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
-                agent_infos = dict()
+                agent_infos = []
             else:
                 obses = np.array(obses)
-                actions, agent_infos = policy.get_actions(obses)# , do_grads_plots=(n_samples==0))
+                if plot_first_rollout:
+                    actions, agent_infos = policy.get_actions(obses, return_first_info=plot_first_rollout)
+                else:
+                    actions, agent_infos = policy.get_actions(obses)
                 assert len(actions) == len(obses)  # (num_rollouts, space_dims)
             policy_time += time.time() - t
 
@@ -121,14 +119,14 @@ class Sampler(BaseSampler):
             next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
             env_time += time.time() - t
 
-            if self.do_plots and not random and not sinusoid:
-                taus.append(actions)  # actions = (num_envs, act_space_dims)
+            if plot_first_rollout and not random and not sinusoid:
+                tau.append(actions[0])  # actions = (num_envs, act_space_dims), actions[0] corresponds to the first env
                 obs_real.append(next_obses[0])
                 reward_real.append(rewards[0])
                 tau_mean.append(agent_infos[0]['mean'])
                 tau_std.append(agent_infos[0]['std'])
-                loss_kl.append(agent_infos[0]['kl'])
-            agent_infos = []
+                loss_reg.append(agent_infos[0]['reg'])
+                agent_infos = []
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
@@ -166,35 +164,36 @@ class Sampler(BaseSampler):
         if verbose: pbar.stop()
 
         self.total_timesteps_sampled += self.total_samples
+
         if log:
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 
-        if not self.do_plots:
+        if not plot_first_rollout:
             return paths
 
-        # Plotting: compare real and imaginary performance
+        # plot the first rollout of max_path_length collected
         if not random and not sinusoid:
             tau, obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], [], []
-            obses = init_obses
-            for actions in taus:
-                next_obses, agent_infos = policy.dynamics_model.predict_batches(obses, actions, deterministic=False, return_infos=True)
-                tau.append(actions[0])
-                obs_hall.append(next_obses[0])
-                obs_hall_mean.append(agent_infos[0]['mean'])
-                obs_hall_std.append(agent_infos[0]['std'])
-                reward_hall.append(self.env.reward(obses[0][None], actions[0][None], next_obses[0][None]))
-                obses = next_obses
+            obs = init_obs
+            for action in tau:
+                next_obs, agent_info = policy.dynamics_model.predict(obs[None], action[None], pred_type=0, deterministic=False, return_infos=True)  # FIXME: effectively each rollout is collected under exactly one dynamics model in the ensemble
+                next_obs, agent_info = next_obs[0], agent_info[0]
+                obs_hall.append(next_obs)
+                obs_hall_mean.append(agent_info['mean'])
+                obs_hall_std.append(agent_info['std'])
+                reward_hall.append(self.env.reward(obs[None], action[None], next_obs[None]))
+                obs = next_obs
 
             x = np.arange(self.max_path_length)
             obs_space_dims = self.env.observation_space.shape[0]
             action_space_dims = self.env.action_space.shape[0]
-            obs_hall = np.transpose(np.asarray(obs_hall))
+            obs_hall = np.transpose(np.asarray(obs_hall))  # (horizon, obs_space_dims) -> (obs_space_dims, horizon)
             obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
             obs_hall_std = np.transpose(np.asarray(obs_hall_std))
             obs_real = np.transpose(np.asarray(obs_real))
-            tau = np.transpose(np.asarray(tau))
+            tau = np.transpose(np.asarray(tau))  # (horizon, action_space_dims) -> (action_space_dims, horizon)
             tau_mean = np.transpose(np.asarray(tau_mean))
             tau_std = np.transpose(np.asarray(tau_std))
             n_subplots = obs_space_dims + action_space_dims + 2
@@ -222,7 +221,7 @@ class Sampler(BaseSampler):
             ax.plot(x, reward_hall, label='reward_dyn')
             ax.plot(x, reward_real, label='reward_env', marker='o')
             # ax.plot(x, loss_reward, label='reward_planning')  # FIXME: == reward_env??
-            ax.plot(x, loss_kl, label='kl_planning')
+            ax.plot(x, loss_reg, label='kl_planning')
             ax.legend()
 
             ax = axes[obs_space_dims+action_space_dims+1]

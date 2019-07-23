@@ -33,7 +33,8 @@ class PolicyOnlyTrainer(object):
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
-            fit_model = True
+            fit_model = True,
+            plot_freq=-1,
     ):
         self.env = env
         self.sampler = sampler
@@ -44,6 +45,7 @@ class PolicyOnlyTrainer(object):
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
+        self.plot_freq = plot_freq
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -75,7 +77,8 @@ class PolicyOnlyTrainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=False)
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=False,
+                                                            plot_first_rollout=(self.plot_freq > 0) and (itr % self.plot_freq == 0))
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
