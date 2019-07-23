@@ -308,10 +308,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        # next_obs = clip(obs + delta_pred
-        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
-        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
-        return next_obs
+        delta_preds = tf.gather(delta_preds, perm_inv)
+        pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        return pred_obs
 
     def predict_batches_sym(self, obs_ph, act_ph):
         """
@@ -350,11 +349,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
+        pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        return pred_obs
 
-        next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
-        return next_obs
-
-    def predict(self, obs, act, pred_type='rand', deterministic=False):
+    def predict(self, obs, act, pred_type='rand', deterministic=False, return_infos=False):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -382,6 +380,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             var = np.array(self.f_var_pred(obs, act))
             if not deterministic:
                 delta = np.random.normal(delta, np.sqrt(var))
+            if return_infos:
+                delta_mean = self._denormalize_data(delta)
             delta = self._denormalize_data(delta)
         else:
             obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
@@ -392,9 +392,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         assert delta.ndim == 3
 
-        delta = np.clip(delta, -1e2, 1e2)
-
         pred_obs = obs_original[:, :, None] + delta
+        pred_obs = np.clip(pred_obs, -1e2, 1e2)
 
         batch_size = delta.shape[0]
         if pred_type == 'rand':
@@ -408,6 +407,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         elif type(pred_type) is int:
             assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
+            if return_infos:
+                delta_std = np.sqrt(var) * self.normalization[pred_type]['delta'][1]
+                agent_infos = [dict(mean=delta_mean, std=delta_std)]
+                return pred_obs, agent_infos
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
         return pred_obs
@@ -427,12 +430,17 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         obs_batches_original = obs_batches
 
         if self.normalize_input:
+            obs_batches, act_batches = np.split(obs_batches, self.num_models), np.split(act_batches, self.num_models)
             obs_batches, act_batches = self._normalize_data(obs_batches, act_batches)
+            obs_batches, act_batches = np.concatenate(obs_batches, axis=0), np.concatenate(act_batches, axis=0)
+
             delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
             var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
             if not deterministic:
                 delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
-            delta_batches = denormalize(delta_batches, self.normalization['delta'][0], self.normalization['delta'][1])
+            delta_batches = np.array(np.split(delta_batches, self.num_models)).transpose((1, 2, 0))
+            delta_batches = self._denormalize_data(delta_batches)
+            delta_batches = np.concatenate(delta_batches.transpose((2, 0, 1)), axis=0)
         else:
             delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
             var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
@@ -441,9 +449,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         assert delta_batches.ndim == 2
 
-        pred_obs_batches = obs_batches_original + delta_batches
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
+        pred_obs_batches = np.clip(obs_batches_original + delta_batches, -1e2, 1e2)
         assert pred_obs_batches.shape == obs_batches.shape
+
         return pred_obs_batches
 
     def _create_assign_ph(self):

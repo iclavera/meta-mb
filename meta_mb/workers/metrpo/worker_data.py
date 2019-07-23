@@ -5,8 +5,9 @@ from meta_mb.workers.base import Worker
 
 class WorkerData(Worker):
     def __init__(self, simulation_sleep, video=False):
+        self.video = video
         if video:
-            super().__init__(snapshot_mode='gap', snapshot_gap=int(1250*simulation_sleep/5/30))
+            super().__init__(snapshot_mode='gap', snapshot_gap=100)
         else:
             super().__init__()
         self.simulation_sleep = simulation_sleep
@@ -76,8 +77,11 @@ class WorkerData(Worker):
         logger.logkv('Data-TimeSleep', time_sleep)
 
         # save snapshot
-        params = self.get_itr_snapshot()
-        logger.save_itr_params(self.itr_counter, params)
+        if self.video and self.itr_counter % self.snapshot_gap == 0:
+            time_save = time.time()
+            params = self.get_itr_snapshot()
+            logger.save_itr_params(self.itr_counter, params)
+            logger.logkv('Data-TimeSave', time.time() - time_save)
 
     def _synch(self, policy_state_pickle):
         time_synch = time.time()
