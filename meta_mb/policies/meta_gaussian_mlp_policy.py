@@ -18,7 +18,7 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         self.post_update_mean_var = None
         self.post_update_log_std_var = None
         GaussianMLPPolicy.__init__(self, *args, **kwargs)
-        #MetaPolicy.__init__(self, *args, **kwargs)
+        # MetaPolicy.__init__(self, *args, **kwargs)
         # super does not call MetaPolicy.__init__()
         self._pre_update_mode = True
         # super().__init__(*args, **kwargs)
@@ -95,7 +95,6 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         Returns:
             (ndarray) : single action - shape: (action_dim,)
         """
-        #observation = np.repeat(np.expand_dims(observation, axis=0), self.meta_batch_size, axis=0)
         self.switch_to_pre_update()
         observation = np.repeat(np.expand_dims(observation, axis=0), self.meta_batch_size, axis=0)
         action, agent_infos = self.get_actions(observation)
@@ -107,10 +106,11 @@ class MetaGaussianMLPPolicy(GaussianMLPPolicy, MetaPolicy):
         Args:
             observations (list): List of numpy arrays of shape (meta_batch_size, batch_size, obs_dim)
 
-        Returns:/
+        Returns:
             (tuple) : A tuple containing a list of numpy arrays of action, and a list of list of dicts of agent infos
         """
         assert len(observations) == self.meta_batch_size
+
         if self._pre_update_mode:
             actions, agent_infos = self._get_pre_update_actions(observations)
         else:

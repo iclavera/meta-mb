@@ -55,7 +55,7 @@ class RandomEnv(MetaEnv, MujocoEnv):
         - body_inertia
         - damping coeff at the joints
     """
-    RAND_PARAMS = ['body_mass', 'dof_damping', 'body_inertia', 'geom_friction', 'jnt_stiffness']
+    RAND_PARAMS = ['body_mass', 'body_inertia', 'dof_damping', 'geom_friction', 'jnt_stiffness']
     RAND_PARAMS_EXTENDED = RAND_PARAMS + ['geom_size']
 
     def __init__(self, log_scale_limit, *args, rand_params=RAND_PARAMS, **kwargs):
@@ -94,13 +94,17 @@ class RandomEnv(MetaEnv, MujocoEnv):
 
             # damping -> different multiplier for different dofs/joints
             if 'dof_damping' in self.rand_params:
-                dof_damping_multipliers = np.array(1.3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.dof_damping.shape)
+                dof_damping_multipliers = np.array(1.5) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.dof_damping.shape)
                 new_params['dof_damping'] = np.multiply(self.init_params['dof_damping'], dof_damping_multipliers)
 
             # friction at the body components
             if 'geom_friction' in self.rand_params:
                 dof_damping_multipliers = np.array(1.5) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.geom_friction.shape)
                 new_params['geom_friction'] = np.multiply(self.init_params['geom_friction'], dof_damping_multipliers)
+
+            if 'geom_size' in self.rand_params:
+                dof_damping_multipliers = np.array(1.5) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.geom_size.shape)
+                new_params['geom_size'] = np.multiply(self.init_params['geom_size'], dof_damping_multipliers)
 
             # stiffness at the model's joints
             if 'jnt_stiffness' in self.rand_params:
@@ -152,6 +156,10 @@ class RandomEnv(MetaEnv, MujocoEnv):
         # friction at the body components
         if 'geom_friction' in self.rand_params:
             self.init_params['geom_friction'] = self.model.geom_friction
+
+        # size of the body components
+        if 'geom_size' in self.rand_params:
+            self.init_params['geom_size'] = self.model.geom_friction
 
         # stiffness at the model's joints 
         if 'jnt_stiffness' in self.rand_params:
