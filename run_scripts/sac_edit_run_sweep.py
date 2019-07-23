@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "STEVE"
+EXP_NAME = "STEVE-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -142,7 +142,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [11, 12],
+        'seed': [12],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -171,10 +171,10 @@ if __name__ == '__main__':
 		'q_target_type': [0],
 		'num_actions_per_next_observation': [2],
 		'epoch_length': [1000],
-        'T': [0],
+        'T': [3],
 		'H': [2],
 		'reward_scale': [1],
-		'target_entropy': [-3, -6],
+		'target_entropy': [-6],
 		'num_models': [8],
 		'dynamics_buffer_size': [1e4],
 

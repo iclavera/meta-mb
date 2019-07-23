@@ -256,7 +256,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         return dict(mean=mean, var=log_std)
     """
 
-    def predict_sym(self, obs_ph, act_ph):
+    def predict_sym(self, obs_ph, act_ph, shuffle=True):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
         :param obs_ph: (batch_size, obs_space_dims)
@@ -265,9 +265,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         """
         original_obs = obs_ph
         # shuffle
-        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
-        perm = tf.random.shuffle(perm)
-        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        if shuffle:
+            perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+            perm = tf.random.shuffle(perm)
+            obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
         delta_preds = []

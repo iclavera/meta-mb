@@ -134,6 +134,7 @@ class Trainer(object):
                 logger.log("Optimizing policy...")
                 # This needs to take all samples_data so that it can construct graph for meta-optimization.
                 time_optimization_step_start = time.time()
+                
                 self.algo.optimize_policy(self.replay_buffer, itr * self.epoch_length, self.num_grad_steps)
 
                 """ ------------------- Logging Stuff --------------------------"""
