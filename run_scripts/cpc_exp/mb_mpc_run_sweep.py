@@ -29,9 +29,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'envs_finetune2'
+EXP_NAME = 'envs_finetune_savebest'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -97,11 +97,11 @@ def run_experiment(**config):
         if config['use_image']:
             if config['encoder'] == 'cpc':
                 if config['use_context_net']:
-                    encoder = CPCContextNet(path=model_path, model=cpc_model.get_layer('context_network'))
+                    encoder = CPCContextNet(None, model=cpc_model.get_layer('context_network'))
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
                                         latent_dim=config['latent_dim'], time_major=True)
                 else:
-                    encoder = CPCEncoder(path=model_path, model=cpc_model.get_layer('context_network').layers[1].layer)
+                    encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, vae=encoder,
                                         latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
@@ -227,8 +227,9 @@ def run_experiment(**config):
             cpc_lr=config['cpc_lr'],
             cpc_initial_epoch=config['cpc_initial_epoch'],
             cpc_initial_lr = config['cpc_initial_lr'],
-            cpc_negative_same_traj=config['negative'] // 3 if config['env'] == 'reacher_easy' else 0,
-            cpc_initial_sampler=sampler_initial_cpc
+            cpc_negative_same_traj=config['negative'] // 3 * 2 if config['env'] == 'reacher_easy' else 0,
+            cpc_initial_sampler=sampler_initial_cpc,
+            cpc_train_interval=config['cpc_train_interval']
         )
         algo.train()
 
@@ -487,11 +488,11 @@ if __name__ == '__main__':
 
     config_envs = {
         'seed': [1],
-        'run_suffix': ['1', '2'],
+        'run_suffix': ['1'],
 
         # Problem
 
-        'env': ['cartpole_swingup', 'cartpole_balance', 'reacher_easy'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -537,12 +538,13 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True],
-        'cpc_epoch': [10, 0],
-        'cpc_lr': [3e-4],
+        'include_action': [True, False],
+        'cpc_epoch': [15],
+        'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [512]
+        'cpc_num_initial_rollouts': [512],
+        'cpc_train_interval': [10]
 
     }
 

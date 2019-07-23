@@ -93,9 +93,17 @@ class CPCLayer(keras.layers.Layer):
 
 
 def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
-                learning_rate, encoder_arch='default', context_network='stack', context_size=32):
+                learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
+                code_size_action=4):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
+    if predict_action:
+        """
+        if predict_action, x_input will be [o_t, o_{t+k+1}]
+        y_input is of shape k x (negative + 1) x action_dim
+        """
+        include_action = False
+        terms = 2
 
     # Set learning phase (https://stackoverflow.com/questions/42969779/keras-error-you-must-feed-a-value-for-placeholder-tensor-bidirectional-1-keras)
     K.set_learning_phase(1)
@@ -108,6 +116,12 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
         encoder_output = network_encoder_resnet(encoder_input, code_size)
     encoder_model = keras.models.Model(encoder_input, encoder_output, name='encoder')
     encoder_model.summary()
+
+    if predict_action:
+        action_encoder_input = keras.layers.Input((action_dim,))
+        action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
+        action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
+        action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
 
     # Define context network
     x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]), name='x_input')
@@ -134,13 +148,22 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
 
     # Define rest of the model
     context_output = context_network([x_input, action_input])
-    preds = network_prediction(context_output, code_size, predict_terms)
+    if predict_action:
+        preds = network_prediction(context_output, code_size_action, predict_terms)
+    else:
+        preds = network_prediction(context_output, code_size, predict_terms)
 
-    y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]),
-                                 name = 'y_input')
-    y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
-    y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
-    y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
+    if predict_action:
+        y_input = keras.layers.Input((predict_terms, (negative_samples + 1), action_dim), name='y_input')
+        y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
+        y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
+        y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
+    else:
+        y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]),
+                                     name = 'y_input')
+        y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
+        y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
+        y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
 
     # Loss
     logits = CPCLayer()([preds, y_encoded])

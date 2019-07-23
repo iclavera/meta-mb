@@ -21,7 +21,7 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'envs_finetune'
+EXP_NAME = 'predict_action'
 
 
 def train_with_exploratory_policy(**config):
@@ -39,13 +39,13 @@ def train_with_exploratory_policy(**config):
                                         max_path_length=max_path_length, image_shape=config['image_shape'])
     train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
     train_data = CPCDataGenerator(train_img, train_action, config['batch_size'], terms=config['terms'], negative_samples=config['negative_samples'],
-                                  predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj)
+                                  predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'])
     validation_data = CPCDataGenerator(val_img, val_action, config['batch_size'], terms=config['terms'], negative_samples=config['negative_samples'],
-                                       predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj)
+                                       predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'])
 
     # train_data.next()
-    # for (x, y), labels in train_data:
-    #     plot_seq(x[0], y, labels, name='reacher-seq')
+    # for (x, a, y), labels in train_data:
+    #     plot_seq(x, y, labels, name='cartpole-seq2')
     #     break
     # import pdb; pdb.set_trace()
 
@@ -53,7 +53,8 @@ def train_with_exploratory_policy(**config):
     # Create the model
     model = network_cpc(image_shape=config['image_shape'], action_dim=raw_env.action_space.shape[0], include_action=config['include_action'],
                         terms=config['terms'], predict_terms=config['predict_terms'], negative_samples=config['negative_samples'],
-                        code_size=config['code_size'], learning_rate=config['lr'], encoder_arch=config['encoder_arch'], context_network=config['context_network'])
+                        code_size=config['code_size'], learning_rate=config['lr'], encoder_arch=config['encoder_arch'], context_network=config['context_network'],
+                        predict_action=config['predict_action'])
 
     # Callbacks
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data', EXP_NAME, exp_name)
@@ -92,9 +93,9 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['cartpole_swingup'],
+        'env': ['cartpole_balance'],
         'image_shape': [(64, 64, 3)],
-        'num_rollouts': [512],
+        'num_rollouts': [20],
 
         # for point mass
         'ptsize': [2],
@@ -102,19 +103,20 @@ if __name__ == "__main__":
 
 
         # cpc config
-        'terms': [3],
-        'predict_terms': [3],
+        'terms': [1],
+        'predict_terms': [1],
         'encoder_arch': ['default'],
         'context_network': ['stack'],
         'code_size': [8],
-        'negative_samples': [10],
-        'include_action': [True],
+        'negative_samples': [5],
+        'include_action': [False],
+        'predict_action':[False],
 
 
         # training config
         'epochs': [30],
         'lr': [1e-3],
-        'batch_size': [32],
+        'batch_size': [8],
 
     }
 

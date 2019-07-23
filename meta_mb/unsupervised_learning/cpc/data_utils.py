@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 class CPCDataGenerator(object):
     def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0,
-                 max_num_seq=512):
+                 max_num_seq=512, predict_action=False):
         self.batch_size = batch_size
         self.images = img_seqs
         self.actions = action_seqs
@@ -20,6 +20,7 @@ class CPCDataGenerator(object):
         self.n_samples = self.n_seqs * self.n_chunks
 
         self.max_num_seq = max_num_seq
+        self.predict_action = predict_action
 
         assert self.negative_same_traj < self.negative_samples
 
@@ -54,10 +55,15 @@ class CPCDataGenerator(object):
         # get the starting index of x_images
         idx_n = np.random.randint(0, self.n_seqs, self.batch_size)
         start_idx_t = np.random.randint(0, self.n_chunks, (self.batch_size, 1))
-        x_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
-        for _ in range(self.terms):
-            x_idx_t = np.concatenate([x_idx_t, start_idx_t], axis=-1)
-            start_idx_t += 1
+        if self.predict_action:
+            x_idx_t = np.copy(start_idx_t)
+            start_idx_t_plus_terms = start_idx_t + self.predict_terms
+            x_idx_t = np.concatenate([x_idx_t, start_idx_t_plus_terms], axis=-1)
+        else:
+            x_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
+            for _ in range(self.terms):
+                x_idx_t = np.concatenate([x_idx_t, start_idx_t], axis=-1)
+                start_idx_t += 1
 
         # gather the x_images
         x_images = self.images[idx_n[:, None], x_idx_t]
@@ -65,13 +71,20 @@ class CPCDataGenerator(object):
         actions = self.actions[idx_n[:, None], x_idx_t]
 
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
-        # get tht positive samples for y_images
-        # start_idx_t -= 1
-        for _ in range(self.predict_terms):
-            y_idx_t = np.concatenate([y_idx_t, start_idx_t], axis=-1)
-            start_idx_t += 1
+        if self.predict_action:
+            # get the positive samples for actions
+            for _ in range(self.predict_terms):
+                y_idx_t = np.concatenate([y_idx_t, start_idx_t], axis=-1)
+                start_idx_t += 1
 
-        y_images_pos = self.images[idx_n[:, None], y_idx_t]
+            y_pos = self.actions[idx_n[:, None], y_idx_t]
+        else:
+            # get tht positive samples for y_images
+            for _ in range(self.predict_terms):
+                y_idx_t = np.concatenate([y_idx_t, start_idx_t], axis=-1)
+                start_idx_t += 1
+
+            y_pos = self.images[idx_n[:, None], y_idx_t]
 
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)
@@ -89,10 +102,13 @@ class CPCDataGenerator(object):
             neg_idx_n = np.concatenate([neg_idx_n, neg_idx_n2], axis = -1)
             neg_idx_t = np.concatenate([neg_idx_t, neg_idx_t2], axis=-1)
 
-        y_images_neg = self.images[neg_idx_n, neg_idx_t]
+        if self.predict_action:
+            y_neg = self.actions[neg_idx_n, neg_idx_t]
+        else:
+            y_neg = self.images[neg_idx_n, neg_idx_t]
 
         # concatenate positive samples with negative ones
-        y_images = np.concatenate([y_images_pos[:, :, None, ...], y_images_neg], axis=2)
+        y = np.concatenate([y_pos[:, :, None, ...], y_neg], axis=2)
 
         pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + 1)).astype('int32')
         pos_neg_label[:, :, 0] = 1
@@ -105,7 +121,7 @@ class CPCDataGenerator(object):
 
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
 
-        return [x_images, actions, y_images[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
+        return [x_images, actions, y[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
 
 def plot_seq(x, y, labels, name=''):
     """

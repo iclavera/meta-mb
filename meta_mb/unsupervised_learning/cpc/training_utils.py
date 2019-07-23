@@ -3,8 +3,9 @@ import os
 import tensorflow as tf
 
 class SaveEncoder(keras.callbacks.Callback):
-    def __init__(self, output_dir):
+    def __init__(self, output_dir, save_best=True):
         self.output_dir = output_dir
+        self.save_best = save_best
 
     def on_train_begin(self, logs={}):
         self.max_acc = -1.
@@ -13,12 +14,18 @@ class SaveEncoder(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs={}):
         cur_acc = logs.get('val_categorical_accuracy')
-        if cur_acc > self.max_acc:
+        if not self.save_best:
             print("saving model with accuracy %f" % cur_acc)
-            self.max_acc = cur_acc
             self.encoder.save(os.path.join(self.output_dir, 'encoder.h5'))
             self.model.save(os.path.join(self.output_dir, 'cpc.h5'))
             self.context.save(os.path.join(self.output_dir, 'context.h5'))
+        else:
+            if cur_acc > self.max_acc:
+                print("saving model with accuracy %f" % cur_acc)
+                self.max_acc = cur_acc
+                self.encoder.save(os.path.join(self.output_dir, 'encoder.h5'))
+                self.model.save(os.path.join(self.output_dir, 'cpc.h5'))
+                self.context.save(os.path.join(self.output_dir, 'context.h5'))
 
 def make_periodic_lr(lr_schedule):
     def periodic_lr(epoch, lr):

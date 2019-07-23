@@ -6,7 +6,9 @@ from sklearn.model_selection import train_test_split
 import time
 
 from meta_mb.logger import logger
-from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator
+from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_seq
+from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
+from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder
 
 class Trainer(object):
     """
@@ -48,7 +50,7 @@ class Trainer(object):
             cpc_batch_size=32,
             cpc_negative_same_traj=0,
             cpc_initial_sampler=None,
-            cpc_train_interval=1
+            cpc_train_interval=10,
             ):
         self.env = env
         self.sampler = sampler
@@ -118,9 +120,15 @@ class Trainer(object):
                                                    predict_terms=predict_terms,
                                                    negative_same_traj=self.cpc_negative_same_traj)
 
+
+                # for (x, a, y), labels in train_data:
+                #     plot_seq(x[0], y, labels, name='reacher-seq')
+                #     break
+                # import pdb; pdb.set_trace()
+                #
                 callbacks = [
                     keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
-                    # SaveEncoder(output_dir),
+                    SaveEncoder(logger.get_dir()),
                     keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
                 # Train the model
@@ -133,6 +141,8 @@ class Trainer(object):
                     verbose=1,
                     callbacks=callbacks
                 )
+
+                self.env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -194,10 +204,15 @@ class Trainer(object):
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
                 if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
+                    self.cpc_model.compile(
+                        optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
+                        loss=cross_entropy_loss,
+                        metrics=['categorical_accuracy'])
+
                     callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1, restore_best_weights=True),
-                                 keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
-                                 #keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
-                                 # SaveEncoder(output_dir),
+                                 #keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
+                                 keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
+                                 SaveEncoder(logger.get_dir()),
                                  keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
                     # Train the model
@@ -210,6 +225,8 @@ class Trainer(object):
                         verbose=1,
                         callbacks=callbacks
                     )
+
+                    self.env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
 
