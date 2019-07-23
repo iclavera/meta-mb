@@ -2,12 +2,11 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'mbpo-5'
-import sys
-sys.path.append('/home/vioichigo/meta-mb/tf_mbpo/mbpo/handful-of-trails')
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = "STEVE"
 
-from meta_mb.algos.sac import SAC
+from pdb import set_trace as st
+from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
@@ -19,7 +18,9 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
 
@@ -36,7 +37,7 @@ def run_experiment(**kwargs):
 
         # Instantiate classes
         set_seed(kwargs['seed'])
- 
+
         baseline = kwargs['baseline']()
 
         env = normalize(kwargs['env']())
@@ -46,11 +47,10 @@ def run_experiment(**kwargs):
                             action_dim=int(np.prod(env.action_space.shape))
                             ) for i in range(2)]
 
-        Q_targets = [
-                    ValueFunction(name="q_fun_target_%d" % i,
-                                  obs_dim=int(np.prod(env.observation_space.shape)),
-                                  action_dim=int(np.prod(env.action_space.shape))
-                                  ) for i in range(2)]
+        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
+                                   obs_dim=int(np.prod(env.observation_space.shape)),
+                                   action_dim=int(np.prod(env.action_space.shape))
+                                   ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -78,26 +78,37 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
+
         dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
-                                                 env=env,
-                                                 rolling_average_persitency=kwargs['rolling_average_persitency'],
-                                                 num_models=kwargs['num_models'],
-                                                 hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                                 learning_rate=kwargs['dynamics_learning_rate'],
-                                                 buffer_size=kwargs['dynamics_buffer_size'],
+                                                env=env,
+                                                num_models=kwargs['num_models'],
+                                                hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                                batch_size=kwargs['dynamics_batch_size'],
+                                                learning_rate=kwargs['model_learning_rate'],
+                                                buffer_size=kwargs['dynamics_buffer_size'],
+												rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                 )
 
-        algo = SAC(
+
+        algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
+            arget_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
-            target_entropy=kwargs['target_entropy']
+            num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
+            prediction_type=kwargs['prediction_type'],
+            T=kwargs['T'],
+			q_functioin_type=kwargs['q_functioin_type'],
+			env_name=str(kwargs['env']),
+			q_target_type=kwargs['q_target_type'],
+			H=kwargs['H'],
         )
 
         trainer = Trainer(
@@ -119,9 +130,10 @@ def run_experiment(**kwargs):
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-            max_model_t=kwargs['max_model_t'],
             epoch_length=kwargs['epoch_length'],
             restore_path=save_model_dir+kwargs['restore_path'],
+			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+			sampler_batch_size=kwargs['sampler_batch_size'],
         )
 
         trainer.train()
@@ -130,10 +142,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'algo': ['sac'],
-        'seed': [11, 22],
+        'seed': [11, 12],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv, HalfCheetahEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -145,41 +156,46 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # replay_buffer
-        'env_replay_buffer_max_size': [5e6],
-        'model_replay_buffer_max_size': [5e6],
-        'rolling_average_persitency': [0.9, 0.4],
+		'n_initial_exploration_steps': [5e3],
+        'env_replay_buffer_max_size': [1e6],
+        'model_replay_buffer_max_size': [2e6],
+		'n_itr': [3000],
+        'n_train_repeats': [8],
+        'max_path_length': [1001],
+		'rollout_length_params': [[20, 100, 1, 1]],
+        'model_train_freq': [250],
+		'rollout_batch_size': [100e3],
+		'dynamics_model_max_epochs': [200],
+		'rolling_average_persitency':[0.9],
+		'q_functioin_type':[4],
+		'q_target_type': [0],
+		'num_actions_per_next_observation': [2],
+		'epoch_length': [1000],
+        'T': [0],
+		'H': [2],
+		'reward_scale': [1],
+		'target_entropy': [-3, -6],
+		'num_models': [8],
+		'dynamics_buffer_size': [1e4],
 
         # Problem Conf
-        'n_itr': [300],
-        'n_train_repeats': [20],
-        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1],
+		'prediction_type':['mean'],
 
         # Dynamics Model
-        'num_models': [5],
-        'dynamics_learning_rate': [3e-4],
-        'dyanmics_hidden_nonlinearity': ['swish'],
-        'dynamics_buffer_size': [5e4],
-        'dynamics_hidden_sizes': [(200, 200, 200, 200)],
-
-        'num_actions_per_next_observation': [3],
-        'prediction_type': ['mean'],
-        'T': [3],
-        'n_initial_exploration_steps': [5e3],
-        'rollout_length_params': [[20, 150, 1, 1]],
-        'model_train_freq': [250],
-        'rollout_batch_size': [100e3],
+		'sampler_batch_size': [256],
         'real_ratio': [0.05],
-        'max_model_t': [1e10],
-        'epoch_length': [1000],
         'restore_path': [''],
-        'target_entropy': [-3, -0.75],
 
+        'model_learning_rate': [1e-3],
+        'dynamics_hidden_sizes': [(200, 200, 200, 200)],
+        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_output_nonlinearity': [None],
+        'dynamics_batch_size': [256]
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

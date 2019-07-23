@@ -57,6 +57,8 @@ class NormalizedEnv(Serializable):
         self._reward_mean = 0.
         self._reward_var = 1.
         self._normalization_scale = normalization_scale
+        # from pdb import set_trace as st
+        # st()
 
 
     @property

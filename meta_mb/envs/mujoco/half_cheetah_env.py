@@ -50,6 +50,10 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def derivative(self):
+        deriv = self.sim.derivative()
+        return deriv
+
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 0.3
         self.viewer.cam.elevation = 3

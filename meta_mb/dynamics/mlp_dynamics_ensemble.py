@@ -9,7 +9,6 @@ import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 
-
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
     Class for MLP continous dynamics model
@@ -22,7 +21,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  hidden_sizes=(512, 512),
                  hidden_nonlinearity='swish',
                  output_nonlinearity=None,
-                 batch_size=256,
+                 batch_size=500,
                  learning_rate=0.001,
                  weight_normalization=False,  # Doesn't work
                  normalize_input=True,
@@ -84,13 +83,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self.obs_next_pred = []
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
-                    mlp = MLP(name + '/model_{}'.format(i),
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
                               input_var=obs_ph[i],
-                              input_dim=obs_space_dims + action_space_dims,
+                              input_dim=obs_space_dims+action_space_dims,
                               )
                     mlps.append(mlp)
 
@@ -98,11 +97,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
+
             # define loss and train_op
             if loss_str == 'L2':
                 self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
             elif loss_str == 'MSE':
-                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred) ** 2)
+                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
             else:
                 raise NotImplementedError
 
@@ -133,13 +133,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
-                    mlp = MLP(name + '/model_{}'.format(i),
+                    mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
                               input_var=nn_input,
-                              input_dim=obs_space_dims + action_space_dims,
+                              input_dim=obs_space_dims+action_space_dims,
                               weight_normalization=weight_normalization)
 
                 delta_preds.append(mlp.output_var)
@@ -148,19 +148,17 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 elif loss_str == 'MSE':
                     loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
                 else:
-                    raise NotImplementedError
+                    raise  NotImplementedError
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
-            self.delta_pred_model_batches_stack = tf.concat(delta_preds,
-                                                            axis=0)  # shape: (batch_size_per_model*num_models, ndim_obs)
+            self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # tensor_utils
             self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
                                                                 self.act_model_batches_stack_ph],
-                                                               self.delta_pred_model_batches_stack)
+                                                                self.delta_pred_model_batches_stack)
 
         self._networks = mlps
-        self._predict_obs = self.predict_sym(self.obs_ph, self.act_ph)
         # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
 
     def update_buffer(self, obs, act, obs_next, valid_split_ratio=None, check_init=True):
@@ -216,6 +214,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             n_train_new_samples = len(obs_train_batches[0])
             n_max_train = self.buffer_size_train - n_train_new_samples
             for i in range(self.num_models):
+
                 self._dataset_test['obs'][i] = np.concatenate([self._dataset_test['obs'][i][-n_max_test:],
                                                                obs_test_batches[i]])
                 self._dataset_test['act'][i] = np.concatenate([self._dataset_test['act'][i][-n_max_test:],
@@ -278,8 +277,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             try:
                 obs_act_delta = sess.run(self.next_batch)
                 obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
-                act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2 * self.num_models], axis=0)
-                delta_batch_stack = np.concatenate(obs_act_delta[2 * self.num_models:], axis=0)
+                act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
+                delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
 
                 # run train op
                 batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
@@ -318,21 +317,20 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     valid_loss_rolling_average_prev = 2.0 * valid_loss
                     for i in range(len(valid_loss)):
                         if valid_loss[i] < 0:
-                            valid_loss_rolling_average[i] = valid_loss[
-                                                                i] / 1.5  # set initial rolling to a higher value avoid too early stopping
-                            valid_loss_rolling_average_prev[i] = valid_loss[i] / 2.0
+                            valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
+                            valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
 
-                valid_loss_rolling_average = rolling_average_persitency * valid_loss_rolling_average \
-                                             + (1.0 - rolling_average_persitency) * valid_loss
+                valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
+                                             + (1.0-rolling_average_persitency)*valid_loss
 
                 if verbose:
-                    str_mean_batch_losses = ' '.join(['%.4f' % x for x in np.mean(batch_losses, axis=0)])
-                    str_valid_loss = ' '.join(['%.4f' % x for x in valid_loss])
-                    str_valid_loss_rolling_averge = ' '.join(['%.4f' % x for x in valid_loss_rolling_average])
+                    str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
+                    str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
+                    str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
                     logger.log(
                         "Training NNDynamicsModel - finished one epoch\n"
                         "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-                        % (str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+                        %(str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
                     )
                 break
 
@@ -343,27 +341,18 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv(prefix + 'TimeStepsCtr', self.timesteps_counter)
-            logger.logkv(prefix + 'UsedTimeStepsCtr', self.used_timesteps_counter)
-            logger.logkv(prefix + 'AvgSampleUsage', self.used_timesteps_counter / self.timesteps_counter)
-            logger.logkv(prefix + 'NumModelRemaining', len(remaining_model_idx))
-            logger.logkv(prefix + 'AvgTrainLoss', np.mean(batch_losses))
-            logger.logkv(prefix + 'AvgValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix + 'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
+            logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
+            logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
+            logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
+            logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
+            logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
+            logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
+            logger.logkv(prefix+'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
 
         return remaining_model_idx, valid_loss_rolling_average
 
-    def fit(self, obs=None,
-            act=None,
-            obs_next=None,
-            epochs=200,
-            compute_normalization=True,
-            valid_split_ratio=None,
-            rolling_average_persitency=None,
-            verbose=False,
-            log_tabular=True,
-            prefix=''):
-
+    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
+            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -394,7 +383,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                                                      self._dataset_train['act'],
                                                                      self._dataset_train['delta'])
         else:
-            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
+            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'],\
                                                 self._dataset_train['delta']
 
         valid_loss_rolling_average = None
@@ -423,14 +412,14 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 try:
                     obs_act_delta = sess.run(self.next_batch)
                     obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
-                    act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2 * self.num_models], axis=0)
-                    delta_batch_stack = np.concatenate(obs_act_delta[2 * self.num_models:], axis=0)
+                    act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
+                    delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
 
                     # run train op
                     batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
-                                                    feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
-                                                               self.act_model_batches_stack_ph: act_batch_stack,
-                                                               self.delta_model_batches_stack_ph: delta_batch_stack})
+                                                   feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
+                                                              self.act_model_batches_stack_ph: act_batch_stack,
+                                                              self.delta_model_batches_stack_ph: delta_batch_stack})
 
                     batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                     batch_losses.append(batch_loss)
@@ -461,38 +450,33 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                         valid_loss_rolling_average_prev = 2.0 * valid_loss
                         for i in range(len(valid_loss)):
                             if valid_loss[i] < 0:
-                                valid_loss_rolling_average[i] = valid_loss[
-                                                                    i] / 1.5  # set initial rolling to a higher value avoid too early stopping
-                                valid_loss_rolling_average_prev[i] = valid_loss[i] / 2.0
+                                valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
+                                valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
 
-                    valid_loss_rolling_average = rolling_average_persitency * valid_loss_rolling_average \
-                                                 + (1.0 - rolling_average_persitency) * valid_loss
+                    valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
+                                                 + (1.0-rolling_average_persitency)*valid_loss
 
                     if verbose:
-                        str_mean_batch_losses = ' '.join(['%.4f' % x for x in np.mean(batch_losses, axis=0)])
-                        str_valid_loss = ' '.join(['%.4f' % x for x in valid_loss])
-                        str_valid_loss_rolling_averge = ' '.join(['%.4f' % x for x in valid_loss_rolling_average])
+                        str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
+                        str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
+                        str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
                         logger.log(
                             "Training NNDynamicsModel - finished epoch %i --\n"
                             "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-                            % (epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+                            %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
                         )
                     break
 
             for i in range(self.num_models):
-                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[
-                    i] or epoch == epochs - 1) and i not in idx_to_remove:
+                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
                     idx_to_remove.append(i)
                     epochs_per_model.append(epoch)
                     if epoch < epochs - 1:
-                        logger.log(
-                            'At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch,
-                                                                                                               i))
+                        logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
 
             train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
 
-            if not idx_to_remove: epoch_times.append(
-                time.time() - epoch_start_time)  # only track epoch times while all models are trained
+            if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
 
             if not train_op_to_do:
                 if verbose and epoch < epochs - 1:
@@ -502,15 +486,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv(prefix + 'AvgModelEpochTime', np.mean(epoch_times))
+            logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
             assert len(epochs_per_model) == self.num_models
-            logger.logkv(prefix + 'AvgEpochs', np.mean(epochs_per_model))
-            logger.logkv(prefix + 'StdEpochs', np.std(epochs_per_model))
-            logger.logkv(prefix + 'MaxEpochs', np.max(epochs_per_model))
-            logger.logkv(prefix + 'MinEpochs', np.min(epochs_per_model))
-            logger.logkv(prefix + 'AvgFinalTrainLoss', np.mean(batch_losses))
-            logger.logkv(prefix + 'AvgFinalValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix + 'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
+            logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
+            logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
+            logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
+            logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
+            logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(batch_losses))
+            logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
+            logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
     def predict_sym(self, obs_ph, act_ph):
         """
@@ -532,10 +516,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     assert self.normalize_input
-                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name + '/model_{}'.format(i),
+                    mlp = MLP(self.name+'/model_{}'.format(i),
                               output_dim=self.obs_space_dims,
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
@@ -573,10 +557,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     assert self.normalize_input
-                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i]) / (self._std_obs_var[i] + 1e-8)
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name + '/model_{}'.format(i),
+                    mlp = MLP(self.name+'/model_{}'.format(i),
                               output_dim=self.obs_space_dims,
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
@@ -594,7 +578,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
         return next_obs
 
-    def predict(self, obs, act):
+    def predict(self, obs, act, pred_type='rand', **kwargs):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -611,8 +595,37 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
-        sess = tf.get_default_session()
-        pred_obs = sess.run(self._predict_obs, feed_dict={self.obs_ph:obs, self.act_ph:act})
+        obs_original = obs
+
+        if self.normalize_input:
+            obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
+            obs, act = self._normalize_data(obs, act)
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
+            delta = np.array(self.f_delta_pred(obs, act))
+            delta = self._denormalize_data(delta)
+
+        else:
+            obs, act = [obs for _ in range(self.num_models)], [act for _ in range(self.num_models)]
+            obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
+            delta = np.array(self.f_delta_pred(obs, act))
+
+        assert delta.ndim == 3
+
+        pred_obs = obs_original[:, :, None] + delta
+
+        batch_size = delta.shape[0]
+        if pred_type == 'rand':
+            # randomly selecting the prediction of one model in each row
+            idx = np.random.randint(0, self.num_models, size=batch_size)
+            pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
+        elif pred_type == 'mean':
+            pred_obs = np.mean(pred_obs, axis=2)
+        elif pred_type == 'all':
+            pass
+        else:
+            NotImplementedError('pred_type must be one of [rand, mean, all]')
+
+        pred_obs = np.clip(pred_obs, -1e2, 1e2)
         return pred_obs
 
     def predict_batches(self, obs_batches, act_batches, *args, **kwargs):
@@ -735,9 +748,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess = tf.get_default_session()
         if '_reinit_model_op' not in dir(self):
             self._reinit_model_op = [tf.variables_initializer(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                                                                scope=self.name + '/model_{}'.format(
-                                                                                    i))) for i in
-                                     range(self.num_models)]
+                                    scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
     def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
@@ -751,8 +762,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
-        self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in
-                                         range(self.num_models)]
+        self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in range(self.num_models)]
 
         dataset = tf.data.Dataset.from_tensor_slices(
             tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
@@ -779,13 +789,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             normalization['act'] = (np.mean(act[i], axis=0), np.std(act[i], axis=0))
             self.normalization.append(normalization)
             feed_dict.update({self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
-                              self._std_obs_ph[i]: self.normalization[i]['obs'][1],
-                              self._mean_act_ph[i]: self.normalization[i]['act'][0],
-                              self._std_act_ph[i]: self.normalization[i]['act'][1],
-                              self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
-                              self._std_delta_ph[i]: self.normalization[i]['delta'][1],
-                              }
-                             )
+                         self._std_obs_ph[i]: self.normalization[i]['obs'][1],
+                         self._mean_act_ph[i]: self.normalization[i]['act'][0],
+                         self._std_act_ph[i]: self.normalization[i]['act'][1],
+                         self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
+                         self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+                         }
+                           )
         sess = tf.get_default_session()
         sess.run(self._assignations, feed_dict=feed_dict)
 
@@ -796,23 +806,17 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         self._assignations = []
         for i in range(self.num_models):
             self._mean_obs_var.append(tf.get_variable('mean_obs_%d' % i, shape=(self.obs_space_dims,),
-                                                      dtype=tf.float32, initializer=tf.zeros_initializer,
-                                                      trainable=False))
+                                                 dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_obs_var.append(tf.get_variable('std_obs_%d' % i, shape=(self.obs_space_dims,),
-                                                     dtype=tf.float32, initializer=tf.ones_initializer,
-                                                     trainable=False))
+                                                dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
             self._mean_act_var.append(tf.get_variable('mean_act_%d' % i, shape=(self.action_space_dims,),
-                                                      dtype=tf.float32, initializer=tf.zeros_initializer,
-                                                      trainable=False))
+                                                 dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_act_var.append(tf.get_variable('std_act_%d' % i, shape=(self.action_space_dims,),
-                                                     dtype=tf.float32, initializer=tf.ones_initializer,
-                                                     trainable=False))
+                                                dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
             self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims,),
-                                                        dtype=tf.float32, initializer=tf.zeros_initializer,
-                                                        trainable=False))
+                                                   dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims,),
-                                                       dtype=tf.float32, initializer=tf.ones_initializer,
-                                                       trainable=False))
+                                                  dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
 
             self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
@@ -822,12 +826,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
-                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
-                                       tf.assign(self._mean_act_var[i], self._mean_act_ph[i]),
-                                       tf.assign(self._std_act_var[i], self._std_act_ph[i]),
-                                       tf.assign(self._mean_delta_var[i], self._mean_delta_ph[i]),
-                                       tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
-                                       ])
+                                      tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
+                                      tf.assign(self._mean_act_var[i], self._mean_act_ph[i]),
+                                      tf.assign(self._std_act_var[i], self._std_act_ph[i]),
+                                      tf.assign(self._mean_delta_var[i], self._mean_delta_ph[i]),
+                                      tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
+                                      ])
 
     def _normalize_data(self, obs, act, delta=None):
         assert len(obs) == len(act) == self.num_models
@@ -854,12 +858,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert delta.shape[-1] == self.num_models
         denorm_deltas = []
         for i in range(self.num_models):
-            denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0],
-                                       self.normalization[i]['delta'][1])
+            denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
             denorm_deltas.append(denorm_delta)
         return np.stack(denorm_deltas, axis=-1)
 
-    def get_shared_param_values(self):  # to feed policy
+    def get_shared_param_values(self): # to feed policy
         state = dict()
         state['normalization'] = self.normalization
         state['networks_params'] = [nn.get_param_values() for nn in self._networks]
@@ -881,4 +884,3 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess.run(self._assignations, feed_dict=feed_dict)
         for i in range(len(self._networks)):
             self._networks[i].set_params(state['networks_params'][i])
-
