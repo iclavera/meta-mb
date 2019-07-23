@@ -21,24 +21,6 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 
-from dmbrl.modeling.layers import FC
-from dmbrl.modeling.models import BNN
-
-save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
-
-def construct_model(obs_dim=11, act_dim=3, rew_dim=1, num_networks=7, num_elites=5):
-	print('[ BNN ] Observation dim {} | Action dim: {}'.format(obs_dim, act_dim))
-	params = {'name': 'BNN', 'num_networks': num_networks, 'num_elites': num_elites}
-	model = BNN(params)
-
-	model.add(FC(200, input_dim=obs_dim+act_dim, activation="swish", weight_decay=0.000025))
-	model.add(FC(200, activation="swish", weight_decay=0.00005))
-	model.add(FC(200, activation="swish", weight_decay=0.000075))
-	model.add(FC(200, activation="swish", weight_decay=0.000075))
-	model.add(FC(obs_dim+rew_dim, weight_decay=0.0001))
-	model.finalize(tf.train.AdamOptimizer, {"learning_rate": 0.001})
-	return model
-
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
 
@@ -146,7 +128,6 @@ def run_experiment(**kwargs):
             rollout_length_params=kwargs['rollout_length_params'],
             rollout_batch_size=kwargs['rollout_batch_size'],
             model_train_freq=kwargs['model_train_freq'],
-            model_reset_freq=kwargs['model_reset_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
             epoch_length=kwargs['epoch_length'],
@@ -188,14 +169,14 @@ if __name__ == '__main__':
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[4],
 		'q_target_type': [0],
-		'num_actions_per_next_observation': [2, 5],
+		'num_actions_per_next_observation': [2],
 		'epoch_length': [1000],
-        'T': [0, 2, 5],
+        'T': [0],
 		'H': [2],
 		'reward_scale': [1],
 		'target_entropy': [-3, -6],
 		'num_models': [8],
-		'dynamics_buffer_size': [1e5],
+		'dynamics_buffer_size': [1e4],
 
         # Problem Conf
         'discount': [0.99],
