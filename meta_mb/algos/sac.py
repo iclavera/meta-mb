@@ -402,7 +402,7 @@ class SAC(Algo):
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
                     logger.logkv(k, v)
-            if timestep % self.target_update_interval == 0:
+            if (timestep + i) % self.target_update_interval == 0:
                 self._update_target()
 
         #

@@ -3,9 +3,9 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'MBPO3'
+EXP_NAME = "Test4-H0-1"
 
-
+from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
@@ -20,6 +20,9 @@ from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+
+
+save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
 
 
 def run_experiment(**kwargs):
@@ -75,6 +78,7 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
+
         dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
                                                 env=env,
                                                 num_models=kwargs['num_models'],
@@ -84,53 +88,52 @@ def run_experiment(**kwargs):
                                                 batch_size=kwargs['dynamics_batch_size'],
                                                 learning_rate=kwargs['model_learning_rate'],
                                                 buffer_size=kwargs['dynamics_buffer_size'],
+												rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                 )
 
-        dynamics_sample_processor = ModelSampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
 
         algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
+            arget_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
-            sampler_batch_size=kwargs['sampler_batch_size'],
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
             prediction_type=kwargs['prediction_type'],
             T=kwargs['T'],
+			q_functioin_type=kwargs['q_functioin_type'],
+			env_name=str(kwargs['env']),
+			q_target_type=kwargs['q_target_type'],
+			H=kwargs['H'],
         )
 
         trainer = Trainer(
             algo=algo,
             env=env,
+            env_name=str(kwargs['env']),
             env_sampler=env_sampler,
             env_sample_processor=env_sample_processor,
-            model_sample_processor = dynamics_sample_processor,
             dynamics_model=dynamics_model,
             policy=policy,
             n_itr=kwargs['n_itr'],
-            dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
-            policy_update_per_iteration=kwargs['policy_update_per_iteration'],
             num_model_rollouts=kwargs['num_model_rollouts'],
             sess=sess,
             n_initial_exploration_steps=kwargs['n_initial_exploration_steps'],
             env_max_replay_buffer_size=kwargs['env_replay_buffer_max_size'],
             model_max_replay_buffer_size=kwargs['model_replay_buffer_max_size'],
-            speed_up_factor=kwargs['speed_up_factor'],
             rollout_length_params=kwargs['rollout_length_params'],
             rollout_batch_size=kwargs['rollout_batch_size'],
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
+            epoch_length=kwargs['epoch_length'],
+            restore_path=save_model_dir+kwargs['restore_path'],
+			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+			sampler_batch_size=kwargs['sampler_batch_size'],
         )
 
         trainer.train()
@@ -139,60 +142,60 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'algo': ['sac'],
-        'seed': [1, 22],
+        'seed': [12],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
-
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_update_per_iteration': [40],
-        'speed_up_factor': [100],
-        'num_model_rollouts': [20],
+        'num_model_rollouts': [1],
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
 
         # replay_buffer
-        'env_replay_buffer_max_size': [1e5],
+		'n_initial_exploration_steps': [5e3],
+        'env_replay_buffer_max_size': [1e6],
         'model_replay_buffer_max_size': [2e6],
+		'n_itr': [3000],
+        'n_train_repeats': [8],
+        'max_path_length': [1001],
+		'rollout_length_params': [[20, 100, 1, 1]],
+        'model_train_freq': [250],
+		'rollout_batch_size': [100e3],
+		'dynamics_model_max_epochs': [200],
+		'rolling_average_persitency':[0.9],
+		'q_functioin_type':[4],
+		'q_target_type': [0],
+		'num_actions_per_next_observation': [5],
+		'epoch_length': [1000],
+        'T': [2],
+		'H': [2],
+		'reward_scale': [1],
+		'target_entropy': [-3],
+		'num_models': [8],
+		'dynamics_buffer_size': [10000],
 
         # Problem Conf
-        'n_itr': [400],
-        'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1],
-        'sampler_batch_size': [256],
+		'prediction_type':['mean'],
 
         # Dynamics Model
-        'num_models': [7],
+		'sampler_batch_size': [256],
+        'real_ratio': [0.05],
+        'restore_path': [''],
+
         'model_learning_rate': [1e-3],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_batch_size': [512],
-        'dynamics_buffer_size': [10000],
-        'dynamics_model_max_epochs': [50],
-
-        'num_actions_per_next_observation': [3],
-        'prediction_type':['mean'],
-        'T': [3],
-        'n_initial_exploration_steps': [5e3],
-        'rollout_length_params': [[20, 150, 1, 1]],
-        'model_reset_freq': [1000],
-        'model_train_freq': [250],
-        'rollout_batch_size': [100e3],
-        'n_train_repeats': [8],
-        'real_ratio': [0.05]
-
-
+        'dynamics_batch_size': [256]
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

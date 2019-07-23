@@ -48,6 +48,7 @@ class Trainer(object):
             n_initial_exploration_steps=1e3,
             num_grad_steps=None,
             max_replay_buffer_size=1e5,
+            epoch_length = 1000,
             ):
         self.algo = algo
         self.env = env
@@ -60,8 +61,10 @@ class Trainer(object):
         self.task = task
         self.n_initial_exploration_steps = n_initial_exploration_steps
         self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
-        if num_grad_steps is None:
-            self.num_grad_steps = self.sampler.total_samples
+        self.epoch_length = epoch_length
+        # if num_grad_steps is None:
+        #     self.num_grad_steps = self.sampler.total_samples
+        self.num_grad_steps = self.epoch_length
         if sess is None:
             sess = tf.Session()
         self.sess = sess
@@ -131,7 +134,7 @@ class Trainer(object):
                 logger.log("Optimizing policy...")
                 # This needs to take all samples_data so that it can construct graph for meta-optimization.
                 time_optimization_step_start = time.time()
-                self.algo.optimize_policy(self.replay_buffer, itr - self.start_itr, self.num_grad_steps)
+                self.algo.optimize_policy(self.replay_buffer, itr * self.epoch_length, self.num_grad_steps)
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)

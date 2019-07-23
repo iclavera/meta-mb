@@ -110,7 +110,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
             self._advance()
 
     def all_samples(self):
-        return self._observations[:self._size], self._actions[:self._size], self._next_obs[:self._size]
+        return self._observations[:self._size], self._actions[:self._size], self._next_obs[:self._size], self._rewards[:self._size], self._terminals[:self._size]
 
 
     def terminate_episode(self):

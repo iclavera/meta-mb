@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-running-test-std-clip_ant'
+EXP_NAME = 'sac-rs5'
 
 
 from meta_mb.algos.sac import SAC
@@ -103,8 +103,8 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],
         'baseline': [LinearFeatureBaseline],
-        # 'env': [HalfCheetahEnv],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
+        # 'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -115,14 +115,14 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [3000],
+        'n_itr': [1000],
         'max_path_length': [1000],
         'discount': [0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [1.],
+        'reward_scale': [5.],
         'sampler_batch_size': [256],
         }
 

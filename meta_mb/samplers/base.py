@@ -18,13 +18,12 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, num_rollouts, max_path_length, batch_size = 256):
+    def __init__(self, env, policy, num_rollouts, max_path_length):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
         self.policy = policy
         self.max_path_length = max_path_length
-        self.batch_size = batch_size
 
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
