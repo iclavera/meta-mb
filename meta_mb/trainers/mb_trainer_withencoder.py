@@ -142,7 +142,7 @@ class Trainer(object):
                     callbacks=callbacks
                 )
 
-                self.env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+            # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -153,6 +153,7 @@ class Trainer(object):
                 if self.initial_random_samples and itr == 0:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
+                    import pdb; pdb.set_trace()
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
@@ -226,7 +227,7 @@ class Trainer(object):
                         callbacks=callbacks
                     )
 
-                    self.env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+                    self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
 

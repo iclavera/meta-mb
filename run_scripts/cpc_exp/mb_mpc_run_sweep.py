@@ -31,44 +31,24 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'envs_finetune_savebest'
+EXP_NAME = 'cpb_debug_external_encoder'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
     exp_name = ''
-    if isinstance(config['env'], str):
-        folder = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-finetune-%s' % (config['env'], config['negative'], config['history'], \
-                                                                   config['future'], config['latent_dim'], \
-                                                                   config['include_action'], config['run_suffix'])
-        # folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
-        #                                                    config['latent_dim'], config['run_suffix'])
-        model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
-                                  'vae' if config['encoder'] == 'vae' else
-                                  'encoder.h5' if not config['use_context_net'] else
-                                  'context.h5')
-        raw_env, max_path_length = make_env(config['env'])
 
-    else:
-        raw_env = config['env']()
-        max_path_length = config['max_path_length']
-        if 'model_path' in config:
-            # exp_name = config['model_path'] + '_rnnmodel'
-            folder = config['model_path']
-            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
-                                      'vae' if config['encoder'] == 'vae' else
-                                      'encoder.h5' if not config['use_context_net'] else
-                                      'context.h5')
-        else:
-            exp_name = 'cp-neg%d-hist%d-fut%d-code%d%s' % (config['negative'], config['history'], config['future'],
-                                                           config['latent_dim'], config['run_suffix'])
-            folder = exp_name
-            model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
-                                      'vae' if config['encoder'] == 'vae' else
-                                      'encoder.h5' if not config['use_context_net'] else
-                                      'context.h5')
-            # exp_name =  'len=125-cem=%b' % config['use_cem'] + exp_name
+    folder = '%s-neg%d-hist%d-fut%d-code%d-withaction%r-finetune-%s' % (config['env'], config['negative'], config['history'], \
+                                                               config['future'], config['latent_dim'], \
+                                                               config['include_action'], config['run_suffix'])
+    # folder = '%s-neg%d-hist%d-fut%d-code%d%s' % (config['env'], config['negative'], config['history'], config['future'],
+    #                                                    config['latent_dim'], config['run_suffix'])
+    model_path = os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder,
+                              'vae' if config['encoder'] == 'vae' else
+                              'encoder.h5' if not config['use_context_net'] else
+                              'context.h5')
+    raw_env, max_path_length = make_env(config['env'])
 
 
     if config['use_image']:
@@ -492,7 +472,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['cartpole_balance'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -538,12 +518,12 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True, False],
-        'cpc_epoch': [15],
+        'include_action': [False],
+        'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [0],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [512],
+        'cpc_num_initial_rollouts': [0],
         'cpc_train_interval': [10]
 
     }
