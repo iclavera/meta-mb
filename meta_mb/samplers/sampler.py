@@ -91,7 +91,6 @@ class Sampler(BaseSampler):
             tau, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
 
         while n_samples < self.total_samples:
-
             # execute policy
             t = time.time()
             if self.vae is not None:
@@ -108,7 +107,11 @@ class Sampler(BaseSampler):
             else:
                 obses = np.array(obses)
                 if plot_first_rollout:
-                    actions, agent_infos = policy.get_actions(obses, return_first_info=plot_first_rollout)
+                    actions, agent_infos = policy.get_actions(
+                        obses,
+                        return_first_info=True,
+                        log_global_norms=(n_samples == 0),
+                    )
                 else:
                     actions, agent_infos = policy.get_actions(obses)
                 assert len(actions) == len(obses)  # (num_rollouts, space_dims)
@@ -173,9 +176,9 @@ class Sampler(BaseSampler):
         if not plot_first_rollout:
             return paths
 
-        # plot the first rollout of max_path_length collected
+        # plot the first collected rollout, which has max_path_length
         if not random and not sinusoid:
-            tau, obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], [], []
+            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
             obs = init_obs
             for action in tau:
                 next_obs, agent_info = policy.dynamics_model.predict(obs[None], action[None], pred_type=0, deterministic=False, return_infos=True)  # FIXME: effectively each rollout is collected under exactly one dynamics model in the ensemble
@@ -183,23 +186,24 @@ class Sampler(BaseSampler):
                 obs_hall.append(next_obs)
                 obs_hall_mean.append(agent_info['mean'])
                 obs_hall_std.append(agent_info['std'])
-                reward_hall.append(self.env.reward(obs[None], action[None], next_obs[None]))
+                reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
                 obs = next_obs
 
             x = np.arange(self.max_path_length)
             obs_space_dims = self.env.observation_space.shape[0]
             action_space_dims = self.env.action_space.shape[0]
-            obs_hall = np.transpose(np.asarray(obs_hall))  # (horizon, obs_space_dims) -> (obs_space_dims, horizon)
+            obs_hall = np.transpose(np.asarray(obs_hall))  # (max_path_length, obs_space_dims) -> (obs_space_dims, max_path_length)
             obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
             obs_hall_std = np.transpose(np.asarray(obs_hall_std))
             obs_real = np.transpose(np.asarray(obs_real))
-            tau = np.transpose(np.asarray(tau))  # (horizon, action_space_dims) -> (action_space_dims, horizon)
+            tau = np.transpose(np.asarray(tau))  # (horizon, max_path_length) -> (action_space_dims, max_path_length)
             tau_mean = np.transpose(np.asarray(tau_mean))
             tau_std = np.transpose(np.asarray(tau_std))
+
             n_subplots = obs_space_dims + action_space_dims + 2
             nrows = ceil(np.sqrt(n_subplots))
             ncols = ceil(n_subplots/nrows)
-            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, sharex='col', figsize=(80, 20))
+            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(70, 30))
             axes = axes.flatten()
 
             # obs_ymin = np.min([obs_hall - obs_hall_std, obs_real]) + 0.1
@@ -207,7 +211,7 @@ class Sampler(BaseSampler):
             for i in range(obs_space_dims):  # split by observation space dimension
                 ax = axes[i]
                 ax.plot(x, obs_hall[i], label=f'obs_{i}_dyn')
-                ax.plot(x, obs_real[i], label=f'obs_{i}_env', marker='o')
+                ax.plot(x, obs_real[i], label=f'obs_{i}_env')
                 ax.fill_between(x, obs_hall_mean[i] + obs_hall_std[i], obs_hall_mean[i] - obs_hall_std[i], alpha=0.2)
                 # ax.set_ylim([obs_ymin, obs_ymax])
 
@@ -215,30 +219,29 @@ class Sampler(BaseSampler):
                 ax = axes[i+obs_space_dims]
                 ax.plot(x, tau[i], label=f'act_{i}', color='r')
                 ax.fill_between(x, tau_mean[i] + tau_std[i], tau_mean[i] - tau_std[i], color='r', alpha=0.2)
-                ax.set_ylim([self.env.action_space.low[i]-0.1, self.env.action_space.high[i]+0.1])
+                # ax.set_ylim([self.env.action_space.low[i]-0.1, self.env.action_space.high[i]+0.1])
 
             ax = axes[obs_space_dims+action_space_dims]
             ax.plot(x, reward_hall, label='reward_dyn')
-            ax.plot(x, reward_real, label='reward_env', marker='o')
+            ax.plot(x, reward_real, label='reward_env')
             # ax.plot(x, loss_reward, label='reward_planning')  # FIXME: == reward_env??
-            ax.plot(x, loss_reg, label='kl_planning')
+            ax.plot(x, loss_reg, label='loss_reg')
             ax.legend()
 
             ax = axes[obs_space_dims+action_space_dims+1]
             ax.plot(x, list(accumulate(reward_hall)), label='reward_dyn')
-            ax.plot(x, list(accumulate(reward_real)), label='reward_env', marker='o')
+            ax.plot(x, list(accumulate(reward_real)), label='reward_env')
             # ax.plot(x, list(accumulate(loss_reward)), label='reward_planning')
             ax.legend()
 
             fig.suptitle(f'{self._global_step}')
 
             # plt.show()
+            if not hasattr(self, 'save_dir'):
+                self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
+                os.makedirs(self.save_dir, exist_ok=True)
             plt.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
             logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))
-
-        else:
-            self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
-            os.makedirs(self.save_dir, exist_ok=True)
 
         return paths
 

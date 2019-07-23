@@ -408,8 +408,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
             if return_infos:
-                delta_std = np.sqrt(var) * self.normalization[pred_type]['delta'][1]
-                agent_infos = [dict(mean=delta_mean, std=delta_std)]
+                delta_mean = delta_mean[:, :, pred_type]
+                delta_std = np.sqrt(var[:, :, pred_type]) * self.normalization[pred_type]['delta'][1]
+                agent_infos = [dict(mean=mean, std=std) for mean, std in zip(obs_original + delta_mean, delta_std)]
+                assert len(agent_infos) == pred_obs.shape[0]
                 return pred_obs, agent_infos
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')

@@ -133,11 +133,11 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
         'delta_policy': [True],
-        'plot_freq': [10],
+        'plot_freq': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv],
-        'max_path_length': [200],
+        'env': [HalfCheetahEnv],
+        'max_path_length': [100],
         'normalize': [False],
          'n_itr': [41],
         'discount': [1.],
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         'use_opt': [True],
         'use_opt_w_policy': [False], #[True, False],
         'initializer_str': ['zeros'], #['uniform', 'zeros'],
-        'reg_coef': [1], #[1, 0],
+        'reg_coef': [0], #[1, 0],
         'num_opt_iters': [20], #20, 40,],
         'opt_learning_rate': [1e-3], #1e-2],
 
