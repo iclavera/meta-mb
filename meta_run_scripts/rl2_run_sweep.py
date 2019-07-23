@@ -6,16 +6,15 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 
-<<<<<<< HEAD
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
 from meta_mb.envs.blue.blue_env import BlueEnv
 
 from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
 from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
-=======
+
 from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
->>>>>>> 92c085b41430f9d7db167e06d3558945e3e2ea64
+
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
