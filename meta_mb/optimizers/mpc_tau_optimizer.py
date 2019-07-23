@@ -86,7 +86,7 @@ class MPCTauOptimizer(Optimizer, Serializable):
 
         if log_global_norms:
             self._global_norms.append(global_norms)  # global_norms = (max_epochs,)
-            logger.log(loss_array)
+            # logger.log(loss_array)
 
         if run_extra_result_op:
             result = sess.run(self._result_op + self._extra_result_op, feed_dict)
@@ -97,13 +97,16 @@ class MPCTauOptimizer(Optimizer, Serializable):
 
     def plot_global_norms(self):
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(50, 30))
+        self._global_norms = np.stack(self._global_norms, axis=-1)  # (max_epochs, max_path_length)
+        logger.log('plt array has size', self._global_norms.shape)
         im = ax.imshow(self._global_norms, cmap='hot', interpolation='nearest')
+        self._global_norms = []
         #ax.set_xticklabels(np.arange(len(self._global_norms[0])))
-        ax.set_xlabel('trainer_itr')
+        ax.set_xlabel('max_path_length * trainer_itr')
         #ax.set_yticklabels(np.arange(len(self._global_norms)))
         ax.set_ylabel('opt_epochs')
         ax.set_title(f'{self._global_step}')
         fig.colorbar(im, ax=ax)
-        plt.show()
+        # plt.show()
         fig.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
         logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))

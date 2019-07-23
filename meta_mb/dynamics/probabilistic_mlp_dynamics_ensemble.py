@@ -312,6 +312,53 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
         return pred_obs
 
+    def predict_sym_all(self, obs_ph, act_ph, pred_type='all'):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+                    # denormalize
+                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.stack(delta_preds, axis=-1)
+        pred_obs = tf.clip_by_value(tf.expand_dims(obs_ph, axis=-1) + delta_preds, -1e2, 1e2)
+
+        if pred_type == 'mean':
+            pred_obs = tf.reduce_mean(pred_obs, axis=-1)
+        elif pred_type == 'all':
+            pass
+        elif type(pred_type) is int:
+            assert 0 <= pred_type < self.num_models
+            pred_obs = pred_obs[..., pred_type]
+        else:
+            raise NotImplementedError('pred_type must be one of [mean, all, (int)]')
+
+        return pred_obs
+
     def predict_batches_sym(self, obs_ph, act_ph):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
