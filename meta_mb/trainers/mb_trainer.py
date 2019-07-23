@@ -122,6 +122,7 @@ class Trainer(object):
                 logger.dumpkvs()
                 if itr == 0:
                     sess.graph.finalize()
+                time.sleep(5)
 
         logger.log("Training finished")
         self.sess.close()

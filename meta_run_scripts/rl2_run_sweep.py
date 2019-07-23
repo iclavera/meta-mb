@@ -6,12 +6,16 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 
+<<<<<<< HEAD
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
 from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
 from meta_mb.envs.blue.blue_env import BlueEnv
 
 from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
 from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
+=======
+from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
+>>>>>>> 92c085b41430f9d7db167e06d3558945e3e2ea64
 from meta_mb.meta_envs.rl2_env import rl2env
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
@@ -20,6 +24,7 @@ from meta_mb.samplers.meta_samplers.meta_sampler import MetaSampler
 from meta_mb.samplers.meta_samplers.rl2_sample_processor import RL2SampleProcessor
 from meta_mb.policies.gaussian_rnn_policy import GaussianRNNPolicy
 import os
+import random
 from meta_mb.logger import logger
 import json
 import numpy as np
@@ -28,10 +33,12 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'rl2-kate-def'
+EXP_NAME = 'rl2-pr2-reach-dr'
 
 def run_experiment(**config):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    exp_name = EXP_NAME + '-' + str(random.randint(0, 1e9))
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + exp_name
+    print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last_gap', snapshot_gap=50)
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     set_seed(config['seed'])
@@ -43,8 +50,12 @@ def run_experiment(**config):
 
         baseline = config['baseline']()
         #timeskip = config['timeskip']
-        log_rand = config['log_rand']
-        env = rl2env(normalize(config['env'](log_rand=log_rand)))#timeskip=timeskip)))
+        #log_rand = config['log_rand']
+        if config['env'] == 'PR2ReacherEnv':
+            exp_type = config['exp_type']
+            env = rl2env(normalize(config['env'](exp_type=exp_type)))
+        else:
+            env = rl2env(normalize(config['env']()))#log_rand=log_rand)))#timeskip=timeskip)))
         obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
         policy = GaussianRNNPolicy(
                 name="meta-policy",
@@ -99,13 +110,14 @@ if __name__ == '__main__':
         'seed': [1, 2, 3],
 
         'baseline': [LinearFeatureBaseline],
-        'env': [BlueEnv],
+        'env': [PR2ReacherEnv],
+        'exp_type': ['reach'],
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [50, 100, 200],
-        "rollouts_per_meta_task": [2],
+        "rollouts_per_meta_task": [10],
         "parallel": [True],
-        "max_path_length": [200],
+        "max_path_length": [30],
         "discount": [0.99],
         "gae_lambda": [1.0],
         "normalize_adv": [True],
@@ -114,9 +126,9 @@ if __name__ == '__main__':
         "max_epochs": [5],
         "cell_type": ["lstm"],
         "num_minibatches": [1],
-        "n_itr": [1000],
+        "n_itr": [100],
         'exp_tag': ['v0'],
-        'log_rand': [0, 1, 2, 3],
+        'log_rand': [0, 1, 2]
         #'timeskip': [1, 2, 3, 4]
     }
 

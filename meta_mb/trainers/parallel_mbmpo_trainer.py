@@ -1,7 +1,7 @@
 import time
 from multiprocessing import Process, Pipe, Queue, Event
 from meta_mb.logger import logger
-from meta_mb.workers.mbmpo.worker_data import WorkerData
+from meta_mb.workers.real_pr2.mbmpo.worker_data import WorkerData
 from meta_mb.workers.mbmpo.worker_model import WorkerModel
 from meta_mb.workers.mbmpo.worker_policy import WorkerPolicy
 
@@ -38,8 +38,7 @@ class ParallelTrainer(object):
             simulation_sleep,
             initial_random_samples=True,
             start_itr=0,
-            sampler_str='bptt',
-            video=False,
+            sampler_str='bptt'
             ):
 
         self.initial_random_samples = initial_random_samples
@@ -48,7 +47,6 @@ class ParallelTrainer(object):
             WorkerData(
                 num_rollouts_per_iter=num_rollouts_per_iter,
                 simulation_sleep=simulation_sleep,
-                video=video,
             ),
             WorkerModel(),
             WorkerPolicy(num_inner_grad_steps=num_inner_grad_steps, sampler_str=sampler_str),

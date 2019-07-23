@@ -34,6 +34,6 @@ if __name__ == "__main__":
         policy = data['policy']
         env = data['env']
         for _ in range(args.num_rollouts):
-            path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
+            path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)

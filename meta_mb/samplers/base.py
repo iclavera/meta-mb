@@ -18,7 +18,9 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, num_rollouts, max_path_length):
+    def __init__(self, env, policy,
+                 num_rollouts,
+                 max_path_length, sleep_reset=0.):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
@@ -27,8 +29,13 @@ class BaseSampler(object):
 
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
+        self.sleep_reset = sleep_reset
 
-    def obtain_samples(self, log=False, log_prefix='', random=False):
+    def obtain_samples(self, log=False,
+                       log_prefix='',
+                       random=False,
+                       verbose=True,
+                       ignore_reset=False):
         """
         Collect batch_size trajectories from each task
 
@@ -66,6 +73,7 @@ class BaseSampler(object):
                 action = self.env.action_space.sample()
                 agent_info = {}
             else:
+                obs = np.array(obs)
                 action, agent_info = policy.get_action(obs)
                 if action.ndim == 2:
                     action = action[0]
@@ -74,11 +82,14 @@ class BaseSampler(object):
             # step environments
             t = time.time()
             next_obs, reward, done, env_info = self.env.step(action)
+            print("step!")
 
             ts += 1
             done = done or ts >= self.max_path_length
             if done:
-                next_obs = self.env.reset()
+                if not ignore_reset:
+                    time.sleep(self.sleep_reset)
+                    next_obs = np.asarray(self.env.reset())
                 ts = 0
                 
             env_time += time.time() - t

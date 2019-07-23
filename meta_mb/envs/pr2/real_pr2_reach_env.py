@@ -13,11 +13,14 @@ class PR2ReachEnv(MetaEnv, Serializable):
     PR2_GAINS = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
     def __init__(self,
-                 exp_type='lego',
+                 exp_type='lego_mod',
                  torque_penalty=1.25e-1,
                  vel_penalty=1.25e-1,
                  max_torques=[3] * 7):
         Serializable.quick_init(self, locals())
+
+        self.norm = 1000
+        self.twist = False
 
         self.exp_type = exp_type
         if exp_type == 'shape_joints':
@@ -64,8 +67,7 @@ class PR2ReachEnv(MetaEnv, Serializable):
         elif exp_type == 'shape_gripper':
             self.goal = np.array([-3.28908378e-01,  1.70644299e-01, -3.33109042e-02,
                                   -1.97651754e-01,  1.57414804e-01, -2.82707699e-02,
-                                  -3.05237283e-01,  8.85290046e-02,  3.89394478e-02
-                                  ])
+                                  -3.05237283e-01,  8.85290046e-02,  3.89394478e-02])
 
             self.init_qpos = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
                                        1.31405443e+00, -1.54883181e+00])
@@ -74,13 +76,59 @@ class PR2ReachEnv(MetaEnv, Serializable):
                                       -3.06694218e-01, 1.87049223e-01, 1.12720687e-03,
                                       -2.03442785e-01, 1.59440809e-01, 1.02890217e-02,
                                       -3.07411827e-01, 1.18937711e-01, 7.99029507e-02])
+        elif exp_type == 'shape_mod':
+            self.goal = np.array([-0.40205352,  0.13775634, -0.03672675,
+                                  -0.27075515,  0.12438263, -0.02908585,
+                                  -0.37856982,  0.05570664,  0.03472728])
+
+            self.init_qpos = np.array([0.26267194,  0.06945243,  1.13799865, -1.73577404,  1.48262084, -1.9809189,
+            -1.54233528])
+
+            self.init_obs = np.array([0.26267194,  0.06945243,  1.13799865, -1.73577404,  1.48262084, -1.9809189,
+            -1.54233528,  0.,          0.,          0.,          0.,          0.,
+             0.,          0.,         -0.4407883,   0.09142632,  0.07738364, -0.2684554,
+             0.163703,    0.08128676, -0.33237608,  0.02133017,  0.14725503])
+
+            """
+            Shape Mod
+            [-0.40205352,  0.13775634, -0.03672675,
+             -0.27075515,  0.12438263, -0.02908585,
+             -0.37856982,  0.05570664,  0.03472728]
+            
+            
+            Init Pos
+            [0.26267194,  0.06945243,  1.13799865, -1.73577404,  1.48262084, -1.9809189,
+            -1.54233528,  0.,          0.,          0.,          0.,          0.,
+             0.,          0.,         -0.4407883,   0.09142632,  0.07738364, -0.2684554,
+             0.163703,    0.08128676, -0.33237608,  0.02133017,  0.14725503]
+            
+            Goal
+            [-0.41822912,  0.15120888, -0.03849079,
+             -0.29876662,  0.13038571, -0.02571729,
+             -0.40618667,  0.07449564,  0.03775624]
+             
+             [-0.4357618,   0.14885474, -0.03789454,
+              -0.2949085,   0.14328422, -0.02922774,
+              -0.40151519,  0.06359246,  0.03629649]
+            """
+
 
         elif exp_type == 'peg':
              raise NotImplementedError
+        elif exp_type == 'bottle':
+            self.init_qpos = np.array([0.18183799, -0.00313001,  1.04819995, -1.65050409,  1.4029654,  -2.00656306,
+                                     -1.56096953])
+            self.init_obs = np.array([0.18183799, -0.00313001,  1.04819995, -1.65050409,  1.4029654,  -2.00656306,
+                                     -1.56096953,  0.,          0.,          0.,          0.,          0.,
+                                      0.,          0.,         -0.4438997,   0.05199452,  0.13091329, -0.27168314,
+                                      0.121496,    0.13251639, -0.33714511, -0.01929635,  0.20388515])
+            self.goal = np.array([-0.44355924,  0.04856733,  0.08182383,
+                                  -0.270975,    0.11838888,  0.08823441,
+                                  -0.33709145, -0.02286455,  0.14991858])
 
         elif exp_type == 'reach':
             self.init_qpos = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
-                                       1.31405443e+00, -1.54883181e+00])
+                                       1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
 
             self.init_obs = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
                                       1.31405443e+00, -1.54883181e+00, 1.43069760e-01, 0, 0, 0, 0, 0, 0, 0,
@@ -88,8 +136,9 @@ class PR2ReachEnv(MetaEnv, Serializable):
                                       -2.03442785e-01, 1.59440809e-01, 1.02890217e-02,
                                       -3.07411827e-01, 1.18937711e-01, 7.99029507e-02])
 
-            self.goal = np.array([-0.30982005,  0.71146246,  0.21908543, -0.14216614,
-                                   0.78684261,  0.26139753, -0.20410874,  0.64335638,  0.31437626])
+            self.goal = np.array([-0.30982005,  0.71146246,  0.21908543,
+                                  -0.14216614,  0.78684261,  0.26139753,
+                                  -0.20410874,  0.64335638,  0.31437626])
 
             """
             Reach Goal
@@ -108,6 +157,51 @@ class PR2ReachEnv(MetaEnv, Serializable):
             self.goal = np.array([-2.08417832e-01,  1.55992459e-01, -9.93656620e-02,
                                   -1.28845066e-01,  1.23824094e-01, -8.64020558e-02,
                                   -2.24913514e-01,  1.03418447e-01, -2.82650796e-02])
+
+        elif exp_type == 'lego_mod':
+            self.init_qpos = np.array([0.53634668, -0.07985761,  1.12051997, -1.62009586,
+                                       1.32938391, -2.00258634,  0.3364669])
+
+            self.init_obs = np.array([0.53634668, -0.07985761,  1.12051997, -1.62009586,  1.32938391, -2.00258634,
+                                      0.33646691,  0.,          0.,          0.,          0.00302298,  0.,
+                                      0.,          0.,         -0.33515356,  0.26675175,  0.13111669, -0.25692461,
+                                      0.23463285,  0.14815731, -0.35199802,  0.21565351,  0.21306161])
+
+            self.goal = np.array([-0.35562659,  0.1141765,  -0.10301183,
+                                  -0.27585707,  0.08202434, -0.09264046,
+                                  -0.37196246,  0.06152,    -0.03529104])
+
+            """
+            [-0.35562659,  0.1141765,  -0.10301183,
+             -0.27585707,  0.08202434, -0.09264046,
+             -0.37196246,  0.06152,    -0.03529104]
+            
+            
+            Lego Mod
+            Init Pos
+             [0.47856077 -0.07918085  1.25008667 -0.94040375  1.70405949 -1.88341541
+              1.07703224  0.          0.          0.          0.          0.
+              0.          0.         -0.14661003  0.38439563  0.09342872 -0.06981191
+              0.35207254  0.10436448 -0.16461223  0.33383388  0.16475069]
+
+            Mid Point
+            [ 3.10426153e-01 -6.64916096e-02  1.52942478e+00 -1.71130779e+00
+              1.40927073e+00 -1.60739482e+00 -1.42003170e+00  0.00000000e+00
+              0.00000000e+00  0.00000000e+00  1.75169657e-09  0.00000000e+00
+              0.00000000e+00  0.00000000e+00 -4.28747575e-01  9.45141253e-02
+              6.92418854e-03 -2.56404145e-01  1.63419403e-01  9.74860450e-03
+             -3.22991869e-01  2.26133317e-02  7.45412423e-02]
+
+            Goal
+            [ 2.92518323e-01  5.10953336e-02  1.72634051e+00 -1.67772098e+00
+              1.51067668e+00 -1.44950095e+00 -1.41407098e+00  0.00000000e+00
+              0.00000000e+00 -1.86963334e-09  0.00000000e+00  0.00000000e+00
+              0.00000000e+00  0.00000000e+00 -4.33270007e-01  9.18991318e-02
+             -9.43792175e-02 -2.61428022e-01  1.63224017e-01 -9.55503864e-02
+             -3.26072146e-01  2.12508344e-02 -3.00473105e-02]
+            """
+
+
             """
  [0.27154295, -0.31469311,  1.39184034, -1.11210181,  1.24261327, -1.7384872,
   0.5793337,   0.,          0.,          0.,          0.,          0.,
@@ -179,15 +273,24 @@ class PR2ReachEnv(MetaEnv, Serializable):
         alpha = 1e-5
         reward_vel = -self.vel_penalty * np.square(np.linalg.norm(ob[7:14]))
         reward_ctrl = -self.torque_penalty * np.square(np.linalg.norm(action))
-        _norm_end = np.linalg.norm(ob[-9:] - self.goal[-9:])
+        _norm_end = np.linalg.norm((ob[-9:] - self.goal[-9:]))
+
+        if self.twist:
+            _norm_end = 0.06
+
+        self.norm = _norm_end
+
         scaled_norm_end = 3 * _norm_end
         if self.exp_type == 'shape_joints':
             norm_end = np.linalg.norm(ob[:7] - self.goal[:7]) + scaled_norm_end
             #norm_end = np.linalg.norm(np.concatenate([ob[:7], ob[-9:]], axis=-1) - self.goal)
-        elif self.exp_type == 'shape_gripper' or self.exp_type == 'reach' or self.exp_type == 'lego':
-            norm_end = np.linalg.norm(ob[-9:] - self.goal)
+        elif self.exp_type != 'shape_joints':
+            norm_end = np.linalg.norm((ob[-9:] - self.goal))
         else:
             raise NotImplementedError
+
+        if self.twist:
+            norm_end = _norm_end
 
         if self.exp_type == 'lego':
             reward_dist = -(np.square(norm_end) + np.log(np.square(norm_end) + alpha))
@@ -208,6 +311,10 @@ class PR2ReachEnv(MetaEnv, Serializable):
                 dtype=str(action.dtype),
                 cmd="action",
             )
+            if self.norm < 0.01 and self.exp_type == 'bottle':
+                self.twist = True
+            if self.twist:
+                action[6] = 11
             self.socket.send_json(md, 0 | zmq.SNDMORE)
             self.socket.send(action, 0, copy=True, track=False)
             ob = self._get_obs()
@@ -223,8 +330,8 @@ class PR2ReachEnv(MetaEnv, Serializable):
             reward_ctrl = - self.torque_penalty* np.square(np.linalg.norm(act, axis=1))
             if self.exp_type == 'shape_joints':
                 norm_end = np.linalg.norm(np.concatenate([obs_next[:, :7], obs_next[:, -9:]], axis=-1) - goal, axis=1)
-            elif self.exp_type == 'shape_gripper' or self.exp_type == 'reach' or self.exp_type == 'lego':
-                norm_end = np.linalg.norm(obs_next[:, -9:] - goal, axis=1)
+            elif self.exp_type != 'shape_joints':
+                norm_end = np.linalg.norm((obs_next[:, -9:] - goal), axis=1)
             else:
                 raise NotImplementedError
             if self.exp_type == 'lego':
@@ -249,8 +356,8 @@ class PR2ReachEnv(MetaEnv, Serializable):
             #norm_end = tf.linalg.norm(
                 #(tf.concat([next_obs[:, :7], next_obs[:, -9:]], axis=-1) - self.goal)
                 #, axis=1)
-        elif self.exp_type == 'shape_gripper' or self.exp_type == 'reach' or self.exp_type == 'lego':
-            norm_end = tf.linalg.norm(next_obs[:, -9:] - self.goal, axis=1)
+        elif self.exp_type != 'shape_joints':
+            norm_end = tf.linalg.norm((next_obs[:, -9:] - self.goal), axis=1)
         else:
             raise NotImplementedError
 
@@ -272,6 +379,7 @@ class PR2ReachEnv(MetaEnv, Serializable):
         self.socket.send_json(md, 0 | zmq.SNDMORE)  # buffer
         self.socket.send(qpos, 0, copy=True, track=False)
         obs = self._get_obs()
+        self.twist = False
         return obs
 
     def _get_obs(self):
@@ -388,5 +496,35 @@ Inside:
  [0.38719768,  0.2799246,   1.3039659,  -1.94091413,  1.7186948,  -1.89383479,
  -0.41323167,  -0.35821855,  0.3139938,  -0.1234674,  -0.14442993,
   0.11681355, -0.1095298,  -0.82973836, -0.07711106, -0.02973255]
+
+"""
+
+
+
+
+
+"""
+Init Pos
+ [0.47856077 -0.07918085  1.25008667 -0.94040375  1.70405949 -1.88341541
+  1.07703224  0.          0.          0.          0.          0.
+  0.          0.         -0.14661003  0.38439563  0.09342872 -0.06981191
+  0.35207254  0.10436448 -0.16461223  0.33383388  0.16475069]
+  
+Mid Point
+[ 3.10426153e-01 -6.64916096e-02  1.52942478e+00 -1.71130779e+00
+  1.40927073e+00 -1.60739482e+00 -1.42003170e+00  0.00000000e+00
+  0.00000000e+00  0.00000000e+00  1.75169657e-09  0.00000000e+00
+  0.00000000e+00  0.00000000e+00 -4.28747575e-01  9.45141253e-02
+  6.92418854e-03 -2.56404145e-01  1.63419403e-01  9.74860450e-03
+ -3.22991869e-01  2.26133317e-02  7.45412423e-02]
+
+Goal
+[ 2.92518323e-01  5.10953336e-02  1.72634051e+00 -1.67772098e+00
+  1.51067668e+00 -1.44950095e+00 -1.41407098e+00  0.00000000e+00
+  0.00000000e+00 -1.86963334e-09  0.00000000e+00  0.00000000e+00
+  0.00000000e+00  0.00000000e+00 -4.33270007e-01  9.18991318e-02
+ -9.43792175e-02 -2.61428022e-01  1.63224017e-01 -9.55503864e-02
+ -3.26072146e-01  2.12508344e-02 -3.00473105e-02]
+
 
 """
