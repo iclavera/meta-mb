@@ -27,13 +27,14 @@ def run_experiment(**config):
         repr = 'hc'
     elif config['env'] is InvertedPendulumEnv:
         repr = 'ip'
-    repr += '-reg-' + str(config['reg_coef']) + '-init-' + config['initializer_str']
+    repr += '-reg-' + str(config['reg_coef']) + '-' + config['reg_str']
+    repr += '-init-' + config['initializer_str']
     if config['use_opt_w_policy']:
-        repr = repr + '-policy'
+        repr = repr + '-policy-'
     elif config['use_opt']:
-        repr = repr + '-act'
+        repr = repr + '-act-'
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + repr + config.get('exp_name', '')
-    print(f'=====================================exp_dir = {exp_dir}=====================')
+    print(f'===================================== exp_dir = {exp_dir} =====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -71,6 +72,7 @@ def run_experiment(**config):
                 horizon=config['horizon'],
                 use_opt_w_policy=config['use_opt_w_policy'],
                 reg_coef=config['reg_coef'],
+                reg_str=config['reg_str'],
                 initializer_str=config['initializer_str'],
                 num_opt_iters=config['num_opt_iters'],
                 opt_learning_rate=config['opt_learning_rate'],
@@ -133,11 +135,11 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
         'delta_policy': [True],
-        'plot_freq': [10],
+        'plot_freq': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv],
-        'max_path_length': [200],
+        'env': [HalfCheetahEnv],
+        'max_path_length': [100],
         'normalize': [False],
          'n_itr': [41],
         'discount': [1.],
@@ -150,7 +152,8 @@ if __name__ == '__main__':
         'use_opt': [True],
         'use_opt_w_policy': [False], #[True, False],
         'initializer_str': ['zeros'], #['uniform', 'zeros'],
-        'reg_coef': [1], #[1, 0],
+        'reg_coef': [0], #[1, 0],
+        'reg_str': ['uncertainty'],
         'num_opt_iters': [20], #20, 40,],
         'opt_learning_rate': [1e-3], #1e-2],
 
@@ -164,7 +167,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'recurrent': [False],
-        'num_models': [1],
+        'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
         'dynamic_model_epochs': [15],
