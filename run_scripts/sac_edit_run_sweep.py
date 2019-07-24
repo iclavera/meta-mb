@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "STEVE"
+EXP_NAME = "Walker-Q5"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [11, 12],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -167,11 +167,11 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[4],
+		'q_functioin_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation': [2],
+		'num_actions_per_next_observation': [2, 5, 10],
 		'epoch_length': [1000],
-        'T': [0],
+        'T': [2, 3],
 		'H': [2],
 		'reward_scale': [1],
 		'target_entropy': [-3, -6],
