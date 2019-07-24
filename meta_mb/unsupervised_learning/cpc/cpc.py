@@ -94,7 +94,7 @@ class CPCLayer(keras.layers.Layer):
 
 def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                code_size_action=4):
+                code_size_action=4, contrastive=True):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
     if predict_action:
@@ -103,7 +103,7 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
         y_input is of shape k x (negative + 1) x action_dim
         """
         include_action = False
-        terms = 2
+        terms += 1
 
     # Set learning phase (https://stackoverflow.com/questions/42969779/keras-error-you-must-feed-a-value-for-placeholder-tensor-bidirectional-1-keras)
     K.set_learning_phase(1)
@@ -143,21 +143,35 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
             context = keras.layers.Dense(512, activation='relu')(context)
         context = keras.layers.Dense(context_size, name='context_output')(context)
 
-    context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
+    if include_action:
+        context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
+    else:
+        context_network = keras.models.Model(inputs=[x_input], outputs=context, name='context_network')
     context_network.summary()
 
     # Define rest of the model
-    context_output = context_network([x_input, action_input])
+    if include_action:
+        context_output = context_network([x_input, action_input])
+    else:
+        context_output = context_network([x_input])
     if predict_action:
-        preds = network_prediction(context_output, code_size_action, predict_terms)
+        if contrastive:
+            preds = network_prediction(context_output, code_size_action, predict_terms)
+        else:
+            preds = keras.layers.Dense(64, activation='relu')(context_output)
+            preds = keras.layers.Dense(16, activation='relu')(preds)
+            preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
     else:
         preds = network_prediction(context_output, code_size, predict_terms)
 
     if predict_action:
-        y_input = keras.layers.Input((predict_terms, (negative_samples + 1), action_dim), name='y_input')
-        y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
-        y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
-        y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
+
+        if contrastive:
+            y_input = keras.layers.Input((predict_terms, (negative_samples + 1), action_dim), name='y_input')
+            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
+            y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
+            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
+
     else:
         y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]),
                                      name = 'y_input')
@@ -166,17 +180,28 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
         y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
 
     # Loss
-    logits = CPCLayer()([preds, y_encoded])
+    if contrastive:
+        logits = CPCLayer()([preds, y_encoded])
 
-    # Model
-    cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
+        # Model
+        cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
 
-    # Compile model
-    cpc_model.compile(
-        optimizer=keras.optimizers.Adam(lr=learning_rate),
-        loss=cross_entropy_loss,
-        metrics=['categorical_accuracy']
-    )
+        # Compile model
+        cpc_model.compile(
+            optimizer=keras.optimizers.Adam(lr=learning_rate),
+            loss=cross_entropy_loss,
+            metrics=['categorical_accuracy']
+        )
+
+    else:
+        cpc_model = keras.models.Model(inputs=[x_input], outputs=preds)
+        # Compile model
+        cpc_model.compile(
+            optimizer=keras.optimizers.Adam(lr=learning_rate),
+            loss='mean_squared_error',
+            metrics=['mean_squared_error']
+        )
+
     cpc_model.summary()
 
     return cpc_model

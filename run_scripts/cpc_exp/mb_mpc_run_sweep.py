@@ -30,9 +30,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cartpole'
+EXP_NAME = 'predict_action/pt_l2'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -62,7 +62,8 @@ def run_experiment(**config):
         cpc_model = network_cpc((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
                                 config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                                 learning_rate=config['cpc_initial_lr'], encoder_arch='default',
-                                context_network='stack', context_size=32)
+                                context_network='stack', context_size=32, predict_action=config['predict_action'],
+                                contrastive=config['contrastive'])
         # cpc_model.load_weights(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'))
     else:
         cpc_model = None
@@ -205,13 +206,18 @@ def run_experiment(**config):
             sess=sess,
 
             cpc_model=cpc_model,
+            cpc_terms = config['history'],
+            cpc_predict_terms=config['future'],
             cpc_epoch=config['cpc_epoch'],
             cpc_lr=config['cpc_lr'],
             cpc_initial_epoch=config['cpc_initial_epoch'],
             cpc_initial_lr = config['cpc_initial_lr'],
+            cpc_negative_samples=config['negative'],
             cpc_negative_same_traj=config['negative'] // 3 * 2 if config['env'] == 'reacher_easy' else 0,
             cpc_initial_sampler=sampler_initial_cpc,
-            cpc_train_interval=config['cpc_train_interval']
+            cpc_train_interval=config['cpc_train_interval'],
+            cpc_predict_action=config['predict_action'],
+            cpc_contrastive=config['contrastive']
         )
         algo.train()
 
@@ -474,7 +480,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['pt'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -491,13 +497,13 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.4],
+        'rolling_average_persitency': [0.9],
 
         # Dynamics Model
         'recurrent': [False],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500,)],
+        'hidden_sizes_model': [(500, 500)],
         'dynamic_model_epochs': [50],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
@@ -517,17 +523,18 @@ if __name__ == '__main__':
         'encoder': ['cpc'],
         'latent_dim': [8],
         'negative': [10],
-        'history': [3],
-        'future': [3],
+        'history': [1],
+        'future': [1],
         'use_context_net': [False],
         'include_action': [False],
-        'cpc_epoch': [0, 20],
+        'predict_action': [True],
+        'contrastive':[False],
+        'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [64, 256],
+        'cpc_num_initial_rollouts': [1024],
         'cpc_train_interval': [10]
-
     }
 
     run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)

@@ -43,15 +43,20 @@ class Trainer(object):
             reward_model_max_epochs=200,
             reward_model=None,
             reward_sample_processor=None,
-            
+
+            cpc_terms=1,
+            cpc_predict_terms=1,
             cpc_initial_epoch=30,
             cpc_initial_lr = 1e-3,
             cpc_epoch=5,
             cpc_lr=1e-4,
             cpc_batch_size=32,
+            cpc_negative_samples=10,
             cpc_negative_same_traj=0,
             cpc_initial_sampler=None,
             cpc_train_interval=10,
+            cpc_predict_action=False,
+            cpc_contrastive=True,
             ):
         self.env = env
         self.sampler = sampler
@@ -66,14 +71,19 @@ class Trainer(object):
         self.reward_model_max_epochs = reward_model_max_epochs
 
         self.cpc_model = cpc_model
+        self.cpc_terms = cpc_terms
+        self.cpc_predict_terms = cpc_predict_terms
         self.cpc_initial_epoch = cpc_initial_epoch
         self.cpc_initial_lr = cpc_initial_lr
         self.cpc_epoch = cpc_epoch
         self.cpc_lr = cpc_lr
         self.cpc_batch_size = cpc_batch_size
+        self.cpc_negative_samples = cpc_negative_samples
         self.cpc_negative_same_traj = cpc_negative_same_traj
-        self.cpc_initial_sampler=cpc_initial_sampler
+        self.cpc_initial_sampler = cpc_initial_sampler
         self.cpc_train_interval = cpc_train_interval
+        self.cpc_predict_action = cpc_predict_action
+        self.cpc_contrastive = cpc_contrastive
 
         self.initial_random_samples = initial_random_samples
 
@@ -105,21 +115,21 @@ class Trainer(object):
 
             ''' --------------- Pretrain CPC on exploratory data --------------- '''
             if self.cpc_initial_epoch > 0:
-                terms = self.cpc_model.get_layer('x_input').input_shape[1]
-                predict_terms = self.cpc_model.get_layer('y_input').input_shape[1]
-                negative_samples = self.cpc_model.get_layer('y_input').input_shape[2] - 1
-
                 env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
                 train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
 
-                train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=terms,
-                                              negative_samples=negative_samples,
-                                              predict_terms=predict_terms,
-                                              negative_same_traj=self.cpc_negative_same_traj)
-                validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=terms,
-                                                   negative_samples=negative_samples,
-                                                   predict_terms=predict_terms,
-                                                   negative_same_traj=self.cpc_negative_same_traj)
+                train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=self.cpc_terms,
+                                              negative_samples=self.cpc_negative_samples,
+                                              predict_terms=self.cpc_predict_terms,
+                                              negative_same_traj=self.cpc_negative_same_traj,
+                                              predict_action=self.cpc_predict_action,
+                                              no_neg=not self.cpc_contrastive)
+                validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=self.cpc_terms,
+                                                   negative_samples=self.cpc_negative_samples,
+                                                   predict_terms=self.cpc_predict_terms,
+                                                   negative_same_traj=self.cpc_negative_same_traj,
+                                                   predict_action=self.cpc_predict_action,
+                                                   no_neg=not self.cpc_contrastive)
 
 
                 # for (x, a, y), labels in train_data:
@@ -129,7 +139,7 @@ class Trainer(object):
                 #
                 callbacks = [
                     keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
-                    SaveEncoder(logger.get_dir()),
+                    SaveEncoder(logger.get_dir(), metric='acc' if self.cpc_contrastive else 'error'),
                     keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
                 # Train the model
@@ -143,10 +153,12 @@ class Trainer(object):
                     callbacks=callbacks
                 )
 
-                K.set_learning_phase(0)
-                self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+            K.set_learning_phase(0)
+            self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
+                # for point mass
+
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
 
@@ -188,7 +200,7 @@ class Trainer(object):
                                                       restore_best_weights=True),
                         # keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
                         keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
-                                                          verbose=1, min_delta=0.001),
+                                                          verbose=1, min_delta=0.01),
                         SaveEncoder(logger.get_dir()),
                         keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 

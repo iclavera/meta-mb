@@ -19,9 +19,9 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-# os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"]=""
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'predict_action'
+EXP_NAME = 'predict_action_ip'
 
 
 def train_with_exploratory_policy(**config):
@@ -39,11 +39,12 @@ def train_with_exploratory_policy(**config):
                                         max_path_length=max_path_length, image_shape=config['image_shape'])
     train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
     train_data = CPCDataGenerator(train_img, train_action, config['batch_size'], terms=config['terms'], negative_samples=config['negative_samples'],
-                                  predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'])
+                                  predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'],
+                                  no_neg=not config['contrastive'])
     validation_data = CPCDataGenerator(val_img, val_action, config['batch_size'], terms=config['terms'], negative_samples=config['negative_samples'],
-                                       predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'])
+                                       predict_terms=config['predict_terms'], negative_same_traj=negative_same_traj, predict_action=config['predict_action'],
+                                       no_neg=not config['contrastive'])
 
-    # train_data.next()
     # for (x, a, y), labels in train_data:
     #     plot_seq(x, y, labels, name='cartpole-seq2')
     #     break
@@ -54,7 +55,7 @@ def train_with_exploratory_policy(**config):
     model = network_cpc(image_shape=config['image_shape'], action_dim=raw_env.action_space.shape[0], include_action=config['include_action'],
                         terms=config['terms'], predict_terms=config['predict_terms'], negative_samples=config['negative_samples'],
                         code_size=config['code_size'], learning_rate=config['lr'], encoder_arch=config['encoder_arch'], context_network=config['context_network'],
-                        predict_action=config['predict_action'])
+                        predict_action=config['predict_action'], contrastive=config['contrastive'])
 
     # Callbacks
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data', EXP_NAME, exp_name)
@@ -63,7 +64,7 @@ def train_with_exploratory_policy(**config):
     json.dump(config, open(output_dir + '/cpc_params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     callbacks = [#keras.callbacks.LearningRateScheduler(make_periodic_lr([5e-2, 5e-3, 5e-4]), verbose=1),
                  keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1/3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
-                 SaveEncoder(output_dir),
+                 SaveEncoder(output_dir, metric='acc' if config['contrastive'] else 'error'),
                  keras.callbacks.CSVLogger(os.path.join(output_dir, 'cpc.log'))]
 
     # Train the model
@@ -93,9 +94,9 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['cartpole_balance'],
+        'env': ['ip'],
         'image_shape': [(64, 64, 3)],
-        'num_rollouts': [20],
+        'num_rollouts': [1024],
 
         # for point mass
         'ptsize': [2],
@@ -103,20 +104,21 @@ if __name__ == "__main__":
 
 
         # cpc config
-        'terms': [1],
+        'terms': [4],
         'predict_terms': [1],
         'encoder_arch': ['default'],
         'context_network': ['stack'],
         'code_size': [8],
         'negative_samples': [5],
         'include_action': [False],
-        'predict_action':[False],
+        'predict_action':[True],
+        'contrastive': [False],
 
 
         # training config
         'epochs': [30],
         'lr': [1e-3],
-        'batch_size': [8],
+        'batch_size': [32],
 
     }
 

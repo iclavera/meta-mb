@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 class CPCDataGenerator(object):
     def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0,
-                 max_num_seq=512, predict_action=False):
+                 max_num_seq=512, predict_action=False, no_neg=False):
         self.batch_size = batch_size
         self.images = img_seqs
         self.actions = action_seqs
@@ -21,6 +21,7 @@ class CPCDataGenerator(object):
 
         self.max_num_seq = max_num_seq
         self.predict_action = predict_action
+        self.no_neg = no_neg
 
         assert self.negative_same_traj < self.negative_samples
 
@@ -55,15 +56,12 @@ class CPCDataGenerator(object):
         # get the starting index of x_images
         idx_n = np.random.randint(0, self.n_seqs, self.batch_size)
         start_idx_t = np.random.randint(0, self.n_chunks, (self.batch_size, 1))
+        x_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
+        for _ in range(self.terms):
+            x_idx_t = np.concatenate([x_idx_t, start_idx_t], axis=-1)
+            start_idx_t += 1
         if self.predict_action:
-            x_idx_t = np.copy(start_idx_t)
-            start_idx_t_plus_terms = start_idx_t + self.predict_terms
-            x_idx_t = np.concatenate([x_idx_t, start_idx_t_plus_terms], axis=-1)
-        else:
-            x_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
-            for _ in range(self.terms):
-                x_idx_t = np.concatenate([x_idx_t, start_idx_t], axis=-1)
-                start_idx_t += 1
+            x_idx_t = np.concatenate([x_idx_t, start_idx_t + self.predict_terms - 1], axis=-1)
 
         # gather the x_images
         x_images = self.images[idx_n[:, None], x_idx_t]
@@ -73,6 +71,7 @@ class CPCDataGenerator(object):
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
         if self.predict_action:
             # get the positive samples for actions
+            start_idx_t -= 1
             for _ in range(self.predict_terms):
                 y_idx_t = np.concatenate([y_idx_t, start_idx_t], axis=-1)
                 start_idx_t += 1
@@ -85,6 +84,9 @@ class CPCDataGenerator(object):
                 start_idx_t += 1
 
             y_pos = self.images[idx_n[:, None], y_idx_t]
+
+        if self.no_neg and self.predict_action:
+            return x_images, y_pos.reshape((self.batch_size, -1))
 
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)

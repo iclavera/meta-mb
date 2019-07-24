@@ -3,25 +3,33 @@ import os
 import tensorflow as tf
 
 class SaveEncoder(keras.callbacks.Callback):
-    def __init__(self, output_dir, save_best=True):
+    def __init__(self, output_dir, save_best=True, metric='acc'):
         self.output_dir = output_dir
         self.save_best = save_best
+        if metric == 'acc':
+            self.metric = 'val_categorical_accuracy'
+        else:
+            self.metric = 'val_mean_squared_error'
+
 
     def on_train_begin(self, logs={}):
-        self.max_acc = -1.
+        if 'acc' in self.metric:
+            self.max_acc = -1.
+        else:
+            self.max_acc = 1e6
         self.encoder = self.model.get_layer('context_network').layers[1].layer
         self.context = self.model.get_layer('context_network')
 
     def on_epoch_end(self, epoch, logs={}):
-        cur_acc = logs.get('val_categorical_accuracy')
+        cur_acc = logs.get(self.metric)
         if not self.save_best:
-            print("saving model with accuracy %f" % cur_acc)
+            print("saving model with metric %s %f" % (self.metric, cur_acc))
             self.encoder.save(os.path.join(self.output_dir, 'encoder.h5'))
             self.model.save(os.path.join(self.output_dir, 'cpc.h5'))
             self.context.save(os.path.join(self.output_dir, 'context.h5'))
         else:
-            if cur_acc > self.max_acc:
-                print("saving model with accuracy %f" % cur_acc)
+            if 'acc' in self.metric and cur_acc > self.max_acc or 'error' in self.metric and cur_acc < self. max_acc:
+                print("saving model with metric %s %f" % (self.metric, cur_acc))
                 self.max_acc = cur_acc
                 self.encoder.save(os.path.join(self.output_dir, 'encoder.h5'))
                 self.model.save(os.path.join(self.output_dir, 'cpc.h5'))
