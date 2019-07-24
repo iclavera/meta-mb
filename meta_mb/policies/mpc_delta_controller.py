@@ -22,6 +22,7 @@ class MPCDeltaController(Serializable):
             horizon=10,
             num_opt_iters=8,
             opt_learning_rate=1e-3,
+            clip_norm=-1,
             percent_elites=0.1,
             alpha=0.1,
             num_particles=20,
@@ -56,23 +57,6 @@ class MPCDeltaController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-        """
-        self.optimal_action always contain actions executed throughout the sampled trajectories. 
-        It is the first row of tau, where tau is used for looking-ahead planning. 
-        """
-        # if use_opt_w_policy:
-        #     self.deltas_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
-        #     self.delta_policy = GaussianMLPPolicy(
-        #         name='gaussian-mlp-policy',
-        #         obs_dim=self.obs_space_dims,
-        #         action_dim=self.action_space_dims,
-        #         hidden_sizes=(64, 64),
-        #         learn_std=True,
-        #         hidden_nonlinearity=tf.tanh,  # TODO: tunable?
-        #         output_nonlinearity=tf.tanh,  # TODO: scale to match action space range later
-        #     )
-        #     self.build_opt_graph_w_policy()
-
         self.deltas_mean_val = np.zeros(
             (self.horizon, self.num_envs, self.action_space_dims),
         )
@@ -81,7 +65,11 @@ class MPCDeltaController(Serializable):
             shape=np.shape(self.deltas_mean_val),
             name='deltas_mean',
         )
-        self.deltas_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+        self.deltas_optimizer = MPCTauOptimizer(
+            max_epochs=num_opt_iters,
+            learning_rate=opt_learning_rate,
+            clip_norm=clip_norm,
+        )
         self.build_opt_graph()
 
     @property

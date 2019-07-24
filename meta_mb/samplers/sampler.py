@@ -111,7 +111,7 @@ class Sampler(BaseSampler):
                     actions, agent_infos = policy.get_actions(
                         obses,
                         return_first_info=True,
-                        log_grads_for_plot=(itr_counter == 0),
+                        log_grads_for_plot=(itr_counter < self.max_path_length),
                     )
                 else:
                     actions, agent_infos = policy.get_actions(obses)
@@ -244,6 +244,8 @@ class Sampler(BaseSampler):
                 os.makedirs(self.save_dir, exist_ok=True)
             plt.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
             logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))
+
+            policy.plot_grads()
 
         return paths
 

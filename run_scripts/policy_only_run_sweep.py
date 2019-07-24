@@ -86,6 +86,7 @@ def run_experiment(**config):
                 n_candidates=config['n_candidates'],
                 horizon=config['horizon'],
                 method_str=config['method_str'],
+                dyn_pred_str=config['dyn_pred_str'],
                 policy_str=config['policy_str'],
                 reg_coef=config['reg_coef'],
                 reg_str=config['reg_str'],
@@ -145,13 +146,16 @@ if __name__ == '__main__':
         # Policy
         'initializer_str': ['zeros'], #['uniform', 'zeros'],
         'reg_coef': [0.1], #[1, 0],
-        'reg_str': ['uncertainty'],
-        'method_str': ['opt_act'],  # ['opt_delta_act', 'opt_policy', 'opt_act', 'cem', 'rs']
+        'reg_str': [None], #['uncertainty'],
+        'method_str': ['opt_policy'],  # ['opt_delta_act', 'opt_policy', 'opt_act', 'cem', 'rs']
+        'dyn_pred_str': ['rand'],  # ['rand', 'mean', 'batches']
         'policy_str': ['gaussian_mlp'],
         'horizon': [25], # Tau
 
         'num_opt_iters': [20], #20, 40,],
-        'opt_learning_rate': [1e-3], #1e-2],
+        'opt_learning_rate': [1e-4], #1e-2],
+        'clip_norm': [1e3, 1e5], #1e2, 1e1, 1e6],
+
         'n_candidates': [1000], # K
         'num_cem_iters': [5],
 

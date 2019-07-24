@@ -15,6 +15,7 @@ class MPCController(Serializable):
             reward_model=None,
             discount=1,
             method_str='opt_policy',
+            dyn_pred_str='rand',
             policy_str='gaussian_mlp',
             initializer_str='uniform',
             reg_coef=1,
@@ -24,6 +25,7 @@ class MPCController(Serializable):
             num_cem_iters=8,
             num_opt_iters=8,
             opt_learning_rate=1e-3,
+            clip_norm=-1,
             percent_elites=0.1,
             use_reward_model=False,
             alpha=0.1,
@@ -34,6 +36,7 @@ class MPCController(Serializable):
         self.reward_model = reward_model
         self.discount = discount
         self.method_str = method_str
+        self.dyn_pred_str = dyn_pred_str
         self.policy_str = policy_str
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
@@ -50,6 +53,7 @@ class MPCController(Serializable):
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
+        self.clip_norm = clip_norm
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -74,13 +78,15 @@ class MPCController(Serializable):
                     hidden_sizes=(64, 64),
                     learn_std=True,
                     hidden_nonlinearity=tf.tanh,  # TODO: tunable?
-                    output_nonlinearity=tf.tanh,  # TODO: scale to match action space range later
+                    output_nonlinearity=None,  # TODO: scale to match action space range later
                 )
-            elif self.policy_str == 'lstm':
-                raise NotImplementedError
             else:
                 raise NotImplementedError
-            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+            self.tau_optimizer = MPCTauOptimizer(
+                max_epochs=num_opt_iters,
+                learning_rate=opt_learning_rate,
+                clip_norm=clip_norm,
+            )
             self.build_opt_graph_w_policy()
         elif method_str == 'opt_act':
             if initializer_str == 'uniform':
@@ -100,7 +106,11 @@ class MPCController(Serializable):
                 shape=np.shape(self.tau_mean_val),
                 name='tau_mean',
             )
-            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+            self.tau_optimizer = MPCTauOptimizer(
+                max_epochs=num_opt_iters,
+                learning_rate=opt_learning_rate,
+                clip_norm=clip_norm,
+            )
             self.build_opt_graph()
         elif method_str == 'cem':
             self.build_cem_graph()
@@ -271,7 +281,8 @@ class MPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
-        # log_std_var = tf.maximum(log_std_var, np.log(1e-6))
+        mean_var = tf.tanh(mean_var)  # FIXME
+        log_std_var = tf.maximum(log_std_var, np.log(1e-6))  # FIXME
 
         tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
         tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
@@ -291,7 +302,12 @@ class MPCController(Serializable):
                 next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
                 next_obs = tf.squeeze(next_obs, axis=1)
             else:
-                next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+                if self.dyn_pred_str == 'batches':
+                    next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+                elif self.dyn_pred_str == 'rand':
+                    next_obs = self.dynamics_model.predict_sym(obs, acts)
+                else:
+                    next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
 
             rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
             returns += self.discount ** t * rewards
@@ -306,9 +322,7 @@ class MPCController(Serializable):
             raise NotImplementedError
 
         result_op = [tau[0], mean_var, neg_returns, reg]
-        extra_result_op = [mean_var[0][0], log_std_var[0][0]]
-
-        neg_returns = tf.reduce_mean(-returns, axis=0)
+        extra_result_op = [mean_var[0][0], tf.exp(log_std_var[0][0])]
 
         self.tau_optimizer.build_graph(
             loss=neg_returns+self.reg_coef*reg,
@@ -324,12 +338,12 @@ class MPCController(Serializable):
         obs = self.obs_ph
         for t in range(self.horizon):
             dist_policy = self.policy.distribution_info_sym(obs)
-            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
+            acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+            acts = tf.clip_by_value(acts, self.env.action_space.low, self.env.action_space.high)
             # TODO: penalize rather than clipping
 
             if self.reg_str == 'uncertainty':
-                pred_obs = self.dynamics_model.predict_sym_all(obs, act)
+                pred_obs = self.dynamics_model.predict_sym_all(obs, acts)
                 uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
                 uncertainty = tf.reduce_sum(uncertainty, axis=1)
                 reg += uncertainty
@@ -338,17 +352,28 @@ class MPCController(Serializable):
                 next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
                 next_obs = tf.squeeze(next_obs, axis=1)
             else:
-                next_obs = self.dynamics_model.predict_batches_sym(obs, act)
+                if self.dyn_pred_str == 'batches':
+                    next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+                elif self.dyn_pred_str == 'rand':
+                    next_obs = self.dynamics_model.predict_sym(obs, acts)
+                else:
+                    next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
 
-            rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
+            rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
             returns += self.discount ** t * rewards
             obs = next_obs
 
             if t == 0:
-                result_op = [act]
+                result_op = [acts]
                 extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
 
+        # build loss = total_cst + regularization
         neg_returns = tf.reduce_mean(-returns, axis=0)
+        if self.reg_str == 'uncertainty' or self.reg_str is None:
+            reg = tf.reduce_mean(reg, axis=0)
+        else:
+            raise NotImplementedError
+
         result_op += [neg_returns, reg]
 
         self.tau_optimizer.build_graph(

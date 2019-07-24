@@ -4,17 +4,17 @@ import numpy as np
 from meta_mb.optimizers.base import Optimizer
 from meta_mb.utils import Serializable
 import tensorflow as tf
-from time import time
 import os
 
 
 class MPCTauOptimizer(Optimizer, Serializable):
     def __init__(
             self,
+            clip_norm,
+            learning_rate,
+            max_epochs,
             tf_optimizer_cls=tf.train.AdamOptimizer,
             tf_optimizer_args=None,
-            learning_rate=1e-3,
-            max_epochs=1,
             verbose=False,
     ):
         Serializable.quick_init(self, locals())
@@ -32,8 +32,9 @@ class MPCTauOptimizer(Optimizer, Serializable):
         self._init_op = None
         self._result_op = None
         self._global_step = 0
-        # self._global_norms = []
-        self.y_for_plot = []
+        self.y1_for_plot = []
+        self.y2_for_plot = []
+        self.clip_norm = clip_norm
 
     def build_graph(self, loss, var_list, result_op, input_ph_dict, *args, **kwargs):
         assert isinstance(loss, tf.Tensor)
@@ -46,16 +47,18 @@ class MPCTauOptimizer(Optimizer, Serializable):
         grads_vars = self._tf_optimizer.compute_gradients(loss, var_list=var_list)
         grads, vars = zip(*grads_vars)
 
+        if self.clip_norm > 0:
+            grads, grads_global_norm = tf.clip_by_global_norm(grads, clip_norm=self.clip_norm)
+        else:
+            grads_global_norm = tf.linalg.global_norm(grads)
+
         if self.with_policy:
-            grads, self._grads_for_plot = tf.clip_by_global_norm(grads, clip_norm=5)
+            self._grads_for_plot = grads_global_norm  # ()
         else:
             assert 'mean' in vars[0].name
             grad_mean = grads[0]
-            # FIXME: won't work with parametrized policy
-            # grads[0] = grad_mean has shape (horizon, num_rollouts, act_space_dims)_
-            # take the norm of the gradient of the first rollout
-            self._grads_for_plot = tf.norm(grad_mean[:, 0, :], axis=-1)  # (horizon,)
-            grads, _ = tf.clip_by_global_norm(grads, clip_norm=5)
+            self._grads_for_plot = tf.norm(grad_mean[:, 0, :], axis=-1)  # (horizon,)  after clipping
+        self._vars_for_plot = tf.linalg.global_norm(var_list)
 
         self._train_op = self._tf_optimizer.apply_gradients(zip(grads, vars))
 
@@ -91,19 +94,18 @@ class MPCTauOptimizer(Optimizer, Serializable):
             sess.run(self._init_op, feed_dict=feed_dict)
 
         array_grads_for_plot = []
+        array_vars_for_plot = []
         loss_array = []
         for epoch in range(self._max_epochs):
-            loss, _, grads_for_plot = sess.run([self._loss, self._train_op, self._grads_for_plot], feed_dict=feed_dict)
+            loss, _, grads_for_plot, vars_for_plot = sess.run([self._loss, self._train_op, self._grads_for_plot, self._vars_for_plot],
+                                                              feed_dict=feed_dict)
             loss_array.append(loss)
             array_grads_for_plot.append(grads_for_plot)
-        #  array_grads_for_plot = (opt_epochs, horizon)
-        # grads_for_plot = np.mean(array_grads_for_plot, axis=0)  # mean with respect to optimization epochs
+            array_vars_for_plot.append(vars_for_plot)
 
-        # if log_global_norms:
-        #     self._global_norms.append(array_grads_for_plot)  # global_norms = (max_epochs,)
-        #     # logger.log(loss_array)
         if log_grads_for_plot:
-            self.y_for_plot.append(array_grads_for_plot)
+            self.y1_for_plot.append(array_grads_for_plot)
+            self.y2_for_plot.append(array_vars_for_plot)
 
         if run_extra_result_op:
             result = sess.run(self._result_op + self._extra_result_op, feed_dict)
@@ -113,25 +115,29 @@ class MPCTauOptimizer(Optimizer, Serializable):
         return result
 
     def plot_grads(self):
-        y_for_plot = np.stack(self.y_for_plot, axis=-1)  # (opt_epochs, horizon, max_path_length)
-        self.y_for_plot = []
-        logger.log('plt array has size', y_for_plot.shape)
+        y1 = np.stack(self.y1_for_plot, axis=-1)  # (opt_epochs, [horizon, ]max_path_length)
+        y2 = np.stack(self.y2_for_plot, axis=-1)  # (opt_epochs, max_path_length)
+        self.y1_for_plot, self.y2_for_plot = [], []
+        logger.log('plt array has size', y1.shape, y2.shape)
 
-        # fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(50, 30))
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(30, 30))
 
-        # plot path_length (x-axis) vs. opt_epochs (y-axis)
-        # y = np.mean(y_for_plot, axis=1)
-        # im = axes[0].imshow(y, cmap='hot', interpolation='nearest')
-        # axes[0].set_xlabel('path_length_collected_by sampler_so_far')
-        # axes[0].set_ylabel('opt_epochs')
-        # fig.colorbar(im, ax=axes[0])
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(50, 30))
         # plot path_length (x-axis) vs. horizon (y-axis)
-        y = np.mean(y_for_plot, axis=0)
-        im = ax.imshow(y, cmap='hot', interpolation='nearest')
+        ax = axes[0]
+        if not self.with_policy:
+            y1 = np.mean(y1, axis=0)
+        im = ax.imshow(y1, cmap='hot', interpolation='nearest')
         ax.set_xlabel('path_length_collected_by_sampler_so_far')
         ax.set_ylabel('horizon')
+        ax.set_title('grads norm')
+        fig.colorbar(im, ax=ax)
+
+        # plot path_length (x-axis) vs. opt_epochs (y-axis)
+        ax = axes[1]
+        im = ax.imshow(y2, cmap='hot', interpolation='nearest')
+        ax.set_xlabel('path_length_collected_by sampler_so_far')
+        ax.set_ylabel('opt_epochs')
+        ax.set_title('vars norm')
         fig.colorbar(im, ax=ax)
 
         # plt.show()
