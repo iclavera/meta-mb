@@ -299,9 +299,12 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         delta_preds = tf.concat(delta_preds, axis=0)
 
         # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        # next_obs = clip(obs + delta_pred
-        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        if shuffle:
+            perm_inv = tf.invert_permutation(perm)
+            # next_obs = clip(obs + delta_pred
+            next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        else:
+            next_obs = original_obs + delta_preds
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
         return next_obs
 
@@ -331,6 +334,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
             delta = np.array(self.f_delta_pred(obs, act))
             var = np.array(self.f_var_pred(obs, act))
+            # print(obs, act, delta, var)
             if not deterministic:
                 delta = np.random.normal(delta, np.sqrt(var))
             delta = self._denormalize_data(delta)
