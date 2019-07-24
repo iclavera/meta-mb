@@ -1,4 +1,5 @@
 import keras
+import keras.backend as K
 import os
 import tensorflow as tf
 import numpy as np
@@ -122,7 +123,7 @@ class Trainer(object):
 
 
                 # for (x, a, y), labels in train_data:
-                #     plot_seq(x[0], y, labels, name='reacher-seq')
+                #     plot_seq(x[0], y, labels, name='reacher-seq')q
                 #     break
                 # import pdb; pdb.set_trace()
                 #
@@ -142,7 +143,8 @@ class Trainer(object):
                     callbacks=callbacks
                 )
 
-            # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+                K.set_learning_phase(0)
+                self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -153,7 +155,6 @@ class Trainer(object):
                 if self.initial_random_samples and itr == 0:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                    import pdb; pdb.set_trace()
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
@@ -173,6 +174,39 @@ class Trainer(object):
                                                                               log=True, log_prefix='EnvTrajs-')
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
+
+                ''' --------------- finetune cpc --------------- '''
+                time_cpc_start = time.time()
+                if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
+                    self.cpc_model.compile(
+                        optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
+                        loss=cross_entropy_loss,
+                        metrics=['categorical_accuracy'])
+
+                    callbacks = [
+                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1,
+                                                      restore_best_weights=True),
+                        # keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
+                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
+                                                          verbose=1, min_delta=0.001),
+                        SaveEncoder(logger.get_dir()),
+                        keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
+
+                    # Train the model
+                    self.cpc_model.fit_generator(
+                        generator=train_data,
+                        steps_per_epoch=len(train_data),
+                        validation_data=validation_data,
+                        validation_steps=len(validation_data),
+                        epochs=self.cpc_epoch,
+                        verbose=1,
+                        callbacks=callbacks
+                    )
+
+                    K.set_learning_phase(0)
+                    self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+
+                logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
 
                 ''' --------------- fit dynamics model --------------- '''
 
@@ -201,35 +235,6 @@ class Trainer(object):
                                             prefix='Rew')
 
                     logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
-
-                ''' --------------- finetune cpc --------------- '''
-                time_cpc_start = time.time()
-                if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
-                    self.cpc_model.compile(
-                        optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
-                        loss=cross_entropy_loss,
-                        metrics=['categorical_accuracy'])
-
-                    callbacks = [keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1, restore_best_weights=True),
-                                 #keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
-                                 keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
-                                 SaveEncoder(logger.get_dir()),
-                                 keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
-
-                    # Train the model
-                    self.cpc_model.fit_generator(
-                        generator=train_data,
-                        steps_per_epoch=len(train_data),
-                        validation_data=validation_data,
-                        validation_steps=len(validation_data),
-                        epochs=self.cpc_epoch,
-                        verbose=1,
-                        callbacks=callbacks
-                    )
-
-                    self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
-
-                logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
 
 
                 """ ------------------- Logging Stuff --------------------------"""

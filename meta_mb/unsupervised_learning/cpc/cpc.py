@@ -194,6 +194,7 @@ class CPCEncoder:
             return self.encoder.predict(imgs[None, ...])[0]
         return self.encoder.predict(imgs)
 
+
 class CPCContextNet:
     def __init__(self, path, model=None, image_shape=(64, 64, 3)):
         if model is None:

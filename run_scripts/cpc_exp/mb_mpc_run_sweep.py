@@ -3,6 +3,7 @@ import json
 import os
 import keras
 import tensorflow as tf
+import keras.backend as K
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
@@ -31,7 +32,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'cpb_debug_external_encoder'
+EXP_NAME = 'cartpole'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -57,6 +58,7 @@ def run_experiment(**config):
         # cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
         #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
         from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
+
         cpc_model = network_cpc((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
                                 config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                                 learning_rate=config['cpc_initial_lr'], encoder_arch='default',
@@ -472,7 +474,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['cartpole_balance', 'cartpole_swingup'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -519,11 +521,11 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [False],
-        'cpc_epoch': [0],
+        'cpc_epoch': [0, 20],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [0],
+        'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [0],
+        'cpc_num_initial_rollouts': [64, 256],
         'cpc_train_interval': [10]
 
     }
