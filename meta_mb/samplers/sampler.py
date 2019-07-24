@@ -90,6 +90,7 @@ class Sampler(BaseSampler):
             init_obs = obses[0]
             tau, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
 
+        itr_counter = 0
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
@@ -110,7 +111,7 @@ class Sampler(BaseSampler):
                     actions, agent_infos = policy.get_actions(
                         obses,
                         return_first_info=True,
-                        log_global_norms=(n_samples == 0),
+                        log_grads_for_plot=(itr_counter < self.max_path_length),
                     )
                 else:
                     actions, agent_infos = policy.get_actions(obses)
@@ -164,6 +165,7 @@ class Sampler(BaseSampler):
             if verbose: pbar.update(self.vec_env.num_envs)
             n_samples += new_samples
             obses = next_obses
+            itr_counter += 1
         if verbose: pbar.stop()
 
         self.total_timesteps_sampled += self.total_samples
@@ -242,6 +244,8 @@ class Sampler(BaseSampler):
                 os.makedirs(self.save_dir, exist_ok=True)
             plt.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
             logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))
+
+            policy.plot_grads()
 
         return paths
 

@@ -92,7 +92,6 @@ class PolicyOnlyTrainer(object):
                 if self.fit_model:
 
                     ''' --------------- fit dynamics model --------------- '''
-
                     time_fit_start = time.time()
 
                     logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
@@ -119,10 +118,6 @@ class PolicyOnlyTrainer(object):
                 logger.dumpkvs()
                 if itr == 0:
                     sess.graph.finalize()
-
-                """ ------------- Plot global norms ------------------ """
-                if itr > 0 and itr % 1 == 0 and hasattr(self.sampler.policy, 'plot_global_norms'):
-                    self.sampler.policy.plot_global_norms()
 
         logger.log("Training finished")
         self.sess.close()
