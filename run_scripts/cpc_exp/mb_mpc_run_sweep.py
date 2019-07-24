@@ -480,7 +480,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['pt'],#, 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -521,19 +521,19 @@ if __name__ == '__main__':
 
         'use_image': [True],
         'encoder': ['cpc'],
-        'latent_dim': [8],
+        'latent_dim': [16],
         'negative': [10],
-        'history': [1],
-        'future': [1],
+        'history': [3],
+        'future': [3],
         'use_context_net': [False],
         'include_action': [False],
         'predict_action': [True],
-        'contrastive':[False],
-        'cpc_epoch': [0],
+        'contrastive':[True],
+        'cpc_epoch': [20, 0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [50],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [1024],
+        'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [10]
     }
 

@@ -138,7 +138,7 @@ class Trainer(object):
                 # import pdb; pdb.set_trace()
                 #
                 callbacks = [
-                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5, verbose=1, min_delta=0.001),
+                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=3, min_lr=1e-5, verbose=1, min_delta=0.001),
                     SaveEncoder(logger.get_dir(), metric='acc' if self.cpc_contrastive else 'error'),
                     keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
@@ -196,11 +196,11 @@ class Trainer(object):
                         metrics=['categorical_accuracy'])
 
                     callbacks = [
-                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.01, patience=3, verbose=1,
+                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, patience=4, verbose=1,
                                                       restore_best_weights=True),
                         # keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
-                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
-                                                          verbose=1, min_delta=0.01),
+                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=3, min_lr=1e-5,
+                                                          verbose=1, min_delta=0.001),
                         SaveEncoder(logger.get_dir()),
                         keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
