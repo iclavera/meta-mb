@@ -32,7 +32,8 @@ class MPCTauOptimizer(Optimizer, Serializable):
         self._init_op = None
         self._result_op = None
         self._global_step = 0
-        self._global_norms = []
+        # self._global_norms = []
+        self.y_for_plot = []
 
     def build_graph(self, loss, var_list, result_op, input_ph_dict, *args, **kwargs):
         assert isinstance(loss, tf.Tensor)
@@ -40,16 +41,28 @@ class MPCTauOptimizer(Optimizer, Serializable):
 
         self._input_ph_dict = input_ph_dict
         self._loss = loss
+        self.with_policy = kwargs.get('with_policy', False)
 
         grads_vars = self._tf_optimizer.compute_gradients(loss, var_list=var_list)
         grads, vars = zip(*grads_vars)
-        grads, self._global_norm = tf.clip_by_global_norm(grads, clip_norm=5)
+
+        if self.with_policy:
+            grads, self._grads_for_plot = tf.clip_by_global_norm(grads, clip_norm=5)
+        else:
+            assert 'mean' in vars[0].name
+            grad_mean = grads[0]
+            # FIXME: won't work with parametrized policy
+            # grads[0] = grad_mean has shape (horizon, num_rollouts, act_space_dims)_
+            # take the norm of the gradient of the first rollout
+            self._grads_for_plot = tf.norm(grad_mean[:, 0, :], axis=-1)  # (horizon,)
+            grads, _ = tf.clip_by_global_norm(grads, clip_norm=5)
+
         self._train_op = self._tf_optimizer.apply_gradients(zip(grads, vars))
-        # Plotting: gradient of tau_mean for the first obs_sample in first action space dimension
 
         self.save_dir = os.path.join(logger.get_dir(), 'grads_global_norm')
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # Dual gradient descent
         # if 'lmbda' in kwargs:
         #     with tf.control_dependencies([self._train_op, tf.print(kwargs['lmbda'], self._loss + kwargs['loss_dual'], kwargs['loss_dual'])]):
         #         self._train_op_dual = tf.no_op()
@@ -70,23 +83,27 @@ class MPCTauOptimizer(Optimizer, Serializable):
         loss = sess.run(self._loss, feed_dict=feed_dict)
         return loss
 
-    def optimize(self, input_val_dict, run_extra_result_op=False, log_global_norms=False):
+    def optimize(self, input_val_dict, run_extra_result_op=False, log_grads_for_plot=False):
         self._global_step += 1
         sess = tf.get_default_session()
         feed_dict = self.create_feed_dict(input_val_dict)
         if self._init_op is not None:
             sess.run(self._init_op, feed_dict=feed_dict)
 
-        global_norms = []
+        array_grads_for_plot = []
         loss_array = []
         for epoch in range(self._max_epochs):
-            loss, _, global_norm = sess.run([self._loss, self._train_op, self._global_norm], feed_dict=feed_dict)
+            loss, _, grads_for_plot = sess.run([self._loss, self._train_op, self._grads_for_plot], feed_dict=feed_dict)
             loss_array.append(loss)
-            global_norms.append(global_norm)
+            array_grads_for_plot.append(grads_for_plot)
+        #  array_grads_for_plot = (opt_epochs, horizon)
+        # grads_for_plot = np.mean(array_grads_for_plot, axis=0)  # mean with respect to optimization epochs
 
-        if log_global_norms:
-            self._global_norms.append(global_norms)  # global_norms = (max_epochs,)
-            # logger.log(loss_array)
+        # if log_global_norms:
+        #     self._global_norms.append(array_grads_for_plot)  # global_norms = (max_epochs,)
+        #     # logger.log(loss_array)
+        if log_grads_for_plot:
+            self.y_for_plot.append(array_grads_for_plot)
 
         if run_extra_result_op:
             result = sess.run(self._result_op + self._extra_result_op, feed_dict)
@@ -95,18 +112,30 @@ class MPCTauOptimizer(Optimizer, Serializable):
 
         return result
 
-    def plot_global_norms(self):
+    def plot_grads(self):
+        y_for_plot = np.stack(self.y_for_plot, axis=-1)  # (opt_epochs, horizon, max_path_length)
+        self.y_for_plot = []
+        logger.log('plt array has size', y_for_plot.shape)
+
+        # fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(50, 30))
+
+        # plot path_length (x-axis) vs. opt_epochs (y-axis)
+        # y = np.mean(y_for_plot, axis=1)
+        # im = axes[0].imshow(y, cmap='hot', interpolation='nearest')
+        # axes[0].set_xlabel('path_length_collected_by sampler_so_far')
+        # axes[0].set_ylabel('opt_epochs')
+        # fig.colorbar(im, ax=axes[0])
+
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(50, 30))
-        self._global_norms = np.stack(self._global_norms, axis=-1)  # (max_epochs, max_path_length)
-        logger.log('plt array has size', self._global_norms.shape)
-        im = ax.imshow(self._global_norms, cmap='hot', interpolation='nearest')
-        self._global_norms = []
-        #ax.set_xticklabels(np.arange(len(self._global_norms[0])))
-        ax.set_xlabel('max_path_length * trainer_itr')
-        #ax.set_yticklabels(np.arange(len(self._global_norms)))
-        ax.set_ylabel('opt_epochs')
-        ax.set_title(f'{self._global_step}')
+        # plot path_length (x-axis) vs. horizon (y-axis)
+        y = np.mean(y_for_plot, axis=0)
+        im = ax.imshow(y, cmap='hot', interpolation='nearest')
+        ax.set_xlabel('path_length_collected_by_sampler_so_far')
+        ax.set_ylabel('horizon')
         fig.colorbar(im, ax=ax)
+
         # plt.show()
+        fig.suptitle(f'{self._global_step}')
         fig.savefig(os.path.join(self.save_dir, f'{self._global_step}.png'))
         logger.log('plt saved to', os.path.join(self.save_dir, f'{self._global_step}.png'))
+

@@ -27,12 +27,11 @@ def run_experiment(**config):
         repr = 'hc'
     elif config['env'] is InvertedPendulumEnv:
         repr = 'ip'
-    repr += '-reg-' + str(config['reg_coef']) + '-' + config['reg_str']
-    repr += '-init-' + config['initializer_str']
-    if config['use_opt_w_policy']:
-        repr = repr + '-policy-'
-    elif config['use_opt']:
-        repr = repr + '-act-'
+    repr += '-reg-' + str(config['reg_coef'])
+    if config['reg_str'] is not None:
+        repr += '-' + config['reg_str']
+    repr += '-init-' + config['initializer_str'] + '-' + config['method_str'] + '-'
+
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + repr + config.get('exp_name', '')
     print(f'===================================== exp_dir = {exp_dir} =====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -63,14 +62,14 @@ def run_experiment(**config):
             data = joblib.load(config['model_path'])
             dynamics_model = data['dynamics_model']
 
-        if config['delta_policy']:
+        if config['method_str'] == 'opt_delta_act':
             policy = MPCDeltaController(
                 name="policy",
                 env=env,
                 dynamics_model=dynamics_model,
                 discount=config['discount'],
                 horizon=config['horizon'],
-                use_opt_w_policy=config['use_opt_w_policy'],
+                use_opt_w_policy=False,
                 reg_coef=config['reg_coef'],
                 reg_str=config['reg_str'],
                 initializer_str=config['initializer_str'],
@@ -86,10 +85,10 @@ def run_experiment(**config):
                 discount=config['discount'],
                 n_candidates=config['n_candidates'],
                 horizon=config['horizon'],
-                use_cem=config['use_cem'],
-                use_opt=config['use_opt'],
-                kl_coef=config['reg_coef'],
-                use_opt_w_policy=config['use_opt_w_policy'],
+                method_str=config['method_str'],
+                policy_str=config['policy_str'],
+                reg_coef=config['reg_coef'],
+                reg_str=config['reg_str'],
                 initializer_str=config['initializer_str'],
                 num_cem_iters=config['num_cem_iters'],
                 num_opt_iters=config['num_opt_iters'],
@@ -134,7 +133,6 @@ if __name__ == '__main__':
         # InvertedPendulum
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
-        'delta_policy': [True],
         'plot_freq': [1],
 
         # Problem
@@ -145,17 +143,17 @@ if __name__ == '__main__':
         'discount': [1.],
 
         # Policy
-        'n_candidates': [1000], # K
-        'horizon': [20], # Tau
-        'use_cem': [False],
-        'num_cem_iters': [5],
-        'use_opt': [True],
-        'use_opt_w_policy': [False], #[True, False],
         'initializer_str': ['zeros'], #['uniform', 'zeros'],
-        'reg_coef': [0], #[1, 0],
+        'reg_coef': [0.1], #[1, 0],
         'reg_str': ['uncertainty'],
+        'method_str': ['opt_act'],  # ['opt_delta_act', 'opt_policy', 'opt_act', 'cem', 'rs']
+        'policy_str': ['gaussian_mlp'],
+        'horizon': [25], # Tau
+
         'num_opt_iters': [20], #20, 40,],
         'opt_learning_rate': [1e-3], #1e-2],
+        'n_candidates': [1000], # K
+        'num_cem_iters': [5],
 
         # Training
         'num_rollouts': [20],
@@ -180,4 +178,11 @@ if __name__ == '__main__':
         'n_parallel': [1],
     }
 
+    config_debug = config.copy()
+    config_debug['max_path_length'] = [11]
+    config_debug['reg_str'] = [None]
+    config_debug['num_models'] = [2]
+    config_debug['num_rollouts'] = [6]
+
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
+    # run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)

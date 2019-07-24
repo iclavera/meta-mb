@@ -94,12 +94,12 @@ class MPCDeltaController(Serializable):
 
         return self.get_actions(observation)
 
-    def get_actions(self, observations, return_first_info=False, log_global_norms=False):
+    def get_actions(self, observations, return_first_info=False, log_grads_for_plot=False):
         # info to plot action executed in the fist env (observation)
         result = self.deltas_optimizer.optimize(
             {'obs': observations, 'deltas_mean': self.deltas_mean_val},
             run_extra_result_op=return_first_info,
-            log_global_norms=log_global_norms,
+            log_grads_for_plot=log_grads_for_plot,
         )
         if return_first_info:
             actions, deltas_mean_val, neg_returns, reg, mean, std = result
@@ -203,8 +203,8 @@ class MPCDeltaController(Serializable):
             input_ph_dict={'obs': self.obs_ph, 'deltas_mean': self.deltas_mean_ph},
         )
 
-    def plot_global_norms(self):
-        self.deltas_optimizer.plot_global_norms()
+    def plot_grads(self):
+        self.deltas_optimizer.plot_grads()
 
     def get_params_internal(self, **tags):
         return []
