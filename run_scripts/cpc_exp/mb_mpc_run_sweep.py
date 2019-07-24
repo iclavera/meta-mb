@@ -30,7 +30,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'envs_vae'
+EXP_NAME = 'cheetah_state'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -425,6 +425,65 @@ if __name__ == '__main__':
 
     }
 
+    config_envs_cheetah = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+
+        'env': ['cheetah_run'],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [1],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [20],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [10],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.9],
+
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [50],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+
+        # Reward Model
+        'reward_model_epochs': [15],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [False],
+        # 'model_path': ['ip-neg-15'],
+        'encoder': ['cpc'],
+        'latent_dim': [8],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'cpc_model_epoch': [0],
+        'cpc_model_lr': [1e-3]
+
+    }
+
     config_envs = {
         'seed': [1],
         'run_suffix': ['1'],
@@ -482,4 +541,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_envs_cheetah, EXP_NAME, INSTANCE_TYPE)

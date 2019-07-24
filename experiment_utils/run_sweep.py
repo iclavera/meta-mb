@@ -29,6 +29,9 @@ def run_sweep(run_experiment, sweep_params, exp_name, instance_type='c4.xlarge')
     parser.add_argument('--exps_per_gpu', '-e', type=int, default=1,
                         help='Number of experiments per GPU simultaneously')
 
+    parser.add_argument('--gpu_start', 's', type=int, default=0,
+                        help="index of the gpu to start")
+
     parser.add_argument('--num_cpu', '-c', type=int, default=multiprocessing.cpu_count(),
                         help='Number of threads to use for running experiments')
 
@@ -66,7 +69,8 @@ def run_sweep(run_experiment, sweep_params, exp_name, instance_type='c4.xlarge')
         sweeper.run_sweep_parallel(run_experiment, sweep_params)
 
     elif args.mode == 'multi_gpu':
-        run_sweep_multi_gpu(run_experiment, sweep_params, num_gpu=args.num_gpu, exps_per_gpu=args.exps_per_gpu)
+        run_sweep_multi_gpu(run_experiment, sweep_params, num_gpu=args.num_gpu, exps_per_gpu=args.exps_per_gpu,
+                            gpu_start=args.gpu_start)
 
     elif args.mode == 'local_singularity':
         mode_singularity = dd.mode.LocalSingularity(
@@ -77,7 +81,7 @@ def run_sweep(run_experiment, sweep_params, exp_name, instance_type='c4.xlarge')
         raise NotImplementedError
 
 
-def run_sweep_multi_gpu(run_method, params, repeat=1, num_cpu=multiprocessing.cpu_count(), num_gpu=2, exps_per_gpu=2):
+def run_sweep_multi_gpu(run_method, params, repeat=1, num_cpu=multiprocessing.cpu_count(), num_gpu=2, exps_per_gpu=2, gpu_start=0):
     print("running %d variants" % len(list(itertools.product(*[value for value in params.values()]))))
     sweeper = Sweeper(params, repeat, include_name=True)
     gpu_frac = 0.9 / exps_per_gpu
@@ -88,7 +92,7 @@ def run_sweep_multi_gpu(run_method, params, repeat=1, num_cpu=multiprocessing.cp
         exp_args.append((config, run_method))
     random.shuffle(exp_args)
     processes = [None] * num_runs
-    run_info = [(i, (i * cpu_per_gpu, (i + 1) * cpu_per_gpu)) for i in range(num_gpu)] * exps_per_gpu
+    run_info = [(i, (i * cpu_per_gpu, (i + 1) * cpu_per_gpu)) for i in range(gpu_start, gpu_start + num_gpu)] * exps_per_gpu
     for kwarg, run in exp_args:
         launched = False
         while not launched:

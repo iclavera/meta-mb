@@ -15,7 +15,7 @@ from meta_mb.unsupervised_learning.vae import VAE
 from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img, RepeatRandom, init_uninit_vars
 
 INSTANCE_TYPE = 'c4.2xlarge'
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+# os.environ["CUDA_VISIBLE_DEVICES"]="1"
 EXP_NAME = 'envs_vae'
 
 

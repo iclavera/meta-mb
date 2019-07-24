@@ -223,6 +223,12 @@ def run_experiment(**config):
 
 
 if __name__ == '__main__':
+    # import argparse
+    #
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('EXP_NAME', type=str)
+    #
+    # args = parser.parse_args()
 
 
     # -------------------- Define Variants -----------------------------------
@@ -234,11 +240,11 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [3],
+        'obs_stack': [1],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -248,20 +254,20 @@ if __name__ == '__main__':
         'use_graph': [True],
 
         # Training
-        'num_rollouts': [5],
+        'num_rollouts': [10],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.9],
 
         # Dynamics Model
-        'recurrent': [False],
-        'num_models': [5],
+        'recurrent': [True],
+        'num_models': [1],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500, 500)],
+        'hidden_sizes_model': [(500,)],
         'dynamic_model_epochs': [50],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [64],
+        'batch_size_model': [10],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
 
@@ -281,11 +287,11 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [False],
-        'predict_action': [True],
+        'predict_action': [False],
         'contrastive':[True],
-        'cpc_epoch': [20, 0],
+        'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [50],
+        'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [10]
