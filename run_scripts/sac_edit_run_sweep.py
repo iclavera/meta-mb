@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Walker-Q5"
+EXP_NAME = "STEVE-8"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -109,6 +109,7 @@ def run_experiment(**kwargs):
 			env_name=str(kwargs['env']),
 			q_target_type=kwargs['q_target_type'],
 			H=kwargs['H'],
+			model_used_ratio=kwargs['model_used_ratio'],
         )
 
         trainer = Trainer(
@@ -144,7 +145,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [11, 12],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -167,15 +168,16 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
+		'q_functioin_type':[4],
 		'q_target_type': [0],
-		'num_actions_per_next_observation': [2, 5, 10],
+		'num_actions_per_next_observation': [0],
 		'epoch_length': [1000],
-        'T': [2, 3],
-		'H': [2],
+        'T': [0, 2, 3, 5],
+		'H': [0],
 		'reward_scale': [1],
 		'target_entropy': [-3, -6],
 		'num_models': [8],
+		'model_used_ratio': [0.5, 0.75],
 		'dynamics_buffer_size': [1e4],
 
         # Problem Conf
