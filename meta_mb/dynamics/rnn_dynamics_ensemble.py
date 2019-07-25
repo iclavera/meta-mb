@@ -174,7 +174,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         self._next_obs_pred, self._next_hidden_pred = self.predict_sym(self.obs_ph,
                                                                        self.act_ph,
-                                                                       self.hidden_state_ph[0])
+                                                                       self.hidden_state_ph[0])  # FIXME: why only picking hidden_sate of the first model?
 
         self._networks = rnns
 
@@ -382,7 +382,13 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
     def predict_sym(self, obs_ph, act_ph, hidden_state_ph): # pred_type='rand'
-        original_obs = obs_ph
+        if len(obs_ph.get_shape()) == 3:
+            original_obs = obs_ph[:, 0, :]  # FIXME: obs_ph[:, -1, :]??
+        else:
+            assert len(obs_ph.get_shape()) == 2 and obs_ph.get_shape()[1] == self.obs_space_dims
+            assert len(act_ph.get_shape()) == 2 and act_ph.get_shape()[1] == self.action_space_dims
+            original_obs = obs_ph
+            obs_ph, act_ph = tf.expand_dims(obs_ph, axis=1), tf.expand_dims(act_ph, axis=1)
 
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
@@ -394,8 +400,11 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         obs_ph, act_ph, hidden_state_ph = tf.split(obs_ph, self.num_models, axis=0),\
                                           tf.split(act_ph, self.num_models, axis=0), \
                                           self.hidden_state_fn(hidden_state_ph, tf.split, self.num_models, axis=0)
+        # hidden_state = Tuple(num_models * hidden_dims,) -> [Tuple(hidden_dims,)] with length num_models
         hidden_state_ph = [tf.nn.rnn_cell.LSTMStateTuple(hidden_state_ph.c[i], hidden_state_ph.h[i])
                            for i in range(len(hidden_state_ph.c))]
+
+        assert len(hidden_state_ph) == self.num_models
 
         delta_preds = []
         next_hidden_states = []
@@ -435,7 +444,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
             perm_inv = tf.invert_permutation(perm)
             next_hidden_states = self.hidden_state_fn(next_hidden_states, tf.gather, perm_inv)
 
-            next_obs = original_obs[:, 0, :] + tf.gather(delta_preds, perm_inv)
+            next_obs = original_obs + tf.gather(delta_preds, perm_inv)
             next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
 
         return next_obs, next_hidden_states
@@ -504,7 +513,6 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         """
         # sess = tf.get_default_session()
         obs_original = obs
-        # FIXME: should feed whole sequence?????????
         obs, act = [np.expand_dims(obs, axis=1) for _ in range(self.num_models)], \
                    [np.expand_dims(act, axis=1) for _ in range(self.num_models)]
         assert self.normalize_input
@@ -513,7 +521,7 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         delta, *next_hidden_state = np.asarray(self.f_delta_pred(obs, act, *hidden_state))
         delta = self._denormalize_data(delta)
 
-        pred_obs = obs_original[:, :, None] + delta[:, 0, :, :]
+        pred_obs = obs_original[:, :, None] + delta[:, 0, :]  # (batch_size, obs_space_dims, num_models)
 
         # obs, act, hidden_state = np.concatenate(obs, axis=0), np.concatenate(act, axis=0), \
         #                          np.concatenate(hidden_state, axis=0)
@@ -586,27 +594,6 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
         pred_obs = self.predict(obs, act, pred_type='all')
         assert pred_obs.ndim == 3
         return np.std(pred_obs, axis=2)
-
-    def predict_open_loop(self, init_obs, tau, reward_fn, dyn_pred_str):
-        # FIXME: should feed all actions to self.predict at once??
-        obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
-        obs, hidden_state = init_obs, self.get_initial_hidden(1, batch=True)
-        for action in tau:
-            next_obs, hidden_state, agent_info = self.predict(
-                obs[None],
-                action[None],
-                hidden_state,
-                pred_type=dyn_pred_str,
-                deterministic=False,
-                return_infos=True,
-            )
-            next_obs, agent_info = next_obs[0], agent_info[0]
-            obs_hall.append(next_obs)
-            obs_hall_mean.append(agent_info['mean'])
-            obs_hall_std.append(agent_info['std'])
-            reward_hall.extend(reward_fn(obs[None], action[None], next_obs[None]))
-            obs = next_obs
-        return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
 
     def reinit_model(self):
         sess = tf.get_default_session()

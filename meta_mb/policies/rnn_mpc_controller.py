@@ -407,6 +407,29 @@ class RNNMPCController(Serializable):
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph, 'hidden_state': self.hidden_state_ph},
         )
 
+    def predict_open_loop(self, init_obs, tau):
+        assert init_obs.shape == (self.obs_space_dims,)
+
+        obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
+        obs, hidden_state_batch = init_obs, self.dynamics_model.get_initial_hidden(batch_size=1, batch=True)
+
+        for action in tau:
+            next_obs, hidden_state_batch, agent_info = self.dynamics_model.predict(
+                obs[None],
+                action[None],
+                pred_type='rand',
+                hidden_state=hidden_state_batch,
+                deterministic=False,
+                return_infos=True,
+            )
+            next_obs, agent_info = next_obs[0], agent_info[0]
+            obs_hall.append(next_obs)
+            obs_hall_mean.append(agent_info['mean'])
+            obs_hall_std.append(agent_info['std'])
+            reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
+            obs = next_obs
+        return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
+
     def get_params_internal(self, **tags):
         return []
 
@@ -415,6 +438,7 @@ class RNNMPCController(Serializable):
             self.tau_optimizer.plot_grads()
 
     def reset(self, dones=None):
+        # FIXME
         LSTMStateTuple = tf.nn.rnn_cell.LSTMStateTuple
 
         if dones is None:

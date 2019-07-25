@@ -516,25 +516,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         return pred_obs_batches
 
-    def predict_open_loop(self, init_obs, tau, reward_fn, dyn_pred_str):
-        obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
-        obs = init_obs
-        for action in tau:
-            next_obs, agent_info = self.predict(
-                obs[None],
-                action[None],
-                pred_type=dyn_pred_str,
-                deterministic=False,
-                return_infos=True,
-            )
-            next_obs, agent_info = next_obs[0], agent_info[0]
-            obs_hall.append(next_obs)
-            obs_hall_mean.append(agent_info['mean'])
-            obs_hall_std.append(agent_info['std'])
-            reward_hall.extend(reward_fn(obs[None], action[None], next_obs[None]))
-            obs = next_obs
-        return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
-
     def _create_assign_ph(self):
         self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")
         self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="max_logvar_ph")

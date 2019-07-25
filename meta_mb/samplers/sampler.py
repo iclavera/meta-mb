@@ -198,9 +198,7 @@ class Sampler(BaseSampler):
             #     obs_hall_std.append(agent_info['std'])
             #     reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
             #     obs = next_obs
-            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = policy.dynamics_model.predict_open_loop(
-                init_obs, tau, self.env.reward, self.dyn_pred_str
-            )
+            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = policy.predict_open_loop(init_obs, tau)
 
             x = np.arange(self.max_path_length)
             obs_space_dims = self.env.observation_space.shape[0]

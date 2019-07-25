@@ -327,6 +327,25 @@ class MPCController(Serializable):
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph},
         )
 
+    def predict_open_loop(self, init_obs, tau, dyn_pred_str):
+        obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
+        obs = init_obs
+        for action in tau:
+            next_obs, agent_info = self.dynamics_model.predict(
+                obs[None],
+                action[None],
+                pred_type=dyn_pred_str,
+                deterministic=False,
+                return_infos=True,
+            )
+            next_obs, agent_info = next_obs[0], agent_info[0]
+            obs_hall.append(next_obs)
+            obs_hall_mean.append(agent_info['mean'])
+            obs_hall_std.append(agent_info['std'])
+            reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
+            obs = next_obs
+        return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
+
     def build_opt_graph_w_policy(self):
         returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
@@ -444,13 +463,25 @@ class MPCController(Serializable):
         return cand_a[range(m), np.argmax(returns, axis=1)]
 
     def plot_grads(self):
-        self.tau_optimizer.plot_grads()
+        if self.method_str in ['opt_act', 'opt_policy']:
+            self.tau_optimizer.plot_grads()
 
     def get_params_internal(self, **tags):
         return []
 
     def reset(self, dones=None):
-        pass
+        if self.method_str == 'opt_act':
+            assert len(dones) == self.num_envs
+            if self.initializer_str == 'uniform':
+                self.tau_mean_val = np.random.uniform(
+                    low=self.env.action_space.low,
+                    high=self.env.action_space.high,
+                    size=(self.horizon, self.num_envs, self.action_space_dims),
+                )
+            elif self.initializer_str == 'zeros':
+                self.tau_mean_val = np.zeros(
+                    (self.horizon, self.num_envs, self.action_space_dims),
+                )
 
     def log_diagnostics(*args):
         pass
