@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "STEVE-8"
+EXP_NAME = "STEVE-9"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB

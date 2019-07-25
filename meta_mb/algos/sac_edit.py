@@ -217,7 +217,7 @@ class SAC_MB(Algo):
         dones_ph = tf.expand_dims(dones_ph, axis=-1)
         rewards_ph = self.op_phs_dict['rewards']
         rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
-        if self.q_target_type == 0  or self.H == 0:
+        if self.q_target_type == 0:
             target = self.q_target = td_target(
                 reward=self.reward_scale * rewards_ph,
                 discount=self.discount,
@@ -429,12 +429,22 @@ class SAC_MB(Algo):
             rollout_frames = self.T+1
             q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
             num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
-            indices = tf.random_uniform([rollout_frames * num_models], minval = 0, maxval = self.dynamics_model.num_models, dtype = tf.int32)
+            # indices = tf.random_uniform([rollout_frames * num_models], minval = 0, maxval = self.dynamics_model.num_models, dtype = tf.int32)
+
+            indices_lst = []
+            for _ in range(rollout_frames):
+                indices = tf.range(self.dynamics_model.num_models)
+                indices = tf.random.shuffle(indices)
+                indices_lst.append(indices[:num_models])
+            indices = tf.stack(indices_lst)
+            indices = tf.reshape(indices, [-1])
             rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
             indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
             indices = tf.concat([rollout_len_indices, indices], axis = 1)
             q_values = tf.gather_nd(q_values, indices)
             q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
+
+
             target_means, target_variances = tf.nn.moments(q_values, 1)
             target_confidence = 1./(target_variances + 1e-8)
             target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
