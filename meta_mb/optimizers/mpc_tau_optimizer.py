@@ -53,12 +53,13 @@ class MPCTauOptimizer(Optimizer, Serializable):
             grads_global_norm = tf.linalg.global_norm(grads)
 
         if self.with_policy:
-            self._grads_for_plot = grads_global_norm  # ()
+            self._grads_for_plot = grads_global_norm  # /(len(vars) * 0.5)  # shape = ()
         else:
             assert 'mean' in vars[0].name
             grad_mean = grads[0]
             self._grads_for_plot = tf.norm(grad_mean[:, 0, :], axis=-1)  # (horizon,)  after clipping
         self._vars_for_plot = tf.linalg.global_norm(var_list)
+        self._len_var_list = len(var_list)
 
         self._train_op = self._tf_optimizer.apply_gradients(zip(grads, vars))
 
@@ -119,8 +120,9 @@ class MPCTauOptimizer(Optimizer, Serializable):
         y2 = np.stack(self.y2_for_plot, axis=-1)  # (opt_epochs, max_path_length)
         self.y1_for_plot, self.y2_for_plot = [], []
         logger.log('plt array has size', y1.shape, y2.shape)
+        logger.log('num of vars = ', self._len_var_list)
 
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(30, 30))
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(30, 30))
 
         # plot path_length (x-axis) vs. horizon (y-axis)
         ax = axes[0]
@@ -129,7 +131,7 @@ class MPCTauOptimizer(Optimizer, Serializable):
         im = ax.imshow(y1, cmap='hot', interpolation='nearest')
         ax.set_xlabel('path_length_collected_by_sampler_so_far')
         ax.set_ylabel('horizon')
-        ax.set_title('grads norm')
+        ax.set_title('global_norm(grads)')
         fig.colorbar(im, ax=ax)
 
         # plot path_length (x-axis) vs. opt_epochs (y-axis)
@@ -137,7 +139,7 @@ class MPCTauOptimizer(Optimizer, Serializable):
         im = ax.imshow(y2, cmap='hot', interpolation='nearest')
         ax.set_xlabel('path_length_collected_by sampler_so_far')
         ax.set_ylabel('opt_epochs')
-        ax.set_title('vars norm')
+        ax.set_title('global_norm(vars)')
         fig.colorbar(im, ax=ax)
 
         # plt.show()

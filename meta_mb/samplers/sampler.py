@@ -34,6 +34,7 @@ class Sampler(BaseSampler):
             num_rollouts,
             max_path_length,
             n_parallel=1,
+            dyn_pred_str=None,
             vae=None,
     ):
         Serializable.quick_init(self, locals())
@@ -43,6 +44,7 @@ class Sampler(BaseSampler):
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
+        self.dyn_pred_str = dyn_pred_str
 
         # setup vectorized environment
 
@@ -180,16 +182,25 @@ class Sampler(BaseSampler):
 
         # plot the first collected rollout, which has max_path_length
         if not random and not sinusoid:
-            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
-            obs = init_obs
-            for action in tau:
-                next_obs, agent_info = policy.dynamics_model.predict(obs[None], action[None], pred_type=0, deterministic=False, return_infos=True)  # FIXME: effectively each rollout is collected under exactly one dynamics model in the ensemble
-                next_obs, agent_info = next_obs[0], agent_info[0]
-                obs_hall.append(next_obs)
-                obs_hall_mean.append(agent_info['mean'])
-                obs_hall_std.append(agent_info['std'])
-                reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
-                obs = next_obs
+            # obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
+            # obs = init_obs
+            # for action in tau:
+            #     next_obs, agent_info = policy.dynamics_model.predict(
+            #         obs[None],
+            #         action[None],
+            #         pred_type=self.dyn_pred_str,
+            #         deterministic=False,
+            #         return_infos=True,
+            #     )
+            #     next_obs, agent_info = next_obs[0], agent_info[0]
+            #     obs_hall.append(next_obs)
+            #     obs_hall_mean.append(agent_info['mean'])
+            #     obs_hall_std.append(agent_info['std'])
+            #     reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
+            #     obs = next_obs
+            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = policy.dynamics_model.predict_open_loop(
+                init_obs, tau, self.env.reward, self.dyn_pred_str
+            )
 
             x = np.arange(self.max_path_length)
             obs_space_dims = self.env.observation_space.shape[0]

@@ -16,7 +16,6 @@ class MPCController(Serializable):
             discount=1,
             method_str='opt_policy',
             dyn_pred_str='rand',
-            policy_str='gaussian_mlp',
             initializer_str='uniform',
             reg_coef=1,
             reg_str=None,
@@ -37,7 +36,6 @@ class MPCController(Serializable):
         self.discount = discount
         self.method_str = method_str
         self.dyn_pred_str = dyn_pred_str
-        self.policy_str = policy_str
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
         self.reg_str = reg_str
@@ -68,20 +66,16 @@ class MPCController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-        self.optimal_action = None
         if method_str == 'opt_policy':
-            if self.policy_str == 'gaussian_mlp':
-                self.policy = GaussianMLPPolicy(
-                    name='gaussian-mlp-policy',
-                    obs_dim=self.obs_space_dims,
-                    action_dim=self.action_space_dims,
-                    hidden_sizes=(64, 64),
-                    learn_std=True,
-                    hidden_nonlinearity=tf.tanh,  # TODO: tunable?
-                    output_nonlinearity=None,  # TODO: scale to match action space range later
-                )
-            else:
-                raise NotImplementedError
+            self.policy = GaussianMLPPolicy(
+                name='gaussian-mlp-policy',
+                obs_dim=self.obs_space_dims,
+                action_dim=self.action_space_dims,
+                hidden_sizes=(64, 64),
+                learn_std=True,
+                hidden_nonlinearity=tf.tanh,  # TODO: tunable?
+                output_nonlinearity=None,  # TODO: scale to match action space range later
+            )
             self.tau_optimizer = MPCTauOptimizer(
                 max_epochs=num_opt_iters,
                 learning_rate=opt_learning_rate,
@@ -171,6 +165,8 @@ class MPCController(Serializable):
         else:  # CEM or RS
             sess = tf.get_default_session()
             actions, = sess.run([self.optimal_action], feed_dict={self.obs_ph: observations})
+            if return_first_info:
+                agent_infos = [dict(mean=actions[0], std=np.zeros_like(actions[0]), reg=0)]
 
         return actions, agent_infos
 
@@ -204,9 +200,6 @@ class MPCController(Serializable):
         # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
 
         for t in range(self.horizon):
-            # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
-            # mean, var = dynamics_dist['mean'], dynamics_dist['var']
-            # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
             next_observation = self.dynamics_model.predict_sym(observation, act[t])
             assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
@@ -281,11 +274,12 @@ class MPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
-        mean_var = tf.tanh(mean_var)  # FIXME
-        log_std_var = tf.maximum(log_std_var, np.log(1e-6))  # FIXME
+        # mean = tf.tanh(mean_var)  # FIXME
+        # log_std = tf.maximum(log_std_var, np.log(1e-6))  # FIXME
 
         tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
-        tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
+        # tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
+        tau = tf.tanh(tau)  # FIXME: scale to (self.env.action_space.low, high)
         obs = self.obs_ph
         # TODO: rather than clipping, add penalty to actions outside valid range
         returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
@@ -339,8 +333,8 @@ class MPCController(Serializable):
         for t in range(self.horizon):
             dist_policy = self.policy.distribution_info_sym(obs)
             acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            acts = tf.clip_by_value(acts, self.env.action_space.low, self.env.action_space.high)
-            # TODO: penalize rather than clipping
+            # acts = tf.clip_by_value(acts, self.env.action_space.low, self.env.action_space.high)
+            acts = tf.tanh(acts)
 
             if self.reg_str == 'uncertainty':
                 pred_obs = self.dynamics_model.predict_sym_all(obs, acts)
