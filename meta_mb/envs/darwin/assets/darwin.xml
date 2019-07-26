@@ -1,0 +1,208 @@
+<mujoco model="darwinOP">
+    <compiler angle="radian"
+              meshdir="meshes"/>
+    <option timestep="0.01" gravity="0 0 -1" collision="all"/>
+    <size njmax="500" nconmax="100" />
+    <asset>
+        <mesh name="body_coll" file="body_coll.stl" />
+        <mesh name="neck_coll" file="neck_coll.stl" />
+        <mesh name="head_coll" file="head_coll.stl" />
+        <mesh name="shoulder_l_coll" file="shoulder_l_coll.stl" />
+        <mesh name="arm_high_l_coll" file="arm_high_l_coll.stl" />
+        <mesh name="shoulder_r_coll" file="shoulder_r_coll.stl" />
+        <mesh name="arm_high_r_coll" file="arm_high_r_coll.stl" />
+        <mesh name="pelvis_l_coll" file="pelvis_l_coll.stl" />
+        <mesh name="thigh1_l_coll" file="thigh1_l_coll.stl" />
+        <mesh name="thigh2_l_coll" file="thigh2_l_coll.stl" />
+        <mesh name="tibia_l_coll" file="tibia_l_coll.stl" />
+        <mesh name="ankle1_l_coll" file="ankle1_l_coll.stl" />
+        <mesh name="ankle2_l_coll" file="ankle2_l_coll.stl" />
+        <mesh name="pelvis_r_coll" file="pelvis_r_coll.stl" />
+        <mesh name="thigh1_r_coll" file="thigh1_r_coll.stl" />
+        <mesh name="thigh2_r_coll" file="thigh2_r_coll.stl" />
+        <mesh name="tibia_r_coll" file="tibia_r_coll.stl" />
+        <mesh name="ankle1_r_coll" file="ankle1_r_coll.stl" />
+        <mesh name="ankle2_r_coll" file="ankle2_r_coll.stl" />
+
+        <texture name="skybox" type="skybox" builtin="gradient" rgb1=".4 .6 .8" rgb2="0 0 0" width="1024" height="1024" mark="random" markrgb="1 1 1"/>
+        <texture name="texplane" type="2d" builtin="checker" rgb1="0.5961 0.5647 0.4784" rgb2="0.3843 0.32941 0.19215" width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
+        <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true"/>
+    </asset>
+
+    <worldbody>
+        <light directional="true" diffuse="0.8 0.8 0.8" specular="0.1 0.1 0.1" pos="0 0 2.5" dir="0 0 -1" castshadow="false"/>
+        <geom name="ground" type="plane" size="50 50 1" pos="0 0 -0.4" quat="1 0 0 0" material="matplane" condim="1"/>
+        <body name="base_link" pos="0 0 0">
+            <joint armature="0" damping="1" limited="false" margin="0.01" name="root" pos="0 0 0" type="free"/>
+            <inertial pos="0 0 0" mass="0" diaginertia="0 0 0" />
+            <body name="MP_BODY" pos="0 0 0">
+                <inertial pos="-0.003053 -0.038651 -0.019268" quat="-0.00879356 0.867004 0.0524199 0.495458" mass="0.975599" diaginertia="6.53693 6.39822 1.88344" />
+                <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="body_coll" />
+                <body name="MP_NECK" pos="0 0 0.0235" quat="0.707107 0 0 0.707107">
+                    <inertial pos="0.001424 -0.016567 -0.007128" quat="0.640564 0.00150549 0.00338323 0.767896" mass="0.0243577" diaginertia="0.00482356 0.00482356 0.00482356" />
+                    <joint name="j_pan" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                    <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="neck_coll" />
+                    <body name="MP_HEAD" pos="0 0 0.02715" quat="0.5 -0.5 -0.5 0.5">
+                        <inertial pos="6.4e-05 -0.018565 -0.007667" quat="0.504401 0.495706 -0.489128 0.510499" mass="0.158042" diaginertia="0.158397 0.123969 0.1178" />
+                        <joint name="j_tilt" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="head_coll" />
+                        <body name="MP_PMDCAMBOARD" pos="0 0 0.0235" quat="9.38186e-07 0.707107 9.38186e-07 -0.707107">
+                            <inertial pos="0 0 0.0235" quat="9.38186e-07 0.707107 9.38186e-07 -0.707107" mass="0" diaginertia="0 0 0" />
+                        </body>
+                    </body>
+                </body>
+                <body name="MP_BACK_L" pos="0 0.06035 0" quat="0.707107 -0.707107 0 0">
+                    <inertial pos="-0.00311589 0.0204437 -0.0196631" quat="-0.00879356 0.867004 0.0524199 0.495458" mass="0.01" diaginertia="6.53693 6.39822 1.88344" />
+                    <geom size="0.0005 0.0005 0.0005" type="box" rgba="0.2 0.2 0.2 1" />
+                    <body name="MP_SHOULDER_L" pos="0 0 0" quat="0.707107 0 0 -0.707107">
+                        <inertial pos="-0.0135226 0.0102641 0.00139357" quat="0.89853 0.0814684 0.0409894 0.429332" mass="0.025913" diaginertia="0.0118742 0.00851644 0.00537304" />
+                        <joint name="j_shoulder_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="shoulder_l_coll" />
+                        <body name="MP_ARM_HIGH_L" pos="-0.016 0 0.02165" quat="0.5 0.5 0.5 -0.5">
+                            <inertial pos="-0.036239 0.000734 0.00066" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.168377" diaginertia="0.122178 0.113353 0.0379938" />
+                            <joint name="j_high_arm_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                            <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="arm_high_l_coll" />
+                            <body name="MP_ARM_LOW_L" pos="-0.06 0 -0.016" quat="9.38186e-07 -9.38186e-07 0.707107 0.707107">
+                                <inertial pos="0 0 0" quat="0.362962 0.448533 -0.589325 0.565485" mass="0.0592885" diaginertia="0.0875091 0.0872503 0.0201335" />
+                                <joint name="j_low_arm_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                <geom size="0.016 0.016 0.0175" pos="0.016 0.016 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                <body name="MP_ARM_GRIPPER_FIX_L" pos="0.048 0.016 0" quat="0.707107 0.707107 0 0">
+                                    <inertial pos="0.045838 -0.01349 0.006666" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                    <joint name="j_wrist_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                    <geom size="0.032 0.016 0.016" pos="0.016 0 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                    <body name="MP_ARM_GRIPPER_FIX_DUMMY_L" pos="0.064 -0.01 0">
+                                        <inertial pos="0 0 0" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                        <geom size="0.016 0.0025 0.016" type="box" rgba="0.2 0.2 0.2 1" />
+                                    </body>
+                                    <body name="MP_ARM_GRIPPER_MOV_L" pos="0.048 0.01 0" quat="0.877583 0 0 0.479426">
+                                        <inertial pos="0 0 0" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                        <joint name="j_gripper_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                        <geom size="0.016 0.0025 0.016" pos="0.016 0 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                        <geom size="0.001 0.005 0.016" pos="0.031 -0.0025 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+                <body name="MP_BACK_R" pos="0 -0.06035 0" quat="0.707107 0.707107 0 0">
+                    <inertial pos="0 0 0" quat="-0.00879356 0.867004 0.0524199 0.495458" mass="0.01" diaginertia="6.53693 6.39822 1.88344" />
+                    <geom size="0.0005 0.0005 0.0005" type="box" rgba="0.2 0.2 0.2 1" />
+                    <body name="MP_SHOULDER_R" pos="0 0 0" quat="0.707107 0 0 -0.707107">
+                        <inertial pos="-0.013523 0.010264 0.001394" quat="0.89853 0.0814684 0.0409894 0.429332" mass="0.025913" diaginertia="0.0118742 0.00851644 0.00537304" />
+                        <joint name="j_shoulder_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                        <geom quat="0.000796327 0 0 1" type="mesh" rgba="0.2 0.2 0.2 1" mesh="shoulder_r_coll" />
+                        <body name="MP_ARM_HIGH_R" pos="0.016 0 0.02165" quat="0.5 -0.5 0.5 0.5">
+                            <inertial pos="-0.036239 0.000734 -0.00066" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.168377" diaginertia="0.122178 0.113353 0.0379938" />
+                            <joint name="j_high_arm_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                            <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="arm_high_r_coll" />
+                            <body name="MP_ARM_LOW_R" pos="-0.06 0 0.016" quat="9.38186e-07 -9.38186e-07 0.707107 0.707107">
+                                <inertial pos="0 0 0" quat="0.362962 0.448533 -0.589325 0.565485" mass="0.0592885" diaginertia="0.0875091 0.0872503 0.0201335" />
+                                <joint name="j_low_arm_r" pos="0 0 0" axis="0 0 1" limited="true" range="-1.635 2.61799" />
+                                <geom size="0.016 0.016 0.0175" pos="0.016 -0.016 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                <body name="MP_ARM_GRIPPER_FIX_R" pos="0.048 -0.016 0" quat="0.707107 0.707107 0 0">
+                                    <inertial pos="0.045838 -0.01349 0.006666" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                    <joint name="j_wrist_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                    <geom size="0.032 0.016 0.016" pos="0.016 0 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                    <body name="MP_ARM_GRIPPER_FIX_DUMMY_R" pos="0.064 -0.01 0">
+                                        <inertial pos="0 0 0" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                        <geom size="0.016 0.0025 0.016" type="box" rgba="0.2 0.2 0.2 1" />
+                                    </body>
+                                    <body name="MP_ARM_GRIPPER_MOV_R" pos="0.048 0.01 0" quat="0.877583 0 0 0.479426">
+                                        <inertial pos="0 0 0" quat="0.713991 0.698029 0.0283632 -0.0465622" mass="0.01" diaginertia="0.122178 0.113353 0.0379938" />
+                                        <joint name="j_gripper_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                        <geom size="0.016 0.0025 0.016" pos="0.016 0 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                        <geom size="0.001 0.005 0.016" pos="0.031 -0.0025 0" type="box" rgba="0.2 0.2 0.2 1" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+                <body name="MP_PELVIS_L" pos="-0.005 0.037 -0.09355" quat="9.38186e-07 0.707107 0.707107 -9.38186e-07">
+                    <inertial pos="0 0.00048 0.018437" quat="0.998273 -0.0514899 -0.00396715 0.0279885" mass="0.167" diaginertia="0.122641 0.11137 0.0411301" />
+                    <joint name="j_pelvis_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                    <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="pelvis_l_coll" />
+                    <body name="MP_THIGH1_L" pos="0 0 0.028652" quat="0.707107 0.707107 0 0">
+                        <inertial pos="7.9e-05 0.018242 0.013873" quat="0.485806 0.506867 -0.504884 0.502165" mass="0.119043" diaginertia="0.114985 0.0979692 0.0327798" />
+                        <joint name="j_thigh1_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="thigh1_l_coll" />
+                        <body name="MP_THIGH2_L" pos="0 0 0" quat="0.5 0.5 -0.5 -0.5">
+                            <inertial pos="-0.062965 -0.000323 0.000692" quat="0.485806 0.506867 -0.504884 0.502165" mass="0.119043" diaginertia="0.114985 0.0979692 0.0327798" />
+                            <joint name="j_thigh2_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                            <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="thigh2_l_coll" />
+                            <body name="MP_TIBIA_L" pos="-0.093 0 0">
+                                <inertial pos="-0.053955 0.006548 -0.000592" quat="0.456916 0.538297 -0.548699 0.447654" mass="0.0703098" diaginertia="0.115891 0.0933882 0.043901" />
+                                <joint name="j_tibia_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="tibia_l_coll" />
+                                <body name="MP_ANKLE1_L" pos="-0.093 0 0" quat="1.32679e-06 1 0 0">
+                                    <inertial pos="-0.000214 -0.018536 0.013873" quat="0.997965 0.0519065 0.00385358 -0.0368208" mass="0.167108" diaginertia="0.120855 0.109532 0.0411304" />
+                                    <joint name="j_ankle1_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                    <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="ankle1_l_coll" />
+                                    <body name="MP_ANKLE2_L" pos="0 0 0" quat="0.707107 -0.707107 0 0">
+                                        <inertial pos="-0.025995 -0.009506 -0.000503" quat="0.997965 0.0519065 0.00385358 -0.0368208" mass="0.0794462" diaginertia="0.120855 0.109532 0.0411304" />
+                                        <joint name="j_ankle2_l" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="ankle2_l_coll" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+                <body name="MP_PELVIS_R" pos="-0.005 -0.037 -0.09355" quat="9.38186e-07 -0.707107 0.707107 9.38186e-07">
+                    <inertial pos="0 0.00048 0.018437" quat="0.998273 -0.0514899 -0.00396715 0.0279885" mass="0.197" diaginertia="0.122641 0.11137 0.0411301" />
+                    <joint name="j_pelvis_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                    <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="pelvis_r_coll" />
+                    <body name="MP_THIGH1_R" pos="0 0 0.028652" quat="0.707107 -0.707107 0 0">
+                        <inertial pos="7.9e-05 -0.018242 0.0138735" quat="0.485806 0.506867 -0.504884 0.502165" mass="0.119043" diaginertia="0.114985 0.0979692 0.0327798" />
+                        <joint name="j_thigh1_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="thigh1_r_coll" />
+                        <body name="MP_THIGH2_R" pos="0 0 0" quat="0.5 0.5 -0.5 -0.5">
+                            <inertial pos="0.062965 -0.000323 0.000692" quat="0.485806 0.506867 -0.504884 0.502165" mass="0.119043" diaginertia="0.114985 0.0979692 0.0327798" />
+                            <joint name="j_thigh2_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                            <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="thigh2_r_coll" />
+                            <body name="MP_TIBIA_R" pos="0.093 0 0">
+                                <inertial pos="0.053955 0.006548 -0.000592" quat="0.456916 0.538297 -0.548699 0.447654" mass="0.0703098" diaginertia="0.115891 0.0933882 0.043901" />
+                                <joint name="j_tibia_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="tibia_r_coll" />
+                                <body name="MP_ANKLE1_R" pos="0.093 0 0" quat="1.32679e-06 1 0 0">
+                                    <inertial pos="-0.000214 -0.018536 -0.013873" quat="0.997965 0.0519065 0.00385358 -0.0368208" mass="0.167108" diaginertia="0.120855 0.109532 0.0411304" />
+                                    <joint name="j_ankle1_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                    <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="ankle1_r_coll" />
+                                    <body name="MP_ANKLE2_R" pos="0 0 0" quat="0.707107 -0.707107 0 0">
+                                        <inertial pos="0.025995 -0.009506 -0.000503" quat="0.997965 0.0519065 0.00385358 -0.0368208" mass="0.0794462" diaginertia="0.120855 0.109532 0.0411304" />
+                                        <joint name="j_ankle2_r" pos="0 0 0" axis="0 0 1" limited="true" range="-2.61799 2.61799" />
+                                        <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="ankle2_r_coll" />
+                                    </body>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+    <actuator>
+        <motor joint="j_pan" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_tilt" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_shoulder_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_high_arm_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_low_arm_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_wrist_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_gripper_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+
+        <motor joint="j_pelvis_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_thigh1_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_thigh2_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_tibia_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_ankle1_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_ankle2_l" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+
+        <motor joint="j_pelvis_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_thigh1_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_thigh2_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_tibia_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_ankle1_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+        <motor joint="j_ankle2_r" ctrlrange="-3.0 3.0" ctrllimited="true"/>
+    </actuator>
+</mujoco>

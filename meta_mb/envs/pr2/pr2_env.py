@@ -13,17 +13,23 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
                  max_torques=[3] * 7,
                  vel_penalty=1.25e-2,
                  torque_penalty=1.25e-1,
-                 log_rand=1):
+                 log_rand=1,
+                 joint=False):
         self.max_torques = np.array(max_torques)
         self.vel_penalty = -vel_penalty
         self.torque_penalty = -torque_penalty
         self.exp_type = exp_type
+        self.joint = joint
 
         if self.exp_type == 'reach':
             xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2.xml')
             self.goal2 = np.array([-0.30982005, 0.71146246, 0.51908543,
                                    -0.14216614, 0.78684261, 0.56139753,
                                    -0.20410874, 0.64335638, 0.61437626])
+            self.joint_goal = np.array([
+                1.13136748, -0.24075715,  1.17135245,
+               -0.64883554,  1.66975616, -2.002336,
+                0.51072739])
         elif self.exp_type == 'shape':
             xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_shape.xml')
             self.goal2 = np.array([-0.35572354, 0.12565246, -0.0315576,
@@ -56,7 +62,10 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
         ob = self._get_obs()
-        vec = self.ee_position - self.goal2
+        if not self.joint:
+            vec = self.ee_position - self.goal2
+        else:
+            vec = ob[:7] - self.joint_goal
         norm = np.linalg.norm(vec)
         reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
         reward_vel = self.vel_penalty * np.square(np.linalg.norm(ob[7:14]))
@@ -67,6 +76,10 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     def viewer_setup(self):
         self.viewer.cam.trackbodyid = 0
+        self.viewer.cam.distance = self.model.stat.extent * 2
+        self.viewer.cam.elevation = -20
+        self.viewer.cam.type = 0
+        self.viewer.cam.azimuth = 180
 
     def tf_reward(self, obs, act, obs_next):
         return "wut"
@@ -75,7 +88,10 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            vec = obs_next[:, -9:] - self.goal2
+            if not self.joint:
+                vec = obs_next[:, -9:] - self.goal2
+            else:
+                vec = obs_next[:, :7] - self.goal_joint
             norm = np.linalg.norm(vec)
             reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
             reward_vel = self.vel_penalty * np.square(np.linalg.norm(obs_next[:, 7:14]))
@@ -93,14 +109,23 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     def reset_model(self):
         qpos = self.init_qpos
+        self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
+        gravity = np.random.randint(-4, 1)  # randomize environment gravity
+        self.model.opt.gravity[2] = gravity
         #gravity = np.random.randint(-3, 1)  # randomize environment gravity
         #self.model.opt.gravity[2] = gravity
         #self.sim.model.body_pos[-3] = self.goal2[:3] + self.offset[:3]
         #self.sim.model.body_pos[-2] = self.goal2[3:6] + self.offset[3:6]
         #self.sim.model.body_pos[-1] = self.goal2[6:] + self.offset[6:]
         while True:
-            self.goal = np.random.uniform(low=0.2, high=.6, size=3)
-            #self.goal = np.array([-.3, -.3, 1])
+            x = np.random.uniform(low=0.1, high=0.6)
+            y = np.random.uniform(low=0.1, high=0.65)
+            z = np.random.uniform(low=0.5, high=0.9)
+            self.goal = np.array([x, y, z])
+            #self.goal2 = np.concatenate([
+            #    np.array([0.02, -0.025,  0.05]) + self.goal,
+            #    np.array([0.02, -0.025, -0.05]) + self.goal,
+            #    np.array([0.02,  0.05,   0.00]) + self.goal])
             if np.linalg.norm(self.goal) < 2:
                 break
         qvel = self.init_qvel # + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
