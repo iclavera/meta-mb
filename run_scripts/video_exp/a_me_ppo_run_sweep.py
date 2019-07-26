@@ -7,15 +7,16 @@ from multiprocessing import Process, Pipe
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import AntEnv, Walker2dEnv, HalfCheetahEnv, HopperEnv
-from meta_mb.trainers.parallel_mbmpo_trainer import ParallelTrainer
-from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
+from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'parallel-mbmpo'
+
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'video-a-me-ppo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -37,7 +38,7 @@ def init_vars(sender, config, policy, dynamics_model):
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
-    logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='last')
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     os.makedirs(exp_dir + '/Data/', exist_ok=True)
     os.makedirs(exp_dir + '/Model/', exist_ok=True)
@@ -49,7 +50,6 @@ def run_experiment(**kwargs):
 
 
 def run_base(exp_dir, **kwargs):
-
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -60,25 +60,24 @@ def run_base(exp_dir, **kwargs):
     baseline = kwargs['baseline']()
 
     if kwargs['env'] == 'Ant':
-        env = AntEnv()
+        env = normalize(AntEnv())
         simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     elif kwargs['env'] == 'HalfCheetah':
-        env = HalfCheetahEnv()
+        env = normalize(HalfCheetahEnv())
         simulation_sleep = 0.05 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     elif kwargs['env'] == 'Hopper':
-        env = HopperEnv()
+        env = normalize(HopperEnv())
         simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     elif kwargs['env'] == 'Walker2d':
-        env = Walker2dEnv()
+        env = normalize(Walker2dEnv())
         simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     else:
         raise NotImplementedError
 
-    policy = MetaGaussianMLPPolicy(
+    policy = GaussianMLPPolicy(
         name="meta-policy",
         obs_dim=np.prod(env.observation_space.shape),
         action_dim=np.prod(env.action_space.shape),
-        meta_batch_size=kwargs['meta_batch_size'],
         hidden_sizes=kwargs['policy_hidden_sizes'],
         learn_std=kwargs['policy_learn_std'],
         hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
@@ -118,10 +117,9 @@ def run_base(exp_dir, **kwargs):
 
     worker_data_feed_dict = {
         'env_sampler': {
-            'rollouts_per_meta_task': kwargs['real_env_rollouts_per_meta_task'],
-            'meta_batch_size': kwargs['meta_batch_size'],
+            'num_rollouts': kwargs['num_rollouts'],
             'max_path_length': kwargs['max_path_length'],
-            'parallel': kwargs['parallel'],
+            'n_parallel': kwargs['n_parallel'],
         },
         'dynamics_sample_processor': {
             'discount': kwargs['discount'],
@@ -135,8 +133,7 @@ def run_base(exp_dir, **kwargs):
 
     worker_policy_feed_dict = {
         'model_sampler': {
-            'rollouts_per_meta_task': kwargs['rollouts_per_meta_task'],
-            'meta_batch_size': kwargs['meta_batch_size'],
+            'num_rollouts': kwargs['imagined_num_rollouts'],
             'max_path_length': kwargs['max_path_length'],
             'deterministic': kwargs['deterministic'],
         },
@@ -147,30 +144,26 @@ def run_base(exp_dir, **kwargs):
             'positive_adv': kwargs['positive_adv'],
         },
         'algo': {
-            'step_size': kwargs['step_size'],
-            'inner_type': kwargs['inner_type'],
-            'inner_lr': kwargs['inner_lr'],
-            'meta_batch_size': kwargs['meta_batch_size'],
-            'num_inner_grad_steps': kwargs['num_inner_grad_steps'],
-            'exploration': kwargs['exploration'],
+            'learning_rate': kwargs['learning_rate'],
+            'clip_eps': kwargs['clip_eps'],
+            'max_epochs': kwargs['num_ppo_steps'],
         }
     }
 
     trainer = ParallelTrainer(
         exp_dir=exp_dir,
+        algo_str=kwargs['algo'],
         policy_pickle=policy_pickle,
         env_pickle=env_pickle,
         baseline_pickle=baseline_pickle,
         dynamics_model_pickle=dynamics_model_pickle,
         feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
         n_itr=kwargs['n_itr'],
-        num_inner_grad_steps=kwargs['num_inner_grad_steps'],
-        initial_random_samples=kwargs['initial_random_samples'],
         flags_need_query=kwargs['flags_need_query'],
-        num_rollouts_per_iter=int(kwargs['meta_batch_size'] * kwargs['fraction_meta_batch_size']),
         config=config,
         simulation_sleep=simulation_sleep,
-        sampler_str=kwargs['sampler_str'],
+        sampler_str=kwargs['sampler'],
+        video=True,
     )
 
     trainer.train()
@@ -178,70 +171,21 @@ def run_base(exp_dir, **kwargs):
 
 if __name__ == '__main__':
 
-    sweep_params = {
+    params_json_path = os.getcwd() + '/data/corl_data/video_params/a-me-ppo-HalfCheetah.json'
+    with open(params_json_path, 'r') as f:
+        data = json.loads(f.read())
+        if "args_data" in data:
+            del data["args_data"]
+        data['exp_name'] = params_json_path.split('/')[-1].split('.')[0]
+        data['baseline'] = LinearFeatureBaseline
+        data['policy_hidden_nonlinearity'] = tanh
+        data['algo'] = 'meppo'
+        data['n_itr'] = 1000
 
-        'flags_need_query': [
-            [False, False, False],
-            # [True, True, True],
-        ],
-        'rolling_average_persitency': [0.99],
-
-        'seed': [1, 2, 3, 4],
-
-        'n_itr': [1250],
-        'num_rollouts': [1],
-        'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'Hopper', 'Ant', 'HalfCheetah', ],
-
-        # Problem Conf
-        'num_models': [5],
-        'algo': ['mbmpo'],
-        'baseline': [LinearFeatureBaseline],
-        'max_path_length': [200],
-        'discount': [0.99],
-        'gae_lambda': [1],
-        'normalize_adv': [True],
-        'positive_adv': [False],
-        'log_real_performance': [True],  # not implemented
-        'meta_steps_per_iter': [1],  # UNUSED
-
-        # Real Env Sampling
-        'real_env_rollouts_per_meta_task': [1],
-        'parallel': [False],
-        'fraction_meta_batch_size': [0.5],
-
-        # Dynamics Model
-        'dynamics_hidden_sizes': [(500, 500, 500)],
-        'dyanmics_hidden_nonlinearity': ['relu'],
-        'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50,],  # UNUSED
-        'dynamics_learning_rate': [1e-3, 5e-4],
-        'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [10000],
-        'deterministic': [False],
-        'loss_str': ['MSE'],
-        'initial_random_samples': [True],
-
-        # Policy
-        'policy_hidden_sizes': [(64, 64)],
-        'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': [tanh],
-        'policy_output_nonlinearity': [None],
-        'sampler_str': ['bptt'],
-
-        # Meta-Algo
-        'meta_batch_size': [20],  # Note: It has to be multiple of num_models
-        'rollouts_per_meta_task': [20,],
-        'num_inner_grad_steps': [1],
-        'inner_lr': [0.001],
-        'inner_type': ['log_likelihood'],
-        'step_size': [0.01],
-        'exploration': [False],
-        'sample_from_buffer': [False],  # not implemented
-
-        'scope': [None],
-        'exp_tag': ['parallel-mbmpo'],  # For changes besides hyperparams
-    }
+    for k, v in data.items():
+        data[k] = [v]
+    print(data)
+    sweep_params = data
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
 
