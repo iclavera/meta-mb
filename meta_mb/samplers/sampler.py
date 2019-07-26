@@ -34,6 +34,7 @@ class Sampler(BaseSampler):
             num_rollouts,
             max_path_length,
             n_parallel=1,
+            dyn_pred_str=None,
             vae=None,
     ):
         Serializable.quick_init(self, locals())
@@ -43,6 +44,7 @@ class Sampler(BaseSampler):
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
+        self.dyn_pred_str = dyn_pred_str
 
         # setup vectorized environment
 
@@ -88,7 +90,7 @@ class Sampler(BaseSampler):
 
         if plot_first_rollout:
             init_obs = obses[0]
-            tau, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
+            tau, act_norm, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
 
         itr_counter = 0
         while n_samples < self.total_samples:
@@ -125,6 +127,7 @@ class Sampler(BaseSampler):
 
             if plot_first_rollout and not random and not sinusoid:
                 tau.append(actions[0])  # actions = (num_envs, act_space_dims), actions[0] corresponds to the first env
+                act_norm.append(np.linalg.norm(actions[0]))
                 obs_real.append(next_obses[0])
                 reward_real.append(rewards[0])
                 tau_mean.append(agent_infos[0]['mean'])
@@ -180,16 +183,23 @@ class Sampler(BaseSampler):
 
         # plot the first collected rollout, which has max_path_length
         if not random and not sinusoid:
-            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
-            obs = init_obs
-            for action in tau:
-                next_obs, agent_info = policy.dynamics_model.predict(obs[None], action[None], pred_type=0, deterministic=False, return_infos=True)  # FIXME: effectively each rollout is collected under exactly one dynamics model in the ensemble
-                next_obs, agent_info = next_obs[0], agent_info[0]
-                obs_hall.append(next_obs)
-                obs_hall_mean.append(agent_info['mean'])
-                obs_hall_std.append(agent_info['std'])
-                reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
-                obs = next_obs
+            # obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
+            # obs = init_obs
+            # for action in tau:
+            #     next_obs, agent_info = policy.dynamics_model.predict(
+            #         obs[None],
+            #         action[None],
+            #         pred_type=self.dyn_pred_str,
+            #         deterministic=False,
+            #         return_infos=True,
+            #     )
+            #     next_obs, agent_info = next_obs[0], agent_info[0]
+            #     obs_hall.append(next_obs)
+            #     obs_hall_mean.append(agent_info['mean'])
+            #     obs_hall_std.append(agent_info['std'])
+            #     reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
+            #     obs = next_obs
+            obs_hall, obs_hall_mean, obs_hall_std, reward_hall = policy.predict_open_loop(init_obs, tau)
 
             x = np.arange(self.max_path_length)
             obs_space_dims = self.env.observation_space.shape[0]
@@ -198,7 +208,7 @@ class Sampler(BaseSampler):
             obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
             obs_hall_std = np.transpose(np.asarray(obs_hall_std))
             obs_real = np.transpose(np.asarray(obs_real))
-            tau = np.transpose(np.asarray(tau))  # (horizon, max_path_length) -> (action_space_dims, max_path_length)
+            tau = np.transpose(np.asarray(tau))  # (max_path_length, action_space_dims) -> (action_space_dims, max_path_length)
             tau_mean = np.transpose(np.asarray(tau_mean))
             tau_std = np.transpose(np.asarray(tau_std))
 
@@ -226,6 +236,7 @@ class Sampler(BaseSampler):
             ax = axes[obs_space_dims+action_space_dims]
             ax.plot(x, reward_hall, label='reward_dyn')
             ax.plot(x, reward_real, label='reward_env')
+            ax.plot(x, act_norm, label='act_norm')
             # ax.plot(x, loss_reward, label='reward_planning')  # FIXME: == reward_env??
             ax.plot(x, loss_reg, label='loss_reg')
             ax.legend()
