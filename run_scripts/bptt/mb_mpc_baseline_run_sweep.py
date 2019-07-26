@@ -17,24 +17,23 @@ import tensorflow as tf
 import joblib
 
 
-EXP_NAME = 'bptt-mb-mpc'
+EXP_NAME = 'bptt-mb-mpc-baseline'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
+    repr = f"{config['controller_str']}-{config['method_str']}-{config['dyn_pred_str']}-"
     if config['env'] is HalfCheetahEnv:
-        repr = 'hc'
+        repr += 'hc'
     elif config['env'] is InvertedPendulumEnv:
-        repr = 'ip'
+        repr += 'ip'
     elif config['env'] is ReacherEnv:
-        repr = 'reacher'
+        repr += 'reacher'
     repr += '-reg-' + str(config['reg_coef'])
     if config['reg_str'] is not None:
-        repr += '-' + config['reg_str']
-    repr += '-init-' + config['initializer_str'] + '-' + config['controller_str'] + '-' + config['method_str']
-    repr += '-' + config['dyn_pred_str']
+        repr += config['reg_str']
 
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + repr + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -48,33 +47,19 @@ def run_experiment(**config):
         env = config['env']()
 
         if config.get('model_path', None) is None:
-            if config['controller_str'] == 'rnn':
-                dynamics_model = RNNDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    hidden_sizes=(500,),  #config['hidden_sizes_model'],  # FIXME
-                    learning_rate=0.01, #config['learning_rate'],
-                    backprop_steps=config['backprop_steps'],
-                    cell_type=config['cell_type'],
-                    num_models=config['num_models'],
-                    batch_size=5, #config['batch_size_model'],
-                    normalize_input=True,
-                )
-                sample_processor = ModelSampleProcessor(recurrent=True)
-            else:
-                dynamics_model = ProbMLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-                sample_processor = ModelSampleProcessor()
+            dynamics_model = ProbMLPDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                num_models=config['num_models'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
+            sample_processor = ModelSampleProcessor()
         else:
             data = joblib.load(config['model_path'])
             dynamics_model = data['dynamics_model']
@@ -169,26 +154,26 @@ if __name__ == '__main__':
         # InvertedPendulum
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
-        'plot_freq': [1000],
+        'plot_freq': [1],
 
         # Problem
-        'env': [ReacherEnv, HalfCheetahEnv],
+        'env': [HalfCheetahEnv],
         'max_path_length': [100],
         'normalize': [False],
          'n_itr': [101],
-        'discount': [1.0, 0.99],
-        'controller_str': ['mpc'], # ['rnn', 'delta', 'mpc'],
+        'discount': [1.0,],
+        'controller_str': ['mpc'],
 
         # Policy
         'initializer_str': ['zeros',], #['uniform', 'zeros'],
         'reg_coef': [0.1], #[1, 0],
-        'reg_str': ['uncertainty'], #['uncertainty'],
-        'method_str': ['opt_act', 'opt_policy'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
-        'dyn_pred_str': ['rand', 'mean'],  # 'mean', 'batches'
+        'reg_str': [None],
+        'method_str': ['cem',],
+        'dyn_pred_str': ['rand', 'mean'], #['rand', 'mean', 'batches'],  # 'mean', 'batches'
         'horizon': [25,], # Tau
 
         'num_opt_iters': [20,], #20, 40,],
-        'opt_learning_rate': [1e-4, 1e-3,], #1e-2],
+        'opt_learning_rate': [1e-3,], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
 
         'n_candidates': [1000], # K
@@ -205,7 +190,7 @@ if __name__ == '__main__':
         # Dynamics Model
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(512,)],  # (500, 500)
+        'hidden_sizes_model': [(512, 512)],  # (500, 500)
         'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work

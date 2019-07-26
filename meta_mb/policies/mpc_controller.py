@@ -274,48 +274,66 @@ class MPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
-        # mean = tf.tanh(mean_var)  # FIXME
-        # log_std = tf.maximum(log_std_var, np.log(1e-6))  # FIXME
+        log_std = tf.maximum(log_std_var, np.log(5e-2))  # FIXME: hardcoded
 
-        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
+        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std))
         # tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
         tau = tf.tanh(tau)  # FIXME: scale to (self.env.action_space.low, high)
-        obs = self.obs_ph
         # TODO: rather than clipping, add penalty to actions outside valid range
-        returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
-        for t in range(self.horizon):
-            acts = tau[t]
+        obs = self.obs_ph
+        # returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        returns, reg = 0, 0
 
-            if self.reg_str == 'uncertainty':
-                pred_obs = self.dynamics_model.predict_sym_all(obs, acts)  # (num_envs, obs_space_dims, num_models)
-                uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
-                uncertainty = tf.reduce_sum(uncertainty, axis=1)
-                reg += uncertainty
-                # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
-                idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
-                next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
-                next_obs = tf.squeeze(next_obs, axis=1)
-            else:
-                if self.dyn_pred_str == 'batches':
-                    next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
-                elif self.dyn_pred_str == 'rand':
-                    next_obs = self.dynamics_model.predict_sym(obs, acts)
-                else:
-                    next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
+        if not self.reg_str and self.dyn_pred_str == 'rand':   # transition ~ f^(i) where i = 1...T, f^(i) randomly picked
+            for t in range(self.horizon):
+                acts = tau[t]
+                next_obs = self.dynamics_model.predict_sym(obs, acts)
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+        else:  # compute transition ~ f_j for all f_j in the model ensemble
+            if self.dyn_pred_str == 'all':
+                obs = [obs for _ in range(self.dynamics_model.num_models)]
+                obs = tf.concat(obs, axis=0)
+            for t in range(self.horizon):
+                acts = tau[t]
+                if self.dyn_pred_str == 'all':
+                    acts = [acts for _ in range(self.dynamics_model.num_models)]
+                    acts = tf.concat(acts, axis=0)
+                # if self.reg_str == 'uncertainty':
+                #     pred_obs = self.dynamics_model.predict_sym_all(
+                #         obs, acts, same_obs=(t==0), same_act=True, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                #     ) # (num_envs, obs_space_dims, num_models)
+                #     uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
+                #     uncertainty = tf.reduce_sum(uncertainty, axis=1)
+                #     reg += uncertainty
+                #     # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
+                #     idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
+                #     next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
+                #     next_obs = tf.squeeze(next_obs, axis=1)
+                # else:
+                #     if self.dyn_pred_str == 'batches':
+                #         next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+                #     elif self.dyn_pred_str == 'rand':
+                #         next_obs = self.dynamics_model.predict_sym(obs, acts)
+                #     else:
+                #         next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
 
-            rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
+                next_obs, one_step_reg = self.dynamics_model.predict_sym_all(
+                    obs, acts, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                )
+                reg += tf.reduce_mean(one_step_reg, axis=0)
+
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
 
         # build loss = total_cost + regularization
-        neg_returns = tf.reduce_mean(-returns, axis=0)
+        # neg_returns = tf.reduce_mean(-returns, axis=0)
+        # reg = tf.reduce_mean(reg, axis=0)
+        neg_returns = -returns
 
-        if self.reg_str == 'uncertainty' or self.reg_str is None:
-            reg = tf.reduce_mean(reg, axis=0)
-        else:
-            raise NotImplementedError
-
-        result_op = [tau[0], mean_var, neg_returns, reg]
+        result_op = [tau[0], mean_var, neg_returns, self.reg_coef*reg]
         extra_result_op = [mean_var[0][0], tf.exp(log_std_var[0][0])]
 
         self.tau_optimizer.build_graph(
@@ -327,14 +345,14 @@ class MPCController(Serializable):
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph},
         )
 
-    def predict_open_loop(self, init_obs, tau, dyn_pred_str):
+    def predict_open_loop(self, init_obs, tau):
         obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
         obs = init_obs
         for action in tau:
             next_obs, agent_info = self.dynamics_model.predict(
                 obs[None],
                 action[None],
-                pred_type=dyn_pred_str,
+                pred_type='rand',
                 deterministic=False,
                 return_infos=True,
             )
@@ -347,47 +365,58 @@ class MPCController(Serializable):
         return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
 
     def build_opt_graph_w_policy(self):
-        returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        # returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        returns, reg = 0, 0
         obs = self.obs_ph
-        for t in range(self.horizon):
-            dist_policy = self.policy.distribution_info_sym(obs)
-            acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            # acts = tf.clip_by_value(acts, self.env.action_space.low, self.env.action_space.high)
-            acts = tf.tanh(acts)
 
-            if self.reg_str == 'uncertainty':
-                pred_obs = self.dynamics_model.predict_sym_all(obs, acts)
-                uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
-                uncertainty = tf.reduce_sum(uncertainty, axis=1)
-                reg += uncertainty
-                # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
-                idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
-                next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
-                next_obs = tf.squeeze(next_obs, axis=1)
-            else:
-                if self.dyn_pred_str == 'batches':
-                    next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
-                elif self.dyn_pred_str == 'rand':
-                    next_obs = self.dynamics_model.predict_sym(obs, acts)
-                else:
-                    next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
 
-            rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
+        if not self.reg_str and self.dyn_pred_str == 'rand':   # transition ~ f^(i) where i = 1...T, f^(i) randomly picked
+            for t in range(self.horizon):
+                dist_policy = self.policy.distribution_info_sym(obs)
+                acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+                acts = tf.tanh(acts)
+                if t == 0:
+                    result_op = [acts]
+                    extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
 
-            if t == 0:
-                result_op = [acts]
-                extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
+                next_obs = self.dynamics_model.predict_sym(obs, acts)
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+        else:  # compute transition ~ f_j for all f_j in the model ensemble
+            if self.dyn_pred_str == 'all':
+                obs = [obs for _ in range(self.dynamics_model.num_models)]
+                obs = tf.concat(obs, axis=0)
+            for t in range(self.horizon):
+                dist_policy = self.policy.distribution_info_sym(obs)
+                acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+                acts = tf.tanh(acts)
+                if t == 0:
+                    result_op = [acts]
+                    extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
+
+                if self.dyn_pred_str == 'all':
+                    acts = [acts for _ in range(self.dynamics_model.num_models)]
+                    acts = tf.concat(acts, axis=0)
+
+                next_obs, one_step_reg = self.dynamics_model.predict_sym_all(
+                    obs, acts, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                )
+                reg += tf.reduce_mean(one_step_reg, axis=0)
+
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
 
         # build loss = total_cst + regularization
-        neg_returns = tf.reduce_mean(-returns, axis=0)
-        if self.reg_str == 'uncertainty' or self.reg_str is None:
-            reg = tf.reduce_mean(reg, axis=0)
-        else:
-            raise NotImplementedError
+        # neg_returns = tf.reduce_mean(-returns, axis=0)
+        # if self.reg_str == 'uncertainty' or self.reg_str is None:
+        #     reg = tf.reduce_mean(reg, axis=0)
+        # else:
+        #     raise NotImplementedError
+        neg_returns = -returns
 
-        result_op += [neg_returns, reg]
+        result_op += [neg_returns, self.reg_coef*reg]
 
         self.tau_optimizer.build_graph(
             loss=neg_returns+self.reg_coef*reg,

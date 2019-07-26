@@ -65,8 +65,12 @@ class RNNMPCController(Serializable):
             assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-        self.hidden_state_c_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs,) + dynamics_model.hidden_sizes)
-        self.hidden_state_h_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs,) + dynamics_model.hidden_sizes)
+        if method_str != 'opt_act' or (not self.reg_str and self.dyn_pred_str == 'rand'):  # use predict_sym
+            self.hidden_state_c_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs,) + dynamics_model.hidden_sizes)
+            self.hidden_state_h_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs,) + dynamics_model.hidden_sizes)
+        else:  # use predict_sym_all
+            self.hidden_state_c_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs*self.dynamics_model.num_models,) + dynamics_model.hidden_sizes)
+            self.hidden_state_h_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs*self.dynamics_model.num_models,) + dynamics_model.hidden_sizes)
         self.hidden_state_ph = tf.nn.rnn_cell.LSTMStateTuple(self.hidden_state_c_ph, self.hidden_state_h_ph)
 
         if method_str == 'opt_act':
@@ -115,7 +119,7 @@ class RNNMPCController(Serializable):
         if self.method_str == 'opt_act':
             # info to plot action executed in the fist env (observation)
             result = self.tau_optimizer.optimize(
-                {'obs': observations, 'tau_mean': self.tau_mean_val},
+                {'obs': observations, 'tau_mean': self.tau_mean_val, 'hidden_c': self._hidden_state.c, 'hidden_h': self._hidden_state.h},
                 run_extra_result_op=return_first_info,
                 log_grads_for_plot=log_grads_for_plot,
             )
@@ -333,70 +337,56 @@ class RNNMPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
+        log_std = tf.maximum(log_std_var, np.log(5e-2))  # FIXME: hardcoded
 
-        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
+        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std))
         # tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
         tau = tf.tanh(tau)
         obs, hidden_state = self.obs_ph, self.hidden_state_ph
-        returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        # returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        returns, reg = 0, 0
 
-        for t in range(self.horizon):
-            acts = tau[t]
+        if not self.reg_str and self.dyn_pred_str == 'rand':
+            for t in range(self.horizon):
+                acts = tau[t]
+                next_obs = self.dynamics_model.predict_sym(obs, acts, hidden_state)
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
 
-            assert self.dyn_pred_str == 'rand'
+                if t == 0:
+                    result_op = [acts, hidden_state]
 
-            if self.reg_str == 'uncertainty':
-                pred_obs, hidden_state = self.dynamics_model.predict_sym_all(
-                    tf.expand_dims(obs, axis=1),
-                    tf.expand_dims(acts, axis=1),
-                )  # (num_envs, obs_space_dims, num_models)
-                uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
-                uncertainty = tf.reduce_sum(uncertainty, axis=1)
-                reg += uncertainty
-                # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
-                idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
-                next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
-                next_obs = tf.squeeze(next_obs, axis=1)
-            else:
-                if self.dyn_pred_str == 'batches':
-                    next_obs, hidden_state = self.dynamics_model.predict_batches_sym(
-                        tf.expand_dims(obs, axis=1),
-                        tf.expand_dims(acts, axis=1),
-                        hidden_state,
-                    )
-                elif self.dyn_pred_str == 'rand':
-                    next_obs, hidden_state = self.dynamics_model.predict_sym(
-                        tf.expand_dims(obs, axis=1),
-                        tf.expand_dims(acts, axis=1),
-                        hidden_state,
-                    )
-                else:
-                    next_obs, hidden_state = self.dynamics_model.predict_sym_all(
-                        tf.expand_dims(obs, axis=1),
-                        tf.expand_dims(acts, axis=1),
-                        hidden_state,
-                        pred_type=self.dyn_pred_str,
-                    )
+        else:
+            if self.dyn_pred_str == 'all':
+                obs = [obs for _ in range(self.dynamics_model.num_models)]
+                obs = tf.concat(obs, axis=0)
+            for t in range(self.horizon):
+                acts = tau[t]
+                if self.dyn_pred_str == 'all':
+                    acts = [acts for _ in range(self.dynamics_model.num_models)]
+                    acts = tf.concat(acts, axis=0)
 
-            rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
+                next_obs, one_step_reg, hidden_state = self.dynamics_model.predict_sym_all(
+                    obs, acts, hidden_state,
+                    reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                )
+                reg += tf.reduce_mean(one_step_reg, axis=0)
 
-            if t == 0:
-                result_op = [acts, hidden_state]
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+
+                if t == 0:
+                    result_op = [acts, hidden_state]
 
         # build loss = total_cost + regularization
-        neg_returns = tf.reduce_mean(-returns, axis=0)
+        # neg_returns = tf.reduce_mean(-returns, axis=0)
+        # reg = tf.reduce_mean(reg, axis=0)
+        neg_returns = -returns
 
-        if self.reg_str == 'uncertainty' or self.reg_str is None:
-            reg = tf.reduce_mean(reg, axis=0)
-        else:
-            raise NotImplementedError
-
-        result_op += [mean_var, neg_returns, reg]
+        result_op += [mean_var, neg_returns, self.reg_coef*reg]
         extra_result_op = [mean_var[0][0], tf.exp(log_std_var[0][0])]
-
-        neg_returns = tf.reduce_mean(-returns, axis=0)
 
         self.tau_optimizer.build_graph(
             loss=neg_returns+self.reg_coef*reg,
@@ -404,30 +394,30 @@ class RNNMPCController(Serializable):
             var_list=[mean_var, log_std_var],
             result_op=result_op,
             extra_result_op=extra_result_op,
-            input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph, 'hidden_state': self.hidden_state_ph},
+            input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph, 'hidden_c': self.hidden_state_c_ph, 'hidden_h': self.hidden_state_h_ph},
         )
 
     def predict_open_loop(self, init_obs, tau):
         assert init_obs.shape == (self.obs_space_dims,)
 
         obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
-        obs, hidden_state_batch = init_obs, self.dynamics_model.get_initial_hidden(batch_size=1, batch=True)
+        obs = init_obs
+        obs_batch = np.stack([init_obs for _ in range(self.dynamics_model.num_models)])  # pretend that there is a (repeated) batch
+        hidden_state_batch = self.dynamics_model.get_initial_hidden(batch_size=self.dynamics_model.num_models, batch=False)
 
         for action in tau:
-            next_obs, hidden_state_batch, agent_info = self.dynamics_model.predict(
-                obs[None],
-                action[None],
-                pred_type='rand',
+            next_obs_batch, hidden_state_batch, agent_info = self.dynamics_model.predict(
+                obs_batch,
+                np.stack([action for _ in range(self.dynamics_model.num_models)]),
                 hidden_state=hidden_state_batch,
-                deterministic=False,
-                return_infos=True,
             )
-            next_obs, agent_info = next_obs[0], agent_info[0]
+            next_obs = next_obs_batch[np.random.randint(low=0, high=self.dynamics_model.num_models)]
             obs_hall.append(next_obs)
-            obs_hall_mean.append(agent_info['mean'])
-            obs_hall_std.append(agent_info['std'])
+            obs_hall_mean.append(np.mean(next_obs_batch, axis=0))
+            obs_hall_std.append(np.std(next_obs_batch, axis=0))
             reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
             obs = next_obs
+
         return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
 
     def get_params_internal(self, **tags):
@@ -438,7 +428,6 @@ class RNNMPCController(Serializable):
             self.tau_optimizer.plot_grads()
 
     def reset(self, dones=None):
-        # FIXME
         LSTMStateTuple = tf.nn.rnn_cell.LSTMStateTuple
 
         if dones is None:

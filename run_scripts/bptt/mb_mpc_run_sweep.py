@@ -22,19 +22,18 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
+    repr = f"{config['controller_str']}-{config['method_str']}-{config['dyn_pred_str']}-"
     if config['env'] is HalfCheetahEnv:
-        repr = 'hc'
+        repr += 'hc'
     elif config['env'] is InvertedPendulumEnv:
-        repr = 'ip'
+        repr += 'ip'
     elif config['env'] is ReacherEnv:
-        repr = 'reacher'
+        repr += 'reacher'
     repr += '-reg-' + str(config['reg_coef'])
     if config['reg_str'] is not None:
-        repr += '-' + config['reg_str']
-    repr += '-init-' + config['initializer_str'] + '-' + config['controller_str'] + '-' + config['method_str']
-    repr += '-' + config['dyn_pred_str']
+        repr += config['reg_str']
 
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + repr + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)

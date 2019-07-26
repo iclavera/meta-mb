@@ -22,19 +22,18 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
+    repr = f"{config['controller_str']}-{config['method_str']}-{config['dyn_pred_str']}-"
     if config['env'] is HalfCheetahEnv:
-        repr = 'hc'
+        repr += 'hc'
     elif config['env'] is InvertedPendulumEnv:
-        repr = 'ip'
+        repr += 'ip'
     elif config['env'] is ReacherEnv:
-        repr = 'reacher'
-    repr += '-reg-' + str(config['reg_coef'])
-    if config['reg_str'] is not None:
-        repr += '-' + config['reg_str']
-    repr += '-init-' + config['initializer_str'] + '-' + config['controller_str'] + '-' + config['method_str']
-    repr += '-' + config['dyn_pred_str']
+        repr += 'reacher'
+    # repr += '-reg-' + str(config['reg_coef'])
+    # if config['reg_str'] is not None:
+    #     repr += config['reg_str']
 
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + repr + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -52,12 +51,12 @@ def run_experiment(**config):
                 dynamics_model = RNNDynamicsEnsemble(
                     name="dyn_model",
                     env=env,
-                    hidden_sizes=(500,),  #config['hidden_sizes_model'],  # FIXME
-                    learning_rate=0.01, #config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model_rec'],
+                    learning_rate=config['learning_rate_rec'],
                     backprop_steps=config['backprop_steps'],
                     cell_type=config['cell_type'],
                     num_models=config['num_models'],
-                    batch_size=5, #config['batch_size_model'],
+                    batch_size=config['batch_size_model_rec'],
                     normalize_input=True,
                 )
                 sample_processor = ModelSampleProcessor(recurrent=True)
@@ -172,19 +171,20 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv], #[ReacherEnv, HalfCheetahEnv],
-        'max_path_length': [100],
+        # 'env': [InvertedPendulumEnv],
+        'env': [HalfCheetahEnv],
+        'max_path_length': [200],
         'normalize': [False],
-         'n_itr': [101],
-        'discount': [1.0, 0.99],
-        'controller_str': ['rnn'], # ['rnn', 'delta', 'mpc'],
+        'n_itr': [101],
+        'discount': [1.0,],
+        'controller_str': ['mpc'], # ['rnn', 'mpc'],
 
         # Policy
         'initializer_str': ['zeros',], #['uniform', 'zeros'],
         'reg_coef': [0.1], #[1, 0],
-        'reg_str': [None], #['uncertainty'],
-        'method_str': ['rs'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
-        'dyn_pred_str': ['rand',],  # 'mean', 'batches'
+        'reg_str': ['uncertainty'],
+        'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'dyn_pred_str': ['all', 'mean', 'rand'],  # 'mean', 'rand', 'all'
         'horizon': [15,], # Tau
 
         'num_opt_iters': [20,], #20, 40,],
@@ -196,7 +196,6 @@ if __name__ == '__main__':
 
         # Training
         'num_rollouts': [20],
-        'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
@@ -205,12 +204,20 @@ if __name__ == '__main__':
         # Dynamics Model
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(512,)],  # (500, 500)
         'dynamic_model_epochs': [15],
-        'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
+
+        # MLP
+        'hidden_sizes_model': [(512, 512)],  # (500, 500)
         'batch_size_model': [64],
+        'learning_rate': [0.001],
+
+        # Recurrent
+        'hidden_sizes_model_rec': [(128,)],  # (500, 500)
+        'batch_size_model_rec': [10],
+        'backprop_steps': [100],
         'cell_type': ['lstm'],  # ['lstm', 'gru', 'rnn']
+        'learning_rate_rec': [0.01],
 
         #  Other
         'n_parallel': [1],
@@ -218,11 +225,11 @@ if __name__ == '__main__':
 
     config_debug = config.copy()
     config_debug['max_path_length'] = [11]
-    config_debug['reg_str'] = [None]
-    config_debug['num_models'] = [2]
+    #config_debug['reg_str'] = [None]
+    config_debug['num_models'] = [3]
     config_debug['num_rollouts'] = [6]
     config_debug['plot_freq'] = [1]
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
-    #print('================ runnning toy example ================')
+    print('================ runnning toy example ================')
     #run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)
