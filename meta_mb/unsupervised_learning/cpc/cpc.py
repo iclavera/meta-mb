@@ -94,7 +94,7 @@ class CPCLayer(keras.layers.Layer):
 
 def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                code_size_action=4, contrastive=True):
+                code_size_action=1, contrastive=True):
 
     ''' Define the CPC network combining encoder and autoregressive model '''
     if predict_action:
@@ -119,8 +119,9 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
 
     if predict_action:
         action_encoder_input = keras.layers.Input((action_dim,))
-        action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
-        action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
+        # action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
+        # action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
+        action_encoder_output = action_encoder_input
         action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
 
     # Define context network

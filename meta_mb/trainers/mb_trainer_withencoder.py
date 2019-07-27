@@ -31,6 +31,7 @@ class Trainer(object):
             self,
             env,
             sampler,
+            buffer,
             dynamics_sample_processor,
             policy,
             dynamics_model,
@@ -60,6 +61,7 @@ class Trainer(object):
             ):
         self.env = env
         self.sampler = sampler
+        self.buffer = buffer
         self.dynamics_sample_processor = dynamics_sample_processor
         self.dynamics_model = dynamics_model
         self.reward_sample_processor = reward_sample_processor
@@ -154,7 +156,7 @@ class Trainer(object):
                 )
 
             K.set_learning_phase(0)
-            self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+            # self.env._wrapped_env.encoder = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
                 # for point mass
@@ -184,6 +186,11 @@ class Trainer(object):
                 time_env_samp_proc = time.time()
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths,
                                                                               log=True, log_prefix='EnvTrajs-')
+
+                self.buffer.update_buffer(samples_data['observations'],
+                                        samples_data['actions'],
+                                        samples_data['next_observations'],
+                                        samples_data['rewards'])
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
@@ -216,9 +223,11 @@ class Trainer(object):
                     )
 
                     K.set_learning_phase(0)
-                    self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+                    # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
+
+                self.buffer.update_embedding_buffer()
 
                 ''' --------------- fit dynamics model --------------- '''
 
@@ -281,8 +290,13 @@ class Trainer(object):
         self.policy.log_diagnostics(paths, prefix)
 
     def get_seqs(self, env_paths):
-        img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:, :-1]  # N x T x (img_shape)
-        action_seqs = np.stack([path['actions'] for path in env_paths])[:, 1:]
+        if self.env.encoder is not None:
+            img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:, :-1]  # N x T x (img_shape)
+            action_seqs = np.stack([path['actions'] for path in env_paths])[:, 1:]
+        else:
+            img_seqs = np.stack([path['observations'] for path in env_paths])  # N x T x (img_shape)
+            action_seqs = np.stack([path['actions'] for path in env_paths])
+
         train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
 
         return train_img, val_img, train_action, val_action

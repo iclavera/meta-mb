@@ -29,7 +29,7 @@ def run_sweep(run_experiment, sweep_params, exp_name, instance_type='c4.xlarge')
     parser.add_argument('--exps_per_gpu', '-e', type=int, default=1,
                         help='Number of experiments per GPU simultaneously')
 
-    parser.add_argument('--gpu_start', 's', type=int, default=0,
+    parser.add_argument('--gpu_start', '-s', type=int, default=0,
                         help="index of the gpu to start")
 
     parser.add_argument('--num_cpu', '-c', type=int, default=multiprocessing.cpu_count(),

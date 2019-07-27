@@ -8,6 +8,8 @@ class MPCController(Serializable):
             self,
             name,
             env,
+            num_stack,
+            encoder,
             dynamics_model,
             reward_model=None,
             discount=1,
@@ -20,6 +22,8 @@ class MPCController(Serializable):
             alpha=0.1,
             num_particles=20,
             use_graph=True,
+            use_image=False,
+            latent_dim=None,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
@@ -32,18 +36,27 @@ class MPCController(Serializable):
         self.percent_elites = percent_elites
         self.num_elites = int(percent_elites * n_candidates)
         self.env = env
+        self.num_stack = num_stack
+        self.encoder = encoder
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
         self.use_graph = use_graph
+        self.use_image = use_image
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
             self.unwrapped_env = self.unwrapped_env._wrapped_env
 
-        assert len(env.observation_space.shape) == 1
+        if self.use_image:
+            assert len(env.observation_space.shape) == 3 and latent_dim != None
+            self.obs_space_dims = env.observation_space.shape
+            self.latent_dim = latent_dim
+        else:
+            assert len(env.observation_space.shape) == 1
+            self.obs_space_dims = env.observation_space.shape
+
         assert len(env.action_space.shape) == 1
-        self.obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = env.action_space.shape[0]
 
         if not self.use_reward_model:
@@ -51,32 +64,39 @@ class MPCController(Serializable):
             assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         if use_graph:
-            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
+            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.num_stack, self.latent_dim), name='obs')
             self.optimal_action = None
             if not use_cem:
                 self.build_rs_graph()
             else:
                 self.build_cem_graph()
 
+        self._previous_obs = None
+
     @property
     def vectorized(self):
         return True
 
     def get_action(self, observation):
-        if observation.ndim == 1:
+        if observation.ndim == 1 and not self.use_image or observation.ndim == 3 and self.use_image:
             observation = observation[None]
 
         return self.get_actions(observation)
 
     def get_actions(self, observations):
+        observations = self.encoder.predict(observations)
         if self.use_graph:
             sess = tf.get_default_session()
-            actions = sess.run(self.optimal_action, feed_dict={self.obs_ph: observations})
+            actions = sess.run(self.optimal_action, feed_dict=\
+                {self.obs_ph: np.concatenate([self._previous_obs, observations[:, None, :]], axis=1)})
         else:
             if self.use_cem:
                 actions = self.get_cem_action(observations)
             else:
                 actions = self.get_rs_action(observations)
+
+        self._previous_obs[:, :-1] = self._previous_obs[:, 1:]
+        self._previous_obs[:, -1:] = observations.copy()
 
         return actions, dict()
 
@@ -84,15 +104,6 @@ class MPCController(Serializable):
         return np.random.uniform(low=self.env.action_space.low,
                                  high=self.env.action_space.high, size=(n,) + self.env.action_space.low.shape)
 
-    def get_sinusoid_actions(self, action_space, t):
-        actions = np.array([])
-        delta = t/action_space
-        for i in range(action_space):
-            #actions = np.append(actions, 0.5 * np.sin(i * delta)) #two different ways of sinusoidal sampling
-            actions = np.append(actions, 0.5 * np.sin(i * t))
-        #for i in range(3, len(actions)): #limit movement to first 3 joints
-        #    actions[i] = 0
-        return actions
 
     def build_rs_graph(self):
         # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
@@ -104,8 +115,8 @@ class MPCController(Serializable):
 
         # Equivalent to np.repeat
         observation = tf.reshape(
-            tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
-            [-1, self.obs_space_dims]
+            tf.tile(tf.expand_dims(self.obs_ph, 1), [1, self.n_candidates] + [1, 1] ),
+            [-1, self.num_stack, self.latent_dim]
         )
         # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
 
@@ -116,10 +127,10 @@ class MPCController(Serializable):
             next_observation = self.dynamics_model.predict_sym(observation, act[t])
             if not self.use_reward_model:
                 assert self.reward_model is None
-                rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                rewards = self.unwrapped_env.tf_reward(observation[:, -1, :], act[t], next_observation)
             else:
                 assert not (self.reward_model is None)
-                rewards = self.reward_model.predict_sym(observation, act[t], next_observation)
+                rewards = self.reward_model.predict_sym(observation[:, -1, :], act[t], next_observation)
             returns += self.discount ** t * rewards
             observation = next_observation
         """
@@ -149,8 +160,8 @@ class MPCController(Serializable):
             act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
             returns = 0
             observation = tf.reshape(
-                tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
-                [-1, self.obs_space_dims]
+                tf.tile(tf.expand_dims(self.obs_ph, 1), [1, self.n_candidates] + [1, 1]),
+                [-1, self.num_stack, self.latent_dim]
             )
             act = tf.reshape(act, shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates,
                                          self.action_space_dims])
@@ -158,10 +169,10 @@ class MPCController(Serializable):
                 next_observation = self.dynamics_model.predict_sym(observation, act[t])
                 if not self.use_reward_model:
                     assert self.reward_model is None
-                    rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                    rewards = self.unwrapped_env.tf_reward(observation[:, -1, :], act[t], next_observation[:, -1, :])
                 else:
                     assert not (self.reward_model is None)
-                    rewards = self.reward_model.predict_sym(observation, act[t], next_observation)
+                    rewards = self.reward_model.predict_sym(observation[:, -1, :], act[t], next_observation[:, -1, :])
                 returns += self.discount ** t * rewards
                 observation = next_observation
 
@@ -247,7 +258,10 @@ class MPCController(Serializable):
         return []
 
     def reset(self, dones=None):
-        pass
+        if dones is None:
+            dones = [True]
+        self._previous_obs = np.zeros(shape=(len(dones), self.num_stack - 1, self.latent_dim))
+
 
     def log_diagnostics(*args):
         pass

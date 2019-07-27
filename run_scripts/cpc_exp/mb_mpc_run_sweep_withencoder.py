@@ -6,12 +6,13 @@ import tensorflow as tf
 import keras.backend as K
 
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
-from meta_mb.reward_model.mlp_reward_ensemble import MLPRewardEnsemble
+from meta_mb.replay_buffers.image_embedding_buffer import ImageEmbeddingBuffer
+from meta_mb.reward_model.mlp_reward_ensemble_withencoder import MLPRewardEnsemble
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -32,7 +33,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'predict_action/pt_l2'
+EXP_NAME = 'new_dynamics_model_debug'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -85,16 +86,16 @@ def run_experiment(**config):
                                         latent_dim=config['latent_dim'], time_major=True)
                 else:
                     encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
-                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, vae=encoder,
-                                        latent_dim=config['latent_dim'])
+                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1,) #vae=encoder,
+                                        #latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
                 env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
         else:
             env = NormalizedEnv(raw_env)
 
-        if config['obs_stack'] > 1:
-            env = ObsStackEnv(env, time_steps=config['obs_stack'])
+        # if config['obs_stack'] > 1:
+        #     env = ObsStackEnv(env, time_steps=config['obs_stack'])
 
         if config['recurrent']:
             dynamics_model = RNNDynamicsEnsemble(
@@ -139,9 +140,15 @@ def run_experiment(**config):
             )
 
         else:
+            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder.encoder, config['latent_dim'],
+                                          config['obs_stack'],config['num_models'], config['valid_split_ratio'],
+                                          normalize_input=config['normalize'])
             dynamics_model = MLPDynamicsEnsemble(
                 name="dyn_model",
                 env=env,
+                num_stack=config['obs_stack'],
+                encoder=encoder.encoder,
+                latent_dim=config['latent_dim'],
                 learning_rate=config['learning_rate'],
                 hidden_sizes=config['hidden_sizes_model'],
                 weight_normalization=config['weight_normalization_model'],
@@ -150,11 +157,14 @@ def run_experiment(**config):
                 rolling_average_persitency=config['rolling_average_persitency'],
                 hidden_nonlinearity=config['hidden_nonlinearity_model'],
                 batch_size=config['batch_size_model'],
+                buffer=buffer
             )
 
             reward_model = MLPRewardEnsemble(
                 name="rew_model",
                 env=env,
+                latent_dim=config['latent_dim'],
+                buffer=buffer,
                 learning_rate=config['learning_rate'],
                 hidden_sizes=config['hidden_sizes_model'],
                 weight_normalization=config['weight_normalization_model'],
@@ -168,6 +178,9 @@ def run_experiment(**config):
             policy = MPCController(
                 name="policy",
                 env=env,
+                num_stack=config['obs_stack'],
+                encoder=encoder.encoder,
+                latent_dim=config['latent_dim'],
                 dynamics_model=dynamics_model,
                 discount=config['discount'],
                 n_candidates=config['n_candidates'],
@@ -175,7 +188,9 @@ def run_experiment(**config):
                 use_cem=config['use_cem'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model'],
-                reward_model= reward_model if config['use_reward_model'] else None
+                reward_model= reward_model if config['use_reward_model'] else None,
+                use_image=True,
+
             )
 
         sampler = BaseSampler(
@@ -190,7 +205,9 @@ def run_experiment(**config):
             num_rollouts=config['cpc_num_initial_rollouts'],
             max_path_length=max_path_length,
         )
-        sample_processor = ModelSampleProcessor(recurrent=config['recurrent'])
+        sample_processor = ModelSampleProcessor(recurrent=True)
+
+
 
         algo = Trainer(
             env=env,
@@ -198,13 +215,13 @@ def run_experiment(**config):
             dynamics_model=dynamics_model,
             reward_model=reward_model if config['use_reward_model'] else None,
             sampler=sampler,
+            buffer=buffer,
             dynamics_sample_processor=sample_processor,
             reward_sample_processor=ModelSampleProcessor(recurrent=False),
             n_itr=config['n_itr'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
             sess=sess,
-
             cpc_model=cpc_model,
             cpc_terms = config['history'],
             cpc_predict_terms=config['future'],
@@ -240,11 +257,11 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy', 'cheetah_run'],
+        'env': ['ip'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [1],
+        'obs_stack': [2],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -254,20 +271,20 @@ if __name__ == '__main__':
         'use_graph': [True],
 
         # Training
-        'num_rollouts': [10],
+        'num_rollouts': [5],
         'learning_rate': [0.001],
-        'valid_split_ratio': [0.1],
+        'valid_split_ratio': [0.5],
         'rolling_average_persitency': [0.9],
 
         # Dynamics Model
-        'recurrent': [True],
-        'num_models': [1],
+        'recurrent': [False],
+        'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500,)],
-        'dynamic_model_epochs': [50],
+        'dynamic_model_epochs': [2],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [10],
+        'batch_size_model': [64],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
 
@@ -291,9 +308,9 @@ if __name__ == '__main__':
         'contrastive':[True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [1],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [64],
+        'cpc_num_initial_rollouts': [10],
         'cpc_train_interval': [10]
     }
 

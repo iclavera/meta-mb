@@ -22,6 +22,12 @@ def make_env(env, distractor=False, ptsize=2):
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
                                                  keys=['position', 'velocity']), amount=8)
         max_path_length = 125
+    elif env == 'cartpole_balance_norepeat':
+        from dm_control import suite
+        from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
+                                                 keys=['position', 'velocity']), amount=1)
+        max_path_length = 1000
     elif env == 'cartpole_swingup':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat

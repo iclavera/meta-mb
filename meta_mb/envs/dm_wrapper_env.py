@@ -1,6 +1,7 @@
 from meta_mb.utils.serializable import Serializable
 import numpy as np
 import gym
+import tensorflow as tf
 
 
 class DeepMindWrapper(Serializable):
@@ -124,3 +125,9 @@ class ActionRepeat(object):
   @property
   def action_space(self):
       return self._env.action_space
+
+  def tf_reward(self, obs, acts, next_obs):
+    return tf.zeros_like(acts)[:, 0]
+
+  def reward(self, obs, acts, next_obs):
+    return 0

@@ -19,9 +19,9 @@ from meta_mb.unsupervised_learning.cpc.train_script.utils import collect_img
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, make_periodic_lr, res_block, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.train_script.utils import RepeatRandom
 
-os.environ["CUDA_VISIBLE_DEVICES"]=""
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'predict_action_ip'
+EXP_NAME = 'cartpole_noactionencoder'
 
 
 def train_with_exploratory_policy(**config):
@@ -94,9 +94,9 @@ if __name__ == "__main__":
         'run_suffix': [1],
 
         # env config
-        'env': ['ip'],
+        'env': ['cartpole_balance'],
         'image_shape': [(64, 64, 3)],
-        'num_rollouts': [1024],
+        'num_rollouts': [64],
 
         # for point mass
         'ptsize': [2],
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         'negative_samples': [5],
         'include_action': [False],
         'predict_action':[True],
-        'contrastive': [False],
+        'contrastive': [True, False],
 
 
         # training config
