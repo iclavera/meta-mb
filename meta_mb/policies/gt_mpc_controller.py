@@ -10,8 +10,6 @@ class GTMPCController(Serializable):
             name,
             env,
             dynamics_model,
-            eps,
-            deterministic_policy,
             num_rollouts=None,
             reward_model=None,
             discount=1,
@@ -33,8 +31,6 @@ class GTMPCController(Serializable):
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
-        self.eps = eps
-        self.deterministic_policy=deterministic_policy
         self.reward_model = reward_model
         self.discount = discount
         self.method_str = method_str
@@ -83,10 +79,8 @@ class GTMPCController(Serializable):
         else:
             raise NotImplementedError('initializer_str must be uniform or zeros')
 
-        if deterministic_policy:
-            self.tau_std_val = np.zeros((self.action_space_dims,))
-        else:
-            self.tau_std_val = 0.05 * np.ones((self.action_space_dims,))
+        self.tau_std_val = 0.05 * np.ones((self.action_space_dims,))
+        self._global_step = 0
 
     @property
     def vectorized(self):
@@ -97,20 +91,23 @@ class GTMPCController(Serializable):
             observation = observation[None]
         return self.get_actions(observation)
 
-    def get_actions(self, observations, return_first_info=False, log_grads_for_plot=False):
-        if self.deterministic_policy:
+    def get_rollouts(self, observations, deterministic=False, plot_info=False, plot_first_rollout=False):
+        if deterministic:
             tau = self.tau_mean_val
         else:
             tau = self.tau_mean_val + np.random.normal(size=np.shape(self.tau_mean_val)) * self.tau_std_val
             tau = np.clip(tau, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
 
-        for _ in range(self.num_opt_iters):
-            delta_tau, returns = self.dynamics_model.get_derivative(tau, init_obs=observations, eps=self.eps)
-            tau += self.opt_learning_rate * delta_tau
+        returns_array, grad_norm_array = [], []
+        for itr in range(self.num_opt_iters):
+            grad_tau, returns = self.dynamics_model.get_derivative(tau, init_obs=observations)
+            tau += self.opt_learning_rate * grad_tau
             tau = np.clip(tau, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
+            returns_array.append(np.mean(returns))
+            grad_norm_array.append(np.linalg.norm(grad_tau)/self.num_envs)
 
-        actions = tau[0]
-        agent_infos = [dict(mean=actions, std=self.tau_std_val, reg=0)]
+        if plot_first_rollout:
+            self.dynamics_model.plot_rollout(tau[:, 0, :], self._global_step)
 
         # rotate
         if self.initializer_str == 'uniform':
@@ -124,9 +121,19 @@ class GTMPCController(Serializable):
                 np.zeros((1, self.num_envs, self.action_space_dims)),
             ], axis=0)
 
-        if return_first_info:
-            return actions, agent_infos
-        return actions
+        self._global_step += 1
+        # if plot_info:
+        #     fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(20, 20))
+        #     axes
+
+        """
+        tau = num_envs experts = (horizon==max_path_length, batch_size==num_envs, act_dims)
+        returns_array = [()] * num_opt_iters
+        """
+        return tau, returns_array, grad_norm_array, np.linalg.norm(tau)/self.num_envs
+
+    def get_actions(self, observations, deterministic=False, return_first_info=False, log_grads_for_plot=False):
+        raise NotImplementedError
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,

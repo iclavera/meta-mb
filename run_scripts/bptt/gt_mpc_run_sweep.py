@@ -1,22 +1,14 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
-from meta_mb.policies.mpc_controller import MPCController
-from meta_mb.policies.mpc_delta_controller import MPCDeltaController
-from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.sampler import Sampler
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.gt_dynamics import GTDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
-from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
 import tensorflow as tf
-import joblib
 
 
 EXP_NAME = 'gt-mpc'
@@ -24,7 +16,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"{config['controller_str']}-{config['method_str']}-{config['dyn_pred_str']}-"
+    repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
     elif config['env'] is InvertedPendulumEnv:
@@ -56,6 +48,7 @@ def run_experiment(**config):
             max_path_length=config['max_path_length'],
             discount=config['discount'],
             n_parallel=config['n_parallel'],
+            eps=config['eps'],
         )
         sample_processor = None
 
@@ -63,8 +56,6 @@ def run_experiment(**config):
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
-            eps=config['eps'],
-            deterministic_policy=config['deterministic_policy'],
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
@@ -86,6 +77,7 @@ def run_experiment(**config):
             max_path_length=config['max_path_length'],
             n_parallel=config['n_parallel'],
             dyn_pred_str=config['dyn_pred_str'],
+            ground_truth=(config['controller_str']=='gt'),
         )
 
         algo = PolicyOnlyTrainer(
@@ -101,6 +93,7 @@ def run_experiment(**config):
             sess=sess,
             fit_model=config['fit_model'],
             plot_freq=config['plot_freq'],
+            deterministic_policy=config['deterministic_policy'],
         )
         algo.train()
 
@@ -140,7 +133,7 @@ if __name__ == '__main__':
         'num_cem_iters': [5],
 
         # Training
-        'num_rollouts': [20],
+        'num_rollouts': [20],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
@@ -165,15 +158,17 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [1],
+        'n_parallel': [5],
     }
 
     config_debug = config.copy()
-    config_debug['max_path_length'] = [11]
-    config_debug['num_opt_iters'] = [5]
+    config_debug['max_path_length'] = [7]
+    config_debug['num_opt_iters'] = [1]
+    config_debug['horizon'] = [4]
     config_debug['num_models'] = [3]
-    config_debug['num_rollouts'] = [6]
+    config_debug['num_rollouts'] = [2]
     config_debug['plot_freq'] = [1]
+    config_debug['n_parallel'] = 4
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
     print('================ runnning toy example ================')

@@ -35,6 +35,7 @@ class PolicyOnlyTrainer(object):
             dynamics_model_max_epochs=200,
             fit_model = True,
             plot_freq=-1,
+            deterministic_policy=False,
     ):
         self.env = env
         self.sampler = sampler
@@ -46,6 +47,7 @@ class PolicyOnlyTrainer(object):
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
         self.plot_freq = plot_freq
+        self.deterministic_policy = deterministic_policy
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -77,7 +79,7 @@ class PolicyOnlyTrainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=False,
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=self.deterministic_policy,
                                                             plot_first_rollout=(self.plot_freq > 0) and (itr % self.plot_freq == 0))
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
@@ -111,11 +113,11 @@ class PolicyOnlyTrainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
-                logger.log("Saving snapshot...")
-                params = self.get_itr_snapshot(itr)
+                # logger.log("Saving snapshot...")
+                # params = self.get_itr_snapshot(itr)
                 self.log_diagnostics(env_paths, '')
-                logger.save_itr_params(itr, params)
-                logger.log("Saved")
+                # logger.save_itr_params(itr, params)
+                # logger.log("Saved")
 
                 logger.dumpkvs()
                 if itr == 0:

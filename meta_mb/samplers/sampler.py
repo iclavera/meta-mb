@@ -36,6 +36,7 @@ class Sampler(BaseSampler):
             n_parallel=1,
             dyn_pred_str=None,
             vae=None,
+            ground_truth=False,
     ):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
@@ -45,6 +46,7 @@ class Sampler(BaseSampler):
         self.total_timesteps_sampled = 0
         self.vae = vae
         self.dyn_pred_str = dyn_pred_str
+        self.ground_truth = ground_truth
 
         # setup vectorized environment
 
@@ -58,8 +60,25 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, sinusoid=False,
-                       verbose=False, plot_first_rollout=False):
+    def obtain_samples_ground_truth(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
+        print(plot_first_rollout)
+        plot_first_rollout = True  # FIXME
+        policy = self.policy
+        policy.reset(dones=[True] * self.vec_env.num_envs)
+
+        rollouts, returns_array, grad_norm_array, avg_rollout_norm = policy.get_rollouts(
+            observations=None, deterministic=deterministic, plot_info=True, plot_first_rollout=plot_first_rollout
+        )
+        logger.log(returns_array)
+
+        logger.logkv(log_prefix + 'AverageReturn', np.mean(returns_array))
+        if log:
+            logger.logkv(log_prefix + 'StdReturn', np.std(returns_array))
+            logger.logkv(log_prefix + 'MaxReturn', np.max(returns_array))
+            logger.logkv(log_prefix + 'MinReturn', np.min(returns_array))
+
+    def obtain_samples(self, log=False, log_prefix='', random=False, sinusoid=False, deterministic=False,
+                       verbose=True, plot_first_rollout=False):
         """
         Collect batch_size trajectories from each task
 
@@ -71,6 +90,9 @@ class Sampler(BaseSampler):
         Returns:
             (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
         """
+
+        if self.ground_truth:
+            return self.obtain_samples_ground_truth(log, log_prefix, deterministic, plot_first_rollout)
 
         # initial setup / preparation
         self._global_step += 1
@@ -90,10 +112,13 @@ class Sampler(BaseSampler):
 
         if plot_first_rollout:
             init_obs = obses[0]
-            tau, act_norm, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
+            tau, act_norm, obs_real, reward_real, loss_reg = [], [], [], [], []  # final shape: (max_path_length, space.dims)
+            if deterministic:
+                tau_mean, tau_std = None, None
+            else:
+                tau_mean, tau_std = [], []
 
         itr_counter = 0
-        pbar = ProgBar(self.total_samples)
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
@@ -113,6 +138,7 @@ class Sampler(BaseSampler):
                 if plot_first_rollout:
                     actions, agent_infos = policy.get_actions(
                         obses,
+                        deterministic=deterministic,
                         return_first_info=True,
                         log_grads_for_plot=(itr_counter < self.max_path_length),
                     )
@@ -131,8 +157,9 @@ class Sampler(BaseSampler):
                 act_norm.append(np.linalg.norm(actions[0]))
                 obs_real.append(next_obses[0])
                 reward_real.append(rewards[0])
-                tau_mean.append(agent_infos[0]['mean'])
-                tau_std.append(agent_infos[0]['std'])
+                if not deterministic:
+                    tau_mean.append(agent_infos[0]['mean'])
+                    tau_std.append(agent_infos[0]['std'])
                 loss_reg.append(agent_infos[0]['reg'])
                 agent_infos = []
 
@@ -170,8 +197,6 @@ class Sampler(BaseSampler):
             n_samples += new_samples
             obses = next_obses
             itr_counter += 1
-            pbar.update(1)
-        pbar.stop()
 
         if verbose: pbar.stop()
 
@@ -209,12 +234,8 @@ class Sampler(BaseSampler):
             obs_space_dims = self.env.observation_space.shape[0]
             action_space_dims = self.env.action_space.shape[0]
             obs_hall = np.transpose(np.asarray(obs_hall))  # (max_path_length, obs_space_dims) -> (obs_space_dims, max_path_length)
-            obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
-            obs_hall_std = np.transpose(np.asarray(obs_hall_std))
             obs_real = np.transpose(np.asarray(obs_real))
             tau = np.transpose(np.asarray(tau))  # (max_path_length, action_space_dims) -> (action_space_dims, max_path_length)
-            tau_mean = np.transpose(np.asarray(tau_mean))
-            tau_std = np.transpose(np.asarray(tau_std))
 
             n_subplots = obs_space_dims + action_space_dims + 2
             nrows = ceil(np.sqrt(n_subplots))
@@ -228,13 +249,19 @@ class Sampler(BaseSampler):
                 ax = axes[i]
                 ax.plot(x, obs_hall[i], label=f'obs_{i}_dyn')
                 ax.plot(x, obs_real[i], label=f'obs_{i}_env')
-                ax.fill_between(x, obs_hall_mean[i] + obs_hall_std[i], obs_hall_mean[i] - obs_hall_std[i], alpha=0.2)
+                if obs_hall_std is not None:
+                    obs_hall_mean = np.transpose(np.asarray(obs_hall_mean))
+                    obs_hall_std = np.transpose(np.asarray(obs_hall_std))
+                    ax.fill_between(x, obs_hall_mean[i] + obs_hall_std[i], obs_hall_mean[i] - obs_hall_std[i], alpha=0.2)
                 # ax.set_ylim([obs_ymin, obs_ymax])
 
             for i in range(action_space_dims):
                 ax = axes[i+obs_space_dims]
                 ax.plot(x, tau[i], label=f'act_{i}', color='r')
-                ax.fill_between(x, tau_mean[i] + tau_std[i], tau_mean[i] - tau_std[i], color='r', alpha=0.2)
+                if tau_std is not None:
+                    tau_mean = np.transpose(np.asarray(tau_mean))
+                    tau_std = np.transpose(np.asarray(tau_std))
+                    ax.fill_between(x, tau_mean[i] + tau_std[i], tau_mean[i] - tau_std[i], color='r', alpha=0.2)
                 # ax.set_ylim([self.env.action_space.low[i]-0.1, self.env.action_space.high[i]+0.1])
 
             ax = axes[obs_space_dims+action_space_dims]
