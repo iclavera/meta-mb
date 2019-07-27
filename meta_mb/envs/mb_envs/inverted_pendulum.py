@@ -4,13 +4,16 @@ import tensorflow as tf
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
+import os
 
 
 class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
 
     def __init__(self):
         utils.EzPickle.__init__(self)
-        mujoco_env.MujocoEnv.__init__(self, 'inverted_pendulum.xml', 2)
+
+        dir_path = os.path.dirname(os.path.abspath(__file__))
+        mujoco_env.MujocoEnv.__init__(self, '%s/assets/inverted_pendulum.xml' % dir_path, 2)
 
     def step(self, a):
         # reward = 1.0
@@ -25,6 +28,16 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(size=self.model.nq, low=-0.01, high=0.01)
         qvel = self.init_qvel + self.np_random.uniform(size=self.model.nv, low=-0.01, high=0.01)
+        self.set_state(qpos, qvel)
+        return self._get_obs()
+
+    def reset_model_hard(self):
+        self.set_state(self.init_qpos, self.init_qvel)
+        return self._get_obs()
+
+    def reset_from_obs_hard(self, obs):
+        self.sim.reset()
+        qpos, qvel = obs[:self.model.nq], obs[:self.model.nq]
         self.set_state(qpos, qvel)
         return self._get_obs()
 

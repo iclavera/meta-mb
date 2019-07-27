@@ -78,6 +78,17 @@ class IterativeEnvExecutor(object):
         self.ts[:] = 0
         return obses
 
+    def reset_from_obs_hard(self, observations):
+        assert observations.shape[0] == self.num_envs
+        obses = [env.reset_from_obs_hard(obs) for env, obs in zip(self.envs, observations)]
+        self.ts[:] = 0
+        return obses
+
+    def reset_hard(self):
+        obses = [env.reset_hard() for env in self.envs]
+        self.ts[:] = 0
+        return obses
+
     @property
     def num_envs(self):
         """
@@ -231,6 +242,123 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
             for env in envs:
                 env.set_task(data)
             remote.send(None)
+
+        # close the remote and stop the worker
+        elif cmd == 'close':
+            remote.close()
+            break
+
+        else:
+            raise NotImplementedError
+
+
+class ParalellActionDerivativeExecutor(object):
+    """
+    Compute ground truth derivatives.
+    """
+    def __init__(self, env, n_parallel, horizon, batch_size, eps, discount=1):
+        assert discount == 1  # only support discount == 1
+        self.eps = eps
+        action_space_dims = env.action_space.shape[0]
+        num_tasks = horizon * action_space_dims
+        assert num_tasks % n_parallel == 0
+        num_tasks_per_worker = num_tasks % n_parallel # technically num_tasks_per_worker *= batch_size because each worker has batch_size envs
+        array_idx_start_flatten = np.arange(0, horizon*action_space_dims, n_parallel)
+        array_idx_end_flatten = array_idx_start_flatten + num_tasks_per_worker
+
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
+        seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
+
+        self.ps = [
+            Process(
+                target=deriv_worker,
+                args=(work_remote, remote, pickle.dumps(env), eps,
+                      horizon, batch_size, action_space_dims, discount,
+                      idx_start_flatten, idx_end_flatten, seed),
+            ) for (work_remote, remote, idx_start_flatten, idx_end_flatten, seed) \
+            in zip(self.work_remotes, self.remotes, array_idx_start_flatten, array_idx_end_flatten, seeds)
+        ]
+
+        for p in self.ps:
+            p.daemon = True  # if the main process crashes, we should not cause things to hang
+            p.start()
+        for remote in self.work_remotes:
+            remote.close()
+
+    def get_derivative(self, tau, init_obs_array=None):
+        """
+        Assume s_0 is the reset state.
+        :param tau: (horizon, batch_size, action_space_dims)
+        :tf_loss: scalar Tensor R
+        :return: dR/da_i for i in range(action_space_dims)
+        """
+        self.remotes[0].send(('compute_old_return_array', tau, init_obs_array))
+        old_return_array = self.remotes[0].recv()
+        for remote in self.remotes:
+            remote.send(('compute_delta_return_cubic', tau, init_obs_array, old_return_array))
+
+        delta_return_cubic = sum([np.asarray(remote.recv()) for remote in self.remotes])
+        return delta_return_cubic/self.eps
+
+def deriv_worker(remote, parent_remote, env_pickle, eps,
+           horizon, batch_size, action_space_dims, discount,
+           idx_start_flatten, idx_end_flatten, seed):
+
+    # batch_size means the num_rollouts in teh original env executors, and it means number of experts
+    # when the dynamics model is ground truth
+
+    parent_remote.close()
+
+    envs = [pickle.loads(env_pickle) for _ in range(batch_size)]
+    np.random.seed(seed)
+
+    while True:
+        # receive command and data from the remote
+        cmd, *data = remote.recv()
+
+        # do a step in each of the environment of the worker
+        if cmd == 'compute_delta_return_cubic':
+            tau, init_obs_array, old_return_array = data
+            # tau = (horizon, batch_size, action_space_dims)
+            # init_obs = (batch_size, action_space_dims,)
+
+            delta_return_cubic = np.zeros((horizon, batch_size, action_space_dims))
+            for idx_flatten in range(idx_start_flatten, idx_end_flatten):
+                idx_horizon, idx_action_space_dims = idx_flatten // action_space_dims, idx_flatten % action_space_dims
+                delta = np.zeros((horizon, batch_size, action_space_dims))
+                delta[idx_horizon, :, idx_action_space_dims] = eps
+                new_tau = tau + delta
+                delta_return_array = []  # (batch_size,)
+
+                for idx_batch, env, init_obs, old_return in zip(range(batch_size), envs, init_obses, old_return_array):
+                    # reset environment
+                    if init_obs is None:
+                        obs = env.reset_hard()
+                    else:
+                        obs = env.reset_hard_from_obs_hard(init_obs)
+
+                    # compute new return with discount factor = 1
+                    new_return = sum([env.step(act) for act in new_tau[:, idx_batch, :][1]])
+                    delta_return_array.append(new_return - old_return)
+
+                delta_return_cubic[idx_horizon, :, idx_action_space_dims] = delta_return_array
+
+            remote.send(delta_return_cubic)
+
+        elif cmd == 'compute_old_return_array':
+            tau, init_obses = data
+            old_return_array = []
+
+            for idx_batch, env, init_obs in zip(range(batch_size), envs, init_obses):
+                # reset environment
+                if init_obs is None:
+                    obs = env.reset_hard()
+                else:
+                    obs = env.reset_from_obs_hard(init_obs)
+                old_return = sum([env.step(act) for act in tau[:, idx_batch, :][1]])
+                old_return_array.append(old_return)
+
+            remote.send(old_return_array)
 
         # close the remote and stop the worker
         elif cmd == 'close':

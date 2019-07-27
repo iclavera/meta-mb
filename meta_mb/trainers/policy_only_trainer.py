@@ -81,17 +81,19 @@ class PolicyOnlyTrainer(object):
                                                             plot_first_rollout=(self.plot_freq > 0) and (itr % self.plot_freq == 0))
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
-                logger.log("Processing environment samples...")
-
-                # first processing just for logging purposes
-                time_env_samp_proc = time.time()
-                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                              log=True, log_prefix='EnvTrajs-')
-                logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                 if self.fit_model:
 
                     ''' --------------- fit dynamics model --------------- '''
+
+                    logger.log("Processing environment samples...")
+
+                    # first processing just for logging purposes
+                    time_env_samp_proc = time.time()
+                    samples_data = self.dynamics_sample_processor.process_samples(env_paths,
+                                                                                  log=True, log_prefix='EnvTrajs-')
+                    logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
+
                     time_fit_start = time.time()
 
                     logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))

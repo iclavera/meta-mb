@@ -93,6 +93,7 @@ class Sampler(BaseSampler):
             tau, act_norm, tau_mean, tau_std, obs_real, reward_real, loss_reg = [], [], [], [], [], [], []  # final shape: (max_path_length, space.dims)
 
         itr_counter = 0
+        pbar = ProgBar(self.total_samples)
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
@@ -169,6 +170,9 @@ class Sampler(BaseSampler):
             n_samples += new_samples
             obses = next_obses
             itr_counter += 1
+            pbar.update(1)
+        pbar.stop()
+
         if verbose: pbar.stop()
 
         self.total_timesteps_sampled += self.total_samples

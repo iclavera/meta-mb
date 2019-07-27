@@ -5,6 +5,7 @@ from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.dynamics.gt_dynamics import GTDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
@@ -18,7 +19,7 @@ import tensorflow as tf
 import joblib
 
 
-EXP_NAME = 'bptt-mb-mpc'
+EXP_NAME = 'gt-mpc'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -47,91 +48,36 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        if config.get('model_path', None) is None:
-            if config['controller_str'] == 'rnn':
-                dynamics_model = RNNDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    hidden_sizes=config['hidden_sizes_model_rec'],
-                    learning_rate=config['learning_rate_rec'],
-                    backprop_steps=config['backprop_steps'],
-                    cell_type=config['cell_type'],
-                    num_models=config['num_models'],
-                    batch_size=config['batch_size_model_rec'],
-                    normalize_input=True,
-                )
-                sample_processor = ModelSampleProcessor(recurrent=True)
-            else:
-                dynamics_model = ProbMLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-                sample_processor = ModelSampleProcessor()
-        else:
-            data = joblib.load(config['model_path'])
-            dynamics_model = data['dynamics_model']
+        dynamics_model = GTDynamics(
+            name="dyn_model",
+            env=env,
+            num_rollouts=config['num_rollouts'],
+            horizon=config['horizon'],
+            max_path_length=config['max_path_length'],
+            discount=config['discount'],
+            n_parallel=config['n_parallel'],
+        )
+        sample_processor = None
 
-        if config['controller_str'] == 'delta':
-            policy = MPCDeltaController(
-                name="policy",
-                env=env,
-                dynamics_model=dynamics_model,
-                discount=config['discount'],
-                horizon=config['horizon'],
-                use_opt_w_policy=False,
-                reg_coef=config['reg_coef'],
-                reg_str=config['reg_str'],
-                initializer_str=config['initializer_str'],
-                num_opt_iters=config['num_opt_iters'],
-                opt_learning_rate=config['opt_learning_rate'],
-                num_rollouts=config['num_rollouts'],
-            )
-        elif config['controller_str'] == 'rnn':
-            policy = RNNMPCController(
-                name='policy',
-                env=env,
-                dynamics_model=dynamics_model,
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                method_str=config['method_str'],
-                dyn_pred_str=config['dyn_pred_str'],
-                reg_coef=config['reg_coef'],
-                reg_str=config['reg_str'],
-                initializer_str=config['initializer_str'],
-                num_cem_iters=config['num_cem_iters'],
-                num_opt_iters=config['num_opt_iters'],
-                opt_learning_rate=config['opt_learning_rate'],
-                num_rollouts=config['num_rollouts'],
-            )
-        elif config['controller_str'] == 'mpc':
-            policy = MPCController(
-                name="policy",
-                env=env,
-                dynamics_model=dynamics_model,
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                method_str=config['method_str'],
-                dyn_pred_str=config['dyn_pred_str'],
-                reg_coef=config['reg_coef'],
-                reg_str=config['reg_str'],
-                initializer_str=config['initializer_str'],
-                num_cem_iters=config['num_cem_iters'],
-                num_opt_iters=config['num_opt_iters'],
-                opt_learning_rate=config['opt_learning_rate'],
-                num_rollouts=config['num_rollouts'],
-            )
-        else:
-            raise NotImplementedError
+        policy = GTMPCController(
+            name="policy",
+            env=env,
+            dynamics_model=dynamics_model,
+            eps=config['eps'],
+            deterministic_policy=config['deterministic_policy'],
+            discount=config['discount'],
+            n_candidates=config['n_candidates'],
+            horizon=config['horizon'],
+            method_str=config['method_str'],
+            dyn_pred_str=config['dyn_pred_str'],
+            reg_coef=config['reg_coef'],
+            reg_str=config['reg_str'],
+            initializer_str=config['initializer_str'],
+            num_cem_iters=config['num_cem_iters'],
+            num_opt_iters=config['num_opt_iters'],
+            opt_learning_rate=config['opt_learning_rate'],
+            num_rollouts=config['num_rollouts'],
+        )
 
         sampler = Sampler(
             env=env,
@@ -164,21 +110,17 @@ if __name__ == '__main__':
 
     config = {
         'seed': [1],
-        # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
-        # InvertedPendulum
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
-        'fit_model': [True],
+        'fit_model': [False],
         'plot_freq': [1],
 
         # Problem
         # 'env': [InvertedPendulumEnv],
-        'env': [HalfCheetahEnv],
+        'env': [InvertedPendulumEnv],
         'max_path_length': [200],
         'normalize': [False],
         'n_itr': [101],
         'discount': [1.0,],
-        'controller_str': ['mpc'], # ['rnn', 'mpc' 'gt],
+        'controller_str': ['gt'],
 
         # Policy
         'initializer_str': ['zeros',], #['uniform', 'zeros'],
@@ -191,6 +133,8 @@ if __name__ == '__main__':
         'num_opt_iters': [20,], #20, 40,],
         'opt_learning_rate': [1e-3,], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
+        'eps': [1e-6],
+        'deterministic_policy': [True],
 
         'n_candidates': [1000], # K
         'num_cem_iters': [5],
@@ -226,7 +170,7 @@ if __name__ == '__main__':
 
     config_debug = config.copy()
     config_debug['max_path_length'] = [11]
-    #config_debug['reg_str'] = [None]
+    config_debug['num_opt_iters'] = [5]
     config_debug['num_models'] = [3]
     config_debug['num_rollouts'] = [6]
     config_debug['plot_freq'] = [1]
