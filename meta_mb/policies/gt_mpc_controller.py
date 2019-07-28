@@ -76,6 +76,7 @@ class GTMPCController(Serializable):
             self.tau_mean_val = np.zeros(
                 (self.horizon, self.num_envs, self.action_space_dims),
             )
+            self.tau_mean_val = np.clip(np.random.normal(self.tau_mean_val, scale=0.05), self.env.action_space.low, self.env.action_space.high)
         else:
             raise NotImplementedError('initializer_str must be uniform or zeros')
 
@@ -117,7 +118,7 @@ class GTMPCController(Serializable):
             grad_tau, returns = self.dynamics_model.get_derivative(tau, init_obs=observations)
             tau += self.opt_learning_rate * grad_tau
             # regularization
-            # clipping and regularization needs to be modifed if not (low, high) = (-1, 1)
+            # clipping and regularization needs to be modified if not (low, high) = (-1, 1)
             if self.reg_str == 'poly':
                 tau = np.clip(tau, a_min=self.env.action_space.low - self.reg_coef, a_max=self.env.action_space.high + self.reg_coef)
                 tau -= self.reg_coef * tau**5

@@ -115,12 +115,12 @@ if __name__ == '__main__':
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros',], #['uniform', 'zeros'],
+        'initializer_str': ['zeros', 'uniform'],
         'reg_coef': [0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['poly'], #['scale', 'poly'],
         'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # 'mean', 'rand', 'all'
-        'horizon': [80,], # Tau
+        'horizon': [40, 80, 200], # Tau
 
         'num_opt_iters': [50,], #20, 40,],
         'opt_learning_rate': [1e-4, 1e-3,], #1e-2],
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [8],
+        'n_parallel': [5],
     }
 
     assert config['horizon'] == config['max_path_length']
