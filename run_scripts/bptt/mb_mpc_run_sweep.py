@@ -2,7 +2,6 @@ from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.mpc_delta_controller import MPCDeltaController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
-from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
@@ -30,9 +29,9 @@ def run_experiment(**config):
         repr += 'ip'
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
-    # repr += '-reg-' + str(config['reg_coef'])
-    # if config['reg_str'] is not None:
-    #     repr += config['reg_str']
+    repr += '-reg-' + str(config['reg_coef'])
+    if config['reg_str'] is not None:
+        repr += config['reg_str']
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -52,12 +51,12 @@ def run_experiment(**config):
                 dynamics_model = RNNDynamicsEnsemble(
                     name="dyn_model",
                     env=env,
-                    hidden_sizes=config['hidden_sizes_model_rec'],
-                    learning_rate=config['learning_rate_rec'],
+                    hidden_sizes=(500,),  #config['hidden_sizes_model'],  # FIXME
+                    learning_rate=0.01, #config['learning_rate'],
                     backprop_steps=config['backprop_steps'],
                     cell_type=config['cell_type'],
                     num_models=config['num_models'],
-                    batch_size=config['batch_size_model_rec'],
+                    batch_size=5, #config['batch_size_model'],
                     normalize_input=True,
                 )
                 sample_processor = ModelSampleProcessor(recurrent=True)
@@ -169,27 +168,26 @@ if __name__ == '__main__':
         # InvertedPendulum
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo-IP/2019_07_16_12_49_53_0/params.pkl'],
         'fit_model': [True],
-        'plot_freq': [1],
+        'plot_freq': [1000],
 
         # Problem
-        # 'env': [InvertedPendulumEnv],
-        'env': [HalfCheetahEnv],
-        'max_path_length': [200],
+        'env': [ReacherEnv, HalfCheetahEnv],
+        'max_path_length': [100],
         'normalize': [False],
-        'n_itr': [101],
-        'discount': [1.0,],
-        'controller_str': ['mpc'], # ['rnn', 'mpc' 'gt],
+         'n_itr': [101],
+        'discount': [1.0, 0.99],
+        'controller_str': ['mpc'], # ['rnn', 'delta', 'mpc'],
 
         # Policy
         'initializer_str': ['zeros',], #['uniform', 'zeros'],
         'reg_coef': [0.1], #[1, 0],
-        'reg_str': ['uncertainty'],
-        'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
-        'dyn_pred_str': ['all', 'mean', 'rand'],  # 'mean', 'rand', 'all'
-        'horizon': [15,], # Tau
+        'reg_str': ['uncertainty'], #['uncertainty'],
+        'method_str': ['opt_act', 'opt_policy'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'dyn_pred_str': ['rand', 'mean'],  # 'mean', 'batches'
+        'horizon': [25,], # Tau
 
-        'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-5, 1e-4], #1e-2],
+        'num_opt_iters': [20,], #20, 40,],
+        'opt_learning_rate': [1e-4, 1e-3,], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
 
         'n_candidates': [1000], # K
@@ -197,40 +195,24 @@ if __name__ == '__main__':
 
         # Training
         'num_rollouts': [20],
+        'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
-        'initial_random_samples': [False],
+        'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(512,)],  # (500, 500)
         'dynamic_model_epochs': [15],
-        'weight_normalization_model': [False],  # FIXME: Doesn't work
-
-        # MLP
-        'hidden_sizes_model': [(512, 512)],  # (500, 500)
-        'batch_size_model': [64],
-        'learning_rate': [0.001],
-
-        # Recurrent
-        'hidden_sizes_model_rec': [(128,)],  # (500, 500)
-        'batch_size_model_rec': [10],
         'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
         'cell_type': ['lstm'],  # ['lstm', 'gru', 'rnn']
-        'learning_rate_rec': [0.01],
 
         #  Other
         'n_parallel': [1],
     }
 
-    config_debug = config.copy()
-    config_debug['max_path_length'] = [11]
-    #config_debug['reg_str'] = [None]
-    config_debug['num_models'] = [3]
-    config_debug['num_rollouts'] = [6]
-    config_debug['plot_freq'] = [1]
-
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
-    print('================ runnning toy example ================')
-    #run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)

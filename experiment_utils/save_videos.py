@@ -54,6 +54,8 @@ if __name__ == "__main__":
     parser.add_argument('--ignore_done', action='store_true',
                         help='Whether stop animation when environment done or continue anyway')
     parser.add_argument('--stochastic', action='store_true', help='Apply stochastic action instead of deterministic')
+    parser.add_argument('--animated', type=bool, default=False,
+                        help='Set mode to rgb_array if True, else set to human')
     args = parser.parse_args()
 
     # If the snapshot file use tensorflow, do:
@@ -75,11 +77,11 @@ if __name__ == "__main__":
                         policy.switch_to_pre_update()
                     env = data['env']
                     video_filename = pkl_path.split('.')[0] + '.mp4'
-                    if os.path.exists(video_filename):
+                    if True and os.path.exists(video_filename):
                         print(f'{video_filename} is skipped. ')
                     else:
                         print(f'saving to video {video_filename}')
-                        paths = rollout(env, policy, max_path_length=max_path_length, animated=False, speedup=args.speedup,
+                        paths = rollout(env, policy, max_path_length=max_path_length, animated=args.animated, speedup=args.speedup,
                                         video_filename=video_filename, save_video=True, ignore_done=args.ignore_done,
                                         stochastic=args.stochastic, num_rollouts=args.num_rollouts)
                         print('Average Returns: ', np.mean([sum(path['rewards']) for path in paths]))

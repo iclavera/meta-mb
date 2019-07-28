@@ -273,6 +273,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         :return: (batch_size, obs_space_dims)
         """
         original_obs = obs_ph
+
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
         perm = tf.random.shuffle(perm)
@@ -312,6 +313,90 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
         return pred_obs
 
+    def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        if pred_type == 'all':
+            obs_ph = tf.split(obs_ph, self.num_models, axis=0)
+            act_ph = tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    obs = obs_ph[i] if pred_type == 'all' else obs_ph
+                    act = act_ph[i] if pred_type == 'all' else act_ph
+                    in_obs_var = (obs - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=2 * self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+                    # denormalize
+                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        # delta_preds = [(batch_size_per_model, obs_dims)] * num_models
+        reg =  0
+        if pred_type == 'all':
+            if reg_str == 'uncertainty':
+                reg = tf.math.reduce_variance(tf.stack(delta_preds, axis=-1), axis=-1)
+                reg = tf.reduce_sum(reg, axis=1)  # (batch_size_per_model,)
+                assert len(reg.get_shape()) == 1
+
+            delta_preds = tf.concat(delta_preds, axis=0)  # (batch_size_per_model*num_models, obs_dims)
+            pred_obs = original_obs + delta_preds
+        else:
+            delta_preds = tf.stack(delta_preds, axis=-1)  # (batch_size, obs_dims, num_models)
+            if reg_str == 'uncertainty':
+                reg = tf.math.reduce_variance(delta_preds, axis=-1)
+                reg = tf.reduce_sum(reg, axis=1)
+                assert len(reg.get_shape()) == 1
+
+            pred_obs = tf.expand_dims(original_obs, axis=-1) + delta_preds
+            if pred_type == 'mean':
+                pred_obs = tf.reduce_mean(pred_obs, axis=-1)
+            elif pred_type == 'rand':
+                idx = tf.random.uniform(shape=(tf.shape(pred_obs)[0],), minval=0, maxval=self.num_models, dtype=tf.int32)
+                pred_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
+                pred_obs = tf.squeeze(pred_obs, axis=1)
+            else:
+                raise NotImplementedError
+
+        return pred_obs, reg
+
+        # if reg_str is None:
+        #     return pred_obs
+        # else:
+        #     return pred_obs, reg
+
+        # if pred_type == 'mean':
+        #     pred_obs = tf.reduce_mean(pred_obs, axis=-1)
+        # elif pred_type == 'all':
+        #     pass
+        # elif type(pred_type) is int:
+        #     assert 0 <= pred_type < self.num_models
+        #     pred_obs = pred_obs[..., pred_type]
+        # else:
+        #     raise NotImplementedError('pred_type must be one of [mean, all, (int)]')
+
     def predict_batches_sym(self, obs_ph, act_ph):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
@@ -349,10 +434,12 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-        pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        # pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        pred_obs = original_obs + delta_preds
+
         return pred_obs
 
-    def predict(self, obs, act, pred_type='rand', deterministic=False):
+    def predict(self, obs, act, pred_type='rand', deterministic=False, return_infos=False):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -380,6 +467,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             var = np.array(self.f_var_pred(obs, act))
             if not deterministic:
                 delta = np.random.normal(delta, np.sqrt(var))
+            # if return_infos:
+            #     delta_mean = self._denormalize_data(delta)
             delta = self._denormalize_data(delta)
         else:
             obs, act = np.concatenate(obs, axis=0), np.concatenate(act, axis=0)
@@ -391,10 +480,15 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         assert delta.ndim == 3
 
         pred_obs = obs_original[:, :, None] + delta
-        pred_obs = np.clip(pred_obs, -1e2, 1e2)
+        # pred_obs = np.clip(pred_obs, -1e2, 1e2)
 
-        batch_size = delta.shape[0]
+        if return_infos:  # info across all models in the ensemble
+            agent_infos = [
+                dict(mean=mean, std=std) for mean, std in zip(np.mean(pred_obs, axis=2), np.std(pred_obs, axis=2))
+            ]
+
         if pred_type == 'rand':
+            batch_size = delta.shape[0]
             # randomly selecting the prediction of one model in each row
             idx = np.random.randint(0, self.num_models, size=batch_size)
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
@@ -405,11 +499,20 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         elif type(pred_type) is int:
             assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
+            # if return_infos:  # this is info for one specific model in the ensemble
+            #     delta_mean = delta_mean[:, :, pred_type]
+            #     delta_std = np.sqrt(var[:, :, pred_type]) * self.normalization[pred_type]['delta'][1]
+            #     agent_infos = [dict(mean=mean, std=std) for mean, std in zip(obs_original + delta_mean, delta_std)]
+            #     assert len(agent_infos) == pred_obs.shape[0]
+            #     return pred_obs, agent_infos
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
+
+        if return_infos:
+            return pred_obs, agent_infos
         return pred_obs
 
-    def predict_batches(self, obs_batches, act_batches, deterministic=True, return_infos=False):
+    def predict_batches(self, obs_batches, act_batches, deterministic=True):
         """
             Predict the batch of next observations for each model given the batch of current observations and actions for each model
             :param obs_batches: observation batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_obs)
@@ -430,11 +533,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
             delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
             var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if return_infos:
-                # agent_infos = [dict(mean=mean, std=np.sqrt(var)) for mean, var in zip(delta_batches, var_batches)]
-                delta_batches_mean_0 = delta_batches[0] * (self.normalization[0]['delta'][1]+1e-10) + self.normalization[0]['delta'][0]
-                std_batches_0 = np.sqrt(var_batches[0]) * (self.normalization[0]['delta'][1]+1e-10)
-                agent_infos = [dict(mean=delta_batches_mean_0, std=std_batches_0)]
             if not deterministic:
                 delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
             delta_batches = np.array(np.split(delta_batches, self.num_models)).transpose((1, 2, 0))
@@ -443,20 +541,16 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         else:
             delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
             var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if return_infos:
-                agent_infos = [dict(mean=delta_batches[0], std=np.sqrt(var_batches[0]))]
             if not deterministic:
                 delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
 
         assert delta_batches.ndim == 2
 
-        pred_obs_batches = np.clip(obs_batches_original + delta_batches, -1e2, 1e2)
+        # pred_obs_batches = np.clip(obs_batches_original + delta_batches, -1e2, 1e2)
+        pred_obs_batches = obs_batches_original + delta_batches
         assert pred_obs_batches.shape == obs_batches.shape
 
-        if return_infos:
-            return pred_obs_batches, agent_infos
-        else:
-            return pred_obs_batches
+        return pred_obs_batches
 
     def _create_assign_ph(self):
         self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")

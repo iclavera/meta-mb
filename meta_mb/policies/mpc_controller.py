@@ -1,6 +1,5 @@
 from meta_mb.utils.serializable import Serializable
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.policies.distributions.diagonal_gaussian import DiagonalGaussian
 from meta_mb.optimizers.mpc_tau_optimizer import MPCTauOptimizer
 import tensorflow as tf
 import numpy as np
@@ -15,31 +14,31 @@ class MPCController(Serializable):
             num_rollouts=None,
             reward_model=None,
             discount=1,
-            use_cem=False,
-            use_opt=False,
-            use_opt_w_policy=False,
+            method_str='opt_policy',
+            dyn_pred_str='rand',
             initializer_str='uniform',
-            kl_coef=1,
+            reg_coef=1,
+            reg_str=None,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
             num_opt_iters=8,
             opt_learning_rate=1e-3,
+            clip_norm=-1,
             percent_elites=0.1,
             use_reward_model=False,
             alpha=0.1,
             num_particles=20,
-            use_graph=True,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
         self.reward_model = reward_model
         self.discount = discount
-        self.use_cem = use_cem
-        self.use_opt = use_opt
-        self.use_opt_w_policy = use_opt_w_policy
+        self.method_str = method_str
+        self.dyn_pred_str = dyn_pred_str
         self.initializer_str = initializer_str
-        self.kl_coef = kl_coef
+        self.reg_coef = reg_coef
+        self.reg_str = reg_str
         self.n_candidates = n_candidates
         self.horizon = horizon
         self.num_cem_iters = num_cem_iters
@@ -52,7 +51,7 @@ class MPCController(Serializable):
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
-        self.use_graph = use_graph
+        self.clip_norm = clip_norm
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -65,12 +64,9 @@ class MPCController(Serializable):
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
-        assert use_graph
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-        self.optimal_action = None
-        if use_opt_w_policy:
-            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+        if method_str == 'opt_policy':
             self.policy = GaussianMLPPolicy(
                 name='gaussian-mlp-policy',
                 obs_dim=self.obs_space_dims,
@@ -78,10 +74,15 @@ class MPCController(Serializable):
                 hidden_sizes=(64, 64),
                 learn_std=True,
                 hidden_nonlinearity=tf.tanh,  # TODO: tunable?
-                output_nonlinearity=tf.tanh,  # TODO: scale to match action space range later
+                output_nonlinearity=None,  # TODO: scale to match action space range later
+            )
+            self.tau_optimizer = MPCTauOptimizer(
+                max_epochs=num_opt_iters,
+                learning_rate=opt_learning_rate,
+                clip_norm=clip_norm,
             )
             self.build_opt_graph_w_policy()
-        elif use_opt:
+        elif method_str == 'opt_act':
             if initializer_str == 'uniform':
                 self.tau_mean_val = np.random.uniform(
                     low=self.env.action_space.low,
@@ -99,12 +100,18 @@ class MPCController(Serializable):
                 shape=np.shape(self.tau_mean_val),
                 name='tau_mean',
             )
-            self.tau_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
+            self.tau_optimizer = MPCTauOptimizer(
+                max_epochs=num_opt_iters,
+                learning_rate=opt_learning_rate,
+                clip_norm=clip_norm,
+            )
             self.build_opt_graph()
-        elif use_cem:
+        elif method_str == 'cem':
             self.build_cem_graph()
-        else:
+        elif method_str == 'rs':
             self.build_rs_graph()
+        else:
+            raise NotImplementedError('method_str must be in [opt_policy, opt_act, cem, rs]')
 
     @property
     def vectorized(self):
@@ -113,18 +120,36 @@ class MPCController(Serializable):
     def get_action(self, observation):
         if observation.ndim == 1:
             observation = observation[None]
-
         return self.get_actions(observation)
 
-    def get_actions(self, observations, do_grads_plots=False):
-        if self.use_opt_w_policy:
-            actions, tau_mean_val_0, tau_log_std_val_0, kl_0 = self.tau_optimizer.optimize({'obs': observations})
-        elif self.use_opt:
-            actions, tau_mean_val, tau_log_std_val_0, kl_0 = self.tau_optimizer.optimize(
-                {'obs': observations, 'tau_mean': self.tau_mean_val},
-                do_plots=do_grads_plots,
+    def get_actions(self, observations, return_first_info=False, log_grads_for_plot=False):
+        agent_infos = []
+
+        if self.method_str == 'opt_policy':
+            result = self.tau_optimizer.optimize(
+                {'obs': observations},
+                run_extra_result_op=return_first_info,
+                log_grads_for_plot=log_grads_for_plot,
             )
-            tau_mean_val_0 = tau_mean_val[0][0]
+            if return_first_info:
+                actions, neg_returns, reg, mean, std = result
+                agent_infos = [dict(mean=mean, std=std, reg=reg)]
+            else:
+                actions, neg_returns, reg = result
+
+        elif self.method_str == 'opt_act':
+            # info to plot action executed in the fist env (observation)
+            result = self.tau_optimizer.optimize(
+                {'obs': observations, 'tau_mean': self.tau_mean_val},
+                run_extra_result_op=return_first_info,
+                log_grads_for_plot=log_grads_for_plot,
+            )
+            if return_first_info:
+                actions, tau_mean_val, neg_returns, reg, mean, std = result
+                agent_infos = [dict(mean=mean, std=std, reg=reg)]
+            else:
+                actions, tau_mean_val, neg_returns, reg = result
+
             # rotate
             if self.initializer_str == 'uniform':
                 self.tau_mean_val = np.concatenate([
@@ -136,12 +161,14 @@ class MPCController(Serializable):
                     tau_mean_val[1:],
                     np.zeros((1, self.num_envs, self.action_space_dims)),
                 ], axis=0)
+
         else:  # CEM or RS
             sess = tf.get_default_session()
             actions, = sess.run([self.optimal_action], feed_dict={self.obs_ph: observations})
-            return actions, []
+            if return_first_info:
+                agent_infos = [dict(mean=actions[0], std=np.zeros_like(actions[0]), reg=0)]
 
-        return actions, [dict(mean=tau_mean_val_0, std=np.exp(tau_log_std_val_0), kl=kl_0)]
+        return actions, agent_infos
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,
@@ -173,9 +200,6 @@ class MPCController(Serializable):
         # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
 
         for t in range(self.horizon):
-            # dynamics_dist = self.dynamics_model.distribution_info_sym(observation, act[t])
-            # mean, var = dynamics_dist['mean'], dynamics_dist['var']
-            # next_observation = mean + tf.random.normal(shape=tf.shape(mean))*tf.sqrt(var)
             next_observation = self.dynamics_model.predict_sym(observation, act[t])
             assert self.reward_model is None
             rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
@@ -242,6 +266,7 @@ class MPCController(Serializable):
             dtype=tf.float32,
             trainable=True,
         )
+
         log_std_var = tf.get_variable(
             'tau_log_std',
             shape=(1, 1, self.action_space_dims),
@@ -249,112 +274,157 @@ class MPCController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
-        # log_std_var = tf.maximum(log_std_var, np.log(1e-6))
-        old_mean_var = tf.get_variable(
-            'old_tau_mean',
-            shape=(self.horizon, self.num_envs, self.action_space_dims),
-            dtype=tf.float32,
-            trainable=False,
-        )
-        old_log_std_var = tf.get_variable(
-            'old_tau_log_std',
-            shape=(1, 1, self.action_space_dims),
-            dtype=tf.float32,
-            trainable=False,
-        )
-        init_ops = [
-            tf.assign(mean_var, self.tau_mean_ph),
-            tf.assign(old_mean_var, self.tau_mean_ph),
-            tf.assign(old_log_std_var, log_std_var),
-        ]
-        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
-        tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
+        log_std = tf.maximum(log_std_var, np.log(5e-2))  # FIXME: hardcoded
+
+        tau = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std))
+        # tau = tf.clip_by_value(tau, self.env.action_space.low, self.env.action_space.high)
+        tau = tf.tanh(tau)  # FIXME: scale to (self.env.action_space.low, high)
         # TODO: rather than clipping, add penalty to actions outside valid range
-        returns = tf.zeros(shape=(self.num_envs,))
         obs = self.obs_ph
-        for t in range(self.horizon):
-            next_obs = self.dynamics_model.predict_batches_sym(obs, tau[t])
-            rewards = self.unwrapped_env.tf_reward(obs, tau[t], next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
+        # returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        returns, reg = 0, 0
 
-        kl = tf.reduce_sum(DiagonalGaussian(-1).kl_sym(
-            old_dist_info_vars=dict(
-                mean=tf.reshape(old_mean_var, [-1, self.action_space_dims]),
-                log_std=tf.reshape(old_log_std_var, [-1, self.action_space_dims]),
-            ),
-            new_dist_info_vars=dict(
-                mean=tf.reshape(mean_var, [-1, self.action_space_dims]),
-                log_std=tf.reshape(log_std_var, [-1, self.action_space_dims]),
-            ),
-        ), axis=0)/self.num_envs  # to match returns = reduce_sum(returns)/self.num_envs
+        if not self.reg_str and self.dyn_pred_str == 'rand':   # transition ~ f^(i) where i = 1...T, f^(i) randomly picked
+            for t in range(self.horizon):
+                acts = tau[t]
+                next_obs = self.dynamics_model.predict_sym(obs, acts)
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+        else:  # compute transition ~ f_j for all f_j in the model ensemble
+            if self.dyn_pred_str == 'all':
+                obs = [obs for _ in range(self.dynamics_model.num_models)]
+                obs = tf.concat(obs, axis=0)
+            for t in range(self.horizon):
+                acts = tau[t]
+                if self.dyn_pred_str == 'all':
+                    acts = [acts for _ in range(self.dynamics_model.num_models)]
+                    acts = tf.concat(acts, axis=0)
+                # if self.reg_str == 'uncertainty':
+                #     pred_obs = self.dynamics_model.predict_sym_all(
+                #         obs, acts, same_obs=(t==0), same_act=True, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                #     ) # (num_envs, obs_space_dims, num_models)
+                #     uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
+                #     uncertainty = tf.reduce_sum(uncertainty, axis=1)
+                #     reg += uncertainty
+                #     # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
+                #     idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
+                #     next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
+                #     next_obs = tf.squeeze(next_obs, axis=1)
+                # else:
+                #     if self.dyn_pred_str == 'batches':
+                #         next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+                #     elif self.dyn_pred_str == 'rand':
+                #         next_obs = self.dynamics_model.predict_sym(obs, acts)
+                #     else:
+                #         next_obs = self.dynamics_model.predict_sym_all(obs, acts, pred_type=self.dyn_pred_str)
 
-        neg_returns = tf.reduce_mean(-returns, axis=0)
+                next_obs, one_step_reg = self.dynamics_model.predict_sym_all(
+                    obs, acts, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                )
+                reg += tf.reduce_mean(one_step_reg, axis=0)
+
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+
+        # build loss = total_cost + regularization
+        # neg_returns = tf.reduce_mean(-returns, axis=0)
+        # reg = tf.reduce_mean(reg, axis=0)
+        neg_returns = -returns
+
+        result_op = [tau[0], mean_var, neg_returns, self.reg_coef*reg]
+        extra_result_op = [mean_var[0][0], tf.exp(log_std_var[0][0])]
 
         self.tau_optimizer.build_graph(
-            loss=neg_returns+self.kl_coef*kl,
-            init_op=init_ops,
+            loss=neg_returns+self.reg_coef*reg,
+            init_op=[tf.assign(mean_var, self.tau_mean_ph)],
             var_list=[mean_var, log_std_var],
-            result_op=[tau[0], mean_var, log_std_var[0][0], kl],
+            result_op=result_op,
+            extra_result_op=extra_result_op,
             input_ph_dict={'obs': self.obs_ph, 'tau_mean': self.tau_mean_ph},
         )
 
-    def build_opt_graph_w_policy(self):
-        assert self.policy is not None
-        returns = tf.zeros(shape=(self.num_envs,))
-        obs = self.obs_ph
-        old_mean_var = tf.get_variable(
-            'old_policy_mean',
-            shape=(self.num_envs, self.action_space_dims),
-            dtype=tf.float32,
-            trainable=False,
-        )
-        old_log_std_var = tf.get_variable(
-            'old_policy_log_std',
-            shape=(1, self.action_space_dims),
-            dtype=tf.float32,
-            trainable=False,
-        )
-        # lmbda = tf.get_variable(
-        #     'lambda',
-        #     shape=(),
-        #     initializer=tf.initializers.ones,
-        #     dtype=tf.float32,
-        #     trainable=True,
-        # )
-        old_dist_policy = self.policy.distribution_info_sym(obs)
-        init_op = [
-            tf.assign(old_mean_var, old_dist_policy['mean']),
-            tf.assign(old_log_std_var, old_dist_policy['log_std']),
-        ]
-        result_op = None
-        p_info_dict = None
-        for t in range(self.horizon):
-            dist_policy = self.policy.distribution_info_sym(obs)
-            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
-            # TODO: penalize rather than clipping
-            next_obs = self.dynamics_model.predict_batches_sym(obs, act)
-            rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
-            returns += self.discount ** t * rewards
+    def predict_open_loop(self, init_obs, tau):
+        obs_hall, obs_hall_mean, obs_hall_std, reward_hall = [], [], [], []
+        obs = init_obs
+        for action in tau:
+            next_obs, agent_info = self.dynamics_model.predict(
+                obs[None],
+                action[None],
+                pred_type='rand',
+                deterministic=False,
+                return_infos=True,
+            )
+            next_obs, agent_info = next_obs[0], agent_info[0]
+            obs_hall.append(next_obs)
+            obs_hall_mean.append(agent_info['mean'])
+            obs_hall_std.append(agent_info['std'])
+            reward_hall.extend(self.env.reward(obs[None], action[None], next_obs[None]))
             obs = next_obs
-            if t == 0:
-                result_op = [act, dist_policy['mean'][0], dist_policy['log_std'][0]]
-                p_info_dict = dist_policy
+        return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
 
-        kl = tf.reduce_mean(self.policy.distribution.kl_sym(
-            p_info_dict,
-            dict(mean=old_mean_var, log_std=old_log_std_var),
-        ), axis=0)
+    def build_opt_graph_w_policy(self):
+        # returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
+        returns, reg = 0, 0
+        obs = self.obs_ph
 
-        neg_returns = tf.reduce_mean(-returns, axis=0)
+
+        if not self.reg_str and self.dyn_pred_str == 'rand':   # transition ~ f^(i) where i = 1...T, f^(i) randomly picked
+            for t in range(self.horizon):
+                dist_policy = self.policy.distribution_info_sym(obs)
+                acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+                acts = tf.tanh(acts)
+                if t == 0:
+                    result_op = [acts]
+                    extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
+
+                next_obs = self.dynamics_model.predict_sym(obs, acts)
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+        else:  # compute transition ~ f_j for all f_j in the model ensemble
+            if self.dyn_pred_str == 'all':
+                obs = [obs for _ in range(self.dynamics_model.num_models)]
+                obs = tf.concat(obs, axis=0)
+            for t in range(self.horizon):
+                dist_policy = self.policy.distribution_info_sym(obs)
+                acts, dist_policy = self.policy.distribution.sample_sym(dist_policy)
+                acts = tf.tanh(acts)
+                if t == 0:
+                    result_op = [acts]
+                    extra_result_op = [dist_policy['mean'][0], tf.exp(dist_policy['log_std'][0])]
+
+                if self.dyn_pred_str == 'all':
+                    acts = [acts for _ in range(self.dynamics_model.num_models)]
+                    acts = tf.concat(acts, axis=0)
+
+                next_obs, one_step_reg = self.dynamics_model.predict_sym_all(
+                    obs, acts, reg_str=self.reg_str, pred_type=self.dyn_pred_str,
+                )
+                reg += tf.reduce_mean(one_step_reg, axis=0)
+
+                rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
+                returns += self.discount ** t * tf.reduce_mean(rewards, axis=0)
+                obs = next_obs
+
+        # build loss = total_cst + regularization
+        # neg_returns = tf.reduce_mean(-returns, axis=0)
+        # if self.reg_str == 'uncertainty' or self.reg_str is None:
+        #     reg = tf.reduce_mean(reg, axis=0)
+        # else:
+        #     raise NotImplementedError
+        neg_returns = -returns
+
+        result_op += [neg_returns, self.reg_coef*reg]
 
         self.tau_optimizer.build_graph(
-            loss=neg_returns+self.kl_coef*kl,
+            loss=neg_returns+self.reg_coef*reg,
             var_list=list(self.policy.get_params().values()),
-            init_op=init_op,
-            result_op=result_op + [kl],
+            result_op=result_op,
+            extra_result_op=extra_result_op,
             input_ph_dict={'obs': self.obs_ph},
+            with_policy=True,
             #lmbda=lmbda,
             #loss_dual=tf.reduce_mean(-lmbda_kl, axis=0),
         )
@@ -421,11 +491,26 @@ class MPCController(Serializable):
         returns = returns.reshape(m, n)
         return cand_a[range(m), np.argmax(returns, axis=1)]
 
+    def plot_grads(self):
+        if self.method_str in ['opt_act', 'opt_policy']:
+            self.tau_optimizer.plot_grads()
+
     def get_params_internal(self, **tags):
         return []
 
     def reset(self, dones=None):
-        pass
+        if self.method_str == 'opt_act':
+            assert len(dones) == self.num_envs
+            if self.initializer_str == 'uniform':
+                self.tau_mean_val = np.random.uniform(
+                    low=self.env.action_space.low,
+                    high=self.env.action_space.high,
+                    size=(self.horizon, self.num_envs, self.action_space_dims),
+                )
+            elif self.initializer_str == 'zeros':
+                self.tau_mean_val = np.zeros(
+                    (self.horizon, self.num_envs, self.action_space_dims),
+                )
 
     def log_diagnostics(*args):
         pass

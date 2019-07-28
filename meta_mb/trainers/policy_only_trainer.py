@@ -33,7 +33,9 @@ class PolicyOnlyTrainer(object):
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
-            fit_model = True
+            fit_model = True,
+            plot_freq=-1,
+            deterministic_policy=False,
     ):
         self.env = env
         self.sampler = sampler
@@ -44,6 +46,8 @@ class PolicyOnlyTrainer(object):
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
+        self.plot_freq = plot_freq
+        self.deterministic_policy = deterministic_policy
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -75,20 +79,22 @@ class PolicyOnlyTrainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=False)
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=self.deterministic_policy,
+                                                            plot_first_rollout=(self.plot_freq > 0) and (itr % self.plot_freq == 0))
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
-                logger.log("Processing environment samples...")
-
-                # first processing just for logging purposes
-                time_env_samp_proc = time.time()
-                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                              log=True, log_prefix='EnvTrajs-')
-                logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                 if self.fit_model:
 
                     ''' --------------- fit dynamics model --------------- '''
+
+                    logger.log("Processing environment samples...")
+
+                    # first processing just for logging purposes
+                    time_env_samp_proc = time.time()
+                    samples_data = self.dynamics_sample_processor.process_samples(env_paths,
+                                                                                  log=True, log_prefix='EnvTrajs-')
+                    logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                     time_fit_start = time.time()
 
@@ -107,11 +113,11 @@ class PolicyOnlyTrainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
-                logger.log("Saving snapshot...")
-                params = self.get_itr_snapshot(itr)
+                # logger.log("Saving snapshot...")
+                # params = self.get_itr_snapshot(itr)
                 self.log_diagnostics(env_paths, '')
-                logger.save_itr_params(itr, params)
-                logger.log("Saved")
+                # logger.save_itr_params(itr, params)
+                # logger.log("Saved")
 
                 logger.dumpkvs()
                 if itr == 0:

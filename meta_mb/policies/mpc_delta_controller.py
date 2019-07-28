@@ -18,9 +18,11 @@ class MPCDeltaController(Serializable):
             use_opt_w_policy=False,
             initializer_str='uniform',
             reg_coef=1,
+            reg_str=None,
             horizon=10,
             num_opt_iters=8,
             opt_learning_rate=1e-3,
+            clip_norm=-1,
             percent_elites=0.1,
             alpha=0.1,
             num_particles=20,
@@ -32,6 +34,7 @@ class MPCDeltaController(Serializable):
         self.use_opt_w_policy = use_opt_w_policy
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
+        self.reg_str = reg_str
         self.horizon = horizon
         self.num_opt_iters = num_opt_iters
         self.opt_learning_rate = opt_learning_rate
@@ -54,30 +57,20 @@ class MPCDeltaController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.num_envs, self.obs_space_dims), name='obs')
-        self.optimal_action = None
-        if use_opt_w_policy:
-            self.deltas_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
-            self.delta_policy = GaussianMLPPolicy(
-                name='gaussian-mlp-policy',
-                obs_dim=self.obs_space_dims,
-                action_dim=self.action_space_dims,
-                hidden_sizes=(64, 64),
-                learn_std=True,
-                hidden_nonlinearity=tf.tanh,  # TODO: tunable?
-                output_nonlinearity=tf.tanh,  # TODO: scale to match action space range later
-            )
-            self.build_opt_graph_w_policy()
-        else:
-            self.deltas_mean_val = np.zeros(
-                (self.horizon, self.num_envs, self.action_space_dims),
-            )
-            self.deltas_mean_ph = tf.placeholder(
-                dtype=tf.float32,
-                shape=np.shape(self.deltas_mean_val),
-                name='deltas_mean',
-            )
-            self.deltas_optimizer = MPCTauOptimizer(max_epochs=self.num_opt_iters)
-            self.build_opt_graph()
+        self.deltas_mean_val = np.zeros(
+            (self.horizon, self.num_envs, self.action_space_dims),
+        )
+        self.deltas_mean_ph = tf.placeholder(
+            dtype=tf.float32,
+            shape=np.shape(self.deltas_mean_val),
+            name='deltas_mean',
+        )
+        self.deltas_optimizer = MPCTauOptimizer(
+            max_epochs=num_opt_iters,
+            learning_rate=opt_learning_rate,
+            clip_norm=clip_norm,
+        )
+        self.build_opt_graph()
 
     @property
     def vectorized(self):
@@ -89,20 +82,27 @@ class MPCDeltaController(Serializable):
 
         return self.get_actions(observation)
 
-    def get_actions(self, observations):
-        if self.use_opt_w_policy:
-            actions, tau_mean_val_0 = self.deltas_optimizer.optimize({'obs': observations})
+    def get_actions(self, observations, return_first_info=False, log_grads_for_plot=False):
+        # info to plot action executed in the fist env (observation)
+        result = self.deltas_optimizer.optimize(
+            {'obs': observations, 'deltas_mean': self.deltas_mean_val},
+            run_extra_result_op=return_first_info,
+            log_grads_for_plot=log_grads_for_plot,
+        )
+        if return_first_info:
+            actions, deltas_mean_val, neg_returns, reg, mean, std = result
+            agent_infos = [dict(mean=mean, std=std, reg=reg)]
         else:
-            actions, deltas_mean_val, neg_returns, kl = self.deltas_optimizer.optimize(
-                {'obs': observations, 'deltas_mean': self.deltas_mean_val},
-            )
-            # rotate
-            self.deltas_mean_val = np.concatenate([
-                deltas_mean_val[1:],
-                np.zeros((1, self.num_envs, self.action_space_dims)),
-            ], axis=0)
+            actions, deltas_mean_val, neg_returns, reg = result
+            agent_infos = []
 
-        return actions, []
+        # rotate
+        self.deltas_mean_val = np.concatenate([
+            deltas_mean_val[1:],
+            np.zeros((1, self.num_envs, self.action_space_dims)),
+        ], axis=0)
+
+        return actions, agent_infos
 
     def get_random_action(self, n):
         return np.random.uniform(low=self.env.action_space.low,
@@ -119,8 +119,8 @@ class MPCDeltaController(Serializable):
         return actions
 
     def build_opt_graph(self):
-        actions_first_var = tf.get_variable(
-            'actions_first',
+        prev_actions = tf.get_variable(
+            'prev_actions',
             shape=(self.num_envs, self.action_space_dims),
             dtype=tf.float32,
             trainable=False,
@@ -131,6 +131,7 @@ class MPCDeltaController(Serializable):
             dtype=tf.float32,
             trainable=True,
         )
+
         log_std_var = tf.get_variable(
             'deltas_log_std',
             shape=(1, 1, self.action_space_dims),
@@ -138,59 +139,60 @@ class MPCDeltaController(Serializable):
             initializer=tf.initializers.ones,
             trainable=True,
         )
+
+        optimal_actions_mean = prev_actions + mean_var[0]
+        optimal_actions_var = tf.exp(log_std_var[0])
         # log_std_var = tf.maximum(log_std_var, np.log(1e-6))
+
         deltas = mean_var + tf.multiply(tf.random.normal(tf.shape(mean_var)), tf.exp(log_std_var))
-        acts, obs = actions_first_var, self.obs_ph
-        returns = tf.zeros(shape=(self.num_envs,))
+        acts, obs = prev_actions, self.obs_ph
+        returns, reg = tf.zeros(shape=(self.num_envs,)), tf.zeros(shape=(self.num_envs,))
         for t in range(self.horizon):
             acts = acts + deltas[t]
             acts = tf.clip_by_value(acts, self.env.action_space.low, self.env.action_space.high)
             # TODO: rather than clipping, add penalty to actions outside valid range
-            next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+
+            if self.reg_str == 'uncertainty':
+                pred_obs = self.dynamics_model.predict_sym_all(obs, acts)  # (num_envs, obs_space_dims, num_models)
+                uncertainty = tf.math.reduce_variance(pred_obs, axis=-1)
+                uncertainty = tf.reduce_sum(uncertainty, axis=1)
+                reg += uncertainty
+                # batch_gather params = (num_envs, num_models, obs_space_dims), indices = (num_envs, 1)
+                idx = tf.random.uniform(shape=(self.num_envs,), minval=0, maxval=self.dynamics_model.num_models, dtype=tf.int32)
+                next_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
+                next_obs = tf.squeeze(next_obs, axis=1)
+            else:
+                next_obs = self.dynamics_model.predict_batches_sym(obs, acts)
+
             rewards = self.unwrapped_env.tf_reward(obs, acts, next_obs)
             returns += self.discount ** t * rewards
             obs = next_obs
 
+        # build loss = total_cost + regularization
         neg_returns = tf.reduce_mean(-returns, axis=0)
-        reg = tf.norm(deltas)/self.num_envs
+
+        if self.reg_str == 'norm':
+            reg = tf.norm(deltas) / self.num_envs
+        elif self.reg_str == 'uncertainty' or self.reg_str is None:
+            reg = tf.reduce_mean(reg, axis=0)
+        else:
+            raise NotImplementedError
+
+        with tf.control_dependencies([optimal_actions_mean]):
+            result_op = [tf.assign_add(prev_actions, deltas[0]), mean_var, neg_returns, reg]
+        extra_result_op = [optimal_actions_mean[0], optimal_actions_var[0]]
 
         self.deltas_optimizer.build_graph(
             loss=neg_returns+self.reg_coef*reg,
             init_op=[tf.assign(mean_var, self.deltas_mean_ph)],
             var_list=[mean_var, log_std_var],
-            result_op=[tf.assign_add(actions_first_var, deltas[0]), mean_var, neg_returns, reg],
+            result_op=result_op,
+            extra_result_op=extra_result_op,
             input_ph_dict={'obs': self.obs_ph, 'deltas_mean': self.deltas_mean_ph},
         )
 
-    def build_opt_graph_w_policy(self):
-        assert self.policy is not None
-        returns = tf.zeros(shape=(self.num_envs,))
-        obs = self.obs_ph
-        for t in range(self.horizon):
-            dist_policy = self.delta_policy.distribution_info_sym(obs)
-            act, dist_policy = self.policy.distribution.sample_sym(dist_policy)
-            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
-            # TODO: penalize rather than clipping
-            next_obs = self.dynamics_model.predict_batches_sym(obs, act)
-            rewards = self.unwrapped_env.tf_reward(obs, act, next_obs)
-            returns += self.discount ** t * rewards
-            obs = next_obs
-            if t == 0:
-                result_op = [act, dist_policy['mean'][0], dist_policy['log_std'][0]]
-                p_info_dict = dist_policy
-
-        neg_returns = tf.reduce_mean(-returns, axis=0)
-
-        self.tau_optimizer.build_graph(
-            loss=neg_returns+self.kl_coef*kl,
-            var_list=list(self.policy.get_params().values()),
-            init_op=init_op,
-            result_op=result_op + [kl],
-            input_ph_dict={'obs': self.obs_ph},
-            #lmbda=lmbda,
-            #loss_dual=tf.reduce_mean(-lmbda_kl, axis=0),
-        )
-
+    def plot_grads(self):
+        self.deltas_optimizer.plot_grads()
 
     def get_params_internal(self, **tags):
         return []

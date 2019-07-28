@@ -33,7 +33,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
         path_length = 0
         if render:
             _ = env.render(mode)
-            env.viewer.cam.distance = wrapped_env.model.stat.extent * 0.5
+            env.viewer.cam.distance = wrapped_env.model.stat.extent * 1 # 0.5
             env.viewer.cam.trackbodyid = 0
             env.viewer.cam.type = 1
 
