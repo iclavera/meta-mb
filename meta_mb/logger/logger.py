@@ -332,6 +332,7 @@ class Logger(object):
     # Logging API, forwarded
     # ----------------------------------------
     def logkv(self, key, val):
+        # log('current dir:',  self.dir)
         self.name2val[key] = val
 
     def logkv_mean(self, key, val):

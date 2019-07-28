@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "STEVE-9"
+EXP_NAME = "Ant-Steve-T1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -110,6 +110,8 @@ def run_experiment(**kwargs):
 			q_target_type=kwargs['q_target_type'],
 			H=kwargs['H'],
 			model_used_ratio=kwargs['model_used_ratio'],
+			experiment_name=EXP_NAME,
+			exp_dir=exp_dir,
         )
 
         trainer = Trainer(
@@ -143,9 +145,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [11, 12],
+        'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -168,17 +170,18 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[4],
-		'q_target_type': [0],
-		'num_actions_per_next_observation': [0],
+		'q_functioin_type':[5],
+		'q_target_type': [1],
+		'num_actions_per_next_observation': [5, 3],
 		'epoch_length': [1000],
-        'T': [0, 2, 3, 5],
-		'H': [0],
+        'T': [1,2,3],
+		'H': [2,5],
 		'reward_scale': [1],
-		'target_entropy': [-3, -6],
-		'num_models': [8],
-		'model_used_ratio': [0.5, 0.75],
+		'target_entropy': [-4,-8],
+		'num_models': [2],
+		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
+
 
         # Problem Conf
         'discount': [0.99],

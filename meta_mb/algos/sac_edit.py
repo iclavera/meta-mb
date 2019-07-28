@@ -52,6 +52,8 @@ class SAC_MB(Algo):
             q_target_type=0,
             H=0,
             model_used_ratio=1.0,
+            experiment_name=None,
+            exp_dir=None,
             **kwargs
     ):
         """
@@ -115,12 +117,19 @@ class SAC_MB(Algo):
         self.T = T
         self.H = H
         self.q_target_type = q_target_type
+        self.experiment_name = experiment_name
+        self.exp_dir = exp_dir
 
         self.build_graph()
 
     def build_graph(self):
         self.training_ops = {}
         self._init_global_step()
+        self.confidence_lst = []
+        self.graph_step = 0
+        self.rgb_lst = [tf.constant([255,0,0]),tf.constant([255, 128, 0]),tf.constant([255, 255, 0]),
+                    tf.constant([0, 255, 128]), tf.constant([0, 191, 255]), tf.constant([128, 0, 255])][:self.H + 1]
+        self.rgb_lst = tf.stack(self.rgb_lst)
         obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
                                                                                                   recurrent=False,
                                                                                                   next_obs=True)
@@ -200,7 +209,7 @@ class SAC_MB(Algo):
         done = done[:,None]
         return done
 
-    def _get_q_target(self):
+    def _get_q_target(self, time_step = 0):
         next_observations_ph = self.op_phs_dict['next_observations']
         dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
         next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
@@ -269,6 +278,37 @@ class SAC_MB(Algo):
             target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
             target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
             Q_target = self.q_target = tf.reduce_sum(target_means * target_confidence, 0)
+            # self.save_H_graph = True
+            # self.graph_step += 1
+            # if self.save_H_graph and self.graph_step % 1 == 0:
+            #     taget_confidence = tf.reduce_sum(target_confidence, axis = 1)
+            #     target_confidence = tf.reshape(target_confidence, [-1])
+            #     target_confidence = target_confidence / tf.reduce_sum(target_confidence)
+            #     height = 480
+            #     heights = tf.cast(height * target_confidence, tf.int32)
+            #     color_list = []
+            #     count = 0
+            #     for i in range(self.H):
+            #         color = self.rgb_lst[i]
+            #         color = tf.expand_dims(color, axis = 0)
+            #         color_block = tf.tile(color, [heights[i], 1])
+            #         color_list.append(color_block)
+            #         count += color_block.shape[0]
+            #     error = height - count
+            #     if error > 0:
+            #         color  = self.rgb_list[self.H]
+            #         color = tf.expand_dims(color, axis = 0)
+            #         color_block = tf.tile(color, [error, 1])
+            #         color_list.append(color_block)
+            #     colors = tf.reshape(tf.stack(color_list), [-1, 3])
+            #     self.confidence_lst.append(colors[:height])
+            #     colors = tf.stack(self.confidence_lst)
+            #     sinogram = tf.cast(colors, tf.uint8)
+            #     sinogram = tf.image.encode_jpeg(sinogram, quality=100)
+            #     if self.exp_dir:
+            #         writer = tf.write_file(self.exp_dir+'/H_IMAGE.jpg', sinogram)
+            #         self.training_ops.update({'H_IMAGE': writer})
+
             return tf.stop_gradient(Q_target)
 
 
@@ -429,8 +469,8 @@ class SAC_MB(Algo):
             rollout_frames = self.T+1
             q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
             num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
-            # indices = tf.random_uniform([rollout_frames * num_models], minval = 0, maxval = self.dynamics_model.num_models, dtype = tf.int32)
 
+            """randomly choose a partion of the models. """
             indices_lst = []
             for _ in range(rollout_frames):
                 indices = tf.range(self.dynamics_model.num_models)
@@ -466,6 +506,7 @@ class SAC_MB(Algo):
                 rewards = self.training_environment.tf_reward(obs, actions, next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
                 dones = tf.cast(self.termination_fn(obs, actions, next_observation), rewards.dtype)
+
                 if i == 0 :
                     reward_values = [(self.discount**(i)) * self.reward_scale * rewards * (1 - dones) for _ in range(2)]
                 else:
@@ -477,6 +518,66 @@ class SAC_MB(Algo):
             next_q_values = [tf.reduce_sum(value, axis = 1)/self.num_actions_per_next_observation for value in next_q_values]
             q_values_var = [reward_values[j] + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+
+        elif self.q_functioin_type == 6:
+            assert self.T >= 0
+            obs = observations_ph
+            actions = actions_var
+            q_values = []
+            for i in range(self.T+1):
+                next_observation = self.dynamics_model.predict_sym(obs, actions)
+                dist_info_sym = self.policy.distribution_info_sym(next_observation)
+                next_actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+
+                expanded_obs = tf.tile(obs, [self.num_actions_per_next_observation, 1])
+                dist_info_sym = self.policy.distribution_info_sym(expanded_obs)
+                next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+
+                expanded_obs = tf.tile(expanded_obs, [self.dynamics_model.num_models, 1])
+                expanded_actions = tf.tile(next_actions_var, [self.dynamics_model.num_models, 1])
+                expanded_next_observation = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
+                
+                dist_info_sym = self.policy.distribution_info_sym(expanded_next_observation)
+                expanded_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
+                rewards = tf.expand_dims(rewards, axis=-1)
+                dones = tf.cast(self.termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
+                if i == 0 :
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
+                else:
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
+                next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+                obs, actions = next_observation, next_actions_var
+                q_values.append(min_q_val_var)
+            q_values = tf.stack(q_values)
+            rollout_frames = self.T+1
+            q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
+            num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
+
+            """randomly choose a partion of the models. """
+            indices_lst = []
+            for _ in range(rollout_frames):
+                indices = tf.range(self.dynamics_model.num_models)
+                indices = tf.random.shuffle(indices)
+                indices_lst.append(indices[:num_models])
+            indices = tf.stack(indices_lst)
+            indices = tf.reshape(indices, [-1])
+            rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
+            indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
+            indices = tf.concat([rollout_len_indices, indices], axis = 1)
+            q_values = tf.gather_nd(q_values, indices)
+            q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
+
+
+            target_means, target_variances = tf.nn.moments(q_values, 1)
+            target_confidence = 1./(target_variances + 1e-8)
+            target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
+            target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
+            self.confidence = target_confidence
+            min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
 
         if self.reparameterize:
             policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
