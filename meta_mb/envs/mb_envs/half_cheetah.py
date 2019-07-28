@@ -49,7 +49,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_model_hard(self):
+    def reset_hard(self):
+        self.sim.reset()
         qpos = self.init_qpos
         qvel = self.init_qvel
         self.set_state(qpos, qvel)
@@ -57,11 +58,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def reset_from_obs_hard(self, obs):
         nq, nv = self.model.nq, self.model.nv
-        print(obs)
-        print(nq, nv)
         self.sim.reset()
         qpos = self.init_qpos
-        print(qpos)
         qpos[1:] = obs[:nq-1]
         qvel = obs[nq-1:]
         self.set_state(qpos, qvel)

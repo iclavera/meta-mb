@@ -36,7 +36,6 @@ class Sampler(BaseSampler):
             n_parallel=1,
             dyn_pred_str=None,
             vae=None,
-            ground_truth=False,
     ):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
@@ -61,10 +60,8 @@ class Sampler(BaseSampler):
         pass
 
     def obtain_samples_ground_truth(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
-        print(plot_first_rollout)
-        plot_first_rollout = True  # FIXME
         policy = self.policy
-        policy.reset(dones=[True] * self.vec_env.num_envs)
+        # policy.reset(dones=[True] * self.vec_env.num_envs)
 
         rollouts, returns_array, grad_norm_array, avg_rollout_norm = policy.get_rollouts(
             observations=None, deterministic=deterministic, plot_info=True, plot_first_rollout=plot_first_rollout
@@ -92,7 +89,7 @@ class Sampler(BaseSampler):
         """
 
         if self.ground_truth:
-            return self.obtain_samples_ground_truth(log, log_prefix, deterministic, plot_first_rollout)
+            return self.obtain_samples_ground_truth(log, log_prefix, deterministic=deterministic, plot_first_rollout=plot_first_rollout)
 
         # initial setup / preparation
         self._global_step += 1

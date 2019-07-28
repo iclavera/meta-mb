@@ -1,6 +1,6 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.gt_mpc_controller import GTMPCController
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.gt_sampler import GTSampler
 from meta_mb.dynamics.gt_dynamics import GTDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
@@ -70,14 +70,13 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
         )
 
-        sampler = Sampler(
+        sampler = GTSampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=config['max_path_length'],
             n_parallel=config['n_parallel'],
             dyn_pred_str=config['dyn_pred_str'],
-            ground_truth=(config['controller_str']=='gt'),
         )
 
         algo = PolicyOnlyTrainer(
@@ -104,39 +103,39 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [False],
-        'plot_freq': [1],
+        'plot_freq': [10],
 
         # Problem
         # 'env': [InvertedPendulumEnv],
-        'env': [InvertedPendulumEnv],
-        'max_path_length': [200],
+        'env': [HalfCheetahEnv],# [InvertedPendulumEnv],
+        'max_path_length': [100],
         'normalize': [False],
-        'n_itr': [101],
+        'n_itr': [401],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros',], #['uniform', 'zeros'],
+        'initializer_str': ['uniform',], #['uniform', 'zeros'],
         'reg_coef': [0.1], #[1, 0],
         'reg_str': ['uncertainty'],
         'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
-        'dyn_pred_str': ['all', 'mean', 'rand'],  # 'mean', 'rand', 'all'
-        'horizon': [15,], # Tau
+        'dyn_pred_str': ['all'],  # 'mean', 'rand', 'all'
+        'horizon': [20,], # Tau
 
         'num_opt_iters': [20,], #20, 40,],
-        'opt_learning_rate': [1e-3,], #1e-2],
+        'opt_learning_rate': [1e-6,], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
-        'eps': [1e-6],
+        'eps': [1e-5],
         'deterministic_policy': [True],
 
         'n_candidates': [1000], # K
         'num_cem_iters': [5],
 
         # Training
-        'num_rollouts': [20],  # number of experts
+        'num_rollouts': [6],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
-        'initial_random_samples': [True],
+        'initial_random_samples': [False],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
@@ -158,7 +157,7 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [5],
+        'n_parallel': [8],
     }
 
     config_debug = config.copy()

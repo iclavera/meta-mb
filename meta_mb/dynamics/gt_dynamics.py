@@ -114,8 +114,12 @@ class GTDynamics():
         # return derivative, returns
         return self.deriv_env.get_derivative(tau, init_obs)
 
-    def plot_rollout(self, tau, global_step):
-        self._env.reset_hard()
+    def plot_rollout(self, tau, init_obs, global_step):
+        if init_obs is None:
+            self._env.reset_hard()
+        else:
+            self._env.reset_hard_from_obs(init_obs)
+
         obs_array, reward_array, act_norm_array = [], [], []
         for act in tau:
             next_obs, reward, _, _ = self._env.step(act)
@@ -159,8 +163,6 @@ class GTDynamics():
             os.makedirs(self.save_dir, exist_ok=True)
         plt.savefig(os.path.join(self.save_dir, f'{global_step}.png'))
         logger.log('plt saved to', os.path.join(self.save_dir, f'{global_step}.png'))
-
-
 
 def _compute_returns(vec_env, tau, init_obs=None):
     """
