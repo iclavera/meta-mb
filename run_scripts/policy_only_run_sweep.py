@@ -188,8 +188,8 @@ if __name__ == '__main__':
         'dyn_pred_str': ['all', 'mean', 'rand'],  # 'mean', 'rand', 'all'
         'horizon': [15,], # Tau
 
-        'num_opt_iters': [20,], #20, 40,],
-        'opt_learning_rate': [1e-3,], #1e-2],
+        'num_opt_iters': [50,], #20, 40,],
+        'opt_learning_rate': [1e-5, 1e-4], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
 
         'n_candidates': [1000], # K

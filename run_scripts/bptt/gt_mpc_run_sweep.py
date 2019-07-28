@@ -23,9 +23,9 @@ def run_experiment(**config):
         repr += 'ip'
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
-    # repr += '-reg-' + str(config['reg_coef'])
-    # if config['reg_str'] is not None:
-    #     repr += config['reg_str']
+    repr += '-reg-' + str(config['reg_coef'])
+    if config['reg_str'] is not None:
+        repr += config['reg_str']
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -103,36 +103,36 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [False],
-        'plot_freq': [10],
+        'plot_freq': [1],
 
         # Problem
         # 'env': [InvertedPendulumEnv],
         'env': [HalfCheetahEnv],# [InvertedPendulumEnv],
-        'max_path_length': [100],
+        'max_path_length': [80],
         'normalize': [False],
         'n_itr': [401],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['uniform',], #['uniform', 'zeros'],
-        'reg_coef': [0.1], #[1, 0],
-        'reg_str': ['uncertainty'],
+        'initializer_str': ['zeros',], #['uniform', 'zeros'],
+        'reg_coef': [0.05, 0.1, 0.2], #[1, 0],
+        'reg_str': ['poly'], #['scale', 'poly'],
         'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # 'mean', 'rand', 'all'
-        'horizon': [20,], # Tau
+        'horizon': [80,], # Tau
 
-        'num_opt_iters': [20,], #20, 40,],
-        'opt_learning_rate': [1e-6,], #1e-2],
+        'num_opt_iters': [50,], #20, 40,],
+        'opt_learning_rate': [1e-4, 1e-3,], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
-        'eps': [1e-5],
+        'eps': [1e-4, 1e-3],
         'deterministic_policy': [True],
 
         'n_candidates': [1000], # K
         'num_cem_iters': [5],
 
         # Training
-        'num_rollouts': [6],  # number of experts
+        'num_rollouts': [3],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [False],
@@ -160,6 +160,8 @@ if __name__ == '__main__':
         'n_parallel': [8],
     }
 
+    assert config['horizon'] == config['max_path_length']
+
     config_debug = config.copy()
     config_debug['max_path_length'] = [7]
     config_debug['num_opt_iters'] = [1]
@@ -170,5 +172,5 @@ if __name__ == '__main__':
     config_debug['n_parallel'] = 4
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
-    print('================ runnning toy example ================')
+    # print('================ runnning toy example ================')
     #run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)

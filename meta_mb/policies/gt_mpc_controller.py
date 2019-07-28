@@ -38,6 +38,7 @@ class GTMPCController(Serializable):
         self.dyn_pred_str = dyn_pred_str
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
+        assert 0 <= self.reg_coef < 1
         self.reg_str = reg_str
         self.n_candidates = n_candidates
         self.horizon = horizon
@@ -115,7 +116,16 @@ class GTMPCController(Serializable):
         for itr in range(self.num_opt_iters):
             grad_tau, returns = self.dynamics_model.get_derivative(tau, init_obs=observations)
             tau += self.opt_learning_rate * grad_tau
-            tau = np.clip(tau, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
+            # regularization
+            # clipping and regularization needs to be modifed if not (low, high) = (-1, 1)
+            if self.reg_str == 'poly':
+                tau = np.clip(tau, a_min=self.env.action_space.low - self.reg_coef, a_max=self.env.action_space.high + self.reg_coef)
+                tau -= self.reg_coef * tau**5
+            elif self.reg_str == 'scale':
+                _max_abs = np.max(np.abs(tau), axis=-1)
+                tau /= _max_abs
+            else:
+                raise NotImplementedError
             returns_array.append(returns)
             grad_norm_first_rollout.append(np.linalg.norm(grad_tau[:, 0, :], axis=-1))  # list item = (horizon,)
             tau_norm_first_rollout.append(np.linalg.norm(tau[:, 0, :], axis=-1))
@@ -148,6 +158,8 @@ class GTMPCController(Serializable):
         #         np.zeros((1, self.num_envs, self.action_space_dims)),
         #     ], axis=0)
 
+        self.tau_mean_val = tau
+        # adapt tau_std_val here
         self._local_step += 1
         return tau, returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
 
@@ -176,7 +188,7 @@ class GTMPCController(Serializable):
         # x: iterations, y: stats average over batch
         x = np.arange(len(self.returns_array_first_rollout))  # plot every 10 steps along the path
         returns = self.returns_array_first_rollout
-        idx_horizon_array = np.arange(0, self.horizon, 10)
+        # idx_horizon_array = np.arange(0, self.horizon, 10)
         grad_norm = np.stack(self.grad_norm_first_rollout, axis=-1)  # (horizon, trainer_iterations)
         tau_norm = np.stack(self.tau_norm_first_rollout, axis=-1)  # (horizon, trainer_iterations)
 
@@ -190,21 +202,32 @@ class GTMPCController(Serializable):
         ax = axes[0]
         ax.plot(x, returns)
         ax.set_xlabel('trainer_iterations')
-        ax.set_ylabel('one_step_reward_for_first_expert')
+        ax.set_ylabel('sum_rewards_for_first_rollout')
+
+        # ax = axes[1]
+        # for idx in idx_horizon_array:
+        #     ax.plot(x, grad_norm[idx, :], label=idx)
+        # ax.set_xlabel('trainer_iterations')
+        # ax.set_ylabel('grad_norm')
+        # ax.legend(title='path_length_so_far')
+        #
+        # ax = axes[2]
+        # tau_norm[]
+        # for idx in idx_horizon_array:
+        #     ax.plot(x, tau_norm[idx, :], label=idx)
+        # ax.set_xlabel('trainer_iterations')
+        # ax.set_ylabel('avg_action_norm')
+        # ax.legend(title='path_length_so_far')
 
         ax = axes[1]
-        for idx in idx_horizon_array:
-            ax.plot(x, grad_norm[idx, :], label=idx)
-        ax.set_xlabel('trainer_iterations')
-        ax.set_ylabel('grad_norm')
-        ax.legend(title='path_length_so_far')
+        ax.plot(np.arange(0, self.horizon), np.mean(grad_norm, axis=-1))
+        ax.set_xlabel('horizon')
+        ax.set_ylabel(f'avg_grad_norm_over_{len(x)}_iteration')
 
         ax = axes[2]
-        for idx in idx_horizon_array:
-            ax.plot(x, tau_norm[idx, :], label=idx)
-        ax.set_xlabel('trainer_iterations')
-        ax.set_ylabel('tau_norm')
-        ax.legend(title='path_length_so_far')
+        ax.plot(np.arange(0, self.horizon), np.mean(tau_norm, axis=-1))
+        ax.set_xlabel('horizon')
+        ax.set_ylabel(f'avg_action_norm_over_{len(x)}_iteration')
 
         fig.suptitle(f'{self._local_step}')
         fig.savefig(os.path.join(self.save_dir, f'{self._local_step}.png'))

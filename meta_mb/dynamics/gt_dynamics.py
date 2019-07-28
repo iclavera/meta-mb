@@ -146,7 +146,7 @@ class GTDynamics():
             ax.plot(x, act_array[i], label=f'act_{i}', color='r')
 
         ax = axes[self.obs_space_dims+self.action_space_dims]
-        ax.plot(x, reward_array, label='reward_gt')
+        # ax.plot(x, reward_array, label='reward_gt')
         ax.plot(x, act_norm_array, label='act_norm')
         ax.legend()
 
