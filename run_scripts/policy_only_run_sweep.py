@@ -2,6 +2,7 @@ from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.mpc_delta_controller import MPCDeltaController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
+from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
@@ -177,7 +178,7 @@ if __name__ == '__main__':
         'normalize': [False],
         'n_itr': [101],
         'discount': [1.0,],
-        'controller_str': ['mpc'], # ['rnn', 'mpc'],
+        'controller_str': ['mpc'], # ['rnn', 'mpc' 'gt],
 
         # Policy
         'initializer_str': ['zeros',], #['uniform', 'zeros'],
@@ -187,8 +188,8 @@ if __name__ == '__main__':
         'dyn_pred_str': ['all', 'mean', 'rand'],  # 'mean', 'rand', 'all'
         'horizon': [15,], # Tau
 
-        'num_opt_iters': [20,], #20, 40,],
-        'opt_learning_rate': [1e-3,], #1e-2],
+        'num_opt_iters': [50,], #20, 40,],
+        'opt_learning_rate': [1e-5, 1e-4], #1e-2],
         'clip_norm': [-1], #1e2, 1e1, 1e6],
 
         'n_candidates': [1000], # K
@@ -198,7 +199,7 @@ if __name__ == '__main__':
         'num_rollouts': [20],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
-        'initial_random_samples': [True],
+        'initial_random_samples': [False],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model

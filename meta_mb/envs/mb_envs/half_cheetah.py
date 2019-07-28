@@ -49,6 +49,22 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def reset_hard(self):
+        self.sim.reset()
+        qpos = self.init_qpos
+        qvel = self.init_qvel
+        self.set_state(qpos, qvel)
+        return self._get_obs()
+
+    def reset_from_obs_hard(self, obs):
+        nq, nv = self.model.nq, self.model.nv
+        self.sim.reset()
+        qpos = self.init_qpos
+        qpos[1:] = obs[:nq-1]
+        qvel = obs[nq-1:]
+        self.set_state(qpos, qvel)
+        return self._get_obs()
+
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 0.5
 
@@ -63,7 +79,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = next_obs[:, 8]
+        reward_run = obs[:, 8]  # changed from next_obs to obs
         reward = reward_run + reward_ctrl
         return reward
 
@@ -82,6 +98,15 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 if __name__ == "__main__":
     env = HalfCheetahEnv()
     env.reset()
+
+    # print(env.sim.derivative().shape)
+    # print(env.sim.data.qpos)
+
     for _ in range(1000):
         _ = env.render()
         ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+
+    # for _ in range(10):
+    #     ob, reward, done, info = env.step(np.zeros(env.action_space.shape))
+    #     print(ob)
+    #     print(reward)
