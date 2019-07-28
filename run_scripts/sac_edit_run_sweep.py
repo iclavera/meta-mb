@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Steve-T5"
+EXP_NAME = "Walker-Steve-T2"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -145,9 +145,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22],
+        'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -164,21 +164,21 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [3000],
         'n_train_repeats': [8],
-        'max_path_length': [11],
+        'max_path_length': [1001],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [2],
+        'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[5],
 		'q_target_type': [1],
-		'num_actions_per_next_observation': [5, 3],
-		'epoch_length': [10],
-        'T': [1],
-		'H': [2],
+		'num_actions_per_next_observation': [5, 10],
+		'epoch_length': [1000],
+        'T': [2, 3],
+		'H': [2, 3, 5],
 		'reward_scale': [1],
-		'target_entropy': [-3],
-		'num_models': [2],
+		'target_entropy': [-3, -6],
+		'num_models': [8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
 
