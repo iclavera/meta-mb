@@ -567,7 +567,7 @@ class SAC_MB(Algo):
                 next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
                 next_q_values = [tf.reshape(value, [self.dynamics_model.num_models, self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
                 next_q_values = [tf.reduce_mean(value, axis = 1) for value in next_q_values]
-                next_q_values = [tf.reshape(value, [self.dynamics_model.num_models, -1, 1]) for value in next_q_values]
+                next_q_values = [tf.reshape(value, [-1, 1]) for value in next_q_values]
 
                 q_values_var = [reward_values + next_q_values[j] for j in range(2)]
                 min_q_val_var = tf.reduce_min(q_values_var, axis=0)

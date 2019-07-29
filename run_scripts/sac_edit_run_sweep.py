@@ -166,9 +166,9 @@ if __name__ == '__main__':
         'n_train_repeats': [8],
         'max_path_length': [11],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [q],
+        'model_train_freq': [2],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [20],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[6],
 		'q_target_type': [1],
@@ -178,8 +178,8 @@ if __name__ == '__main__':
 		'H': [2],
 		'reward_scale': [1],
 		'target_entropy': [-3],
-		'num_models': [8],
-		'model_used_ratio': [0],
+		'num_models': [2],
+		'model_used_ratio': [0.5],
 		'dynamics_buffer_size': [1e4],
 
 
