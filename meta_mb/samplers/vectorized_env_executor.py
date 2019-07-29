@@ -1,4 +1,5 @@
 import numpy as np
+from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle
 from multiprocessing import Process, Pipe
@@ -174,6 +175,11 @@ class ParallelEnvExecutor(object):
             remote.send(('reset', None))
         return sum([remote.recv() for remote in self.remotes], [])
 
+    def reset_hard(self):
+        for remote in self.remotes:
+            remote.send(('reset_hard', None))
+        return sum([remote.recv() for remote in self.remotes], [])
+
     def set_tasks(self, tasks=None):
         """
         Sets a list of tasks to each worker
@@ -236,6 +242,11 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
         # reset all the environments of the worker
         elif cmd == 'reset':
             obs = [env.reset() for env in envs]
+            ts[:] = 0
+            remote.send(obs)
+
+        elif cmd == 'reset_hard':
+            obs = [env.reset_hard() for env in envs]
             ts[:] = 0
             remote.send(obs)
 
@@ -401,11 +412,9 @@ class ParallelPolicyGradUpdateExecutor(object):
         self.n_parallel = n_parallel
         self.num_rollouts = num_rollouts
         assert num_rollouts % n_parallel == 0
-        n_envs_per_proc = num_rollouts // n_parallel # technically num_tasks_per_worker *= batch_size because each worker has batch_size envs
+        n_envs_per_proc = num_rollouts // n_parallel
         action_space_dims = env.action_space.shape[0]
         obs_space_dims = env.observation_space.shape[0]
-        num_tasks = horizon * action_space_dims
-        assert num_tasks % n_parallel == 0
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
@@ -449,11 +458,11 @@ class ParallelPolicyGradUpdateExecutor(object):
 
         return global_info
 
-    def plot_first_rollout(self, init_obs, local_step):
+    def get_param_values_first_rollout(self):
         self.remotes[0].send(('get_param_values',))
         params = self.remotes[0].recv()
         W, b = params[0]
-        # TODO
+        return W, b
 
 def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
                               horizon, n_envs, obs_dim, action_dim, discount,
@@ -464,7 +473,6 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
     # when the dynamics model is ground truth
 
     print('deriv worker starts...')
-    from meta_mb.policies.np_linear_policy import LinearPolicy
 
     parent_remote.close()
 

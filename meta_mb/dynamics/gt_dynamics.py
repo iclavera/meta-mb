@@ -111,55 +111,55 @@ class GTDynamics():
     #     # return derivative, returns
     #     return self.deriv_env.get_derivative(tau, init_obs)
 
-    def plot_rollout(self, tau, init_obs, global_step):
-        if init_obs is None:
-            self._env.reset_hard()
-        else:
-            self._env.reset_hard_from_obs(init_obs)
-
-        obs_array, reward_array, act_norm_array = [], [], []
-        for act in tau:
-            next_obs, reward, _, _ = self._env.step(act)
-            obs_array.append(next_obs)
-            reward_array.append(reward)
-            act_norm_array.append(np.linalg.norm(act))
-
-        x = np.arange(self.horizon)
-        obs_array = np.transpose(np.asarray(obs_array))  # (obs_dims, horizon)
-        act_array = np.transpose(np.asarray(tau))  # (act_dims, horizon)
-
-        n_subplots = self.obs_space_dims + self.action_space_dims + 2
-        nrows = ceil(np.sqrt(n_subplots))
-        ncols = ceil(n_subplots/nrows)
-        fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(70, 30))
-        axes = axes.flatten()
-
-        for i in range(self.obs_space_dims):  # split by observation space dimension
-            ax = axes[i]
-            ax.plot(x, obs_array[i], label=f'obs_gt')
-
-        for i in range(self.action_space_dims):
-            ax = axes[i+self.obs_space_dims]
-            ax.plot(x, act_array[i], label=f'act_{i}', color='r')
-
-        ax = axes[self.obs_space_dims+self.action_space_dims]
-        # ax.plot(x, reward_array, label='reward_gt')
-        ax.plot(x, act_norm_array, label='act_norm')
-        ax.legend()
-
-        ax = axes[self.obs_space_dims+self.action_space_dims+1]
-        ax.plot(x, list(accumulate(reward_array)), label='reward_gt')
-        # ax.plot(x, list(accumulate(loss_reward)), label='reward_planning')
-        ax.legend()
-
-        fig.suptitle(f'{global_step}')
-
-        # plt.show()
-        if not hasattr(self, 'save_dir'):
-            self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
-            os.makedirs(self.save_dir, exist_ok=True)
-        plt.savefig(os.path.join(self.save_dir, f'{global_step}.png'))
-        logger.log('plt saved to', os.path.join(self.save_dir, f'{global_step}.png'))
+    # def plot_rollout(self, tau, init_obs, global_step):
+    #     if init_obs is None:
+    #         self._env.reset_hard()
+    #     else:
+    #         self._env.reset_hard_from_obs(init_obs)
+    #
+    #     obs_array, reward_array, act_norm_array = [], [], []
+    #     for act in tau:
+    #         next_obs, reward, _, _ = self._env.step(act)
+    #         obs_array.append(next_obs)
+    #         reward_array.append(reward)
+    #         act_norm_array.append(np.linalg.norm(act))
+    #
+    #     x = np.arange(self.horizon)
+    #     obs_array = np.transpose(np.asarray(obs_array))  # (obs_dims, horizon)
+    #     act_array = np.transpose(np.asarray(tau))  # (act_dims, horizon)
+    #
+    #     n_subplots = self.obs_space_dims + self.action_space_dims + 2
+    #     nrows = ceil(np.sqrt(n_subplots))
+    #     ncols = ceil(n_subplots/nrows)
+    #     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(70, 30))
+    #     axes = axes.flatten()
+    #
+    #     for i in range(self.obs_space_dims):  # split by observation space dimension
+    #         ax = axes[i]
+    #         ax.plot(x, obs_array[i], label=f'obs_gt')
+    #
+    #     for i in range(self.action_space_dims):
+    #         ax = axes[i+self.obs_space_dims]
+    #         ax.plot(x, act_array[i], label=f'act_{i}', color='r')
+    #
+    #     ax = axes[self.obs_space_dims+self.action_space_dims]
+    #     # ax.plot(x, reward_array, label='reward_gt')
+    #     ax.plot(x, act_norm_array, label='act_norm')
+    #     ax.legend()
+    #
+    #     ax = axes[self.obs_space_dims+self.action_space_dims+1]
+    #     ax.plot(x, list(accumulate(reward_array)), label='reward_gt')
+    #     # ax.plot(x, list(accumulate(loss_reward)), label='reward_planning')
+    #     ax.legend()
+    #
+    #     fig.suptitle(f'{global_step}')
+    #
+    #     # plt.show()
+    #     if not hasattr(self, 'save_dir'):
+    #         self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
+    #         os.makedirs(self.save_dir, exist_ok=True)
+    #     plt.savefig(os.path.join(self.save_dir, f'{global_step}.png'))
+    #     logger.log('plt saved to', os.path.join(self.save_dir, f'{global_step}.png'))
 
 def _compute_returns(vec_env, tau, init_obs=None):
     """

@@ -106,28 +106,28 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        'env': [HalfCheetahEnv],# [InvertedPendulumEnv],
+        'env': [InvertedPendulumEnv],# [InvertedPendulumEnv],
         'max_path_length': [80],  # UNUSED
         'normalize': [False],
-        'n_itr': [401],
+        'n_itr': [101],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros', 'uniform'],
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['opt_policy'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
-        'horizon': [80], #[40, 80, 200],
+        'horizon': [80],  # [40, 80, 200],
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-6,], #1e-3,], #1e-2],
+        'opt_learning_rate': [1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
-        'eps': [1e-4, 1e-3],
+        'eps': [1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
-        'n_candidates': [1000], # UNUSED
+        'n_candidates': [1000], #[1000],
         'num_cem_iters': [5],
 
         # Training

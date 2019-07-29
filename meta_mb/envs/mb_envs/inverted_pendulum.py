@@ -31,13 +31,14 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_model_hard(self):
+    def reset_hard(self):
+        self.sim.reset()
         self.set_state(self.init_qpos, self.init_qvel)
         return self._get_obs()
 
     def reset_from_obs_hard(self, obs):
         self.sim.reset()
-        qpos, qvel = obs[:self.model.nq], obs[:self.model.nq]
+        qpos, qvel = obs[:self.model.nq], obs[self.model.nq:]
         self.set_state(qpos, qvel)
         return self._get_obs()
 

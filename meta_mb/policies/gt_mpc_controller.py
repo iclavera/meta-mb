@@ -1,6 +1,12 @@
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import ParallelPolicyGradUpdateExecutor, ParallelActionDerivativeExecutor
+from math import ceil
+from itertools import accumulate
+import copy
+from meta_mb.samplers.vectorized_env_executor import ParallelPolicyGradUpdateExecutor, ParallelActionDerivativeExecutor, ParallelEnvExecutor
+from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from meta_mb.logger import logger
@@ -32,10 +38,11 @@ class GTMPCController(Serializable):
             percent_elites=0.1,
             use_reward_model=False,
             alpha=0.1,
-            num_particles=20,
+            num_particles=1,
             verbose=True,
     ):
         Serializable.quick_init(self, locals())
+        self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
         self.reward_model = reward_model
         self.discount = discount
@@ -53,7 +60,8 @@ class GTMPCController(Serializable):
         self.eps = eps
         self.num_envs = num_rollouts
         self.percent_elites = percent_elites
-        self.num_elites = int(percent_elites * n_candidates)
+        self.num_elites = max(int(percent_elites * n_candidates), 1)
+        # self.num_elites = int(percent_elites * n_candidates)
         self.env = env
         self.use_reward_model = use_reward_model
         self.alpha = alpha
@@ -73,6 +81,7 @@ class GTMPCController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         if self.method_str == 'opt_policy':
+            self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=np.tanh)
             self.policy = ParallelPolicyGradUpdateExecutor(
                 env, n_parallel, num_rollouts, horizon, eps,
                 opt_learning_rate, num_opt_iters,
@@ -102,6 +111,8 @@ class GTMPCController(Serializable):
             # (num_opt_iters, batch_size)
             self.returns_array_first_rollout, self.grad_norm_first_rollout, self.tau_norm_first_rollout = [], [], []
 
+        elif self.method_str == 'cem':
+            self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, horizon)
         else:
             raise NotImplementedError
 
@@ -115,11 +126,15 @@ class GTMPCController(Serializable):
 
     def get_actions(self, observations, deterministic, plot_first_rollout):
         if self.method_str == 'opt_policy':
-            return self.get_rollouts_w_policy(observations, deterministic, plot_first_rollout)
-        else:
-            return self.get_rollouts(observations, deterministic, plot_first_rollout)
+            returns = self.get_rollouts_opt_policy(observations, deterministic, plot_first_rollout)
+        elif self.method_str == 'opt_act':
+            returns = self.get_rollouts_opt_act(observations, deterministic, plot_first_rollout)
+        elif self.method_str == 'cem':
+            returns = self.get_rollouts_cem(observations, deterministic, plot_first_rollout)
+        self._local_step += 1
+        return returns
 
-    def get_rollouts_w_policy(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_opt_policy(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
         assert deterministic
         info = self.policy.do_gradient_steps(init_obs_array)
 
@@ -129,14 +144,13 @@ class GTMPCController(Serializable):
                 init_obs = None
             else:
                 init_obs = init_obs_array[0]
-            self.policy.plot_first_rollout(init_obs, self._local_step)
+            self.plot_first_rollout(init_obs)
 
             # self.plot_info()
 
-        self._local_step += 1
-        return np.asarray(info['old_return'])[:, -1]
+        return info['old_return'][:, -1]
 
-    def get_rollouts(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_opt_act(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
         """
 
         :param observations:
@@ -177,13 +191,16 @@ class GTMPCController(Serializable):
         self.grad_norm_first_rollout.extend(grad_norm_first_rollout)  # [(horizon,)] * trainer_iterations
         self.tau_norm_first_rollout.extend(tau_norm_first_rollout)  # [(horizon,)] * trainer_iterations
 
+        self.tau_mean_val = tau
+        # adapt tau_std_val here
+
         if plot_first_rollout:
             logger.log(returns_array[:, 0])  # report return for the first rollout over optimization iterations
             if init_obs_array is None:
                 init_obs = None
             else:
                 init_obs = init_obs_array[0]
-            self.dynamics_model.plot_rollout(tau[:, 0, :], init_obs, self._local_step)
+            self.plot_first_rollout(init_obs)
 
             self.plot_info()
 
@@ -199,10 +216,171 @@ class GTMPCController(Serializable):
         #         np.zeros((1, self.num_envs, self.action_space_dims)),
         #     ], axis=0)
 
-        self.tau_mean_val = tau
-        # adapt tau_std_val here
-        self._local_step += 1
         return returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
+
+    def get_rollouts_cem(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+        mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+               * (self.env.action_space.high + self.env.action_space.low) / 2
+        var = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+              * (self.env.action_space.high + self.env.action_space.low) / 16  # FIXME: do not reset?
+
+        returns_array = []
+        for itr in range(self.num_cem_iters):
+            lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+            # constrained_var = np.minimum(np.minimum(np.square(lbs_dist / 2), np.square(ub_dist / 2)), var)
+            constrained_var = np.minimum(np.square(lb_dist/2), np.square(ub_dist/2), var)
+            std = np.sqrt(constrained_var)
+            act = mean + np.random.normal(size=(self.horizon, self.num_envs, self.n_candidates, self.action_space_dims)) * std
+            act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
+            act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
+
+            if init_obs_array is None:
+                _ = self.vec_env.reset_hard()
+            else:
+                raise NotImplementedError
+
+            returns = np.zeros((self.num_envs*self.n_candidates,))
+            for t in range(self.horizon):
+                _, rewards, _, _ = self.vec_env.step(act[t])
+                returns += self.discount ** t * np.asarray(rewards)
+
+            returns = np.reshape(returns, (self.num_envs, self.n_candidates))
+            act = np.reshape(act, (self.horizon, self.num_envs, self.n_candidates, self.action_space_dims))
+            elites_idx = ((-returns).argsort(axis=-1) < self.num_elites)  # (num_envs, n_candidates)
+            elites_actions = np.reshape(act[:, elites_idx, :], (self.horizon, self.num_envs, self.num_elites, self.action_space_dims))
+            mean = mean * self.alpha + np.mean(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+            var = var * self.alpha + np.var(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+            elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
+            returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+
+        returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
+
+        if plot_first_rollout:
+            logger.log(returns_array[:, 0])
+            pass
+
+        return returns_array[-1, :]
+        #
+        #
+        # n = self.n_candidates
+        # m = self.num_envs
+        # h = self.horizon
+        #
+        # num_elites = max(int(self.n_candidates * self.percent_elites), 1)
+        # mean = np.ones((m, h * self.action_space_dims)) * (self.env.action_space.high + self.env.action_space.low) / 2
+        # std = np.ones((m, h * self.action_space_dims)) * (self.env.action_space.high - self.env.action_space.low) / 16
+        # clip_low = np.concatenate([self.env.action_space.low] * h)
+        # clip_high = np.concatenate([self.env.action_space.high] * h)
+        #
+        # returns_array = []
+        # for i in range(self.num_cem_iters):
+        #     z = np.random.normal(size=(n, m, h * self.action_space_dims))
+        #     a = mean + z * std
+        #     a = np.clip(a, clip_low, clip_high)
+        #     a_stacked = a.copy()
+        #     a = a.reshape((n * m, h, self.action_space_dims))
+        #     a = np.transpose(a, (1, 0, 2))  # (horizon, n_candidates * batch_size, action_space_dims)
+        #     returns = np.zeros((n * m * 1,))
+        #
+        #     # cand_a = a[0].reshape((m, n, -1))
+        #     # observation = np.repeat(init_obs_array, n * 1, axis=0)
+        #     if init_obs_array is None:
+        #         self.vec_env.reset_hard()
+        #     else:
+        #         raise NotImplementedError
+        #
+        #     for t in range(h):
+        #         # a_t = np.repeat(a[t], 1, axis=0)
+        #         obs, rewards, _, _ = self.vec_env.step(a[t])
+        #         # next_observation = self.dynamics_model.predict(observation, a_t, deterministic=False)
+        #         # rewards = self.unwrapped_env.reward(observation, a_t, next_observation)
+        #         returns += self.discount ** t * rewards
+        #     # returns = np.mean(np.split(returns.reshape(m, n * 1),
+        #     #                            1, axis=-1), axis=0)  # TODO: Make sure this reshaping works
+        #     assert returns.shape == (m*n,)
+        #     elites_idx = ((-returns).argsort(axis=-1) < num_elites).T
+        #     elites = a_stacked[elites_idx]
+        #     mean = mean * self.alpha + (1 - self.alpha) * np.mean(elites, axis=0)
+        #     std = np.std(elites, axis=0)
+        #     lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+        #     std = np.minimum(np.minimum(lb_dist / 2, ub_dist / 2), std)
+        #
+        #     returns_array.append(returns)
+        #
+        # a = np.reshape((h, m, n, self.action_space_dims))
+        # # actions = a[:, range(m), np.argmax(returns_array[-1], axis=1), :]
+        #
+        # if plot_first_rollout:
+        #     pass # TODO
+        #
+        # return returns_array[-1, :]
+
+    def plot_first_rollout(self, init_obs):
+        if init_obs is None:
+            obs = self._env.reset_hard()
+        else:
+            obs = self._env.reset_hard_from_obs(init_obs)
+
+        obs_array, reward_array, act_array, act_norm_array = [], [], [], []
+
+        if self.method_str == 'opt_policy':
+            W, b = self.policy.get_param_values_first_rollout()
+            self._policy.set_params(dict(W=W, b=b))
+            # sum_rewards = 0
+            for t in range(self.horizon):
+                action, _ = self._policy.get_action(obs)
+                obs, reward, _, _ = self._env.step(action)
+                # sum_rewards += self.discount ** t * reward
+                obs_array.append(obs)
+                reward_array.append(reward)
+                act_array.append(action)
+                act_norm_array.append(np.linalg.norm(action))
+
+        elif self.method_str == 'opt_act':
+            act_array = self.tau_mean_val[:, 0, :]
+
+            for act in act_array:
+                obs, reward, _, _ = self._env.step(act)
+                obs_array.append(obs)
+                reward_array.append(reward)
+                act_norm_array.append(np.linalg.norm(act))
+
+        x = np.arange(self.horizon)
+        obs_array = np.transpose(np.asarray(obs_array))  # (obs_dims, horizon)
+        act_array = np.transpose(np.asarray(act_array))  # (act_dims, horizon)
+
+        n_subplots = self.obs_space_dims + self.action_space_dims + 2
+        nrows = ceil(np.sqrt(n_subplots))
+        ncols = ceil(n_subplots/nrows)
+        fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(70, 30))
+        axes = axes.flatten()
+
+        for i in range(self.obs_space_dims):  # split by observation space dimension
+            ax = axes[i]
+            ax.plot(x, obs_array[i], label=f'obs_gt')
+
+        for i in range(self.action_space_dims):
+            ax = axes[i+self.obs_space_dims]
+            ax.plot(x, act_array[i], label=f'act_{i}', color='r')
+
+        ax = axes[self.obs_space_dims+self.action_space_dims]
+        # ax.plot(x, reward_array, label='reward_gt')
+        ax.plot(x, act_norm_array, label='act_norm')
+        ax.legend()
+
+        ax = axes[self.obs_space_dims+self.action_space_dims+1]
+        ax.plot(x, list(accumulate(reward_array)), label='reward_gt')
+        # ax.plot(x, list(accumulate(loss_reward)), label='reward_planning')
+        ax.legend()
+
+        fig.suptitle(f'{self._local_step}')
+
+        # plt.show()
+        if not hasattr(self, 'save_dir'):
+            self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
+            os.makedirs(self.save_dir, exist_ok=True)
+        plt.savefig(os.path.join(self.save_dir, f'{self._local_step}.png'))
+        logger.log('plt saved to', os.path.join(self.save_dir, f'{self._local_step}.png'))
 
     def plot_info(self):
         # x: iterations, y: stats average over batch
@@ -269,6 +447,8 @@ class GTMPCController(Serializable):
                 self.tau_mean_val = np.zeros(
                     (self.horizon, self.num_envs, self.action_space_dims),
                 )
+        else:
+            raise NotImplementedError
 
     def log_diagnostics(*args):
         pass

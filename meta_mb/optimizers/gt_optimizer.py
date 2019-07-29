@@ -34,4 +34,4 @@ class GTOptimizer(Optimizer, Serializable):
         self.v = self.beta2 * self.v + (1-self.beta2) * grad * grad
         m_hat = self.m / (1 - self.beta1**self.t)
         v_hat = self.v / (1 - self.beta2**self.t)
-        return self.alpha + m_hat / (v_hat + self.epsilon)
+        return self.alpha * m_hat / (np.sqrt(v_hat) + self.epsilon)
