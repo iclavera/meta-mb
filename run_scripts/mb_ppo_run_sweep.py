@@ -5,7 +5,7 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv
+from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv, InvertedPendulumEnv, ReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.metrpo_trainer import Trainer
@@ -18,11 +18,12 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'mb_ppo'
+EXP_NAME = 'bptt-mb-mpc-baseline'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + 'me-ppo-' + kwargs.get('exp_name', '')
+    print(f'================ starting exp {exp_dir} ==================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -121,15 +122,15 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
 
     sweep_params = {
-        'seed': [1, 2],
+        'seed': [1,],
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv, AntEnv, HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv],
 
         # Problem Conf
-        'n_itr': [51],
-        'max_path_length': [200,],
+        'n_itr': [201],
+        'max_path_length': [90, 120, 200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
