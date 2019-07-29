@@ -38,14 +38,13 @@ class Sampler(BaseSampler):
             vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(Sampler, self).__init__(env, policy, n_parallel, max_path_length)
+        super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
         self.total_samples = num_rollouts * max_path_length
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
         self.dyn_pred_str = dyn_pred_str
-        self.ground_truth = ground_truth
 
         # setup vectorized environment
 
@@ -87,9 +86,6 @@ class Sampler(BaseSampler):
         Returns:
             (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
         """
-
-        if self.ground_truth:
-            return self.obtain_samples_ground_truth(log, log_prefix, deterministic=deterministic, plot_first_rollout=plot_first_rollout)
 
         # initial setup / preparation
         self._global_step += 1

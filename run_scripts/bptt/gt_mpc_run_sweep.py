@@ -1,7 +1,6 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.gt_sampler import GTSampler
-from meta_mb.dynamics.gt_dynamics import GTDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv
@@ -23,9 +22,9 @@ def run_experiment(**config):
         repr += 'ip'
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
-    repr += '-reg-' + str(config['reg_coef'])
-    if config['reg_str'] is not None:
-        repr += config['reg_str']
+    # repr += '-reg-' + str(config['reg_coef'])
+    # if config['reg_str'] is not None:
+    #     repr += config['reg_str']
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -40,26 +39,29 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        dynamics_model = GTDynamics(
-            name="dyn_model",
-            env=env,
-            num_rollouts=config['num_rollouts'],
-            horizon=config['horizon'],
-            max_path_length=config['max_path_length'],
-            discount=config['discount'],
-            n_parallel=config['n_parallel'],
-            eps=config['eps'],
-        )
+        # dynamics_model = GTDynamics(
+        #     name="dyn_model",
+        #     env=env,
+        #     num_rollouts=config['num_rollouts'],
+        #     horizon=config['horizon'],
+        #     max_path_length=config['max_path_length'],
+        #     discount=config['discount'],
+        #     n_parallel=config['n_parallel'],
+        # )
+        dynamics_model = None
         sample_processor = None
 
         policy = GTMPCController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
+            eps=config['eps'],
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
+            max_path_length=config['max_path_length'],
             method_str=config['method_str'],
+            n_parallel=config['n_parallel'],
             dyn_pred_str=config['dyn_pred_str'],
             reg_coef=config['reg_coef'],
             reg_str=config['reg_str'],
@@ -75,7 +77,6 @@ def run_experiment(**config):
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=config['max_path_length'],
-            n_parallel=config['n_parallel'],
             dyn_pred_str=config['dyn_pred_str'],
         )
 
@@ -106,29 +107,28 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        # 'env': [InvertedPendulumEnv],
         'env': [HalfCheetahEnv],# [InvertedPendulumEnv],
-        'max_path_length': [80],
+        'max_path_length': [80],  # [40, 80, 200]
         'normalize': [False],
-        'n_itr': [401],
+        'n_itr': [101],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros', 'uniform'],
-        'reg_coef': [0.05, 0.1, 0.2], #[1, 0],
-        'reg_str': ['poly'], #['scale', 'poly'],
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],
+        'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
+        'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
-        'dyn_pred_str': ['all'],  # 'mean', 'rand', 'all'
-        'horizon': [40, 80, 200], # Tau
+        'dyn_pred_str': ['all'],  # UNUSED
+        'horizon': [20],
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-4, 1e-3,], #1e-2],
-        'clip_norm': [-1], #1e2, 1e1, 1e6],
-        'eps': [1e-4, 1e-3],
+        'opt_learning_rate': [1e-5], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
+        'clip_norm': [-1], # UNUSED
+        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
-        'n_candidates': [1000], # K
+        'n_candidates': [1000],
         'num_cem_iters': [5],
 
         # Training
@@ -157,10 +157,10 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [5],
+        'n_parallel': [6],
     }
 
-    assert config['horizon'] == config['max_path_length']
+    # assert config['horizon'] == config['max_path_length']
 
     config_debug = config.copy()
     config_debug['max_path_length'] = [7]
