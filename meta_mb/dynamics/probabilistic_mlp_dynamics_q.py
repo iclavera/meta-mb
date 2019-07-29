@@ -6,7 +6,7 @@ from meta_mb.utils import compile_function
 from meta_mb.dynamics.mlp_dynamics_q import MLPDynamicsEnsembleQ
 
 
-class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsemble):
+class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
     """
     Class for MLP continous dynamics model
     """
@@ -14,11 +14,11 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsemble):
     def __init__(self,
                  name,
                  env,
-                 Q,
+                 Qs,
                  policy,
                  reward_scale=1,
                  discount = 1,
-                 Q_target=None,
+                 Q_targets=None,
                  num_models=5,
                  hidden_sizes=(512, 512),
                  hidden_nonlinearity='swish',
@@ -59,6 +59,9 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsemble):
             self.Q_targets = Qs
         else:
             self.Q_targets = Q_targets
+        self.policy = policy
+        self.reward_scale = reward_scale
+        self.discount = discount
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
@@ -131,13 +134,12 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsemble):
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
             input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
-            next_observations_ph = self.delta_ph
-            dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
+            dist_info_sym = self.policy.distribution_info_sym(self.delta_ph)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
             next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
-            input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
+            input_q_fun = tf.concat([self.delta_ph, next_actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
 
             min_next_Q = tf.reduce_min(next_q_values, axis=0)

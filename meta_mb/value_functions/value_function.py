@@ -99,14 +99,14 @@ class ValueFunction(Serializable):
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
         if params is None:
-            with tf.variable_scope(self.name, reuse=True):
+            with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
                 input_var, output_var = create_mlp(name='v_network',
                                                output_dim=1,
                                                hidden_sizes=self.hidden_sizes,
                                                hidden_nonlinearity=self.hidden_nonlinearity,
                                                output_nonlinearity=self.output_nonlinearity,
                                                input_var=input_var,
-                                               reuse=True,
+                                               reuse=tf.AUTO_REUSE,
                                                )
         else:
             input_var, output_var = forward_mlp(output_dim=1,

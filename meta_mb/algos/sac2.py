@@ -23,7 +23,7 @@ class SAC2(Algo):
         Abbeel, and Sergey Levine. Soft Actor-Critic Algorithms and
         Applications. arXiv preprint arXiv:1812.05905. 2018.
     """
-
+ 
     def __init__(
             self,
             policy,

@@ -149,7 +149,7 @@ class Trainer(object):
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
                 # obs, actions, nect_obs, rewards, dones
-                self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2], all_samples[3], all_samples[4]
+                self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2], all_samples[3], all_samples[4],
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
                 logger.logkv('Fit model time', time.time() - fit_start)
