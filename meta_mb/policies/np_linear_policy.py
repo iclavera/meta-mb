@@ -20,7 +20,7 @@ class LinearPolicy(NpPolicy):
         #                                  b=np.zeros((action_dim,), dtype=np.float64))
         self.policy_params = OrderedDict(
             W=np.zeros((action_dim, obs_dim), dtype=np.float64),
-            b=np.random.normal(loc=0, scale=0.1, size=(action_dim,))
+            b=np.random.normal(loc=0, scale=0.5, size=(action_dim,))
         )
         self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
 
@@ -29,6 +29,8 @@ class LinearPolicy(NpPolicy):
         assert observations.ndim == 2
         obs = self.obs_filters[0](observations, update=update_filter)
         actions = np.dot(self.policy_params["W"], obs.T).T + self.policy_params["b"]
+        if self.output_nonlinearity is not None:
+            actions = self.output_nonlinearity(actions)
         return actions, {}
 
     def get_action(self, observation, update_filter=False):

@@ -2,7 +2,7 @@ from meta_mb.utils.serializable import Serializable
 from math import ceil
 from itertools import accumulate
 import copy
-from meta_mb.samplers.vectorized_env_executor import ParallelPolicyGradUpdateExecutor, ParallelActionDerivativeExecutor, ParallelEnvExecutor
+from meta_mb.samplers.vectorized_env_executor import *
 from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import matplotlib
@@ -31,6 +31,7 @@ class GTMPCController(Serializable):
             reg_str=None,
             n_candidates=1024,
             horizon=10,
+            max_path_length=200,
             num_cem_iters=8,
             num_opt_iters=8,
             opt_learning_rate=1e-3,
@@ -54,6 +55,7 @@ class GTMPCController(Serializable):
         self.reg_str = reg_str
         self.n_candidates = n_candidates
         self.horizon = horizon
+        self.max_path_length = max_path_length
         self.num_cem_iters = num_cem_iters
         self.num_opt_iters = num_opt_iters
         self.opt_learning_rate = opt_learning_rate
@@ -61,7 +63,6 @@ class GTMPCController(Serializable):
         self.num_envs = num_rollouts
         self.percent_elites = percent_elites
         self.num_elites = max(int(percent_elites * n_candidates), 1)
-        # self.num_elites = int(percent_elites * n_candidates)
         self.env = env
         self.use_reward_model = use_reward_model
         self.alpha = alpha
@@ -81,14 +82,17 @@ class GTMPCController(Serializable):
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
         if self.method_str == 'opt_policy':
+            self.horizon = horizon = max_path_length
             self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=np.tanh)
             self.policy = ParallelPolicyGradUpdateExecutor(
                 env, n_parallel, num_rollouts, horizon, eps,
                 opt_learning_rate, num_opt_iters,
                 discount, verbose,
             )
+            self.get_rollouts_factory = self.get_rollouts_opt_policy
 
         elif self.method_str == 'opt_act':
+            self.horizon = horizon = max_path_length
             if initializer_str == 'uniform':
                 self.tau_mean_val = np.random.uniform(
                     low=self.env.action_space.low,
@@ -106,51 +110,52 @@ class GTMPCController(Serializable):
             self.tau_std_val = 0.05 * np.ones((self.action_space_dims,))
             self.deriv_env = ParallelActionDerivativeExecutor(env, n_parallel, horizon, num_rollouts, eps, discount, verbose)
             self.tau_optimizer = GTOptimizer(alpha=self.opt_learning_rate)
+            self.get_rollouts_factory = self.get_rollouts_opt_act
 
             # plotting
             # (num_opt_iters, batch_size)
             self.returns_array_first_rollout, self.grad_norm_first_rollout, self.tau_norm_first_rollout = [], [], []
 
         elif self.method_str == 'cem':
-            self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, horizon)
+            assert max_path_length % horizon == 0
+            self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                                * (self.env.action_space.high + self.env.action_space.low) / 2
+            self.tau_std_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                               * (self.env.action_space.high - self.env.action_space.low) / 4  # FIXME: do not reset?
+            self.planner_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, horizon)
+            self.real_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, max_path_length)
+            self.get_rollouts_factory = self.get_rollouts_cem
         else:
             raise NotImplementedError
 
         self._local_step = 0
-        self.save_dir = os.path.join(logger.get_dir(), 'grads_global_norm')
-        os.makedirs(self.save_dir, exist_ok=True)
+        self.save_dir_first_rollout = os.path.join(logger.get_dir(), 'first_rollout')
+        self.save_dir_info = os.path.join(logger.get_dir(), 'info')
+        os.makedirs(self.save_dir_first_rollout, exist_ok=True)
+        os.makedirs(self.save_dir_info, exist_ok=True)
 
     @property
     def vectorized(self):
         return True
 
-    def get_actions(self, observations, deterministic, plot_first_rollout):
-        if self.method_str == 'opt_policy':
-            returns = self.get_rollouts_opt_policy(observations, deterministic, plot_first_rollout)
-        elif self.method_str == 'opt_act':
-            returns = self.get_rollouts_opt_act(observations, deterministic, plot_first_rollout)
-        elif self.method_str == 'cem':
-            returns = self.get_rollouts_cem(observations, deterministic, plot_first_rollout)
+    def get_rollouts(self, deterministic, plot_first_rollout):
+        returns = self.get_rollouts_factory(deterministic, plot_first_rollout)
         self._local_step += 1
         return returns
 
-    def get_rollouts_opt_policy(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_opt_policy(self, deterministic=False, plot_first_rollout=False):
         assert deterministic
-        info = self.policy.do_gradient_steps(init_obs_array)
+        info = self.policy.do_gradient_steps(init_obs_array=None)
 
         if plot_first_rollout:
             logger.log(info['old_return'][0, :])  # report return for the first rollout over optimization iterations
-            if init_obs_array is None:
-                init_obs = None
-            else:
-                init_obs = init_obs_array[0]
-            self.plot_first_rollout(init_obs)
+            self.plot_first_rollout(init_obs=None)
 
             # self.plot_info()
 
         return info['old_return'][:, -1]
 
-    def get_rollouts_opt_act(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_opt_act(self, deterministic=False, plot_first_rollout=False):
         """
 
         :param observations:
@@ -167,7 +172,7 @@ class GTMPCController(Serializable):
 
         returns_array, grad_norm_first_rollout, tau_norm_first_rollout = [], [], []
         for itr in range(self.num_opt_iters):
-            grad_tau, returns = self.deriv_env.get_derivative(tau, init_obs_array=init_obs_array)
+            grad_tau, returns = self.deriv_env.get_derivative(tau, init_obs_array=None)
             tau += self.tau_optimizer.compute_delta_var(grad_tau)  # Adam optimizer
             # regularization
             # clipping and regularization needs to be modified if not (low, high) = (-1, 1)
@@ -184,9 +189,9 @@ class GTMPCController(Serializable):
             returns_array.append(returns)
             grad_norm_first_rollout.append(np.linalg.norm(grad_tau[:, 0, :], axis=-1))  # list item = (horizon,)
             tau_norm_first_rollout.append(np.linalg.norm(tau[:, 0, :], axis=-1))
-
         returns_array = np.vstack(returns_array)  # (num_opt_iters, batch_size)
 
+        # collect info
         self.returns_array_first_rollout.extend(returns_array[:, 0])  # [()] * trainer_iterations
         self.grad_norm_first_rollout.extend(grad_norm_first_rollout)  # [(horizon,)] * trainer_iterations
         self.tau_norm_first_rollout.extend(tau_norm_first_rollout)  # [(horizon,)] * trainer_iterations
@@ -196,11 +201,7 @@ class GTMPCController(Serializable):
 
         if plot_first_rollout:
             logger.log(returns_array[:, 0])  # report return for the first rollout over optimization iterations
-            if init_obs_array is None:
-                init_obs = None
-            else:
-                init_obs = init_obs_array[0]
-            self.plot_first_rollout(init_obs)
+            self.plot_first_rollout(init_obs=None)
 
             self.plot_info()
 
@@ -218,30 +219,45 @@ class GTMPCController(Serializable):
 
         return returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
 
-    def get_rollouts_cem(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
-        mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-               * (self.env.action_space.high + self.env.action_space.low) / 2
-        var = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-              * (self.env.action_space.high + self.env.action_space.low) / 16  # FIXME: do not reset?
+    def get_rollouts_cem(self, deterministic=False, plot_first_rollout=False):
+        obs = self.real_env.reset_hard()
+        returns = np.zeros((self.num_envs,))
+        for t in range(self.max_path_length):
+            optimized_actions_mean, optimized_actions_std = self.get_actions_cem(obs)
+            if deterministic:
+                actions = optimized_actions_mean
+            else:
+                actions = optimized_actions_mean + optimized_actions_std * np.random.normal(size=optimized_actions_mean)
+            obs, rewards, _, _ = self.real_env.step(actions)
+            returns += rewards
 
-        returns_array = []
+        if plot_first_rollout:
+            pass
+
+        return returns
+
+    def get_actions_cem(self, init_obs_array=None):
+        # mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+        #        * (self.env.action_space.high + self.env.action_space.low) / 2
+        # std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+        #       * (self.env.action_space.high - self.env.action_space.low) / 4  # FIXME: do not reset?
+
+        mean, std = self.tau_mean_val, self.tau_std_val
+        # returns_array = []
         for itr in range(self.num_cem_iters):
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
             # constrained_var = np.minimum(np.minimum(np.square(lbs_dist / 2), np.square(ub_dist / 2)), var)
-            constrained_var = np.minimum(np.square(lb_dist/2), np.square(ub_dist/2), var)
-            std = np.sqrt(constrained_var)
+            # constrained_var = np.minimum(np.square(lb_dist/2), np.square(ub_dist/2), var)
+            # std = np.sqrt(constrained_var)
+            std = np.minimum(lb_dist/2, ub_dist/2, std)
             act = mean + np.random.normal(size=(self.horizon, self.num_envs, self.n_candidates, self.action_space_dims)) * std
             act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
             act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
 
-            if init_obs_array is None:
-                _ = self.vec_env.reset_hard()
-            else:
-                raise NotImplementedError
-
+            _ = self.planner_env.reset_hard(init_obs_array)
             returns = np.zeros((self.num_envs*self.n_candidates,))
             for t in range(self.horizon):
-                _, rewards, _, _ = self.vec_env.step(act[t])
+                _, rewards, _, _ = self.planner_env.step(act[t])
                 returns += self.discount ** t * np.asarray(rewards)
 
             returns = np.reshape(returns, (self.num_envs, self.n_candidates))
@@ -249,18 +265,36 @@ class GTMPCController(Serializable):
             elites_idx = ((-returns).argsort(axis=-1) < self.num_elites)  # (num_envs, n_candidates)
             elites_actions = np.reshape(act[:, elites_idx, :], (self.horizon, self.num_envs, self.num_elites, self.action_space_dims))
             mean = mean * self.alpha + np.mean(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
-            var = var * self.alpha + np.var(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
-            elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
-            returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+            # var = var * self.alpha + np.var(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+            std = std * self.alpha + np.std(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+            # elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
+            # returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+        # returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
 
-        returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
-
-        if plot_first_rollout:
-            logger.log(returns_array[:, 0])
-            pass
-
-        return returns_array[-1, :]
+        # collect info
+        # pass
         #
+        # self.tau_mean_val, self.tau_mean_std = mean, std  # save for plotting
+        # if plot_first_rollout:
+        #     logger.log(returns_array[:, 0])
+        #     pass
+
+        # save optimized actions and rotate tau stats to prepare for planning for next steps along the path
+        optimized_actions_mean = self.tau_mean_val[0]
+        optimized_actions_std = self.tau_std_val[0]
+        self.tau_mean_val = np.concatenate([
+            self.tau_mean_val[1:],
+            np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
+            * (self.env.action_space.high + self.env.action_space.low) / 2
+        ])
+        self.tau_std_val = np.concatenate([
+            self.tau_std_val[1:],
+            np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
+            * (self.env.action_space.high - self.env.action_space.low) / 4
+        ])
+
+        # return returns_array[-1, :]
+        return optimized_actions_mean, optimized_actions_std
         #
         # n = self.n_candidates
         # m = self.num_envs
@@ -345,6 +379,9 @@ class GTMPCController(Serializable):
                 reward_array.append(reward)
                 act_norm_array.append(np.linalg.norm(act))
 
+        elif self.method_str == 'cem':
+            raise NotImplementedError
+
         x = np.arange(self.horizon)
         obs_array = np.transpose(np.asarray(obs_array))  # (obs_dims, horizon)
         act_array = np.transpose(np.asarray(act_array))  # (act_dims, horizon)
@@ -376,11 +413,8 @@ class GTMPCController(Serializable):
         fig.suptitle(f'{self._local_step}')
 
         # plt.show()
-        if not hasattr(self, 'save_dir'):
-            self.save_dir = os.path.join(logger.get_dir(), 'dyn_vs_env')
-            os.makedirs(self.save_dir, exist_ok=True)
-        plt.savefig(os.path.join(self.save_dir, f'{self._local_step}.png'))
-        logger.log('plt saved to', os.path.join(self.save_dir, f'{self._local_step}.png'))
+        plt.savefig(os.path.join(self.save_dir_first_rollout, f'{self._local_step}.png'))
+        logger.log('plt saved to', os.path.join(self.save_dir_first_rollout, f'{self._local_step}.png'))
 
     def plot_info(self):
         # x: iterations, y: stats average over batch
@@ -428,27 +462,37 @@ class GTMPCController(Serializable):
         ax.set_ylabel(f'avg_action_norm_over_{len(x)}_iteration')
 
         fig.suptitle(f'{self._local_step}')
-        fig.savefig(os.path.join(self.save_dir, f'{self._local_step}.png'))
-        logger.log('plt saved to', os.path.join(self.save_dir, f'{self._local_step}.png'))
+        fig.savefig(os.path.join(self.save_dir_info, f'{self._local_step}.png'))
+        logger.log('plt saved to', os.path.join(self.save_dir_info, f'{self._local_step}.png'))
 
     def get_params_internal(self, **tags):
         return []
 
     def reset(self, dones=None):
-        if self.method_str == 'opt_act':
-            assert len(dones) == self.num_envs
-            if self.initializer_str == 'uniform':
-                self.tau_mean_val = np.random.uniform(
-                    low=self.env.action_space.low,
-                    high=self.env.action_space.high,
-                    size=(self.horizon, self.num_envs, self.action_space_dims),
-                )
-            elif self.initializer_str == 'zeros':
-                self.tau_mean_val = np.zeros(
-                    (self.horizon, self.num_envs, self.action_space_dims),
-                )
+        """
+        This funciton is called by sampler at the start of each trainer iteration.
+        :param dones:
+        :return:
+        """
+        # if self.method_str == 'opt_act':
+            # assert len(dones) == self.num_envs
+            # if self.initializer_str == 'uniform':
+            #     self.tau_mean_val = np.random.uniform(
+            #         low=self.env.action_space.low,
+            #         high=self.env.action_space.high,
+            #         size=(self.horizon, self.num_envs, self.action_space_dims),
+            #     )
+            # elif self.initializer_str == 'zeros':
+            #     self.tau_mean_val = np.zeros(
+            #         (self.horizon, self.num_envs, self.action_space_dims),
+            #     )
+        if self.method_str == 'cem':
+            self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                                * (self.env.action_space.high + self.env.action_space.low) / 2
+            self.tau_std_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                               * (self.env.action_space.high - self.env.action_space.low) / 4
         else:
-            raise NotImplementedError
+            pass
 
     def log_diagnostics(*args):
         pass

@@ -81,14 +81,17 @@ class IterativeEnvExecutor(object):
         self.ts[:] = 0
         return obses
 
-    def reset_from_obs_hard(self, observations):
-        assert observations.shape[0] == self.num_envs
-        obses = [env.reset_from_obs_hard(obs) for env, obs in zip(self.envs, observations)]
-        self.ts[:] = 0
-        return obses
+    # def reset_from_obs_hard(self, observations):
+    #     assert observations.shape[0] == self.num_envs
+    #     obses = [env.reset_from_obs_hard(obs) for env, obs in zip(self.envs, observations)]
+    #     self.ts[:] = 0
+    #     return obses
 
-    def reset_hard(self):
-        obses = [env.reset_hard() for env in self.envs]
+    def reset_hard(self, init_obs_array=None):
+        if init_obs_array is None:
+            obses = [env.reset_hard() for env in self.envs]
+        else:
+            obses = [env.reset_hard(init_obs) for env, init_obs in zip(self.envs, init_obs_array)]
         self.ts[:] = 0
         return obses
 
@@ -102,6 +105,9 @@ class IterativeEnvExecutor(object):
         """
         return self._num_envs
 
+
+def chunks(l, n):
+    return [l[x: x+n] for x in range(0, len(l), n)]
 
 class ParallelEnvExecutor(object):
     """
@@ -118,6 +124,7 @@ class ParallelEnvExecutor(object):
     """
 
     def __init__(self, env, n_parallel, num_rollouts, max_path_length):
+        n_parallel = min(n_parallel, num_rollouts)
         assert num_rollouts % n_parallel == 0
         self.envs_per_proc = int(num_rollouts/n_parallel)
         self._num_envs = n_parallel * self.envs_per_proc
@@ -149,7 +156,7 @@ class ParallelEnvExecutor(object):
         assert len(actions) == self.num_envs
 
         # split list of actions in list of list of actions per meta tasks
-        chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
+        # chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
         actions_per_meta_task = chunks(actions, self.envs_per_proc)
 
         # step remote environments
@@ -175,9 +182,15 @@ class ParallelEnvExecutor(object):
             remote.send(('reset', None))
         return sum([remote.recv() for remote in self.remotes], [])
 
-    def reset_hard(self):
-        for remote in self.remotes:
-            remote.send(('reset_hard', None))
+    def reset_hard(self, init_obs_array=None):
+        if init_obs_array is None:
+            for remote in self.remotes:
+                remote.send(('reset_hard', None))
+        else:
+            init_obs_per_meta_task = chunks(init_obs_array, self.envs_per_proc)
+            for remote, init_obs in zip(self.remotes, init_obs_per_meta_task):
+                remote.send(('reset_hard', init_obs))
+
         return sum([remote.recv() for remote in self.remotes], [])
 
     def set_tasks(self, tasks=None):
@@ -246,7 +259,7 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
             remote.send(obs)
 
         elif cmd == 'reset_hard':
-            obs = [env.reset_hard() for env in envs]
+            obs = [env.reset_hard(data) for env in envs]
             ts[:] = 0
             remote.send(obs)
 
@@ -347,7 +360,7 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
 
             # delta_return_cubic = np.zeros((horizon, batch_size, action_space_dims))
             delta_return_cubic = []
-            if verbose: pbar = ProgBar(idx_end_flatten - idx_start_flatten)
+            # if verbose: pbar = ProgBar(idx_end_flatten - idx_start_flatten)
             for idx_flatten in range(idx_start_flatten, idx_end_flatten):
                 idx_horizon, idx_action_space_dims = idx_flatten // action_space_dims, idx_flatten % action_space_dims
                 # delta = np.zeros((horizon, batch_size, action_space_dims))
@@ -360,9 +373,9 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
                 for idx_batch, env, old_return in zip(range(batch_size), envs, old_return_array):
                     # reset environment
                     if init_obs_array is None:
-                        _ = env.reset_hard()
+                        _ = env.reset_hard(None)
                     else:
-                        _ = env.reset_from_obs_hard(init_obs_array[idx_batch])
+                        _ = env.reset_hard(init_obs_array[idx_batch])
 
                     # compute new return with discount factor = 1
                     new_return = sum([env.step(act)[1] for act in new_tau[:, idx_batch, :]])
@@ -372,9 +385,9 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
                 delta_return_cubic.append((idx_horizon, idx_action_space_dims, delta_return_array))
                 # revert to old tau
                 new_tau[idx_horizon, :, idx_action_space_dims] -= eps
-                if verbose: pbar.update(1)
+                # if verbose: pbar.update(1)
 
-            if verbose: pbar.stop()
+            # if verbose: pbar.stop()
 
             remote.send(delta_return_cubic)
 
@@ -385,9 +398,9 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
             for idx_batch, env in zip(range(batch_size), envs):
                 # reset environment
                 if init_obs_array is None:
-                    _ = env.reset_hard()
+                    _ = env.reset_hard(None)
                 else:
-                    _ = env.reset_from_obs_hard(init_obs_array[idx_batch])
+                    _ = env.reset_hard(init_obs_array[idx_batch])
                 old_return = sum([env.step(act)[1] for act in tau[:, idx_batch, :]])
                 old_return_array.append(old_return)
 
@@ -409,6 +422,7 @@ class ParallelPolicyGradUpdateExecutor(object):
     def __init__(self, env, n_parallel, num_rollouts, horizon, eps,
                  opt_learning_rate, num_opt_iters,
                  discount=1, verbose=False):
+        n_parallel = min(n_parallel, num_rollouts)
         self.n_parallel = n_parallel
         self.num_rollouts = num_rollouts
         assert num_rollouts % n_parallel == 0
@@ -484,10 +498,7 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
     optimizers_b = [GTOptimizer(alpha=opt_learning_rate) for _ in range(n_envs)]
 
     def compute_sum_rewards(env, policy, init_obs=None):
-        if init_obs is None:
-            obs = env.reset_hard()
-        else:
-            obs = env.reset_hard_from_obs(init_obs)
+        obs = env.reset_hard(init_obs)
         sum_rewards = 0
         for t in range(horizon):
             action, _ = policy.get_action(obs)

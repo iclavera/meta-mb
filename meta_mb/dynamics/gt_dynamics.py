@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 class GTDynamics():
     """
+    THIS CLASS IS NOT USED.
     Ground truth dynamics model which is STATELESS compared to simulator environments.
     """
 

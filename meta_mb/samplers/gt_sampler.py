@@ -48,13 +48,10 @@ class GTSampler(BaseSampler):
         pass
 
     def obtain_samples(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
-        policy = self.policy
-        # policy.reset(dones=[True] * self.vec_env.num_envs)  # do not reset
-
-        returns_array = policy.get_actions(
-            observations=None, deterministic=deterministic, plot_first_rollout=plot_first_rollout
+        self.policy.reset()  # do not reset
+        returns_array = self.policy.get_rollouts(
+            deterministic=deterministic, plot_first_rollout=plot_first_rollout
         )
-        # logger.log(returns_array)  # (num_envs,)
 
         logger.logkv(log_prefix + 'AverageReturn', np.mean(returns_array))
         if log:

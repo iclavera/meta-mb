@@ -31,15 +31,13 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_hard(self):
+    def reset_hard(self, obs=None):
         self.sim.reset()
-        self.set_state(self.init_qpos, self.init_qvel)
-        return self._get_obs()
-
-    def reset_from_obs_hard(self, obs):
-        self.sim.reset()
-        qpos, qvel = obs[:self.model.nq], obs[self.model.nq:]
-        self.set_state(qpos, qvel)
+        if obs is None:
+            self.set_state(self.init_qpos, self.init_qvel)
+        else:
+            qpos, qvel = obs[:self.model.nq], obs[self.model.nq:]
+            self.set_state(qpos, qvel)
         return self._get_obs()
 
     def _get_reward(self):
@@ -62,7 +60,7 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         return -(obs[:, 1]) ** 2
 
     def tf_reward(self, obs, acts, next_obs):
-        return - tf.square(obs[:, 1])
+        return - tf.square(obs[:, 1] - np.pi)
 
 
 if __name__ == "__main__":
