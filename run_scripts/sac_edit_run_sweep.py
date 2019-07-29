@@ -170,7 +170,7 @@ if __name__ == '__main__':
 		'rollout_batch_size': [10e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9, 0.4],
-		'q_functioin_type':[6],
+		'q_functioin_type':[5],
 		'q_target_type': [1],
 		'num_actions_per_next_observation': [5, 10],
 		'epoch_length': [100],
