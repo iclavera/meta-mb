@@ -1,6 +1,7 @@
 import os
 import gym
 import time
+import rospy
 import numpy as np
 import tensorflow as tf
 from meta_mb.logger import logger
@@ -17,6 +18,7 @@ def mass_center(model, sim):
 class DarwinWalker(MetaEnv, Darwin, gym.utils.EzPickle):
     def __init__(self, ip='127.0.0.1', port=9090):
         super(DarwinWalker, self).__init__()
+        self.init_qpos = self._joint_positions
         self.ordered_joints = [
             'j_pan',
             'j_tilt',
@@ -43,6 +45,7 @@ class DarwinWalker(MetaEnv, Darwin, gym.utils.EzPickle):
             'j_ankle1_l',
             'j_ankle2_l'
         ]
+        self.frame_skip = 2
         gym.utils.EzPickle.__init__(self)
 
     def _get_obs(self):
@@ -53,13 +56,12 @@ class DarwinWalker(MetaEnv, Darwin, gym.utils.EzPickle):
         return obs
 
     def step(self, a):
-        pos_before = mass_center(self.model, self.sim)[0]
-        self.do_simulation(a, self.frame_skip)
-        pos_after = mass_center(self.model, self.sim)[0]
+        pos_before = self._get_obs()[:24]
+        pos_after = self.do_simulation(a, self.frame_skip)[:24]
+
         alive_bonus = 5.0
-        data = self.sim.data
-        lin_vel_cost = 0.25 * (pos_after - pos_before) / self.model.opt.timestep
-        quad_ctrl_cost = 0.1 * np.square(data.ctrl).sum()
+        lin_vel_cost = 0.25 * (pos_after - pos_before)
+        quad_ctrl_cost = 0.1 * np.square(a).sum()
         reward = lin_vel_cost - quad_ctrl_cost + alive_bonus
         done = False
         return self._get_obs(), reward, done, dict(reward_linvel=lin_vel_cost, reward_quadctrl=-quad_ctrl_cost,
@@ -100,13 +102,13 @@ class DarwinWalker(MetaEnv, Darwin, gym.utils.EzPickle):
             notdone = np.isfinite(obs).all() and obs[0] >= 0.2 and obs[0] <= 1
             return not notdone
 
-    def reset_model(self):
+    def reset(self):
         c = 0.01
-        self.set_state(
-            self.init_qpos + self.np_random.uniform(low=-c, high=c, size=self.model.nq),
-            self.init_qvel + self.np_random.uniform(low=-c, high=c, size=self.model.nv, )
-        )
+        qpos = dict(zip(self.ordered_joints, self.init_qpos))
+        self.my_set_angles(qpos)
         return self._get_obs()
+
+
 
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 0.6
@@ -125,11 +127,16 @@ class DarwinWalker(MetaEnv, Darwin, gym.utils.EzPickle):
 
 
 if __name__ == "__main__":
+    rospy.init_node("real_darwin")
+
+    rospy.loginfo("Instantiating Darwin Client")
+    rospy.sleep(1)
+
+    rospy.loginfo("Darwin Walker Demo Starting")
     env = DarwinWalker()
     while True:
         env.reset()
         for _ in range(2000):
-            env.render()
-            _, reward, _, _ = env.step(env.action_space.sample() * 100)  # take a random action
+            _, reward, _, _ = env.step(np.random.uniform(-2, 2, 24) * 100)  # take a random action
 
 

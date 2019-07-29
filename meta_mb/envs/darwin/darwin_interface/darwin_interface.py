@@ -31,10 +31,8 @@ class Darwin:
 
         rospy.loginfo("Creating joint command publishers")
         self._pub_joints = {}
-        self._sub_joints = {}
         for j in self.joints:
             p = rospy.Publisher(self.ns + j + "_position_controller/command", Float64)
-            s = rospy.Subscriber(self.ns + j + "_position_controller/state", Float64, self._joint_state_callback)
             self._pub_joints[j] = p
 
         rospy.sleep(1)
@@ -78,17 +76,22 @@ class Darwin:
     def _cb_joints(self, msg):
         if self.joints is None:
             self.joints = msg.name
+        self._joint_velocities = np.array(msg.velocity)
+        self._joint_positions = np.array(msg.position)
         self.angles = msg.position
+
+    def get_joint_velocities(self):
+        return self._joint_velocities
 
     def get_angles(self):
         if self.joints is None: return None
         if self.angles is None: return None
         return dict(zip(self.joints, self.angles))
 
-    def my_set_angles(self):
+    def my_set_angles(self, qpos):
         for joint in self._pub_joints.keys():
             msg = Float64()
-            msg.data = np.random.uniform(low=-0.25, high=0.25)
+            msg.data = qpos[joint]
             self._pub_joints[joint].publish(msg)
 
     def set_angles(self, angles):
