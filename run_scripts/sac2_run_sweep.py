@@ -3,15 +3,15 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Walker-Steve-T2"
+EXP_NAME = "SAC2"
 
 from pdb import set_trace as st
-from meta_mb.algos.sac_edit import SAC_MB
+from meta_mb.algos.sac2 import SAC2
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_edit_trainer import Trainer
+from meta_mb.trainers.sac2_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
@@ -19,7 +19,7 @@ from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_q import ProbMLPDynamicsEnsembleQ
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -79,8 +79,13 @@ def run_experiment(**kwargs):
         )
 
 
-        dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
+        dynamics_model = ProbMLPDynamicsEnsembleQ('dynamics-ensemble',
                                                 env=env,
+                                                Qs=Qs,
+                                                Q_targets=Q_targets,
+                                                policy=policy,
+                                                reward_scale=kwargs['reward_scale'],
+                                                discount=kwargs['discount'],
                                                 num_models=kwargs['num_models'],
                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
                                                 hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
@@ -92,15 +97,13 @@ def run_experiment(**kwargs):
                                                 )
 
 
-        algo = SAC_MB(
+        algo = SAC2(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
             arget_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
-            Qs=Qs,
-            Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
             prediction_type=kwargs['prediction_type'],
@@ -145,9 +148,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22, 33],
+        'seed': [22,33],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -164,22 +167,22 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [3000],
         'n_train_repeats': [8],
-        'max_path_length': [11],
-		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [q],
+        'max_path_length': [1001],
+		'rollout_length_params': [[20, 100, 1, 25]],
+        'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[6],
-		'q_target_type': [1],
-		'num_actions_per_next_observation': [5],
-		'epoch_length': [10],
-        'T': [2],
-		'H': [2],
+		'q_target_type': [0],
+		'num_actions_per_next_observation': [5, 10],
+		'epoch_length': [1000],
+        'T': [2, 3, 5],
+		'H': [0],
 		'reward_scale': [1],
-		'target_entropy': [-3],
+		'target_entropy': [-3, -6],
 		'num_models': [8],
-		'model_used_ratio': [0],
+		'model_used_ratio': [0.5, 1],
 		'dynamics_buffer_size': [1e4],
 
 

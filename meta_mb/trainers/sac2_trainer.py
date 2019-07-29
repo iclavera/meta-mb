@@ -126,15 +126,7 @@ class Trainer(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
-            # self.saver = tf.train.Saver(write_version=tf.train.SaverDef.V2, max_to_keep=10, pad_step_number=True)
 
-            # if self.start_itr == 0:
-            # if tf.train.get_checkpoint_state(self.restore_path):
-            #     print("reading stored model from %s", self.restore_path)
-            #     self.saver.restore(sess, tf.train.latest_checkpoint(self.restore_path))
-            #     self.start_itr = self.itr.eval() + 1
-            #
-            # else:
             self.start_itr = 0
             self.algo._update_target(tau=1.0)
             while self.env_replay_buffer._size < self.n_initial_exploration_steps:
@@ -150,19 +142,20 @@ class Trainer(object):
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
                 time_step = 0
+
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
-                self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
+                # obs, actions, nect_obs, rewards, dones
+                self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2], all_samples[3], all_samples[4]
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
                 sac_time = []
-
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
                     for _ in range(self.rollout_length):
