@@ -1,4 +1,6 @@
 from meta_mb.utils.serializable import Serializable
+from meta_mb.samplers.vectorized_env_executor import ParallelPolicyGradUpdateExecutor, ParallelActionDerivativeExecutor
+from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import matplotlib.pyplot as plt
 import numpy as np
 from meta_mb.logger import logger
@@ -11,10 +13,12 @@ class GTMPCController(Serializable):
             name,
             env,
             dynamics_model,
+            eps,
             num_rollouts=None,
             reward_model=None,
             discount=1,
             method_str='opt_policy',
+            n_parallel=1,
             dyn_pred_str='rand',
             initializer_str='uniform',
             reg_coef=1,
@@ -29,6 +33,7 @@ class GTMPCController(Serializable):
             use_reward_model=False,
             alpha=0.1,
             num_particles=20,
+            verbose=True,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
@@ -38,13 +43,14 @@ class GTMPCController(Serializable):
         self.dyn_pred_str = dyn_pred_str
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
-        assert 0 <= self.reg_coef < 1
+        assert 0 <= self.reg_coef <= 1
         self.reg_str = reg_str
         self.n_candidates = n_candidates
         self.horizon = horizon
         self.num_cem_iters = num_cem_iters
         self.num_opt_iters = num_opt_iters
         self.opt_learning_rate = opt_learning_rate
+        self.eps = eps
         self.num_envs = num_rollouts
         self.percent_elites = percent_elites
         self.num_elites = int(percent_elites * n_candidates)
@@ -66,26 +72,40 @@ class GTMPCController(Serializable):
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
-        if initializer_str == 'uniform':
-            self.tau_mean_val = np.random.uniform(
-                low=self.env.action_space.low,
-                high=self.env.action_space.high,
-                size=(self.horizon, self.num_envs, self.action_space_dims),
+        if self.method_str == 'opt_policy':
+            self.policy = ParallelPolicyGradUpdateExecutor(
+                env, n_parallel, num_rollouts, horizon, eps,
+                opt_learning_rate, num_opt_iters,
+                discount, verbose,
             )
-        elif initializer_str == 'zeros':
-            self.tau_mean_val = np.zeros(
-                (self.horizon, self.num_envs, self.action_space_dims),
-            )
-            self.tau_mean_val = np.clip(np.random.normal(self.tau_mean_val, scale=0.05), self.env.action_space.low, self.env.action_space.high)
+
+        elif self.method_str == 'opt_act':
+            if initializer_str == 'uniform':
+                self.tau_mean_val = np.random.uniform(
+                    low=self.env.action_space.low,
+                    high=self.env.action_space.high,
+                    size=(self.horizon, self.num_envs, self.action_space_dims),
+                )
+            elif initializer_str == 'zeros':
+                self.tau_mean_val = np.zeros(
+                    (self.horizon, self.num_envs, self.action_space_dims),
+                )
+                self.tau_mean_val = np.clip(np.random.normal(self.tau_mean_val, scale=0.05), self.env.action_space.low, self.env.action_space.high)
+            else:
+                raise NotImplementedError('initializer_str must be uniform or zeros')
+
+            self.tau_std_val = 0.05 * np.ones((self.action_space_dims,))
+            self.deriv_env = ParallelActionDerivativeExecutor(env, n_parallel, horizon, num_rollouts, eps, discount, verbose)
+            self.tau_optimizer = GTOptimizer(alpha=self.opt_learning_rate)
+
+            # plotting
+            # (num_opt_iters, batch_size)
+            self.returns_array_first_rollout, self.grad_norm_first_rollout, self.tau_norm_first_rollout = [], [], []
+
         else:
-            raise NotImplementedError('initializer_str must be uniform or zeros')
+            raise NotImplementedError
 
-        self.tau_std_val = 0.05 * np.ones((self.action_space_dims,))
         self._local_step = 0
-
-        # plotting
-        # (num_opt_iters, batch_size)
-        self.returns_array_first_rollout, self.grad_norm_first_rollout, self.tau_norm_first_rollout = [], [], []
         self.save_dir = os.path.join(logger.get_dir(), 'grads_global_norm')
         os.makedirs(self.save_dir, exist_ok=True)
 
@@ -93,12 +113,30 @@ class GTMPCController(Serializable):
     def vectorized(self):
         return True
 
-    def get_action(self, observation):
-        if observation.ndim == 1:
-            observation = observation[None]
-        return self.get_actions(observation)
+    def get_actions(self, observations, deterministic, plot_first_rollout):
+        if self.method_str == 'opt_policy':
+            return self.get_rollouts_w_policy(observations, deterministic, plot_first_rollout)
+        else:
+            return self.get_rollouts(observations, deterministic, plot_first_rollout)
 
-    def get_rollouts(self, observations, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_w_policy(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
+        assert deterministic
+        info = self.policy.do_gradient_steps(init_obs_array)
+
+        if plot_first_rollout:
+            logger.log(info['old_return'][0, :])  # report return for the first rollout over optimization iterations
+            if init_obs_array is None:
+                init_obs = None
+            else:
+                init_obs = init_obs_array[0]
+            self.policy.plot_first_rollout(init_obs, self._local_step)
+
+            # self.plot_info()
+
+        self._local_step += 1
+        return np.asarray(info['old_return'])[:, -1]
+
+    def get_rollouts(self, init_obs_array=None, deterministic=False, plot_first_rollout=False):
         """
 
         :param observations:
@@ -115,8 +153,8 @@ class GTMPCController(Serializable):
 
         returns_array, grad_norm_first_rollout, tau_norm_first_rollout = [], [], []
         for itr in range(self.num_opt_iters):
-            grad_tau, returns = self.dynamics_model.get_derivative(tau, init_obs=observations)
-            tau += self.opt_learning_rate * grad_tau
+            grad_tau, returns = self.deriv_env.get_derivative(tau, init_obs_array=init_obs_array)
+            tau += self.tau_optimizer.compute_delta_var(grad_tau)  # Adam optimizer
             # regularization
             # clipping and regularization needs to be modified if not (low, high) = (-1, 1)
             if self.reg_str == 'poly':
@@ -125,6 +163,8 @@ class GTMPCController(Serializable):
             elif self.reg_str == 'scale':
                 _max_abs = np.max(np.abs(tau), axis=-1)
                 tau /= _max_abs
+            elif self.reg_str == 'tanh':
+                tau = np.tanh(tau)
             else:
                 raise NotImplementedError
             returns_array.append(returns)
@@ -139,10 +179,10 @@ class GTMPCController(Serializable):
 
         if plot_first_rollout:
             logger.log(returns_array[:, 0])  # report return for the first rollout over optimization iterations
-            if observations is None:
+            if init_obs_array is None:
                 init_obs = None
             else:
-                init_obs = observations[0]
+                init_obs = init_obs_array[0]
             self.dynamics_model.plot_rollout(tau[:, 0, :], init_obs, self._local_step)
 
             self.plot_info()
@@ -162,29 +202,8 @@ class GTMPCController(Serializable):
         self.tau_mean_val = tau
         # adapt tau_std_val here
         self._local_step += 1
-        return tau, returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
+        return returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
 
-    def get_actions(self, observations, deterministic=False, return_first_info=False, log_grads_for_plot=False):
-        raise NotImplementedError
-    #
-    # def get_random_action(self, n):
-    #     return np.random.uniform(low=self.env.action_space.low,
-    #                              high=self.env.action_space.high, size=(n,) + self.env.action_space.low.shape)
-    #
-    #
-    # def get_sinusoid_actions(self, action_space, t):
-    #     actions = np.array([])
-    #     delta = t/action_space
-    #     for i in range(action_space):
-    #         #actions = np.append(actions, 0.5 * np.sin(i * delta)) #two different ways of sinusoidal sampling
-    #         actions = np.append(actions, 0.5 * np.sin(i * t))
-    #     #for i in range(3, len(actions)): #limit movement to first 3 joints
-    #     #    actions[i] = 0
-    #     return actions
-    #
-    # def predict_open_loop(self, init_obs, tau):
-    #     return self.dynamics_model.predict_open_loop(init_obs, tau)
-    #
     def plot_info(self):
         # x: iterations, y: stats average over batch
         x = np.arange(len(self.returns_array_first_rollout))  # plot every 10 steps along the path

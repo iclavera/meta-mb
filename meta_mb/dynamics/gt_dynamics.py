@@ -21,7 +21,6 @@ class GTDynamics():
                  max_path_length,
                  discount=1,
                  n_parallel=1,
-                 eps=1e-6,
                  verbose=False
                  ):
         self.name = name
@@ -33,12 +32,10 @@ class GTDynamics():
         self.n_parallel = n_parallel
         self.obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = env.action_space.shape[0]
-        self.eps = eps
 
         # self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
         # self.single_env = IterativeEnvExecutor(env, 1, max_path_length)
         self._env = copy.deepcopy(env)
-        self.deriv_env = ParallelActionDerivativeExecutor(env, n_parallel, horizon, num_rollouts, eps, discount, verbose)
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
@@ -91,28 +88,28 @@ class GTDynamics():
     #
     #     return obs_hall, obs_hall_mean, obs_hall_std, reward_hall
 
-    def get_derivative(self, tau, init_obs=None):
-        """
-        Assume s_0 is the reset state.
-        :param tau: (horizon, batch_size, action_space_dims)
-        :tf_loss: scalar Tensor R
-        :return: dR/da_i for i in range(action_space_dims)
-        """
-        assert tau.shape == (self.horizon, self.num_envs, self.action_space_dims)
-        # compute R
-        # returns = self._compute_returns(tau, init_obs)
-        # derivative = np.zeros_like(tau)
-        #
-        # # perturb tau
-        # for i in range(self.horizon):
-        #     for j in range(self.action_space_dims):
-        #         delta = np.zeros_like(tau)
-        #         delta[i, :, j] = eps
-        #         new_returns = self._compute_returns(tau + delta, init_obs=init_obs)
-        #         derivative[i, :, j] = (new_returns - returns)/eps
-        #
-        # return derivative, returns
-        return self.deriv_env.get_derivative(tau, init_obs)
+    # def get_derivative(self, tau, init_obs=None):
+    #     """
+    #     Assume s_0 is the reset state.
+    #     :param tau: (horizon, batch_size, action_space_dims)
+    #     :tf_loss: scalar Tensor R
+    #     :return: dR/da_i for i in range(action_space_dims)
+    #     """
+    #     assert tau.shape == (self.horizon, self.num_envs, self.action_space_dims)
+    #     # compute R
+    #     # returns = self._compute_returns(tau, init_obs)
+    #     # derivative = np.zeros_like(tau)
+    #     #
+    #     # # perturb tau
+    #     # for i in range(self.horizon):
+    #     #     for j in range(self.action_space_dims):
+    #     #         delta = np.zeros_like(tau)
+    #     #         delta[i, :, j] = eps
+    #     #         new_returns = self._compute_returns(tau + delta, init_obs=init_obs)
+    #     #         derivative[i, :, j] = (new_returns - returns)/eps
+    #     #
+    #     # return derivative, returns
+    #     return self.deriv_env.get_derivative(tau, init_obs)
 
     def plot_rollout(self, tau, init_obs, global_step):
         if init_obs is None:
