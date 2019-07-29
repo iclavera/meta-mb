@@ -15,21 +15,22 @@ def mass_center(model, sim):
 class DarwinEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self, log_rand=0):
         xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'darwin.xml')
-        RandomEnv.__init__(self, 0, xml_file, 2)
+        RandomEnv.__init__(self, log_rand, xml_file, 2)
         gym.utils.EzPickle.__init__(self)
+        #print(self.init_qpos)
 
     def _get_obs(self):
         data = self.sim.data
         return np.concatenate([
             data.qpos.flat,
             data.qvel.flat,
-            data.cvel.flat,
         ])
 
     def step(self, a):
         pos_before = mass_center(self.model, self.sim)[0]
         self.do_simulation(a, self.frame_skip)
         pos_after = mass_center(self.model, self.sim)[0]
+        #self.sim.data.qpos = a
         alive_bonus = 5.0
         data = self.sim.data
         lin_vel_cost = 0.25 * (pos_after - pos_before) / self.model.opt.timestep
@@ -39,9 +40,9 @@ class DarwinEnv(RandomEnv, gym.utils.EzPickle):
         done = False#bool((qpos[2] < 1.0) or (qpos[2] > 2.0))
         return self._get_obs(), reward, done, dict(reward_linvel=lin_vel_cost, reward_quadctrl=-quad_ctrl_cost,
                                                    reward=reward, reward_alive=alive_bonus)
-
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
+        print(obs.ndim)
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
             vel = obs_next[:, 22:25]
@@ -73,7 +74,7 @@ class DarwinEnv(RandomEnv, gym.utils.EzPickle):
         self.viewer.cam.distance = self.model.stat.extent * 0.6
         self.viewer.cam.elevation = 3
         self.viewer.cam.trackbodyid = 0
-        self.viewer.cam.type = 1
+        self.viewer.cam.type = 0
 
     def log_diagnostics(self, paths, prefix=''):
         vel_cost = [-path["env_infos"]['reward_linvel'] for path in paths]
@@ -89,6 +90,6 @@ if __name__ == "__main__":
     env = DarwinEnv()
     while True:
         env.reset()
-        for _ in range(1000):
+        for _ in range(2000):
             env.render()
-            _, reward, _, _ = env.step(env.action_space.sample())  # take a random action
+            _, reward, _, _ = env.step(env.action_space.sample() * 100)  # take a random action
