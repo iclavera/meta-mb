@@ -309,125 +309,6 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]),
                                                                                    len(self._dataset_test['obs'][0])))
 
-    def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
-                      compute_normalization=True, rolling_average_persitency=None,
-                      verbose=False, log_tabular=False, prefix=''):
-
-        if rolling_average_persitency is None:
-            rolling_average_persitency = self.rolling_average_persitency
-
-        sess = tf.get_default_session()
-
-        if with_new_data:
-            if compute_normalization and self.normalize_input:
-                self.compute_normalization(self._dataset_train['obs'],
-                                           self._dataset_train['act'],
-                                           self._dataset_train['delta'])
-
-        self.used_timesteps_counter += len(self._dataset_train['obs'][0])
-        if self.normalize_input:
-            # normalize data
-            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
-                                                                     self._dataset_train['act'],
-                                                                     self._dataset_train['delta'])
-        else:
-            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
-                                                self._dataset_train['delta']
-
-        valid_loss_rolling_average = valid_loss_rolling_average_prev
-        assert remaining_model_idx is not None
-        train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx in remaining_model_idx]
-
-        # initialize data queue
-        feed_dict = dict(
-            list(zip(self.obs_batches_dataset_ph, obs_train)) +
-            list(zip(self.act_batches_dataset_ph, act_train)) +
-            list(zip(self.delta_batches_dataset_ph, delta_train))
-        )
-        sess.run(self.iterator.initializer, feed_dict=feed_dict)
-
-        # preparations for recording training stats
-        batch_losses = []
-
-        """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
-        while True:
-            try:
-                obs_act_delta = sess.run(self.next_batch)
-                obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
-                act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
-                delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
-
-                # run train op
-                batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
-                                                feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
-                                                           self.act_model_batches_stack_ph: act_batch_stack,
-                                                           self.delta_model_batches_stack_ph: delta_batch_stack})
-
-                batch_loss = np.array(batch_loss_train_ops[:self.num_models])
-                batch_losses.append(batch_loss)
-
-            except tf.errors.OutOfRangeError:
-                if self.normalize_input:
-                    # TODO: if not with_new_data, don't recompute
-                    # normalize data
-                    obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
-                                                                          self._dataset_test['act'],
-                                                                          self._dataset_test['delta'])
-
-                else:
-                    obs_test, act_test, delta_test = self._dataset_test['obs'], self._dataset_test['act'], \
-                                                     self._dataset_test['delta']
-
-                obs_test_stack = np.concatenate(obs_test, axis=0)
-                act_test_stack = np.concatenate(act_test, axis=0)
-                delta_test_stack = np.concatenate(delta_test, axis=0)
-
-                # compute validation loss
-                valid_loss = sess.run(self.loss_model_batches,
-                                      feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
-                                                 self.act_model_batches_stack_ph: act_test_stack,
-                                                 self.delta_model_batches_stack_ph: delta_test_stack})
-                valid_loss = np.array(valid_loss)
-
-                if valid_loss_rolling_average is None:
-                    valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
-                    valid_loss_rolling_average_prev = 2.0 * valid_loss
-                    for i in range(len(valid_loss)):
-                        if valid_loss[i] < 0:
-                            valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
-                            valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
-
-                valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
-                                             + (1.0-rolling_average_persitency)*valid_loss
-
-                if verbose:
-                    str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
-                    str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
-                    str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-                    logger.log(
-                        "Training NNDynamicsModel - finished one epoch\n"
-                        "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-                        %(str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
-                    )
-                break
-
-        for i in remaining_model_idx:
-            if valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]:
-                remaining_model_idx.remove(i)
-                logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
-
-        """ ------- Tabular Logging ------- """
-        if log_tabular:
-            logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
-            logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
-            logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
-            logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
-            logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
-            logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix+'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
-
-        return remaining_model_idx, valid_loss_rolling_average
-
     def fit(self, obs, act, obs_next, rewards, dones, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
@@ -452,16 +333,21 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         if compute_normalization and self.normalize_input:
             self.compute_normalization(self._dataset_train['obs'],
                                        self._dataset_train['act'],
-                                       self._dataset_train['delta'])
+                                       self._dataset_train['delta'],
+                                       self._dataset_train['rew'],
+                                       self._dataset_train['done'])
 
         if self.normalize_input:
             # normalize data
-            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+            obs_train, act_train, delta_train, rew_train, done_train = self._normalize_data(self._dataset_train['obs'],
                                                                      self._dataset_train['act'],
-                                                                     self._dataset_train['delta'])
+                                                                     self._dataset_train['delta'],
+                                                                     self._dataset_train['rew'],
+                                                                     self._dataset_train['done'],
+                                                                     )
         else:
-            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'],\
-                                                self._dataset_train['delta']
+            obs_train, act_train, delta_train, rew_train, done_train = self._dataset_train['obs'], self._dataset_train['act'],\
+                                                self._dataset_train['delta'], self._dataset_train['rew'], self._dataset_train['done']
 
         valid_loss_rolling_average = None
         train_op_to_do = self.train_op_model_batches
@@ -476,7 +362,9 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             feed_dict = dict(
                 list(zip(self.obs_batches_dataset_ph, obs_train)) +
                 list(zip(self.act_batches_dataset_ph, act_train)) +
-                list(zip(self.delta_batches_dataset_ph, delta_train))
+                list(zip(self.delta_batches_dataset_ph, delta_train)) +
+                list(zip(self.rew_batches_dataset_ph, rew_train)) +
+                list(zip(self.done_batches_dataset_ph, done_train))
             )
             sess.run(self.iterator.initializer, feed_dict=feed_dict)
 
@@ -490,13 +378,18 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                     obs_act_delta = sess.run(self.next_batch)
                     obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
                     act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
-                    delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
+                    delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:3*self.num_models], axis=0)
+                    rew_batch_stack = np.concatenate(obs_act_delta[3*self.num_models:4*self.num_models], axis=0)
+                    done_batch_stack = np.concatenate(obs_act_delta[4*self.num_models:], axis=0)
 
                     # run train op
                     batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
                                                    feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
                                                               self.act_model_batches_stack_ph: act_batch_stack,
-                                                              self.delta_model_batches_stack_ph: delta_batch_stack})
+                                                              self.delta_model_batches_stack_ph: delta_batch_stack,
+                                                              self.rew_model_batches_stack_ph: rew_batch_stack,
+                                                              self.done_model_batches_stack_ph: done_batch_stack,
+                                                              })
 
                     batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                     batch_losses.append(batch_loss)
@@ -504,23 +397,31 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                 except tf.errors.OutOfRangeError:
                     if self.normalize_input:
                         # normalize data
-                        obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
+                        obs_test, act_test, delta_test, rew_test, done_test = self._normalize_data(self._dataset_test['obs'],
                                                                               self._dataset_test['act'],
-                                                                              self._dataset_test['delta'])
+                                                                              self._dataset_test['delta'],
+                                                                              self._dataset_test['rew'],
+                                                                              self._dataset_test['done'],
+                                                                              )
 
                     else:
-                        obs_test, act_test, delta_test = self._dataset_test['obs'], self._dataset_test['act'], \
-                                                         self._dataset_test['delta']
+                        obs_test, act_test, delta_test, rew_test, done_test = self._dataset_test['obs'], self._dataset_test['act'], \
+                                                         self._dataset_test['delta'], self._dataset_test['rew'], self._dataset_test['done']
 
                     obs_test_stack = np.concatenate(obs_test, axis=0)
                     act_test_stack = np.concatenate(act_test, axis=0)
                     delta_test_stack = np.concatenate(delta_test, axis=0)
+                    rew_test_stack = np.concatenate(rew_test, axis=0)
+                    done_test_stack = np.concatenate(done_test, axis=0)
 
                     # compute validation loss
                     valid_loss = sess.run(self.loss_model_batches,
                                           feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
                                                      self.act_model_batches_stack_ph: act_test_stack,
-                                                     self.delta_model_batches_stack_ph: delta_test_stack})
+                                                     self.delta_model_batches_stack_ph: delta_test_stack,
+                                                     self.rew_model_batches_stack_ph: rew_test_stack,
+                                                     self.done_model_batches_stack_ph: done_test_stack
+                                                     })
                     valid_loss = np.array(valid_loss)
                     if valid_loss_rolling_average is None:
                         valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
@@ -762,11 +663,11 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, rew_batches, done_batches, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
-        assert len(obs_batches) == len(act_batches) == len(delta_batches)
-        obs, act, delta = obs_batches[0], act_batches[0], delta_batches[0]
+        assert len(obs_batches) == len(act_batches) == len(delta_batches) == len(rew_batches) == len(done_batches)
+        obs, act, delta, rew, done = obs_batches[0], act_batches[0], delta_batches[0], rew_batches[0], done_batches[0]
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
         assert obs.shape[1] == delta.shape[1], "obs and obs_next must have same length along axis 1 "
@@ -774,6 +675,8 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
         self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in range(self.num_models)]
+        self.rew_batches_dataset_ph = [tf.placeholder(tf.float32, (None, rew.shape[1])) for _ in range(self.num_models)]
+        self.done_batches_dataset_ph = [tf.placeholder(tf.bool, (None, delta.shape[1])) for _ in range(self.num_models)]
 
         dataset = tf.data.Dataset.from_tensor_slices(
             tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
@@ -785,8 +688,8 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
 
         return next_batch, iterator
 
-    def compute_normalization(self, obs, act, delta):
-        assert len(obs) == len(act) == len(delta) == self.num_models
+    def compute_normalization(self, obs, act, delta, rew, done):
+        assert len(obs) == len(act) == len(delta) == self.num_models == len(rew) == len(done)
         assert all([o.shape[0] == d.shape[0] == a.shape[0] for o, a, d in zip(obs, act, delta)])
         assert all([d.shape[1] == o.shape[1] for d, o in zip(obs, delta)])
 
@@ -798,6 +701,8 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             normalization['obs'] = (np.mean(obs[i], axis=0), np.std(obs[i], axis=0))
             normalization['delta'] = (np.mean(delta[i], axis=0), np.std(delta[i], axis=0))
             normalization['act'] = (np.mean(act[i], axis=0), np.std(act[i], axis=0))
+            normalization['rew'] = (np.mean(rew[i], axis=0), np.std(rew[i], axis=0))
+            normalization['done'] = (np.mean(done[i], axis=0), np.std(done[i], axis=0))
             self.normalization.append(normalization)
             feed_dict.update({self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
                          self._std_obs_ph[i]: self.normalization[i]['obs'][1],
@@ -805,6 +710,10 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                          self._std_act_ph[i]: self.normalization[i]['act'][1],
                          self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
                          self._std_delta_ph[i]: self.normalization[i]['delta'][1],
+                         self._mean_rew_ph[i]: self.normalization[i]['rew'][0],
+                         self._std_rew_ph[i]: self.normalization[i]['rew'][1],
+                         self._mean_done_ph[i]: self.normalization[i]['done'][0],
+                         self._std_done_ph[i]: self.normalization[i]['done'][1],
                          }
                            )
         sess = tf.get_default_session()
@@ -814,6 +723,8 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         self._mean_obs_var, self._std_obs_var, self._mean_obs_ph, self._std_obs_ph = [], [], [], []
         self._mean_act_var, self._std_act_var, self._mean_act_ph, self._std_act_ph = [], [], [], []
         self._mean_delta_var, self._std_delta_var, self._mean_delta_ph, self._std_delta_ph = [], [], [], []
+        self._mean_rew_var, self._std_rew_var, self._mean_rew_ph, self._std_rew_ph = [], [], [], []
+        self._mean_done_var, self._std_done_var, self._mean_done_ph, self._std_done_ph = [], [], [], []
         self._assignations = []
         for i in range(self.num_models):
             self._mean_obs_var.append(tf.get_variable('mean_obs_%d' % i, shape=(self.obs_space_dims,),
@@ -828,13 +739,24 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims,),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
+            self._mean_rew_var.append(tf.get_variable('mean_rew_%d' % i, shape=(1,),
+                                                   dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
+            self._std_rew_var.append(tf.get_variable('std_rew_%d' % i, shape=(1,),
+                                                  dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
+            self._mean_done_var.append(tf.get_variable('mean_done_%d' % i, shape=(1,),
+                                                   dtype=tf.bool, initializer=tf.zeros_initializer, trainable=False))
+            self._std_done_var.append(tf.get_variable('std_done_%d' % i, shape=(1,),
+                                                  dtype=tf.bool, initializer=tf.ones_initializer, trainable=False))
+
 
             self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._mean_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
-            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
+            self._std_delta_ph.append(tf.placeholder(tf.float32,  shape=(self.obs_space_dims,)))
+            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(1,)))
+            self._std_delta_ph.append(tf.placeholder(tf.bool, shape=(1,)))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
@@ -844,12 +766,14 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                       tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
                                       ])
 
-    def _normalize_data(self, obs, act, delta=None):
+    def _normalize_data(self, obs, act, delta=None, rew = None, dones = None):
         assert len(obs) == len(act) == self.num_models
         assert self.normalization is not None
         norm_obses = []
         norm_acts = []
         norm_deltas = []
+        norm_rews = []
+        norm_dones = []
         for i in range(self.num_models):
             norm_obs = normalize(obs[i], self.normalization[i]['obs'][0], self.normalization[i]['obs'][1])
             norm_act = normalize(act[i], self.normalization[i]['act'][0], self.normalization[i]['act'][1])
@@ -859,9 +783,18 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                 assert len(delta) == self.num_models
                 norm_delta = normalize(delta[i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
                 norm_deltas.append(norm_delta)
+            if rew is not None:
+                assert len(rew) == self.num_models
+                norm_rew = normalize(rew[i], self.normalization[i]['rew'][0], self.normalization[i]['rew'][1])
+                norm_rews.append(norm_rew)
+            if delta is not None:
+                assert len(done) == self.num_models
+                norm_done = normalize(done[i], self.normalization[i]['done'][0], self.normalization[i]['done'][1])
+                norm_dones.append(norm_done)
+
 
         if delta is not None:
-            return norm_obses, norm_acts, norm_deltas
+            return norm_obses, norm_acts, norm_deltas, norm_rews, norm_dones
 
         return norm_obses, norm_acts
 
