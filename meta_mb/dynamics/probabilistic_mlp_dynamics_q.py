@@ -356,40 +356,6 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             NotImplementedError('pred_type must be one of [rand, mean, all]')
         return pred_obs
 
-    def predict_batches(self, obs_batches, act_batches, deterministic=True):
-        """
-            Predict the batch of next observations for each model given the batch of current observations and actions for each model
-            :param obs_batches: observation batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_obs)
-            :param act_batches: action batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_act)
-            :return: pred_obs_next_batch: predicted batch of next observations -
-                                    shape:  (batch_size_per_model * num_models, ndim_obs)
-        """
-        assert obs_batches.shape[0] == act_batches.shape[0] and obs_batches.shape[0] % self.num_models == 0
-        assert obs_batches.ndim == 2 and obs_batches.shape[1] == self.obs_space_dims
-        assert act_batches.ndim == 2 and act_batches.shape[1] == self.action_space_dims
-
-        obs_batches_original = obs_batches
-
-        if self.normalize_input:
-            obs_batches, act_batches = self._normalize_data(obs_batches, act_batches)
-            delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
-            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if not deterministic:
-                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
-            delta_batches = denormalize(delta_batches, self.normalization['delta'][0], self.normalization['delta'][1])
-        else:
-            delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
-            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if not deterministic:
-                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
-
-        assert delta_batches.ndim == 2
-
-        pred_obs_batches = obs_batches_original + delta_batches
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
-        assert pred_obs_batches.shape == obs_batches.shape
-        return pred_obs_batches
-
     def _create_assign_ph(self):
         self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")
         self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="max_logvar_ph")
