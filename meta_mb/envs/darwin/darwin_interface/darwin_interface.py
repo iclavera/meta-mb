@@ -80,6 +80,9 @@ class Darwin:
         self._joint_positions = np.array(msg.position)
         self.angles = msg.position
 
+    def get_joint_positions(self):
+        return self._joint_positions
+
     def get_joint_velocities(self):
         return self._joint_velocities
 

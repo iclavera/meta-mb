@@ -21,10 +21,11 @@ class DarwinEnv(RandomEnv, gym.utils.EzPickle):
 
     def _get_obs(self):
         data = self.sim.data
-        return np.concatenate([
-            data.qpos.flat,
-            data.qvel.flat,
+        obs = np.concatenate([
+            data.qpos.flat[7:],
+            data.qvel.flat[6:],
         ])
+        return obs
 
     def step(self, a):
         pos_before = mass_center(self.model, self.sim)[0]
@@ -68,7 +69,8 @@ class DarwinEnv(RandomEnv, gym.utils.EzPickle):
             self.init_qpos + self.np_random.uniform(low=-c, high=c, size=self.model.nq),
             self.init_qvel + self.np_random.uniform(low=-c, high=c, size=self.model.nv, )
         )
-        return self._get_obs()
+        obs = self._get_obs()
+        return obs
 
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 0.6
