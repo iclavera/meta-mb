@@ -33,15 +33,13 @@ class GTSampler(BaseSampler):
             policy,
             num_rollouts,
             max_path_length,
-            n_parallel=1,
             dyn_pred_str=None,
             vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(GTSampler, self).__init__(env, policy, n_parallel, max_path_length)
+        super(GTSampler, self).__init__(env, policy, num_rollouts, max_path_length)
 
         self.total_samples = num_rollouts * max_path_length
-        self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
         self.dyn_pred_str = dyn_pred_str
@@ -50,19 +48,18 @@ class GTSampler(BaseSampler):
         pass
 
     def obtain_samples(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
-        policy = self.policy
-        # policy.reset(dones=[True] * self.vec_env.num_envs)  # do not reset
-
-        rollouts, returns_array = policy.get_rollouts(
-            observations=None, deterministic=deterministic, plot_first_rollout=plot_first_rollout
+        self.policy.reset()  # do not reset
+        returns_array = self.policy.get_rollouts(
+            deterministic=deterministic, plot_first_rollout=plot_first_rollout
         )
-        # logger.log(returns_array)  # (num_envs,)
 
         logger.logkv(log_prefix + 'AverageReturn', np.mean(returns_array))
         if log:
-            logger.logkv(log_prefix + 'StdReturn', np.std(returns_array))
-            logger.logkv(log_prefix + 'MaxReturn', np.max(returns_array))
-            logger.logkv(log_prefix + 'MinReturn', np.min(returns_array))
+            for idx, returns in enumerate(returns_array):
+                logger.logkv(log_prefix + f'Return {idx}', returns)
+            # logger.logkv(log_prefix + 'StdReturn', np.std(returns_array))
+            # logger.logkv(log_prefix + 'MaxReturn', np.max(returns_array))
+            # logger.logkv(log_prefix + 'MinReturn', np.min(returns_array))
 
     def __getstate__(self):
         state = dict()
