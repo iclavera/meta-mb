@@ -107,8 +107,8 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        'env': [HalfCheetahEnv],# [InvertedPendulumEnv],
-        'max_path_length': [80],  # [40, 80, 200]
+        'env': [InvertedPendulumEnv, ReacherEnv],# [InvertedPendulumEnv],
+        'max_path_length': [120],  # [40, 80, 200]
         'normalize': [False],
         'n_itr': [101],
         'discount': [1.0,],
@@ -118,7 +118,7 @@ if __name__ == '__main__':
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['cem'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
         'horizon': [20],
 

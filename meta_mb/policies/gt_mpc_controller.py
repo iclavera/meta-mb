@@ -117,13 +117,12 @@ class GTMPCController(Serializable):
             self.returns_array_first_rollout, self.grad_norm_first_rollout, self.tau_norm_first_rollout = [], [], []
 
         elif self.method_str == 'cem':
-            assert max_path_length % horizon == 0
             self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
                                 * (self.env.action_space.high + self.env.action_space.low) / 2
             self.tau_std_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
                                * (self.env.action_space.high - self.env.action_space.low) / 4  # FIXME: do not reset?
             self.planner_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, horizon)
-            self.real_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, max_path_length)
+            self.real_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
             self.get_rollouts_factory = self.get_rollouts_cem
         else:
             raise NotImplementedError
