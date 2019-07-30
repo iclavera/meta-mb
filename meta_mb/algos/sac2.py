@@ -23,7 +23,7 @@ class SAC2(Algo):
         Abbeel, and Sergey Levine. Soft Actor-Critic Algorithms and
         Applications. arXiv preprint arXiv:1812.05905. 2018.
     """
- 
+
     def __init__(
             self,
             policy,
@@ -75,7 +75,7 @@ class SAC2(Algo):
                 a likelihood ratio based estimator otherwise.
         """
 
-        super(SAC_MB, self).__init__(policy)
+        super(SAC2, self).__init__(policy)
 
         self.name = name
         self.policy = policy

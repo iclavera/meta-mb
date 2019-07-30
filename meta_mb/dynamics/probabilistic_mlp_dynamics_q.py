@@ -143,33 +143,44 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
 
             min_next_Q = tf.reduce_min(next_q_values, axis=0)
+            self.alpha = 1
+            self.rewards_ph = tf.placeholder(tf.float32, shape=(None, 1))
+            self.dones_ph = tf.placeholder(tf.float32, shape=(None, 1))
             next_values_var = min_next_Q - self.alpha * next_log_pis_var
 
             dones_ph = tf.cast(self.dones_ph, next_values_var.dtype)
             dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            rewards_ph = self.op_phs_dict['rewards']
-            rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
+            rewards_ph = tf.expand_dims(self.rewards_ph, axis=-1)
             target = self.reward_scale * self.rewards_ph + self.discount * (1 - self.dones_ph) * next_values_var
             q_target =  tf.stop_gradient(target)
 
             # define loss and train_op
-            self.loss = tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
-                                       + self.logvar_pred)
-            self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
-            input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
-            q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
-            self.loss += [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
+            # self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
+            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
+
+            q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
                                         for q_value in q_values_var]
+            # self.loss += q_losses[0]
+            self.loss = [tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
+                                       + self.logvar_pred)
+                                       + 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
+                                       + q_losses[i]
+                                       for i in range(2)]
+
+            # self.loss = [loss for loss in q_losses]
 
 
-            # self.optimizer = optimizer(learning_rate=self.learning_rate)
-            # self.train_op = self.optimizer.minimize(self.loss)
 
-            self.optimizer = [optimizer(learning_rate=self.learning_rate,name='{}_{}_optimizer_dynamics'.format(Q.name, i))for i, Q in enumerate(self.Qs)]
+            self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
+            # self.train_op = [optimizer.minimize(self.loss) for optimizer in self.optimizer]
+            self.train_op = [self.optimizer[i].minimize(self.loss[i]) for i in range(2)]
 
-            self.train_op = [q_optimizer.minimize(loss=self.loss, var_list=list(Q.vfun_params.values())) for i, (Q, q_loss, q_optimizer)
-                in enumerate(zip(self.Qs, q_losses, self.optimizer))]
+
+            # self.optimizer = [optimizer(learning_rate=self.learning_rate,name='{}_{}_optimizer_dynamics'.format(Q.name, i))for i, Q in enumerate(self.Qs)]
+            # self.train_op = [q_optimizer.minimize(loss=q_loss, var_list=list(Q.vfun_params.values())) for i, (Q, q_loss, q_optimizer)
+            #     in enumerate(zip(self.Qs, q_losses, self.optimizer))]
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)

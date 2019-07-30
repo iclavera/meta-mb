@@ -7,7 +7,23 @@ from meta_mb.logger import logger
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
-from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
+from meta_mb.dynamics.utils import normalize, denormalize
+
+def train_test_split(obs, act, delta, rewards, dones, test_split_ratio=0.2):
+    assert obs.shape[0] == act.shape[0] == delta.shape[0] == rewards.shape[0] == dones.shape[0]
+    dataset_size = obs.shape[0]
+    indices = np.arange(dataset_size)
+    np.random.shuffle(indices)
+    split_idx = int(dataset_size * (1-test_split_ratio))
+
+    idx_train = indices[:split_idx]
+    idx_test = indices[split_idx:]
+    assert len(idx_train) + len(idx_test) == dataset_size
+
+    return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
+           obs[idx_test, :], act[idx_test, :], delta[idx_test, :], \
+           rewards[idx_train, :], rewards[idx_test, :],
+           dones[idx_train, :], dones[idx_test, :]
 
 class MLPDynamicsEnsembleQ(MLPDynamicsModel):
     """
@@ -203,7 +219,7 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         self._networks = mlps
         # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
 
-    def update_buffer(self, obs, act, obs_next, valid_split_ratio=None, check_init=True):
+    def update_buffer(self, obs, act, obs_next, rewards, dones, valid_split_ratio=None, check_init=True):
 
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
@@ -223,16 +239,25 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         act_test_batches = []
         delta_test_batches = []
 
+        rewards_train_batches = []
+        dones_train_batches = []
+        rewards_test_batches = []
+        dones_test_batches = []
+
         delta = obs_next - obs
         for i in range(self.num_models):
-            obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
-                                                                                                 test_split_ratio=valid_split_ratio)
+            obs_train, act_train, delta_train, obs_test, act_test, delta_test, rewards_train, rewards_test, dones_train, dones_test
+            = train_test_split(obs, act, delta, rewards, dones,test_split_ratio=valid_split_ratio)
             obs_train_batches.append(obs_train)
             act_train_batches.append(act_train)
             delta_train_batches.append(delta_train)
             obs_test_batches.append(obs_test)
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
+            rewards_train_batches.apppend(rewards_train)
+            dones_train_batches.append(dones_train)
+            rewards_test_batches.append(rewards_test)
+            dones_test_batches.append(dones_test)
             # create data queue
 
         # If case should be entered exactly once
@@ -263,6 +288,16 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                                                act_test_batches[i]])
                 self._dataset_test['delta'][i] = np.concatenate([self._dataset_test['delta'][i][-n_max_test:],
                                                                  delta_test_batches[i]])
+
+
+                self._dataset_test['rew'][i] = np.concatenate([self._dataset_test['rew'][i][-n_max_test:],
+                                                               rewards_test_batches[i]])
+                self._dataset_test['done'][i] = np.concatenate([self._dataset_test['done'][i][-n_max_test:],
+                                                               dones_test_batches[i]])
+                self._dataset_train['rew'][i] = np.concatenate([self._dataset_train['rew'][i][-n_max_train:],
+                                                                rewards_train_batches[i]])
+                self._dataset_train['done'][i] = np.concatenate([self._dataset_train['done'][i][-n_max_train:],
+                                                                dones_train_batches[i]])
 
                 self._dataset_train['obs'][i] = np.concatenate([self._dataset_train['obs'][i][-n_max_train:],
                                                                 obs_train_batches[i]])
@@ -393,7 +428,7 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
 
         return remaining_model_idx, valid_loss_rolling_average
 
-    def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
+    def fit(self, obs, act, obs_next, rewards, dones, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
         """
         Fits the NN dynamics model
@@ -408,7 +443,7 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         """
 
         if obs is not None:
-            self.update_buffer(obs, act, obs_next, valid_split_ratio, compute_normalization)
+            self.update_buffer(obs, act, obs_next, rewards, dones, valid_split_ratio, compute_normalization)
 
         if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
 

@@ -574,7 +574,6 @@ class SAC_MB(Algo):
                 obs, actions = next_observation, next_actions_var
                 q_values.append(min_q_val_var)
 
-
             q_values = tf.stack(q_values)
             rollout_frames = self.T+1
             q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
