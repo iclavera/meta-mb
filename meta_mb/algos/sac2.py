@@ -2,7 +2,6 @@ from collections import OrderedDict
 from numbers import Number
 import numpy as np
 import tensorflow as tf
-# import tensorflow_probability as tfp
 from collections import OrderedDict
 from .base import Algo
 from meta_mb.utils import create_feed_dict
@@ -15,7 +14,7 @@ def td_target(reward, discount, next_value):
     return reward + discount * next_value
 
 
-class SAC_MB(Algo):
+class SAC2(Algo):
     """Soft Actor-Critic (SAC)
     References
     ----------
@@ -28,10 +27,8 @@ class SAC_MB(Algo):
     def __init__(
             self,
             policy,
-            Qs,
             env,
             dynamics_model,
-            Q_targets=None,
             discount=0.99,
             name="sac",
             learning_rate=3e-4,
@@ -78,7 +75,7 @@ class SAC_MB(Algo):
                 a likelihood ratio based estimator otherwise.
         """
 
-        super(SAC_MB, self).__init__(policy)
+        super(SAC2, self).__init__(policy)
 
         self.name = name
         self.policy = policy
@@ -100,11 +97,6 @@ class SAC_MB(Algo):
         self.sampler_batch_size = sampler_batch_size
         self.session = session or tf.keras.backend.get_session()
         self._squash = True
-        self.Qs = Qs
-        if Q_targets is None:
-            self.Q_targets = Qs
-        else:
-            self.Q_targets = Q_targets
         self.reward_scale = reward_scale
         self.prediction_type = prediction_type
         self.target_update_interval = target_update_interval
@@ -217,7 +209,7 @@ class SAC_MB(Algo):
         next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
         input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
-        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Q_targets]
 
         min_next_Q = tf.reduce_min(next_q_values, axis=0)
         next_values_var = min_next_Q - self.alpha * next_log_pis_var
@@ -263,7 +255,7 @@ class SAC_MB(Algo):
                 rewards_var = rewards_var + (1 - dones) * (self.discount ** i) * self.reward_scale * rewards
 
                 input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-                next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+                next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Q_targets]
 
                 min_next_Q = tf.reduce_min(next_q_values, axis=0)
                 next_values_var = min_next_Q - self.alpha * next_log_pis_var
@@ -327,7 +319,7 @@ class SAC_MB(Algo):
         actions_ph = self.op_phs_dict['actions']
         input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
-        q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
         q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
                                     for q_value in q_values_var]
 
@@ -335,12 +327,12 @@ class SAC_MB(Algo):
                                                     learning_rate=self.Q_lr,
                                                     name='{}_{}_optimizer'.format(Q.name, i)
                                                     )
-                             for i, Q in enumerate(self.Qs)]
+                             for i, Q in enumerate(self.dynamics_model.Qs)]
 
         q_training_ops = [
             q_optimizer.minimize(loss=q_loss, var_list=list(Q.vfun_params.values()))
             for i, (Q, q_loss, q_optimizer)
-            in enumerate(zip(self.Qs, q_losses, self.q_optimizers))]
+            in enumerate(zip(self.dynamics_model.Qs, q_losses, self.q_optimizers))]
 
         self.training_ops.update({'Q': tf.group(q_training_ops)})
 
@@ -385,14 +377,14 @@ class SAC_MB(Algo):
 
         if self.q_functioin_type == 0:
             input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
             min_q_val_var = tf.reduce_min(next_q_values, axis=0)
         elif self. q_functioin_type == 1:
             next_observation = self.dynamics_model.predict_sym(observations_ph, actions_var)
             dist_info_sym = self.policy.distribution_info_sym(next_observation)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
             rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
             rewards = tf.expand_dims(rewards, axis=-1)
             q_values_var = [td_target(
@@ -406,7 +398,7 @@ class SAC_MB(Algo):
             dist_info_sym = self.policy.distribution_info_sym(expanded_next_observations)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
             next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1])for value in next_q_values]
             next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
             rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
@@ -434,7 +426,7 @@ class SAC_MB(Algo):
                     reward_values = [(self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values[j] for j in range(2)]
                 obs, actions = next_observation, next_actions_var
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
             q_values_var = [reward_values[j] + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
@@ -460,7 +452,7 @@ class SAC_MB(Algo):
                 else:
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
                 input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-                next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
                 q_values_var = [reward_values + next_q_values[j] for j in range(2)]
                 min_q_val_var = tf.reduce_min(q_values_var, axis=0)
                 obs, actions = next_observation, next_actions_var
@@ -521,7 +513,7 @@ class SAC_MB(Algo):
                 obs, actions = next_observation, next_actions
 
             input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
-            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
             next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
             next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
@@ -564,7 +556,7 @@ class SAC_MB(Algo):
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
 
                 input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-                next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.dynamics_model.Qs]
                 next_q_values = [tf.reshape(value, [self.dynamics_model.num_models, self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
                 next_q_values = [tf.reduce_mean(value, axis = 1) for value in next_q_values]
                 next_q_values = [tf.reshape(value, [-1, 1]) for value in next_q_values]
@@ -573,6 +565,7 @@ class SAC_MB(Algo):
                 min_q_val_var = tf.reduce_min(q_values_var, axis=0)
                 obs, actions = next_observation, next_actions_var
                 q_values.append(min_q_val_var)
+
 
             q_values = tf.stack(q_values)
             rollout_frames = self.T+1
@@ -645,7 +638,7 @@ class SAC_MB(Algo):
 
     def _update_target(self, tau=None):
         tau = tau or self.tau
-        for Q, Q_target in zip(self.Qs, self.Q_targets):
+        for Q, Q_target in zip(self.dynamics_model.Qs, self.dynamics_model.Q_targets):
             source_params = Q.get_param_values()
             target_params = Q_target.get_param_values()
             Q_target.set_params(OrderedDict([

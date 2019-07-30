@@ -23,7 +23,7 @@ if __name__ == "__main__":
         """.format(local_dir=local_dir, remote_dir=remote_dir))
     else:
         command = ("""
-            aws s3 sync {remote_dir} {local_dir} --exclude '*stdouterr.log' --content-type "UTF-8"
+            aws s3 sync {remote_dir} {local_dir}
         """.format(local_dir=local_dir, remote_dir=remote_dir))
     if args.dry:
         print(command)
