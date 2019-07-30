@@ -107,10 +107,10 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv, ReacherEnv],# [InvertedPendulumEnv],
+        'env': [InvertedPendulumEnv, ReacherEnv, HalfCheetahEnv],# [InvertedPendulumEnv],
         'max_path_length': [120],  # [40, 80, 200]
         'normalize': [False],
-        'n_itr': [101],
+        'n_itr': [301],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
@@ -120,10 +120,10 @@ if __name__ == '__main__':
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['cem'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
-        'horizon': [20],
+        'horizon': [20],  # only matters for cem/rs
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-5], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
+        'opt_learning_rate': [1e-4], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
         'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [6],
+        'n_parallel': [3],
     }
 
     # assert config['horizon'] == config['max_path_length']

@@ -81,19 +81,33 @@ class IterativeEnvExecutor(object):
         self.ts[:] = 0
         return obses
 
+    def reset_from_pickles(self, pickled_states):
+        for env_state, env in zip(pickled_states['envs'], self.envs):
+            # TODO: env.sim.reset()??
+            env.sim.set_state(env_state)
+            # TODO: env.sim.forward()??
+
+        # self.envs = [pickle.loads(env) for env in pickled_states['envs']]
+        # self.ts = pickle.loads(pickled_states['ts'])
+        return None
+
+    def get_pickles(self):
+        # return dict(envs=[pickle.dumps(env) for env in self.envs], ts=pickle.dumps(self.ts))
+        return dict(envs=[pickle.dumps(env.sim.get_state()) for env in self.envs])
+
     # def reset_from_obs_hard(self, observations):
     #     assert observations.shape[0] == self.num_envs
     #     obses = [env.reset_from_obs_hard(obs) for env, obs in zip(self.envs, observations)]
     #     self.ts[:] = 0
     #     return obses
 
-    def reset_hard(self, init_obs_array=None):
-        if init_obs_array is None:
-            obses = [env.reset_hard() for env in self.envs]
-        else:
-            obses = [env.reset_hard(init_obs) for env, init_obs in zip(self.envs, init_obs_array)]
-        self.ts[:] = 0
-        return obses
+    # def reset_hard(self, init_obs_array=None):
+    #     if init_obs_array is None:
+    #         obses = [env.reset_hard() for env in self.envs]
+    #     else:
+    #         obses = [env.reset_hard(init_obs) for env, init_obs in zip(self.envs, init_obs_array)]
+    #     self.ts[:] = 0
+    #     return obses
 
     @property
     def num_envs(self):
@@ -108,6 +122,7 @@ class IterativeEnvExecutor(object):
 
 def chunks(l, n):
     return [l[x: x+n] for x in range(0, len(l), n)]
+
 
 class ParallelEnvExecutor(object):
     """
@@ -182,16 +197,38 @@ class ParallelEnvExecutor(object):
             remote.send(('reset', None))
         return sum([remote.recv() for remote in self.remotes], [])
 
-    def reset_hard(self, init_obs_array=None):
-        if init_obs_array is None:
-            for remote in self.remotes:
-                remote.send(('reset_hard', None))
-        else:
-            init_obs_per_meta_task = chunks(init_obs_array, self.envs_per_proc)
-            for remote, init_obs in zip(self.remotes, init_obs_per_meta_task):
-                remote.send(('reset_hard', init_obs))
+    # def reset_hard(self, init_obs_array=None):
+    #     if init_obs_array is None:
+    #         for remote in self.remotes:
+    #             remote.send(('reset_hard', None))
+    #     else:
+    #         init_obs_per_meta_task = chunks(init_obs_array, self.envs_per_proc)
+    #         for remote, init_obs in zip(self.remotes, init_obs_per_meta_task):
+    #             remote.send(('reset_hard', init_obs))
+    #
+    #     return sum([remote.recv() for remote in self.remotes], [])
 
-        return sum([remote.recv() for remote in self.remotes], [])
+    def reset_from_pickles(self, pickled_states):
+        # for remote, envs, ts in zip(self.remotes, chunks(pickled_states['envs'], self.envs_per_proc), chunks(pickled_states['ts'], self.envs_per_proc)):
+        #     remote.send(('reset_from_pickles', dict(envs=envs, ts=ts)))
+        assert isinstance(pickled_states['envs'], list)
+        assert len(pickled_states['envs']) == self.n_parallel
+        for remote, env_state in zip(self.remotes, pickled_states['envs']):
+            remote.send(('reset_from_pickles', dict(envs=env_state)))
+
+        for remote in self.remotes:
+            remote.recv()
+        # return sum([remote.recv() for remote in self.remotes], [])
+
+    def get_pickles(self):
+        for remote in self.remotes:
+            remote.send(('get_pickles', None))
+        # return: [(pickled_envs, pickled_ts) for remote in self.remotes]
+        pickled_states_list = [remote.recv() for remote in self.remotes]
+        env_states = sum([pickled_states['env'] for pickled_states in pickled_states_list], [])
+        # ts = sum([pickled_states['ts'] for pickled_states in pickled_states_list], [])
+        # return dict(envs=envs, ts=ts)
+        return dict(envs=env_states)
 
     def set_tasks(self, tasks=None):
         """
@@ -258,10 +295,21 @@ def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
             ts[:] = 0
             remote.send(obs)
 
-        elif cmd == 'reset_hard':
-            obs = [env.reset_hard(data) for env in envs]
-            ts[:] = 0
-            remote.send(obs)
+        elif cmd == 'reset_from_pickles':
+            # only one env repeated for one worker!!
+            env_state = pickle.loads(data['envs'])
+            for env in envs:
+                # TODO: env.sim.reset()?
+                env.sim.set_state(env_state)
+                env.sim.forward()
+
+            # ts = pickle.loads(data['ts'])  # FIXME: dones are ignored!
+            # obs = [env._get_obs() for env in envs]
+            remote.send(None)
+
+        elif cmd == 'get_pickles':
+            # remote.send(dict(envs=[pickle.dumps(env) for env in envs], ts=pickle.dumps(ts)))
+            remote.send(dict(envs=[pickle.dumps(env.sim.get_state()) for env in envs]))
 
         # set the specified task for each of the environments of the worker
         elif cmd == 'set_task':
@@ -314,17 +362,17 @@ class ParallelActionDerivativeExecutor(object):
         for remote in self.work_remotes:
             remote.close()
 
-    def get_derivative(self, tau, init_obs_array=None):
+    def get_derivative(self, tau):
         """
         Assume s_0 is the reset state.
         :param tau: (horizon, batch_size, action_space_dims)
         :tf_loss: scalar Tensor R
         :return: dR/da_i for i in range(action_space_dims)
         """
-        self.remotes[0].send(('compute_old_return_array', tau, init_obs_array))
+        self.remotes[0].send(('compute_old_return_array', tau))
         old_return_array = self.remotes[0].recv()
         for remote in self.remotes:
-            remote.send(('compute_delta_return_cubic', tau, init_obs_array, old_return_array))
+            remote.send(('compute_delta_return_cubic', tau, old_return_array))
 
         delta_return_cubic = np.zeros((self.horizon, self.batch_size, self.action_space_dims)) #sum([np.asarray(remote.recv()) for remote in self.remotes])
         for remote in self.remotes:
@@ -353,7 +401,7 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
         cmd, *data = remote.recv()
         # do a step in each of the environment of the worker
         if cmd == 'compute_delta_return_cubic':
-            tau, init_obs_array, old_return_array = data
+            tau, old_return_array = data
             new_tau = tau.copy()
             # tau = (horizon, batch_size, action_space_dims)
             # init_obs = (batch_size, action_space_dims,)
@@ -372,10 +420,7 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
 
                 for idx_batch, env, old_return in zip(range(batch_size), envs, old_return_array):
                     # reset environment
-                    if init_obs_array is None:
-                        _ = env.reset_hard(None)
-                    else:
-                        _ = env.reset_hard(init_obs_array[idx_batch])
+                    _ = env.reset()
 
                     # compute new return with discount factor = 1
                     new_return = sum([env.step(act)[1] for act in new_tau[:, idx_batch, :]])
@@ -392,15 +437,12 @@ def act_deriv_worker(remote, parent_remote, env_pickle, eps,
             remote.send(delta_return_cubic)
 
         elif cmd == 'compute_old_return_array':
-            tau, init_obs_array = data
+            tau, = data
             old_return_array = []
 
             for idx_batch, env in zip(range(batch_size), envs):
                 # reset environment
-                if init_obs_array is None:
-                    _ = env.reset_hard(None)
-                else:
-                    _ = env.reset_hard(init_obs_array[idx_batch])
+                _ = env.reset()
                 old_return = sum([env.step(act)[1] for act in tau[:, idx_batch, :]])
                 old_return_array.append(old_return)
 
@@ -450,7 +492,7 @@ class ParallelPolicyGradUpdateExecutor(object):
         for remote in self.work_remotes:
             remote.close()
 
-    def do_gradient_steps(self, init_obs_array):
+    def do_gradient_steps(self):
         """
         Assume s_0 is the reset state.
         :param tau: (horizon, batch_size, action_space_dims)
@@ -458,7 +500,7 @@ class ParallelPolicyGradUpdateExecutor(object):
         :return: dR/da_i for i in range(action_space_dims)
         """
         for remote in self.remotes:
-            remote.send(('do_gradient_steps', init_obs_array))
+            remote.send(('do_gradient_steps',))
 
         global_info = dict(old_return=[], grad_norm_W=[], grad_norm_b=[], norm_W=[], norm_b=[])
 
@@ -497,8 +539,8 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
     optimizers_W = [GTOptimizer(alpha=opt_learning_rate) for _ in range(n_envs)]
     optimizers_b = [GTOptimizer(alpha=opt_learning_rate) for _ in range(n_envs)]
 
-    def compute_sum_rewards(env, policy, init_obs=None):
-        obs = env.reset_hard(init_obs)
+    def compute_sum_rewards(env, policy):
+        obs = env.reset()
         sum_rewards = 0
         for t in range(horizon):
             action, _ = policy.get_action(obs)
@@ -511,13 +553,6 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
         cmd, *data = remote.recv()
         # do a step in each of the environment of the worker
         if cmd == 'do_gradient_steps':
-            # tau = (horizon, batch_size, action_space_dims)
-            # init_obs = (batch_size, action_space_dims,)
-
-            # delta_return_cubic = np.zeros((horizon, batch_size, action_space_dims))
-            init_obs_array, = data
-            assert init_obs_array is None
-
             # info array over envs
             info = dict(old_return=[], grad_norm_W=[], grad_norm_b=[], norm_W=[], norm_b=[])
 
@@ -526,7 +561,7 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
                 # info array over opt iters
                 local_info = dict(old_return=[], grad_norm_W=[], grad_norm_b=[], norm_W=[], norm_b=[])
 
-                for _ in range(num_opt_iters):  # data = num_opt_iterations
+                for _ in range(num_opt_iters):
                     old_return = compute_sum_rewards(env, policy)
                     W, b = policy.get_param_values()
 
