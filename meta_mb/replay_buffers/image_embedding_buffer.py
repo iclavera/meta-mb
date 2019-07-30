@@ -154,8 +154,8 @@ class ImageEmbeddingBuffer(Serializable):
 		data_obs = data_obs[:, :-1]
 
 		
-		assert len(self._train_idx[0]) == len(data_act) == len(data_obs), 'the three are %d, %d, and %d respectively' \
-																		  % (len(self._train_idx[0]), len(data_act),
+		assert len(self._train_idx[0]) == len(data_act) == len(data_obs) == len(data_nextobs) == len(data_reward), \
+			'the three are %d, %d, and %d respectively'  % (len(self._train_idx[0]), len(data_act),
 																			 len(data_obs))
 
 		for i in range(self._num_models):
@@ -177,7 +177,7 @@ class ImageEmbeddingBuffer(Serializable):
 			ret_reward.append(reward if test else reward[batch_idx])
 
 		return np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_nextobs), \
-			   np.concatenate(ret_reward)
+			   np.concatenate(ret_reward).reshape((-1, 1))
 
 	def compute_normalization(self, obs, act, delta, reward):
 		assert obs.shape[0] == act.shape[0] == delta.shape[0] == reward.shape[0]

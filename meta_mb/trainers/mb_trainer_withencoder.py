@@ -155,7 +155,7 @@ class Trainer(object):
                     callbacks=callbacks
                 )
 
-            K.set_learning_phase(0)
+            # K.set_learning_phase(0)
             # self.env._wrapped_env.encoder = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
             for itr in range(self.start_itr, self.n_itr):
@@ -203,10 +203,10 @@ class Trainer(object):
                         metrics=['categorical_accuracy'])
 
                     callbacks = [
-                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, patience=4, verbose=1,
+                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, verbose=1,
                                                       restore_best_weights=True),
                         # keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
-                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=3, min_lr=1e-5,
+                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
                                                           verbose=1, min_delta=0.001),
                         SaveEncoder(logger.get_dir()),
                         keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
@@ -222,7 +222,7 @@ class Trainer(object):
                         callbacks=callbacks
                     )
 
-                    K.set_learning_phase(0)
+                    # K.set_learning_phase(0)
                     # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)

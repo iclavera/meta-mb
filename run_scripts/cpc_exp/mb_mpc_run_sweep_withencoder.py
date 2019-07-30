@@ -33,7 +33,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'new_dynamics_model_debug'
+EXP_NAME = 'new_buffer_rewbugfixed'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -257,11 +257,11 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['ip'],
+        'env': ['cartpole_balance', 'cartpole_swingup', 'cheetah_run', 'reacher_easy'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [2],
+        'obs_stack': [3],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -273,15 +273,15 @@ if __name__ == '__main__':
         # Training
         'num_rollouts': [5],
         'learning_rate': [0.001],
-        'valid_split_ratio': [0.5],
+        'valid_split_ratio': [0.2],
         'rolling_average_persitency': [0.9],
 
         # Dynamics Model
         'recurrent': [False],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500,)],
-        'dynamic_model_epochs': [2],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [50],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [64],
@@ -303,15 +303,15 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [False],
+        'include_action': [True, False],
         'predict_action': [False],
         'contrastive':[True],
-        'cpc_epoch': [0],
+        'cpc_epoch': [0, 20],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [1],
+        'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [10],
-        'cpc_train_interval': [10]
+        'cpc_num_initial_rollouts': [32],
+        'cpc_train_interval': [1]
     }
 
     run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)

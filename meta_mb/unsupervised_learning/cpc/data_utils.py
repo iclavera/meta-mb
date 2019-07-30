@@ -65,8 +65,7 @@ class CPCDataGenerator(object):
 
         # gather the x_images
         x_images = self.images[idx_n[:, None], x_idx_t]
-        # gather the actions
-        actions = self.actions[idx_n[:, None], x_idx_t]
+
 
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
         if self.predict_action:
@@ -77,6 +76,7 @@ class CPCDataGenerator(object):
                 start_idx_t += 1
 
             y_pos = self.actions[idx_n[:, None], y_idx_t]
+
         else:
             # get tht positive samples for y_images
             for _ in range(self.predict_terms):
@@ -84,6 +84,8 @@ class CPCDataGenerator(object):
                 start_idx_t += 1
 
             y_pos = self.images[idx_n[:, None], y_idx_t]
+            # gather the actions
+            actions = self.actions[idx_n[:, None], y_idx_t - 1]
 
         if self.no_neg and self.predict_action:
             return x_images, y_pos.reshape((self.batch_size, -1))

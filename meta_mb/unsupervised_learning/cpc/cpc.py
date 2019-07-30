@@ -10,20 +10,20 @@ def network_encoder(x, code_size):
     ''' Define the network mapping images to embeddings '''
 
     x = keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, activation='linear')(x)
-    x = keras.layers.BatchNormalization()(x)
+    # x = keras.layers.BatchNormalization()(x)
     x = keras.layers.LeakyReLU()(x)
     x = keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, activation='linear')(x)
-    x = keras.layers.BatchNormalization()(x)
+    # x = keras.layers.BatchNormalization()(x)
     x = keras.layers.LeakyReLU()(x)
     x = keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, activation='linear')(x)
-    x = keras.layers.BatchNormalization()(x)
+    # x = keras.layers.BatchNormalization()(x)
     x = keras.layers.LeakyReLU()(x)
     x = keras.layers.Conv2D(filters=64, kernel_size=3, strides=2, activation='linear')(x)
-    x = keras.layers.BatchNormalization()(x)
+    # x = keras.layers.BatchNormalization()(x)
     x = keras.layers.LeakyReLU()(x)
     x = keras.layers.Flatten()(x)
     x = keras.layers.Dense(units=256, activation='linear')(x)
-    x = keras.layers.BatchNormalization()(x)
+    # x = keras.layers.BatchNormalization()(x)
     x = keras.layers.LeakyReLU()(x)
     x = keras.layers.Dense(units=code_size, activation='linear', name='encoder_embedding')(x)
 
@@ -132,14 +132,14 @@ def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, n
     if context_network == 'stack':
         context = keras.layers.Reshape((code_size * terms,))(x_encoded)
         if include_action:
-            action_flat = keras.layers.Reshape((action_dim * terms, ))(action_input)
+            action_flat = keras.layers.Reshape((action_dim * predict_terms, ))(action_input)
             context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
         context = keras.layers.Dense(512, activation='relu')(context)
         context = keras.layers.Dense(context_size, name='context_output')(context)
     elif context_network == 'rnn':
         context = network_autoregressive(x_encoded)
         if include_action:
-            action_flat = keras.layers.Reshape((action_dim * terms,))(action_input)
+            action_flat = keras.layers.Reshape((action_dim * predict_terms,))(action_input)
             context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
             context = keras.layers.Dense(512, activation='relu')(context)
         context = keras.layers.Dense(context_size, name='context_output')(context)
