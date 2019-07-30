@@ -4,7 +4,6 @@ from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle
 from multiprocessing import Process, Pipe
 import copy
-from pyprind import ProgBar
 
 
 class IterativeEnvExecutor(object):

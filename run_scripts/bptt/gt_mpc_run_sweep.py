@@ -70,6 +70,8 @@ def run_experiment(**config):
             num_opt_iters=config['num_opt_iters'],
             opt_learning_rate=config['opt_learning_rate'],
             num_rollouts=config['num_rollouts'],
+            alpha=config['alpha'],
+            percent_elites=config['percent_elites'],
         )
 
         sampler = GTSampler(
@@ -107,10 +109,10 @@ if __name__ == '__main__':
         'plot_freq': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv, ReacherEnv, HalfCheetahEnv],# [InvertedPendulumEnv],
-        'max_path_length': [120],  # [40, 80, 200]
+        'env': [ReacherEnv, InvertedPendulumEnv, HalfCheetahEnv], #[InvertedPendulumEnv, ReacherEnv, HalfCheetahEnv],# [InvertedPendulumEnv],
+        'max_path_length': [50],  # [40, 80, 200]
         'normalize': [False],
-        'n_itr': [301],
+        'n_itr': [1],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
@@ -120,7 +122,7 @@ if __name__ == '__main__':
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['cem'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
-        'horizon': [20],  # only matters for cem/rs
+        'horizon': [25],  # only matters for cem/rs
 
         'num_opt_iters': [50,], #20, 40,],
         'opt_learning_rate': [1e-4], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
@@ -129,10 +131,12 @@ if __name__ == '__main__':
         'deterministic_policy': [True],
 
         'n_candidates': [1000],
-        'num_cem_iters': [5],
+        'num_cem_iters': [100],
+        'alpha': [0.1],
+        'percent_elites': [0.1],
 
         # Training
-        'num_rollouts': [3],  # number of experts
+        'num_rollouts': [1],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [False],
@@ -157,7 +161,7 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [3],
+        'n_parallel': [5],
     }
 
     # assert config['horizon'] == config['max_path_length']
