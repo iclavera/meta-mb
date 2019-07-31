@@ -120,7 +120,12 @@ class GTMPCController(Serializable):
             # self.n_parallel = self.num_rollouts = n_parallel = num_rollouts = min(n_parallel, num_rollouts)
             assert n_parallel % num_rollouts == 0
             self.n_planner_per_env = n_parallel // num_rollouts
-            self.reset()
+
+            self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                                * (self.env.action_space.high + self.env.action_space.low) / 2
+            self.tau_var_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                               * (self.env.action_space.high - self.env.action_space.low) / 16
+
             self.planner_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, max_path_length)
             self.real_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
             self.get_rollouts_factory = self.get_rollouts_cem
@@ -236,6 +241,7 @@ class GTMPCController(Serializable):
                 actions = optimized_actions_mean + np.sqrt(optimized_actions_var) * np.random.normal(size=optimized_actions_mean.shape)
             obs, rewards, _, _ = self.real_env.step(actions)
             returns += rewards
+            logger.log('ReturnSoFar', np.mean(returns))
 
             # collect info
             obs_array.append(obs[0])
@@ -246,11 +252,6 @@ class GTMPCController(Serializable):
         return returns
 
     def get_actions_cem(self, env_pickled_states):
-        # mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-        #        * (self.env.action_space.high + self.env.action_space.low) / 2
-        # std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-        #       * (self.env.action_space.high - self.env.action_space.low) / 4  # FIXME: do not reset?
-
         mean, var = self.tau_mean_val, self.tau_var_val
         returns_array = []
         for itr in range(self.num_cem_iters):
@@ -276,6 +277,15 @@ class GTMPCController(Serializable):
             var = var * self.alpha + np.var(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
             elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
             returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+
+            logger.logkv('Itr', itr)
+            logger.logkv('AverageReturn', np.mean(elites_returns))
+            # if len(elites_returns) > 1:
+            #     for idx, returns in enumerate(elites_returns):
+            #         logger.logkv(f'Return {idx}', returns)
+            if itr % 50 == 0:
+                logger.log([returns[0] for returns in returns_array[itr-50:itr]])
+            logger.dumpkvs()
 
         returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
         logger.log('returns of first env throughout opt iters', returns_array[:, 0])
@@ -420,6 +430,7 @@ class GTMPCController(Serializable):
         :param dones:
         :return:
         """
+        pass
         # if self.method_str == 'opt_act':
             # assert len(dones) == self.num_envs
             # if self.initializer_str == 'uniform':
@@ -432,13 +443,6 @@ class GTMPCController(Serializable):
             #     self.tau_mean_val = np.zeros(
             #         (self.horizon, self.num_envs, self.action_space_dims),
             #     )
-        if self.method_str == 'cem':
-            self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-                                * (self.env.action_space.high + self.env.action_space.low) / 2
-            self.tau_var_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-                               * (self.env.action_space.high - self.env.action_space.low) / 16
-        else:
-            pass
 
     def log_diagnostics(*args):
         pass

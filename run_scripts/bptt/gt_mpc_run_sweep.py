@@ -18,10 +18,13 @@ def run_experiment(**config):
     repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
+        config['max_path_length'] = max_path_length = 200
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
+        config['max_path_length'] = max_path_length = 100
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
+        config['max_path_length'] = max_path_length = 50
     # repr += '-reg-' + str(config['reg_coef'])
     # if config['reg_str'] is not None:
     #     repr += config['reg_str']
@@ -59,7 +62,7 @@ def run_experiment(**config):
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
-            max_path_length=config['max_path_length'],
+            max_path_length= max_path_length, # config['max_path_length'],
             method_str=config['method_str'],
             n_parallel=config['n_parallel'],
             dyn_pred_str=config['dyn_pred_str'],
@@ -78,7 +81,7 @@ def run_experiment(**config):
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
-            max_path_length=config['max_path_length'],
+            max_path_length=max_path_length, # config['max_path_length'],
             dyn_pred_str=config['dyn_pred_str'],
         )
 
@@ -106,54 +109,55 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [False],
-        'plot_freq': [1],
+        'plot_freq': [-1],
 
         # Problem
-        'env': [ReacherEnv, InvertedPendulumEnv, HalfCheetahEnv], #[InvertedPendulumEnv, ReacherEnv, HalfCheetahEnv],# [InvertedPendulumEnv],
-        'max_path_length': [50],  # [40, 80, 200]
+        'env': [ReacherEnv, InvertedPendulumEnv, ], #[HalfCheetahEnv],
+        # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
-        'n_itr': [1],
+        'n_itr': [201],
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['cem'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['opt_act', ],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
-        'horizon': [25],  # only matters for cem/rs
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-4], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
+        'opt_learning_rate': [1e-5], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
         'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
+        # cem
+        'horizon': [30],  # only matters for cem/rs
         'n_candidates': [1000],
-        'num_cem_iters': [100],
+        'num_cem_iters': [50],
         'alpha': [0.1],
         'percent_elites': [0.1],
 
         # Training
-        'num_rollouts': [1],  # number of experts
+        'num_rollouts': [2],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [False],
         'initial_sinusoid_samples': [False],
 
-        # Dynamics Model
+        # Dynamics Model  # UNUSED
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
 
-        # MLP
+        # MLP  # UNSUED
         'hidden_sizes_model': [(512, 512)],  # (500, 500)
         'batch_size_model': [64],
         'learning_rate': [0.001],
 
-        # Recurrent
+        # Recurrent  # UNUSED
         'hidden_sizes_model_rec': [(128,)],  # (500, 500)
         'batch_size_model_rec': [10],
         'backprop_steps': [100],

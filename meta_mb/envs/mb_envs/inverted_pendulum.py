@@ -31,18 +31,13 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_hard(self, obs=None):
-        self.sim.reset()
-        if obs is None:
-            self.set_state(self.init_qpos, self.init_qvel)
-        else:
-            qpos, qvel = obs[:self.model.nq], obs[self.model.nq:]
-            self.set_state(qpos, qvel)
+    def reset_model(self):
+        self.set_state(self.init_qpos, self.init_qvel)
         return self._get_obs()
 
     def _get_reward(self):
         old_ob = self._get_obs()
-        reward = -((old_ob[1]) ** 2)
+        reward = -((old_ob[1] - np.pi) ** 2)  # swing up
         return reward
 
     def _get_obs(self):
@@ -57,15 +52,38 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         assert obs.ndim == 2
         assert obs.shape == next_obs.shape
         assert obs.shape[0] == acts.shape[0]
-        return -(obs[:, 1]) ** 2
+        return -(obs[:, 1] - np.pi) ** 2
 
     def tf_reward(self, obs, acts, next_obs):
         return - tf.square(obs[:, 1] - np.pi)
 
 
 if __name__ == "__main__":
+    import pickle as pickle
+
     env = InvertedPendulumEnv()
-    env.reset()
-    for _ in range(1000):
-        _ = env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    for _ in range(5):
+         ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    pickled_env_state = pickle.dumps(env.sim.get_state())
+
+    env2 = InvertedPendulumEnv()
+    env2.sim.set_state(pickle.loads(pickled_env_state))
+
+    print(f'compare env, env2 obs: {env._get_obs()}, {env2._get_obs()}')
+
+    action = env.action_space.sample()
+    print(f'about to apply action {action}')
+
+    print('env:')
+    print(env.step(action))
+
+    print('env2:')
+    print(env2.step(action))
+
+    env2.sim.forward()
+    print(env2._get_obs())
+
+    # env.reset()
+    # for _ in range(1000):
+    #     _ = env.render()
+    #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
