@@ -22,6 +22,7 @@ class GTMPCController(Serializable):
             num_rollouts=None,
             reward_model=None,
             discount=1,
+            lmbda=1,
             method_str='opt_policy',
             n_parallel=1,
             dyn_pred_str='rand',
@@ -83,7 +84,7 @@ class GTMPCController(Serializable):
             self.horizon = horizon = max_path_length
             self._env = copy.deepcopy(env)
             self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=np.tanh)
-            self.policy = ParallelPolicyGradUpdateExecutor(
+            self.planner = ParallelPolicyGradUpdateExecutor(
                 env, n_parallel, num_rollouts, horizon, eps,
                 opt_learning_rate, num_opt_iters,
                 discount, verbose,
@@ -129,6 +130,16 @@ class GTMPCController(Serializable):
             self.planner_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, max_path_length)
             self.real_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
             self.get_rollouts_factory = self.get_rollouts_cem
+
+        elif self.method_str == 'collocation':
+            self._env = copy.deepcopy(env)
+            self.planner = ParallelCollocationExecutor(env, n_parallel, horizon, eps,
+                                                       discount, lmbda, verbose)
+            self.optimizer_s = GTOptimizer(alpha=self.opt_learning_rate)
+            self.optimizer_a = GTOptimizer(alpha=self.opt_learning_rate)
+
+            self.get_rollouts_factory = self.get_rollouts_collocation
+
         else:
             raise NotImplementedError
 
@@ -149,7 +160,7 @@ class GTMPCController(Serializable):
 
     def get_rollouts_opt_policy(self, deterministic=False, plot_first_rollout=False):
         assert deterministic
-        info = self.policy.do_gradient_steps()
+        info = self.planner.do_gradient_steps()
 
         if plot_first_rollout:
             logger.log(info['old_return'][0, :])  # report return for the first rollout over optimization iterations
@@ -158,6 +169,46 @@ class GTMPCController(Serializable):
             # self.plot_info()
 
         return info['old_return'][:, -1]
+
+    def get_rollouts_opt_act_w_replanning(self, deterministic=False, plot_first_rollout=False):
+        # TODO
+        pass
+
+    def _run_open_loop(self, a_array):
+        s_array, returns = [], 0
+        obs = self._env.reset()
+        for t in range(self.horizon):
+            s_array.append(obs)
+            obs, reward, _, _ = self._env.step(a_array[t])
+            returns += self.discount ** t * reward
+        s_array_stacked = np.stack(s_array, axis=0)
+        return s_array_stacked, returns
+
+
+    def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
+        # initialize s_array, a_array
+        a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+                                            size=(self.horizon, self.action_space_dims))
+        s_array, returns = self._run_open_loop(a_array)
+        print(returns)
+
+        # do gradient steps
+        returns_array = []  # (num_opt_iters,)
+        for itr in range(self.num_opt_iters):
+            grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
+            delta_s = self.optimizer_s.compute_delta_var(grad_s)
+            delta_s[0, :] = np.zeros((self.action_space_dims,))
+            s_array += delta_s
+            a_array += self.optimizer_a.compute_delta_var(grad_a)
+            a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
+
+            # report performance
+            _, returns = self._run_open_loop(a_array)
+            returns_array.append(returns)
+            if itr % 200 == 0:
+                print(returns)
+
+        return returns_array[-1]
 
     def get_rollouts_opt_act(self, deterministic=False, plot_first_rollout=False):
         """
@@ -241,7 +292,8 @@ class GTMPCController(Serializable):
                 actions = optimized_actions_mean + np.sqrt(optimized_actions_var) * np.random.normal(size=optimized_actions_mean.shape)
             obs, rewards, _, _ = self.real_env.step(actions)
             returns += rewards
-            logger.log('ReturnSoFar', np.mean(returns))
+            logger.logkv('Reward', np.mean(returns))
+            logger.logkv('SumReward', np.mean(returns))
 
             # collect info
             obs_array.append(obs[0])
@@ -314,7 +366,7 @@ class GTMPCController(Serializable):
 
         if self.method_str == 'opt_policy':
             obs = self._env.reset()
-            W, b = self.policy.get_param_values_first_rollout()
+            W, b = self.planner.get_param_values_first_rollout()
             self._policy.set_params(dict(W=W, b=b))
 
             for t in range(self.horizon):
