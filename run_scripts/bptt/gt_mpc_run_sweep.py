@@ -15,10 +15,15 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
+    print(config['opt_learning_rate'], config['eps'], config['lmbda'])
+    if config['method_str'] in ['cem', 'collocation']:
+        config['n_itr'] = 1
+        config['num_rollouts'] = 1
+    logger.log(f'n_itr = 1, num_rollouts = 1!!!')
     repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = max_path_length = 200
+        config['max_path_length'] = max_path_length = 1000
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = max_path_length = 100
@@ -112,10 +117,10 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [ReacherEnv, InvertedPendulumEnv, ], #[HalfCheetahEnv],
+        'env': [ReacherEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
-        'n_itr': [201],
+        'n_itr': [201],  # only matters for opt_policy
         'discount': [1.0,],
         'controller_str': ['gt'],
 
@@ -123,13 +128,13 @@ if __name__ == '__main__':
         'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['opt_act', ],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['collocation'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-5], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
+        'opt_learning_rate': [1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
-        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
+        'eps': [1e-6, 1e-4], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
         # cem
@@ -138,6 +143,9 @@ if __name__ == '__main__':
         'num_cem_iters': [50],
         'alpha': [0.1],
         'percent_elites': [0.1],
+
+        # collocation
+        'lmbda': [1e-2, 1e0],
 
         # Training
         'num_rollouts': [2],  # number of experts

@@ -691,7 +691,7 @@ def collocation_worker(remote, parent_remote, env_pickle, eps,
         grad_s = np.zeros((obs_dim, obs_dim))
         for idx in range(obs_dim):  # compute grad[:, idx]
             s[idx] += eps
-            new_s_next, _, _, _ = step_wrapper(s, a)
+            new_s_next = step_wrapper(s, a)
             s[idx] -= eps
             grad_s[idx] = (new_s_next - old_s_next) / eps
 
@@ -707,7 +707,7 @@ def collocation_worker(remote, parent_remote, env_pickle, eps,
         grad_a = np.zeros((obs_dim, act_dim))
         for idx in range(act_dim): # compute grad[:, idx]
             a[idx] += eps
-            new_s_next, _, _, _ = step_wrapper(s, a)
+            new_s_next = step_wrapper(s, a)
             a[idx] -= eps
             grad_a[:, idx] = (new_s_next - old_s_next) / eps
         return grad_a
@@ -736,8 +736,8 @@ def collocation_worker(remote, parent_remote, env_pickle, eps,
 
             for t in range(n_envs):
                 s, a = s_array[t], a_array[t]
-                _grad_s = discount**t * dr_ds(s, a) + lmbda * (s - f_array[t-1])
-                _grad_a = discount**t * dr_da(s, a)
+                _grad_s = -discount**t * dr_ds(s, a) + lmbda * (s - f_array[t-1])
+                _grad_a = -discount**t * dr_da(s, a)
                 if t != n_envs-1:
                     s_next = s_array[t+1]
                     _grad_s += -lmbda * np.matmul(df_ds(s, a).T, s_next - f_array[t])

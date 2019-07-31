@@ -193,22 +193,25 @@ class GTMPCController(Serializable):
         print(returns)
 
         # do gradient steps
-        returns_array = []  # (num_opt_iters,)
+        # returns_array = []  # (num_opt_iters,)
         for itr in range(self.num_opt_iters):
-            grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
-            delta_s = self.optimizer_s.compute_delta_var(grad_s)
-            delta_s[0, :] = np.zeros((self.action_space_dims,))
-            s_array += delta_s
-            a_array += self.optimizer_a.compute_delta_var(grad_a)
-            a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
+            # Set a rolling average here
+            for _ in range(250):
+                grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
+                delta_s = self.optimizer_s.compute_delta_var(grad_s)
+                delta_s[0, :] = np.zeros((self.obs_space_dims,))
+                s_array -= delta_s
+                a_array -= self.optimizer_a.compute_delta_var(grad_a)
+                a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
 
             # report performance
             _, returns = self._run_open_loop(a_array)
-            returns_array.append(returns)
-            if itr % 200 == 0:
-                print(returns)
+            # returns_array.append(returns)
+            logger.logkv('Itr', itr)
+            logger.logkv('Return', returns)
+            logger.dumpkvs()
 
-        return returns_array[-1]
+        return returns[None]
 
     def get_rollouts_opt_act(self, deterministic=False, plot_first_rollout=False):
         """
