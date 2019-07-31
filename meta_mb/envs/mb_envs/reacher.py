@@ -72,7 +72,7 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return deriv
 
     def deriv_reward_acts(self, obs, acts):
-        return -2*acts[:, :]
+        return -2 * acts[:, :]
 
     def reset_from_obs(self, obs):
         qpos, qvel = np.zeros((self.model.nq,)), np.zeros((self.model.nv,))

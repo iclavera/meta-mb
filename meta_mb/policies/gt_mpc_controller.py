@@ -34,6 +34,8 @@ class GTMPCController(Serializable):
             max_path_length=200,
             num_cem_iters=8,
             num_opt_iters=8,
+            num_collocation_iters=500,
+            persistency=0.99,
             opt_learning_rate=1e-3,
             clip_norm=-1,
             percent_elites=0.1,
@@ -57,6 +59,8 @@ class GTMPCController(Serializable):
         self.max_path_length = max_path_length
         self.num_cem_iters = num_cem_iters
         self.num_opt_iters = num_opt_iters
+        self.num_collocation_iters = num_collocation_iters
+        self.persistency= persistency
         self.opt_learning_rate = opt_learning_rate
         self.eps = eps
         self.num_envs = num_rollouts
@@ -132,9 +136,19 @@ class GTMPCController(Serializable):
             self.get_rollouts_factory = self.get_rollouts_cem
 
         elif self.method_str == 'collocation':
-            self._env = copy.deepcopy(env)
+            self.planner_env = copy.deepcopy(env)
+            self.real_env = copy.deepcopy(env)
             self.planner = ParallelCollocationExecutor(env, n_parallel, horizon, eps,
                                                        discount, lmbda, verbose)
+            # initialize s_array, a_array
+            if self.initializer_str == 'uniform':
+                self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+                                            size=(self.horizon, self.action_space_dims))
+            elif self.initializer_str == 'zeros':
+                self.running_a_array = np.zeros(shape=(self.horizon, self.action_space_dims))
+            else:
+                raise NotImplementedError
+
             self.optimizer_s = GTOptimizer(alpha=self.opt_learning_rate)
             self.optimizer_a = GTOptimizer(alpha=self.opt_learning_rate)
 
@@ -154,9 +168,8 @@ class GTMPCController(Serializable):
         return True
 
     def get_rollouts(self, deterministic, plot_first_rollout):
-        returns = self.get_rollouts_factory(deterministic, plot_first_rollout)
+        self.get_rollouts_factory(deterministic, plot_first_rollout)
         self._local_step += 1
-        return returns
 
     def get_rollouts_opt_policy(self, deterministic=False, plot_first_rollout=False):
         assert deterministic
@@ -168,7 +181,9 @@ class GTMPCController(Serializable):
 
             # self.plot_info()
 
-        return info['old_return'][:, -1]
+        logger.logkv('AverageReturn', np.mean(info['old_return'][:, -1]))
+        for idx, returns in enumerate(info['old_return'][:-1]):
+            logger.logkv(f'Return {idx}', returns)
 
     def get_rollouts_opt_act_w_replanning(self, deterministic=False, plot_first_rollout=False):
         # TODO
@@ -176,42 +191,81 @@ class GTMPCController(Serializable):
 
     def _run_open_loop(self, a_array):
         s_array, returns = [], 0
-        obs = self._env.reset()
+        obs = self.planner_env.reset()
         for t in range(self.horizon):
             s_array.append(obs)
-            obs, reward, _, _ = self._env.step(a_array[t])
+            obs, reward, _, _ = self.planner_env.step(a_array[t])
             returns += self.discount ** t * reward
         s_array_stacked = np.stack(s_array, axis=0)
         return s_array_stacked, returns
 
-
     def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
-        # initialize s_array, a_array
-        a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
-                                            size=(self.horizon, self.action_space_dims))
-        s_array, returns = self._run_open_loop(a_array)
-        print(returns)
+        _ = self.real_env.reset()
+        sum_rewards = 0
+        for t in range(self.max_path_length):
+            optimized_action = self.get_actions_collocation()
+            _, reward, _, _ = self.real_env.step(optimized_action)
+            sum_rewards += reward
+            logger.log(f'reward at path length {t}: {reward}')
+            logger.log(f'total reward at path length {t}: {sum_rewards}')
 
+        return [sum_rewards]
+
+    def get_actions_collocation(self):
+        a_array = self.running_a_array
+        s_array, returns = self._run_open_loop(a_array)
+        logger.log('initial returns', returns)
         # do gradient steps
-        # returns_array = []  # (num_opt_iters,)
-        for itr in range(self.num_opt_iters):
-            # Set a rolling average here
-            for _ in range(250):
-                grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
-                delta_s = self.optimizer_s.compute_delta_var(grad_s)
-                delta_s[0, :] = np.zeros((self.obs_space_dims,))
-                s_array -= delta_s
-                a_array -= self.optimizer_a.compute_delta_var(grad_a)
-                a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
+        # rolling_returns_average, rolling_returns_average_prev = None, None
+        returns_prev = init_returns = returns
+        for itr in range(self.num_collocation_iters):
+            grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
+            delta_s = self.optimizer_s.compute_delta_var(grad_s)
+            delta_s[0, :] = np.zeros((self.obs_space_dims,))
+            s_array -= delta_s
+            a_array -= self.optimizer_a.compute_delta_var(grad_a)
+            a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
 
             # report performance
-            _, returns = self._run_open_loop(a_array)
-            # returns_array.append(returns)
-            logger.logkv('Itr', itr)
-            logger.logkv('Return', returns)
-            logger.dumpkvs()
+            if itr % 500 == 0:
+                _, returns = self._run_open_loop(a_array)
+                logger.logkv('Itr', itr)
+                logger.logkv('PlannerReturn', returns)
+                logger.dumpkvs()
 
-        return returns[None]
+                if itr >= 5000 and returns >= init_returns and returns <= returns_prev: #(returns_prev < 0 and returns < returns_prev * 1.01) or (returns_prev > 0 and returns < returns_prev * 0.99):
+                    break
+
+                returns_prev = returns
+                # if itr == 0:
+                #     if returns >= 0:
+                #         rolling_returns_average, rolling_returns_average_prev = returns * 2.0, returns * 1.5
+                #     else:
+                #         rolling_returns_average, rolling_returns_average_prev = returns / 2.0, returns / 1.5
+                # rolling_returns_average_prev = rolling_returns_average
+                # rolling_returns_average = self.persistency * rolling_returns_average + (1 - self.persistency) * returns
+                # if rolling_returns_average < rolling_returns_average_prev:
+                #     logger.log(f'early stop after {itr} iterations')
+                #     break
+
+        # save optimized action
+        optimized_action = a_array[0, :]
+
+        # rotate running s_array, a_array
+        if self.initializer_str == 'uniform':
+            self.running_a_array = np.concatenate([
+                a_array[1:],
+                np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high, size=(1, self.action_space_dims)),
+            ], axis=0)
+        elif self.initializer_str == 'zeros':
+            self.running_a_array = np.concatenate([
+                a_array[1:],
+                np.zeros((1, self.action_space_dims)),
+            ], axis=0)
+        else:
+            raise NotImplementedError
+
+        return optimized_action
 
     def get_rollouts_opt_act(self, deterministic=False, plot_first_rollout=False):
         """
@@ -275,11 +329,14 @@ class GTMPCController(Serializable):
         #         np.zeros((1, self.num_envs, self.action_space_dims)),
         #     ], axis=0)
 
-        return returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
+        logger.logkv('AverageReturn', np.mean(returns_array[-1, :]))
+        for idx, returns in enumerate(returns_array[-1, :]):
+            logger.logkv(f'Return {idx}', returns)
+        logger.dumpkvs()
 
     def get_rollouts_cem(self, deterministic=False, plot_first_rollout=False):
         _ = self.real_env.reset()
-        obs_array, reward_array, act_array, act_norm_array = [], [], [], []  # info for first env to plot
+        # obs_array, reward_array, act_array, act_norm_array = [], [], [], []  # info for first env to plot
         returns = np.zeros((self.num_envs,))
 
         for t in range(self.max_path_length):
@@ -295,16 +352,16 @@ class GTMPCController(Serializable):
                 actions = optimized_actions_mean + np.sqrt(optimized_actions_var) * np.random.normal(size=optimized_actions_mean.shape)
             obs, rewards, _, _ = self.real_env.step(actions)
             returns += rewards
-            logger.logkv('Reward', np.mean(returns))
+
+            logger.logkv('Reward', np.mean(rewards))
             logger.logkv('SumReward', np.mean(returns))
+            logger.dumpkvs()
 
-            # collect info
-            obs_array.append(obs[0])
-            reward_array.append(rewards[0])
-            act_array.append(actions[0])
-            act_norm_array.append(np.linalg.norm(actions[0]))
-
-        return returns
+            # # collect info
+            # obs_array.append(obs[0])
+            # reward_array.append(rewards[0])
+            # act_array.append(actions[0])
+            # act_norm_array.append(np.linalg.norm(actions[0]))
 
     def get_actions_cem(self, env_pickled_states):
         mean, var = self.tau_mean_val, self.tau_var_val
@@ -333,7 +390,6 @@ class GTMPCController(Serializable):
             elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
             returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
 
-            logger.logkv('Itr', itr)
             logger.logkv('AverageReturn', np.mean(elites_returns))
             # if len(elites_returns) > 1:
             #     for idx, returns in enumerate(elites_returns):

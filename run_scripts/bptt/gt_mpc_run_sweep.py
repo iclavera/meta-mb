@@ -76,7 +76,9 @@ def run_experiment(**config):
             initializer_str=config['initializer_str'],
             num_cem_iters=config['num_cem_iters'],
             num_opt_iters=config['num_opt_iters'],
+            num_collocation_iters=config['num_collocation_iters'],
             opt_learning_rate=config['opt_learning_rate'],
+            persistency=config['persistency'],
             num_rollouts=config['num_rollouts'],
             alpha=config['alpha'],
             percent_elites=config['percent_elites'],
@@ -125,7 +127,7 @@ if __name__ == '__main__':
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['uniform'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['collocation'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
@@ -145,7 +147,9 @@ if __name__ == '__main__':
         'percent_elites': [0.1],
 
         # collocation
-        'lmbda': [1e-2, 1e0],
+        'lmbda': [1e-2, 1e-1, 1e0],
+        'num_collocation_iters': [500*30],
+        'persistency': [0.9],
 
         # Training
         'num_rollouts': [2],  # number of experts

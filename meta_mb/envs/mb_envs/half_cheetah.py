@@ -49,20 +49,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_hard(self):
-        self.sim.reset()
-        qpos = self.init_qpos
-        qvel = self.init_qvel
-        self.set_state(qpos, qvel)
-        return self._get_obs()
-
-    def reset_from_obs_hard(self, obs):
-        nq, nv = self.model.nq, self.model.nv
-        self.sim.reset()
-        qpos = self.init_qpos
-        qpos[1:] = obs[:nq-1]
-        qvel = obs[nq-1:]
-        self.set_state(qpos, qvel)
+    def reset_model(self):  # FIXME: hack for bptt
+        self.set_state(self.init_qpos, self.init_qvel)
         return self._get_obs()
 
     def viewer_setup(self):
@@ -93,6 +81,13 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def deriv_reward_obs(self, obs, acts):
+        deriv = np.zeros_like(obs)
+        deriv[:, 8] = 1
+        return deriv
+
+    def deriv_reward_acts(self, obs, acts):
+        return -0.2 * acts[:, :]
 
 
 if __name__ == "__main__":
