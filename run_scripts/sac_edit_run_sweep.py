@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Steve-T5"
+EXP_NAME = "T-graph"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -160,27 +160,27 @@ if __name__ == '__main__':
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
-        'env_replay_buffer_max_size': [1e6],
-        'model_replay_buffer_max_size': [2e6],
+        'env_replay_buffer_max_size': [1e5],
+        'model_replay_buffer_max_size': [2e5],
 		'n_itr': [3000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [101],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [250],
-		'rollout_batch_size': [100e3],
+        'model_train_freq': [25],
+		'rollout_batch_size': [10e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
+		'q_functioin_type':[3],
 		'q_target_type': [1],
-		'num_actions_per_next_observation': [3, 10],
-		'epoch_length': [1000],
+		'num_actions_per_next_observation': [0],
+		'epoch_length': [100],
         'H': [5],
-        'T': [5, 7],
+        'T': [2],
 		'reward_scale': [1],
-		'target_entropy': [-3, -6],
-		'num_models': [8],
+		'target_entropy': [-3],
+		'num_models': [4],
 		'model_used_ratio': [0],
-		'dynamics_buffer_size': [1e4],
+		'dynamics_buffer_size': [5e3],
 
 
         # Problem Conf

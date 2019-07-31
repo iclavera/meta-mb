@@ -270,37 +270,6 @@ class SAC2(Algo):
             target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
             target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
             Q_target = self.q_target = tf.reduce_sum(target_means * target_confidence, 0)
-            # self.save_H_graph = True
-            # self.graph_step += 1
-            # if self.save_H_graph and self.graph_step % 1 == 0:
-            #     taget_confidence = tf.reduce_sum(target_confidence, axis = 1)
-            #     target_confidence = tf.reshape(target_confidence, [-1])
-            #     target_confidence = target_confidence / tf.reduce_sum(target_confidence)
-            #     height = 480
-            #     heights = tf.cast(height * target_confidence, tf.int32)
-            #     color_list = []
-            #     count = 0
-            #     for i in range(self.H):
-            #         color = self.rgb_lst[i]
-            #         color = tf.expand_dims(color, axis = 0)
-            #         color_block = tf.tile(color, [heights[i], 1])
-            #         color_list.append(color_block)
-            #         count += color_block.shape[0]
-            #     error = height - count
-            #     if error > 0:
-            #         color  = self.rgb_list[self.H]
-            #         color = tf.expand_dims(color, axis = 0)
-            #         color_block = tf.tile(color, [error, 1])
-            #         color_list.append(color_block)
-            #     colors = tf.reshape(tf.stack(color_list), [-1, 3])
-            #     self.confidence_lst.append(colors[:height])
-            #     colors = tf.stack(self.confidence_lst)
-            #     sinogram = tf.cast(colors, tf.uint8)
-            #     sinogram = tf.image.encode_jpeg(sinogram, quality=100)
-            #     if self.exp_dir:
-            #         writer = tf.write_file(self.exp_dir+'/H_IMAGE.jpg', sinogram)
-            #         self.training_ops.update({'H_IMAGE': writer})
-
             return tf.stop_gradient(Q_target)
 
 
@@ -353,7 +322,9 @@ class SAC2(Algo):
 
         assert log_pis_var.shape.as_list() == [None, 1]
 
-        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+        # log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+        # alpha = tf.exp(log_alpha)
+        log_alpha = self.dynamics_model.log_alpha
         alpha = tf.exp(log_alpha)
 
         if isinstance(self.target_entropy, Number):

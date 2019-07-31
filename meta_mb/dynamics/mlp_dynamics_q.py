@@ -8,6 +8,7 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize
+from pdb import set_trace as st
 
 def train_test_split(obs, act, delta, rewards, dones, test_split_ratio=0.2):
     assert obs.shape[0] == act.shape[0] == delta.shape[0] == rewards.shape[0] == dones.shape[0]
@@ -22,8 +23,7 @@ def train_test_split(obs, act, delta, rewards, dones, test_split_ratio=0.2):
 
     return obs[idx_train, :], act[idx_train, :], delta[idx_train, :], \
            obs[idx_test, :], act[idx_test, :], delta[idx_test, :], \
-           rewards[idx_train, :], rewards[idx_test, :],
-           dones[idx_train, :], dones[idx_test, :]
+           rewards[idx_train], rewards[idx_test], dones[idx_train], dones[idx_test]
 
 class MLPDynamicsEnsembleQ(MLPDynamicsModel):
     """
@@ -51,6 +51,7 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
+                 q_loss_importance=0,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -92,6 +93,7 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
 
         self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
         self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
+        self.q_loss_importance = q_loss_importance
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -99,8 +101,8 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
-            self.rewards_ph = tf.placeholder(tf.float32, shape=(None, 1))
-            self.dones_ph = tf.placeholder(tf.float32, shape=(None, 1))
+            self.rewards_ph = tf.placeholder(tf.float32, shape=(None))
+            self.dones_ph = tf.placeholder(tf.float32, shape=(None))
 
             self._create_stats_vars()
 
@@ -136,36 +138,46 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                 self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
             else:
                 raise NotImplementedError
-
-            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
-            next_observations_ph = self.delta_ph
-            dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
+            next_obs = self.predict_sym(self.obs_ph, self.act_ph)
+            dist_info_sym = self.policy.distribution_info_sym(next_obs)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-            next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-            next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-
-            input_q_fun = tf.concat([next_observations_ph, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+            # next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+            # next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
+            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
+            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
             min_next_Q = tf.reduce_min(next_q_values, axis=0)
-            next_values_var = min_next_Q - self.alpha * next_log_pis_var
+            # next_values_var = min_next_Q - alpha * next_log_pis_var
 
-            dones_ph = tf.cast(self.dones_ph, next_values_var.dtype)
+
+            # change this for other environments
+            dones_ph = tf.cast(self.dones_ph, self.obs_ph.dtype)
             dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            rewards_ph = self.op_phs_dict['rewards']
-            rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
-            target = self.reward_scale * self.rewards_ph + self.discount * (1 - self.dones_ph) * next_values_var
-            q_target =  tf.stop_gradient(target)
+            # rewards_ph = tf.expand_dims(self.rewards_ph, axis=-1)
+            rewards = self.env.tf_reward(self.obs_ph, self.act_ph, next_obs)
+            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
+            q_values = [rewards + self.discount * (1 - dones_ph) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
+            # define loss and train_op
+            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
 
             q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            self.loss += [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
-                                        for q_value in q_values_var]
+            q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
+                                        for i in range(2)]
+            current_scope = name
+            trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+            self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
+            keys = []
+            for key in self.vfun_params.keys():
+                if key[:6] == "policy" or key[:5] == "q_fun":
+                    keys.append(key)
+            for key in keys:
+                self.vfun_params.pop(key)
+            vars = list(self.vfun_params.values())
+            self.loss = [self.loss + self.q_loss_importance * q_losses[i] for i in range(2)]
+            self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
+            self.train_op = [self.optimizer[i].minimize(self.loss[i], var_list = vars) for i in range(2)]
 
-            self.optimizer = [optimizer(learning_rate=self.learning_rate, name='{}_{}_optimizer_dynamics'.format(Q.name, i))for i, Q in enumerate(self.Qs)]
-
-            self.train_op = [q_optimizer.minimize(loss=self.loss, var_list=list(Q.vfun_params.values())) for i, (Q, q_loss, q_optimizer)
-                in enumerate(zip(self.Qs, q_losses, self.optimizer))]
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
@@ -176,11 +188,15 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.rew_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None,))
+            self.done_model_batches_stack_ph = tf.placeholder(tf.bool, shape=(None,))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
             self.act_model_batches = tf.split(self.act_model_batches_stack_ph, self.num_models, axis=0)
             self.delta_model_batches = tf.split(self.delta_model_batches_stack_ph, self.num_models, axis=0)
+            self.rew_model_batches = tf.split(self.rew_model_batches_stack_ph, self.num_models, axis=0)
+            self.done_model_batches = tf.split(self.done_model_batches_stack_ph, self.num_models, axis=0)
 
             # reuse previously created MLP but each model receives its own batch
             delta_preds = []
@@ -246,15 +262,14 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
 
         delta = obs_next - obs
         for i in range(self.num_models):
-            obs_train, act_train, delta_train, obs_test, act_test, delta_test, rewards_train, rewards_test, dones_train, dones_test
-            = train_test_split(obs, act, delta, rewards, dones,test_split_ratio=valid_split_ratio)
+            obs_train, act_train, delta_train, obs_test, act_test, delta_test, rewards_train, rewards_test, dones_train, dones_test = train_test_split(obs, act, delta, rewards, dones,test_split_ratio=valid_split_ratio)
             obs_train_batches.append(obs_train)
             act_train_batches.append(act_train)
             delta_train_batches.append(delta_train)
             obs_test_batches.append(obs_test)
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
-            rewards_train_batches.apppend(rewards_train)
+            rewards_train_batches.append(rewards_train)
             dones_train_batches.append(dones_train)
             rewards_test_batches.append(rewards_test)
             dones_test_batches.append(dones_test)
@@ -262,19 +277,24 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
 
         # If case should be entered exactly once
         if check_init and self._dataset_test is None:
-            self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
-            self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
+            self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches, rew=rewards_test_batches, done=dones_test_batches)
+            self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches, rew=rewards_train_batches, done=dones_train_batches)
 
             assert self.next_batch is None
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
+                                                                 self._dataset_train['rew'],
+                                                                 self._dataset_train['done'],
                                                                  batch_size=self.batch_size)
             assert self.normalization is None
             if self.normalize_input:
                 self.compute_normalization(self._dataset_train['obs'],
                                            self._dataset_train['act'],
-                                           self._dataset_train['delta'])
+                                           self._dataset_train['delta'],
+                                           self._dataset_train['rew'],
+                                           self._dataset_train['done'],
+                                           )
         else:
             n_test_new_samples = len(obs_test_batches[0])
             n_max_test = self.buffer_size_test - n_test_new_samples
@@ -474,6 +494,87 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
+    def predict_sym(self, obs_ph, act_ph):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    # denormalize delta_pred
+                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.concat(delta_preds, axis=0)
+
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        # nex_obs = clip(obs + delta_pred)
+        next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
+
+    def predict_batches_sym(self, obs_ph, act_ph):
+        """
+        Same batch fed into all models. Randomly output one of the predictions for each observation.
+        :param obs_ph: (batch_size, obs_space_dims)
+        :param act_ph: (batch_size, act_space_dims)
+        :return: (batch_size, obs_space_dims)
+        """
+        original_obs = obs_ph
+
+        # shuffle
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.concat(delta_preds, axis=0)
+
+        # unshuffle
+        next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+        return next_obs
 
     def predict(self, obs, act, pred_type='rand', **kwargs):
         """
@@ -594,11 +695,11 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
         self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in range(self.num_models)]
-        self.rew_batches_dataset_ph = [tf.placeholder(tf.float32, (None, rew.shape[1])) for _ in range(self.num_models)]
-        self.done_batches_dataset_ph = [tf.placeholder(tf.bool, (None, delta.shape[1])) for _ in range(self.num_models)]
+        self.rew_batches_dataset_ph = [tf.placeholder(tf.float32, (None)) for _ in range(self.num_models)]
+        self.done_batches_dataset_ph = [tf.placeholder(tf.bool, (None)) for _ in range(self.num_models)]
 
         dataset = tf.data.Dataset.from_tensor_slices(
-            tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
+            tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph + self.rew_batches_dataset_ph + self.done_batches_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
         dataset = dataset.shuffle(buffer_size=buffer_size)
@@ -658,13 +759,13 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims,),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
-            self._mean_rew_var.append(tf.get_variable('mean_rew_%d' % i, shape=(1,),
+            self._mean_rew_var.append(tf.get_variable('mean_rew_%d' % i, shape=(),
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
-            self._std_rew_var.append(tf.get_variable('std_rew_%d' % i, shape=(1,),
+            self._std_rew_var.append(tf.get_variable('std_rew_%d' % i, shape=(),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
-            self._mean_done_var.append(tf.get_variable('mean_done_%d' % i, shape=(1,),
+            self._mean_done_var.append(tf.get_variable('mean_done_%d' % i, shape=(),
                                                    dtype=tf.bool, initializer=tf.zeros_initializer, trainable=False))
-            self._std_done_var.append(tf.get_variable('std_done_%d' % i, shape=(1,),
+            self._std_done_var.append(tf.get_variable('std_done_%d' % i, shape=(),
                                                   dtype=tf.bool, initializer=tf.ones_initializer, trainable=False))
 
 
@@ -674,8 +775,10 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
             self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_delta_ph.append(tf.placeholder(tf.float32,  shape=(self.obs_space_dims,)))
-            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(1,)))
-            self._std_delta_ph.append(tf.placeholder(tf.bool, shape=(1,)))
+            self._mean_rew_ph.append(tf.placeholder(tf.float32, shape=()))
+            self._std_rew_ph.append(tf.placeholder(tf.float32, shape=()))
+            self._mean_done_ph.append(tf.placeholder(tf.bool, shape=()))
+            self._std_done_ph.append(tf.placeholder(tf.bool, shape=()))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
@@ -683,6 +786,10 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                                       tf.assign(self._std_act_var[i], self._std_act_ph[i]),
                                       tf.assign(self._mean_delta_var[i], self._mean_delta_ph[i]),
                                       tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
+                                      tf.assign(self._mean_rew_var[i], self._mean_rew_ph[i]),
+                                      tf.assign(self._std_rew_var[i], self._std_rew_ph[i]),
+                                      tf.assign(self._mean_done_var[i], self._mean_done_ph[i]),
+                                      tf.assign(self._std_done_var[i], self._std_done_ph[i]),
                                       ])
 
     def _normalize_data(self, obs, act, delta=None, rew = None, dones = None):
@@ -706,10 +813,10 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                 assert len(rew) == self.num_models
                 norm_rew = normalize(rew[i], self.normalization[i]['rew'][0], self.normalization[i]['rew'][1])
                 norm_rews.append(norm_rew)
-            if delta is not None:
-                assert len(done) == self.num_models
-                norm_done = normalize(done[i], self.normalization[i]['done'][0], self.normalization[i]['done'][1])
-                norm_dones.append(norm_done)
+            if dones is not None:
+                assert len(dones) == self.num_models
+                # norm_done = normalize(done[i], self.normalization[i]['done'][0], self.normalization[i]['done'][1])
+                norm_dones.append(dones[i])
 
 
         if delta is not None:

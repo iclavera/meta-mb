@@ -49,7 +49,6 @@ class Trainer(object):
             real_ratio = 1,
             rollout_length = 1,
             model_deterministic = False,
-            epoch_length=1000,
             model_train_freq=250,
             restore_path=None,
             dynamics_model_max_epochs=50,
@@ -74,11 +73,11 @@ class Trainer(object):
         self.n_train_repeats = n_train_repeats
         self.real_ratio = real_ratio
         self.model_deterministic = model_deterministic
-        self.epoch_length = epoch_length
         self.model_train_freq = model_train_freq
         self.restore_path = restore_path
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.sampler_batch_size = sampler_batch_size
+        self.epoch_length = self.env_sampler.max_path_length - 1
 
 
         if sess is None:
