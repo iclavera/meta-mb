@@ -40,14 +40,18 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def reset_model(self):  # FIXME: hack for bptt
+        self.set_state(self.init_qpos, self.init_qvel)
+        return self._get_obs()
+
     def _get_obs(self):
         theta = self.sim.data.qpos.flat[:2]
         return np.concatenate([
-            np.cos(theta),
-            np.sin(theta),
-            self.sim.data.qpos.flat[2:],
-            self.sim.data.qvel.flat[:2],
-            self.get_body_com("fingertip") - self.get_body_com("target")
+            np.cos(theta),  # [0:2]
+            np.sin(theta),  # [2:4]
+            self.sim.data.qpos.flat[2:],  # [4:6]
+            self.sim.data.qvel.flat[:2],  # [6:8]
+            self.get_body_com("fingertip") - self.get_body_com("target")  # [8:11]
         ])
 
     def reward(self, obs, acts, next_obs):
@@ -59,6 +63,25 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_ctrl = - np.sum(np.square(acts), axis=1)
         reward = reward_dist + reward_ctrl
         return reward
+
+    def deriv_reward_obs(self, obs, acts):
+        deriv = np.zeros_like(obs)
+        dist_vec = obs[:, -3:]
+        reward_dist = - np.linalg.norm(dist_vec, axis=1)
+        deriv[:, -3:] /= reward_dist
+        return deriv
+
+    def deriv_reward_acts(self, obs, acts):
+        return -2*acts[:, :]
+
+    def reset_from_obs(self, obs):
+        qpos, qvel = np.zeros((self.model.nq,)), np.zeros((self.model.nv,))
+        qpos[:2] = np.arctan(obs[2:4]/obs[:2])
+        qpos[2:] = obs[4:6]
+        qvel[:2] = obs[-5:-3]
+        # FIXME: what is qvel[2:4]?
+        self.set_state(qpos, qvel)
+        return self._get_obs()
 
     def tf_reward(self, obs, acts, next_obs):
         dist_vec = obs[:, -3:]

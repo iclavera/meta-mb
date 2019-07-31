@@ -4,7 +4,6 @@ from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle
 from multiprocessing import Process, Pipe
 import copy
-from pyprind import ProgBar
 
 
 class IterativeEnvExecutor(object):
@@ -520,6 +519,7 @@ class ParallelPolicyGradUpdateExecutor(object):
         W, b = params[0]
         return W, b
 
+
 def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
                               horizon, n_envs, obs_dim, action_dim, discount,
                               opt_learning_rate, num_opt_iters,
@@ -532,6 +532,7 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
 
     parent_remote.close()
 
+    # FIXME: only one env is needed since the worker is stateless!
     envs = [pickle.loads(env_pickle) for _ in range(n_envs)]
     np.random.seed(seed)
     # linear policy with tanh output activation
@@ -612,4 +613,154 @@ def policy_gard_update_worker(remote, parent_remote, env_pickle, eps,
         else:
             print(f'receiving command {cmd}')
             raise NotImplementedError
+
+
+class ParallelCollocationExecutor(object):
+    """
+    Compute ground truth derivatives.
+    """
+    def __init__(self, env, n_parallel, horizon, eps,
+                 discount, lmbda, verbose=False):
+        self.n_parallel = n_parallel
+        self.horizon = horizon
+        assert horizon % n_parallel == 0
+        self.n_envs_per_proc = n_envs_per_proc = horizon // n_parallel
+        action_space_dims = env.action_space.shape[0]
+        obs_space_dims = env.observation_space.shape[0]
+
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
+
+        seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
+
+        self.ps = [
+            Process(
+                target=collocation_worker,
+                args=(work_remote, remote, pickle.dumps(env), eps,
+                      n_envs_per_proc, obs_space_dims, action_space_dims, discount, lmbda,
+                      seed, verbose),
+            ) for (work_remote, remote, seed) \
+            in zip(self.work_remotes, self.remotes, seeds)
+        ]
+
+        for p in self.ps:
+            p.daemon = True
+            p.start()
+        for remote in self.work_remotes:
+            remote.close()
+
+    def do_gradient_steps(self, s_array_stacked, a_array_stacked):
+        s_array_list = np.split(s_array_stacked, self.n_parallel)
+        a_array_list = np.split(a_array_stacked, self.n_parallel)
+        s_last_list = [s_array_stacked[t] for t in range(self.n_envs_per_proc, self.horizon, self.n_envs_per_proc)] + [None]
+
+        for remote, s_array, a_array, s_last in zip(self.remotes, s_array_list, a_array_list, s_last_list):
+            remote.send(('compute_gradients', dict(obs=s_array, act=a_array), s_last))
+
+        results = [remote.recv() for remote in self.remotes]
+        grad_s_stacked, grad_a_stacked = map(lambda x: np.concatenate(x, axis=0), zip(*results))
+
+        return grad_s_stacked, grad_a_stacked  # (horizon, space_dim)
+
+
+def collocation_worker(remote, parent_remote, env_pickle, eps,
+                       n_envs, obs_dim, act_dim, discount, lmbda,
+                       seed, verbose):
+
+    # batch_size means the num_rollouts in the original env executors, and it means number of experts
+    # when the dynamics model is ground truth
+
+    print('collocation state worker starts...')
+
+    parent_remote.close()
+
+    env = pickle.loads(env_pickle)
+    np.random.seed(seed)
+
+    def step_wrapper(s, a):
+        _ = env.reset_from_obs(s)
+        s_next, _, _, _ = env.step(a)
+        return s_next
+
+    def df_ds(s, a): # s must not be owned by multiple workers
+        """
+        :param s: (act_dim,)
+        :param a: (obs_dim,)
+        :return: (obs_dim, obs_dim)
+        """
+        old_s_next = step_wrapper(s, a)
+        grad_s = np.zeros((obs_dim, obs_dim))
+        for idx in range(obs_dim):  # compute grad[:, idx]
+            s[idx] += eps
+            new_s_next = step_wrapper(s, a)
+            s[idx] -= eps
+            grad_s[idx] = (new_s_next - old_s_next) / eps
+
+        return grad_s
+
+    def df_da(s, a):
+        """
+        :param s: (act_dim.)
+        :param a: (obs_dim,)
+        :return: (obs_dim, act_dim)
+        """
+        old_s_next = step_wrapper(s, a)
+        grad_a = np.zeros((obs_dim, act_dim))
+        for idx in range(act_dim): # compute grad[:, idx]
+            a[idx] += eps
+            new_s_next = step_wrapper(s, a)
+            a[idx] -= eps
+            grad_a[:, idx] = (new_s_next - old_s_next) / eps
+        return grad_a
+
+    def dr_ds(s, a):
+        return env.deriv_reward_obs(obs=s[None], acts=a[None])[0]
+
+    def dr_da(s, a):
+        return env.deriv_reward_acts(obs=s[None], acts=a[None])[0]
+
+    while True:
+        # receive command and data from the remote
+        cmd, *data = remote.recv()
+        # do a step in each of the environment of the worker
+        if cmd == 'compute_gradients':
+            inputs_dict, s_last = data
+            s_array, a_array = inputs_dict['obs'], inputs_dict['act']
+            # to compute grad for s[1:t], a[1:t], need s[1:t+1], a[1:t]
+            # s_last = s[t+1]
+            assert s_array.shape == (n_envs, obs_dim)
+            assert a_array.shape == (n_envs, act_dim)
+            f_array = [step_wrapper(s_array[idx], a_array[idx]) for idx in range(n_envs)]  # array of f(s, a)
+
+            # compute dl_ds
+            grad_s_stacked, grad_a_stacked = np.zeros((n_envs, obs_dim)), np.zeros((n_envs, act_dim))
+
+            for t in range(n_envs):
+                s, a = s_array[t], a_array[t]
+                _grad_s = -discount**t * dr_ds(s, a) + lmbda * (s - f_array[t-1])
+                _grad_a = -discount**t * dr_da(s, a)
+                if t != n_envs-1:
+                    s_next = s_array[t+1]
+                    _grad_s += -lmbda * np.matmul(df_ds(s, a).T, s_next - f_array[t])
+                    _grad_a += -lmbda * np.matmul(df_da(s, a).T, s_next - f_array[t])
+                elif s_last is not None:
+                    s_next = s_last
+                    _grad_s += -lmbda * np.matmul(df_ds(s, a).T, s_next - f_array[t])
+                    _grad_a += -lmbda * np.matmul(df_da(s, a).T, s_next - f_array[t])
+                else:
+                    pass
+                grad_s_stacked[t, :] = _grad_s
+                grad_a_stacked[t, :] = _grad_a
+
+            remote.send((grad_s_stacked, grad_a_stacked))
+
+        # close the remote and stop the worker
+        elif cmd == 'close':
+            remote.close()
+            break
+
+        else:
+            print(f'receiving command {cmd}')
+            raise NotImplementedError
+
+
 
