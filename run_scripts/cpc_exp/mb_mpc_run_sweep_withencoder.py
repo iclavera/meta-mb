@@ -33,7 +33,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'new_buffer_rewbugfixed'
+EXP_NAME = 'swingup_longhor_obsstack'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -234,7 +234,9 @@ def run_experiment(**config):
             cpc_initial_sampler=sampler_initial_cpc,
             cpc_train_interval=config['cpc_train_interval'],
             cpc_predict_action=config['predict_action'],
-            cpc_contrastive=config['contrastive']
+            cpc_contrastive=config['contrastive'],
+
+            path_checkpoint_interval=config['path_checkpoint_interval']
         )
         algo.train()
 
@@ -257,15 +259,15 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup', 'cheetah_run', 'reacher_easy'],
+        'env': ['cartpole_swingup'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [3],
+        'obs_stack': [5],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [12],  # Tau
+        'horizon': [20],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -274,7 +276,8 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.2],
-        'rolling_average_persitency': [0.9],
+        'rolling_average_persitency': [0.4],
+        'path_checkpoint_interval': [10],
 
         # Dynamics Model
         'recurrent': [False],
@@ -303,14 +306,14 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [True, False],
+        'include_action': [False],
         'predict_action': [False],
         'contrastive':[True],
-        'cpc_epoch': [0, 20],
+        'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [32],
+        'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1]
     }
 

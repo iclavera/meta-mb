@@ -2,6 +2,7 @@ import keras
 import keras.backend as K
 import os
 import tensorflow as tf
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
 import time
@@ -10,6 +11,22 @@ from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_seq
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
 from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder
+
+def visualize_img(images, m, n, name='example.png'):
+    plt.figure(figsize=(n, m))
+    sample = images
+    image_size = 64
+    sample = np.transpose(
+        np.reshape(sample, [n, image_size * m, image_size, 3]),
+        [0, 2, 1, 3])
+    sample = np.transpose(
+        np.reshape(sample, [1, image_size * n, image_size * m, 3]),
+        [0, 2, 1, 3])
+    # sample = np.cast(sample, np.uint8)
+    # sample = sample[:, :, :, ::-1]
+    plt.imshow(sample[0])
+    plt.savefig(name)
+
 
 class Trainer(object):
     """
@@ -58,6 +75,8 @@ class Trainer(object):
             cpc_train_interval=10,
             cpc_predict_action=False,
             cpc_contrastive=True,
+
+            path_checkpoint_interval=1,
             ):
         self.env = env
         self.sampler = sampler
@@ -86,6 +105,8 @@ class Trainer(object):
         self.cpc_train_interval = cpc_train_interval
         self.cpc_predict_action = cpc_predict_action
         self.cpc_contrastive = cpc_contrastive
+
+        self.path_checkpoint_interval = path_checkpoint_interval
 
         self.initial_random_samples = initial_random_samples
 
@@ -172,6 +193,13 @@ class Trainer(object):
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+
+                if itr % self.path_checkpoint_interval == 0:
+                    imgs =np.stack([path['observations'] for path in env_paths])
+                    n, m = imgs.shape[:2]
+                    imgs = imgs.reshape(-1, *imgs.shape[2:])
+                    visualize_img(imgs, m, n,
+                                  name=os.path.join(logger.get_dir(), 'path_itr%d.png' % itr))
 
                 if self.cpc_epoch > 0:
                     train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
@@ -300,3 +328,4 @@ class Trainer(object):
         train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
 
         return train_img, val_img, train_action, val_action
+
