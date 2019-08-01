@@ -95,6 +95,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
             alpha = tf.exp(log_alpha)
             self.log_alpha = log_alpha
+            self.alpha = alpha
 
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
@@ -143,24 +144,19 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
-            # input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
-
             next_obs = self.predict_sym(self.obs_ph, self.act_ph)
             dist_info_sym = self.policy.distribution_info_sym(next_obs)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-            # next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-            # next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
-            min_next_Q = tf.reduce_min(next_q_values, axis=0)
+            next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+            next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
+
             # change this for other environments
             dones_ph = tf.cast(self.dones_ph, self.obs_ph.dtype)
             dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            # rewards_ph = tf.expand_dims(self.rewards_ph, axis=-1)
             rewards = self.env.tf_reward(self.obs_ph, self.act_ph, next_obs)
             input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
-            q_values = [rewards + self.discount * (1 - dones_ph) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_values = [rewards + self.discount * (1 - dones_ph) * (Q.value_sym(input_var=input_q_fun) - next_log_pis_var) for Q in self.Qs]
 
             # define loss and train_op
             input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)

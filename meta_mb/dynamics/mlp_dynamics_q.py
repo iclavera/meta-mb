@@ -138,25 +138,20 @@ class MLPDynamicsEnsembleQ(MLPDynamicsModel):
                 self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
             else:
                 raise NotImplementedError
+
             next_obs = self.predict_sym(self.obs_ph, self.act_ph)
             dist_info_sym = self.policy.distribution_info_sym(next_obs)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-            # next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-            # next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
-            min_next_Q = tf.reduce_min(next_q_values, axis=0)
-            # next_values_var = min_next_Q - alpha * next_log_pis_var
-
+            next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
+            next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
             # change this for other environments
             dones_ph = tf.cast(self.dones_ph, self.obs_ph.dtype)
             dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            # rewards_ph = tf.expand_dims(self.rewards_ph, axis=-1)
             rewards = self.env.tf_reward(self.obs_ph, self.act_ph, next_obs)
             input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
-            q_values = [rewards + self.discount * (1 - dones_ph) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_values = [rewards + self.discount * (1 - dones_ph) * (Q.value_sym(input_var=input_q_fun) - next_log_pis_var) for Q in self.Qs]
 
             # define loss and train_op
             input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
