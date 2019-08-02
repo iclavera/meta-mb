@@ -12,7 +12,6 @@ import os
 from pdb import set_trace as st
 from meta_mb.replay_buffers import SimpleReplayBuffer
 
-
 class Trainer(object):
     """
     Performs steps for MAML
@@ -32,7 +31,6 @@ class Trainer(object):
             self,
             algo,
             env,
-            env_name,
             env_sampler,
             env_sample_processor,
             dynamics_model,
@@ -49,14 +47,12 @@ class Trainer(object):
             real_ratio = 1,
             rollout_length = 1,
             model_deterministic = False,
-            epoch_length=1000,
             model_train_freq=250,
             restore_path=None,
             dynamics_model_max_epochs=50,
             sampler_batch_size=64,
             ):
         self.algo = algo
-        self.env_name = env_name
         self.env = env
         self.env_sampler = env_sampler
         self.env_sample_processor = env_sample_processor
@@ -74,7 +70,7 @@ class Trainer(object):
         self.n_train_repeats = n_train_repeats
         self.real_ratio = real_ratio
         self.model_deterministic = model_deterministic
-        self.epoch_length = epoch_length
+        self.epoch_length = self.env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
         self.restore_path = restore_path
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
@@ -85,29 +81,6 @@ class Trainer(object):
             sess = tf.Session()
         self.sess = sess
 
-
-    def termination_fn(self, obs, act, next_obs):
-        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        if self.env_name == 'AntEnv':
-            x = next_obs[:, 0]
-            not_done = 	np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
-            done = ~not_done
-        elif self.env_name == 'HalfCheetahEnv' or 'Walker2dEnv':
-            done = np.array([False]).repeat(obs.shape[0])
-        elif self.env_name == 'HopperEnv':
-            height = next_obs[:, 0]
-            angle = next_obs[:, 1]
-            not_done =  np.isfinite(next_obs).all(axis=-1) \
-                        * np.abs(next_obs[:,1:] < 100).all(axis=-1) \
-                        * (height > .7) \
-                        * (np.abs(angle) < .2)
-
-            done = ~not_done
-        else:
-            print("Error")
-            return
-        done = done[:,None]
-        return done
 
     def train(self):
         """
@@ -126,22 +99,27 @@ class Trainer(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
-            # self.saver = tf.train.Saver(write_version=tf.train.SaverDef.V2, max_to_keep=10, pad_step_number=True)
+            self.saver = tf.train.Saver(write_version=tf.train.SaverDef.V2, max_to_keep=10, pad_step_number=True)
 
             # if self.start_itr == 0:
-            # if tf.train.get_checkpoint_state(self.restore_path):
-            #     print("reading stored model from %s", self.restore_path)
-            #     self.saver.restore(sess, tf.train.latest_checkpoint(self.restore_path))
-            #     self.start_itr = self.itr.eval() + 1
-            #
-            # else:
-            self.start_itr = 0
-            self.algo._update_target(tau=1.0)
-            while self.env_replay_buffer._size < self.n_initial_exploration_steps:
-                paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
-                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                    samples_data['dones'], samples_data['next_observations'])
+            if tf.train.get_checkpoint_state(self.restore_path):
+                logger.log("reading stored model from %s", self.restore_path)
+                self.saver.restore(sess, tf.train.latest_checkpoint(self.restore_path))
+                self.start_itr = self.itr.eval() + 1
+
+            else:
+                self.start_itr = 0
+                self.algo._update_target(tau=1.0)
+                while self.env_replay_buffer._size < self.n_initial_exploration_steps:
+                    paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
+                    samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                    self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
+                                                        samples_data['dones'], samples_data['next_observations'])
+
+            if self.algo.obs_dim > 50:
+                self.deal_with_oom = 10
+            else:
+                self.deal_with_oom = 1
 
 
             for itr in range(self.start_itr, self.n_itr):
@@ -166,13 +144,15 @@ class Trainer(object):
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
                     for _ in range(self.rollout_length):
-                        random_states = self.env_replay_buffer.random_batch_simple(int(self.rollout_batch_size))['observations']
-                        actions_from_policy = self.policy.get_actions(random_states)[0]
-                        next_obs = self.dynamics_model.predict(random_states, actions_from_policy)
-                        term = self.termination_fn(random_states, actions_from_policy, next_obs)
-                        term = term.reshape((-1))
-                        rewards = self.env.reward(random_states, actions_from_policy, next_obs)
-                        self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, term, next_obs)
+                        for _ in range(self.deal_with_oom):
+                            samples_num = int(self.rollout_batch_size)//self.deal_with_oom
+                            random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
+                            actions_from_policy = self.policy.get_actions(random_states)[0]
+                            next_obs = self.dynamics_model.predict(random_states, actions_from_policy)
+                            term = self.env.termination_fn(random_states, actions_from_policy, next_obs)
+                            term = term.reshape((-1))
+                            rewards = self.env.reward(random_states, actions_from_policy, next_obs)
+                            self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, term, next_obs)
                     self.set_rollout_length(itr)
                     expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
 
@@ -215,7 +195,6 @@ class Trainer(object):
 
         logger.log("Training finished")
         self.sess.close()
-
 
 
     def set_rollout_length(self, itr):

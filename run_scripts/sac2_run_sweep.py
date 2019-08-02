@@ -102,7 +102,7 @@ def run_experiment(**kwargs):
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            arget_entropy=kwargs['target_entropy'],
+            target_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
             reward_scale=kwargs['reward_scale'],

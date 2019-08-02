@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-rs5'
+EXP_NAME = 'hopper-r'
 
 
 from meta_mb.algos.sac import SAC
@@ -101,9 +101,9 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1],
+        'seed': [11],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HopperEnv],
         # 'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -122,7 +122,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'reward_scale': [5.],
+        'reward_scale': [1.],
         'sampler_batch_size': [256],
         }
 
