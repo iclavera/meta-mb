@@ -1,7 +1,9 @@
 import os
 import keras
+
 from keras import backend as K
 import tensorflow as tf
+from tensorflow.keras.utils import Progbar
 
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, res_block, make_periodic_lr, cross_entropy_loss
 
@@ -92,133 +94,160 @@ class CPCLayer(keras.layers.Layer):
         return input_shape[1][:3]
 
 
-def network_cpc(image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
+class CPC:
+    def __init__(self, image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
                 code_size_action=1, contrastive=True):
 
-    ''' Define the CPC network combining encoder and autoregressive model '''
-    if predict_action:
-        """
-        if predict_action, x_input will be [o_t, o_{t+k+1}]
-        y_input is of shape k x (negative + 1) x action_dim
-        """
-        include_action = False
-        terms += 1
+        ''' Define the CPC network combining encoder and autoregressive model '''
+        if predict_action:
+            """
+            if predict_action, x_input will be [o_t, o_{t+k+1}]
+            y_input is of shape k x (negative + 1) x action_dim
+            """
+            include_action = False
+            terms += 1
 
-    # Set learning phase (https://stackoverflow.com/questions/42969779/keras-error-you-must-feed-a-value-for-placeholder-tensor-bidirectional-1-keras)
-    K.set_learning_phase(1)
+        # Set learning phase (https://stackoverflow.com/questions/42969779/keras-error-you-must-feed-a-value-for-placeholder-tensor-bidirectional-1-keras)
+        K.set_learning_phase(1)
 
-    # Define encoder model
-    encoder_input = keras.layers.Input(image_shape)
-    if encoder_arch == 'default':
-        encoder_output = network_encoder(encoder_input, code_size)
-    elif encoder_arch == 'resnet':
-        encoder_output = network_encoder_resnet(encoder_input, code_size)
-    encoder_model = keras.models.Model(encoder_input, encoder_output, name='encoder')
-    encoder_model.summary()
+        # Define encoder model
+        encoder_input = keras.layers.Input(image_shape)
+        if encoder_arch == 'default':
+            encoder_output = network_encoder(encoder_input, code_size)
+        elif encoder_arch == 'resnet':
+            encoder_output = network_encoder_resnet(encoder_input, code_size)
+        encoder_model = keras.models.Model(encoder_input, encoder_output, name='encoder')
+        encoder_model.summary()
 
-    if predict_action:
-        action_encoder_input = keras.layers.Input((action_dim,))
-        # action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
-        # action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
-        action_encoder_output = action_encoder_input
-        action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
+        if predict_action:
+            action_encoder_input = keras.layers.Input((action_dim,))
+            # action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
+            # action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
+            action_encoder_output = action_encoder_input
+            action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
 
-    # Define context network
-    x_input = keras.layers.Input((terms, image_shape[0], image_shape[1], image_shape[2]), name='x_input')
-    action_input = keras.layers.Input((terms, action_dim), name='action_input')
-    x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
+        # Define context network
+        self.x_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, terms, ) + image_shape)
+        x_input = keras.layers.Input(tensor=self.x_input_ph, name='x_input')
+        self.action_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, terms, action_dim))
+        action_input = keras.layers.Input(tensor=self.action_input_ph, name='action_input')
+        x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
 
-    if context_network == 'stack':
-        context = keras.layers.Reshape((code_size * terms,))(x_encoded)
-        if include_action:
-            action_flat = keras.layers.Reshape((action_dim * predict_terms, ))(action_input)
-            context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
-        context = keras.layers.Dense(512, activation='relu')(context)
-        context = keras.layers.Dense(context_size, name='context_output')(context)
-    elif context_network == 'rnn':
-        context = network_autoregressive(x_encoded)
-        if include_action:
-            action_flat = keras.layers.Reshape((action_dim * predict_terms,))(action_input)
-            context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
+        if context_network == 'stack':
+            context = keras.layers.Reshape((code_size * terms,))(x_encoded)
+            if include_action:
+                action_flat = keras.layers.Reshape((action_dim * predict_terms, ))(action_input)
+                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
             context = keras.layers.Dense(512, activation='relu')(context)
-        context = keras.layers.Dense(context_size, name='context_output')(context)
+            context = keras.layers.Dense(context_size, name='context_output')(context)
+        elif context_network == 'rnn':
+            context = network_autoregressive(x_encoded)
+            if include_action:
+                action_flat = keras.layers.Reshape((action_dim * predict_terms,))(action_input)
+                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
+                context = keras.layers.Dense(512, activation='relu')(context)
+            context = keras.layers.Dense(context_size, name='context_output')(context)
 
-    if include_action:
-        context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
-    else:
-        context_network = keras.models.Model(inputs=[x_input], outputs=context, name='context_network')
-    context_network.summary()
-
-    # Define rest of the model
-    if include_action:
-        context_output = context_network([x_input, action_input])
-    else:
-        context_output = context_network([x_input])
-    if predict_action:
-        if contrastive:
-            preds = network_prediction(context_output, code_size_action, predict_terms)
+        if include_action:
+            context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
         else:
-            preds = keras.layers.Dense(64, activation='relu')(context_output)
-            preds = keras.layers.Dense(16, activation='relu')(preds)
-            preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
-    else:
-        preds = network_prediction(context_output, code_size, predict_terms)
+            context_network = keras.models.Model(inputs=[x_input], outputs=context, name='context_network')
+        context_network.summary()
 
-    if predict_action:
-
-        if contrastive:
-            y_input = keras.layers.Input((predict_terms, (negative_samples + 1), action_dim), name='y_input')
-            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
-            y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
-            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
-
-    else:
-        y_input = keras.layers.Input((predict_terms, (negative_samples + 1), image_shape[0], image_shape[1], image_shape[2]),
-                                     name = 'y_input')
-        y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
-        y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
-        y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
-
-    # Loss
-    if contrastive:
-        logits = CPCLayer()([preds, y_encoded])
-
-        # Model
-        cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
-
-        # Compile model
-        cpc_model.compile(
-            optimizer=keras.optimizers.Adam(lr=learning_rate),
-            loss=cross_entropy_loss,
-            metrics=['categorical_accuracy']
-        )
-
-    else:
-        cpc_model = keras.models.Model(inputs=[x_input], outputs=preds)
-        # Compile model
-        cpc_model.compile(
-            optimizer=keras.optimizers.Adam(lr=learning_rate),
-            loss='mean_squared_error',
-            metrics=['mean_squared_error']
-        )
-
-    cpc_model.summary()
-
-    return cpc_model
-
-class CPCEncoder:
-    def __init__(self, path, model=None, image_shape=(64, 64, 3)):
-        if model is None:
-            self.encoder = keras.models.load_model(path)
+        # Define rest of the model
+        if include_action:
+            context_output = context_network([x_input, action_input])
         else:
-            self.encoder = model
-        self.image_shape = image_shape
+            context_output = context_network([x_input])
+        if predict_action:
+            if contrastive:
+                preds = network_prediction(context_output, code_size_action, predict_terms)
+            else:
+                preds = keras.layers.Dense(64, activation='relu')(context_output)
+                preds = keras.layers.Dense(16, activation='relu')(preds)
+                preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
+        else:
+            preds = network_prediction(context_output, code_size, predict_terms)
+
+        if predict_action:
+            if contrastive:
+                self.y_input_ph = tf.placeholder(dtype=tf.float32,
+                                                 shape=(None, predict_terms, (negative_samples + 1), action_dim))
+                y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
+                y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
+                y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
+                y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
+
+        else:
+            self.y_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples+1) + image_shape)
+            y_input = keras.layers.Input(tensor=self.y_input_ph, name = 'y_input')
+            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
+            y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
+            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
+
+        # Loss
+        if contrastive:
+            logits = CPCLayer()([preds, y_encoded])
+
+            # Model
+            cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
+            self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
+
+            # Compile model
+            # cpc_model.compile(
+            #     optimizer=keras.optimizers.Adam(lr=learning_rate),
+            #     loss=cross_entropy_loss,
+            #     metrics=['categorical_accuracy']
+            # )
+            self.loss = cross_entropy_loss(self.labels_ph, logits)
+            self.accuracy = tf.metrics.accuracy(self.labels_ph, tf.one_hot(tf.argmax(logits, axis=-1), negative_samples+1))
+            self.train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.loss) # TODO: make this lr adaptive
+
+        else:
+            cpc_model = keras.models.Model(inputs=[x_input], outputs=preds)
+            # Compile model
+            cpc_model.compile(
+                optimizer=keras.optimizers.Adam(lr=learning_rate),
+                loss='mean_squared_error',
+                metrics=['mean_squared_error']
+            )
+
+        cpc_model.summary()
+
+        self.model = cpc_model
+        self.encoder = encoder_model
 
     def encode(self, imgs):
         if imgs.ndim == len(self.image_shape):
             return self.encoder.predict(imgs[None, ...])[0]
         return self.encoder.predict(imgs)
+
+    def train_step(self, inputs, labels, train=True):
+        if train:
+            loss, acc, _ = tf.get_default_session().run([self.loss, self.accuracy, self.train_op],
+                                            feed_dict={self.x_input_ph: inputs[0], self.action_input_ph:inputs[1],
+                                            self.y_input_ph:inputs[2], self.labels_ph: labels})
+        else:
+            loss, acc = tf.get_default_session().run([self.loss, self.accuracy],
+                                                    feed_dict={self.x_input_ph: inputs[0],
+                                                               self.action_input_ph: inputs[1],
+                                                               self.y_input_ph: inputs[2], self.labels_ph: labels})
+        return loss, acc
+
+    def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, verbose, callbacks):
+        for i in range(epochs):
+            train_pb = Progbar(steps_per_epoch)
+            for k in range(steps_per_epoch):
+                loss, acc = self.train_step(*(generator.next()))
+                # print('epoch %d, train loss' % i, loss, acc[0])
+                train_pb.add(1, values=[('loss', loss), ('acc', acc[0])])
+            val_pb = Progbar(validation_steps)
+            for k in range(validation_steps):
+                val_loss, val_acc = self.train_step(*validation_data.next(), train=False)
+                val_pb.add(1, values=[('val_loss', val_loss), ('val_acc', val_acc[0])])
+                # print('validation loss', val_loss, val_acc[0])
+
 
 
 class CPCContextNet:

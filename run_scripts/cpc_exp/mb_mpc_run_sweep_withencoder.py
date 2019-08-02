@@ -18,7 +18,7 @@ from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.trainers.mb_trainer_withencoder import Trainer
 from meta_mb.utils.utils import ClassEncoder
-from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
+from meta_mb.unsupervised_learning.cpc.cpc import CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
@@ -31,9 +31,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'swingup_longhor_obsstack'
+EXP_NAME = 'cpctrainingdebug'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -58,13 +58,13 @@ def run_experiment(**config):
         # from meta_mb.unsupervised_learning.cpc.training_utils import cross_entropy_loss
         # cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
         #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
-        from meta_mb.unsupervised_learning.cpc.cpc import network_cpc
+        from meta_mb.unsupervised_learning.cpc.cpc import CPC
 
-        cpc_model = network_cpc((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
-                                config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
-                                learning_rate=config['cpc_initial_lr'], encoder_arch='default',
-                                context_network='stack', context_size=32, predict_action=config['predict_action'],
-                                contrastive=config['contrastive'])
+        cpc_model = CPC((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
+                        config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
+                        learning_rate=config['cpc_initial_lr'], encoder_arch='default',
+                        context_network='stack', context_size=32, predict_action=config['predict_action'],
+                        contrastive=config['contrastive'])
         # cpc_model.load_weights(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'))
     else:
         cpc_model = None
@@ -85,7 +85,8 @@ def run_experiment(**config):
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
                                         latent_dim=config['latent_dim'], time_major=True)
                 else:
-                    encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
+                    # encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
+                    encoder = cpc_model.encoder
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1,) #vae=encoder,
                                         #latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
@@ -140,14 +141,14 @@ def run_experiment(**config):
             )
 
         else:
-            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder.encoder, config['latent_dim'],
+            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['latent_dim'],
                                           config['obs_stack'],config['num_models'], config['valid_split_ratio'],
                                           normalize_input=config['normalize'])
             dynamics_model = MLPDynamicsEnsemble(
                 name="dyn_model",
                 env=env,
                 num_stack=config['obs_stack'],
-                encoder=encoder.encoder,
+                encoder=encoder,
                 latent_dim=config['latent_dim'],
                 learning_rate=config['learning_rate'],
                 hidden_sizes=config['hidden_sizes_model'],
@@ -179,7 +180,7 @@ def run_experiment(**config):
                 name="policy",
                 env=env,
                 num_stack=config['obs_stack'],
-                encoder=encoder.encoder,
+                encoder=encoder,
                 latent_dim=config['latent_dim'],
                 dynamics_model=dynamics_model,
                 discount=config['discount'],
@@ -259,7 +260,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_swingup'],
+        'env': ['cartpole_balance'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -309,7 +310,7 @@ if __name__ == '__main__':
         'include_action': [False],
         'predict_action': [False],
         'contrastive':[True],
-        'cpc_epoch': [0],
+        'cpc_epoch': [20],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],

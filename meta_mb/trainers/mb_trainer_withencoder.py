@@ -10,7 +10,6 @@ import time
 from meta_mb.logger import logger
 from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_seq
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
-from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder
 
 def visualize_img(images, m, n, name='example.png'):
     plt.figure(figsize=(n, m))
@@ -225,10 +224,10 @@ class Trainer(object):
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
                 if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
-                    self.cpc_model.compile(
-                        optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
-                        loss=cross_entropy_loss,
-                        metrics=['categorical_accuracy'])
+                #     self.cpc_model.compile(
+                #         optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
+                #         loss=cross_entropy_loss,
+                #         metrics=['categorical_accuracy'])
 
                     callbacks = [
                         keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, verbose=1,

@@ -34,6 +34,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
+                 cpc_loss_weight=0.,
+                 cpc_model=None,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -43,6 +45,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         
         self.num_stack = num_stack
         self.encoder = encoder
+        self.cpc_model = cpc_model
         self.latent_dim = latent_dim
         self.buffer = buffer
 
@@ -141,7 +144,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
                     # concatenate action and observation --> NN input
-                    nn_input = tf.concat([tf.reshape(self.obs_model_batches[i], shape=(-1, num_stack * latent_dim)), self.act_model_batches[i]], axis=1)
+                    nn_input = tf.concat([tf.reshape(self.obs_model_batches[i], shape=(-1, num_stack * latent_dim)),
+                                          self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
                               output_dim=latent_dim,
                               hidden_sizes=hidden_sizes,
@@ -159,6 +163,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
                 else:
                     raise  NotImplementedError
+                if cpc_loss_weight > 0:
+                    cpc_loss = cpc_loss_weight * self.cpc_model.loss
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
             self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
