@@ -3,6 +3,7 @@ import tensorflow as tf
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
+from collections import OrderedDict
 
 
 class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
@@ -64,15 +65,67 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_dist + reward_ctrl
         return reward
 
-    def deriv_reward_obs(self, obs, acts):
-        deriv = np.zeros_like(obs)
-        dist_vec = obs[:, -3:]
+    def deriv_reward_obses(self, obses, acts):
+        deriv = np.zeros_like(obses)
+        dist_vec = obses[:, -3:]
         reward_dist = - np.linalg.norm(dist_vec, axis=1)
         deriv[:, -3:] /= reward_dist
         return deriv
 
-    def deriv_reward_acts(self, obs, acts):
+    def deriv_reward_acts(self, obses, acts):
         return -2 * acts[:, :]
+
+    def deriv_reward_obs(self, obs, act):
+        deriv = np.zeros_like(obs)
+        dist_vec = obs[-3:]
+        reward_dist = - np.linalg.norm(dist_vec)
+        deriv[-3:] /= reward_dist
+        return deriv
+
+    def deriv_reward_act(self, obs, act):
+        return -2 * act[:]
+
+    def l_xx(self, obs, act):
+        """
+
+        :param obs: (obs_dim,)
+        :param act: (act_dim,)
+        :return: (obs_dim, obs_dim)
+        """
+        hess = np.zeros((self.obs_dim, self.obs_dim))
+        reward_dist = - np.linalg.norm(obs[-3:])
+        for i in range(-3, 0):
+            for j in range(-3, 0):
+                hess[i, j] = obs[i] * obs[j] / reward_dist
+        for i in range(-3, 0):
+            hess[i, i] += obs[i] / reward_dist
+
+        return hess
+
+    def l_uu(self, obs, act):
+        """
+
+        :param obs: (obs_dim,)
+        :param act: (act_dim,)
+        :return: (act_dim, act_dim)
+        """
+        return np.diag(np.ones_like((self.act_dim,)) * (-2))
+
+    def l_ux(self, obs, act):
+        """
+
+        :param obs: (obs_dim,)
+        :param act: (act_dim,)
+        :return: (obs_dim, act_dim)
+        """
+        return 0
+
+    def dl_dict(self, obs, act):
+        return OrderedDict(l_x=self.deriv_reward_obs(obs, act),
+                    l_u=self.deriv_reward_act(obs, act),
+                    l_xx=self.l_xx(obs, act),
+                    l_uu=self.l_uu(obs, act),
+                    l_ux=self.l_ux(obs, act),)
 
     def reset_from_obs(self, obs):
         qpos, qvel = np.zeros((self.model.nq,)), np.zeros((self.model.nv,))

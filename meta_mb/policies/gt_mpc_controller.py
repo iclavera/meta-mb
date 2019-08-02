@@ -40,7 +40,7 @@ class GTMPCController(Serializable):
             clip_norm=-1,
             percent_elites=0.1,
             use_reward_model=False,
-            alpha=0.1,
+            alpha=0.25,
             num_particles=1,
             verbose=True,
     ):
@@ -71,6 +71,7 @@ class GTMPCController(Serializable):
         self.alpha = alpha
         self.num_particles = num_particles
         self.clip_norm = clip_norm
+        self.lmbda = lmbda
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -126,10 +127,10 @@ class GTMPCController(Serializable):
             assert n_parallel % num_rollouts == 0
             self.n_planner_per_env = n_parallel // num_rollouts
 
-            self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-                                * (self.env.action_space.high + self.env.action_space.low) / 2
-            self.tau_var_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-                               * (self.env.action_space.high - self.env.action_space.low) / 16
+            # self.tau_mean_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+            #                     * (self.env.action_space.high + self.env.action_space.low) / 2
+            # self.tau_var_val = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+            #                    * (self.env.action_space.high - self.env.action_space.low) / 16
 
             self.planner_env = ParallelEnvExecutor(env, n_parallel, num_rollouts*n_candidates, max_path_length)
             self.real_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
@@ -138,22 +139,33 @@ class GTMPCController(Serializable):
         elif self.method_str == 'collocation':
             self.planner_env = copy.deepcopy(env)
             self.real_env = copy.deepcopy(env)
+            self._env = copy.deepcopy(env)
             self.planner = ParallelCollocationExecutor(env, n_parallel, horizon, eps,
-                                                       discount, lmbda, verbose)
+                                                       discount, verbose)
             # initialize s_array, a_array
             if self.initializer_str == 'uniform':
                 self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
                                             size=(self.horizon, self.action_space_dims))
+                self.running_s_array, _ = self._run_open_loop(self.running_a_array)
             elif self.initializer_str == 'zeros':
                 self.running_a_array = np.zeros(shape=(self.horizon, self.action_space_dims))
+                self.running_s_array, _ = self._run_open_loop(self.running_a_array)
+            elif self.initializer_str == 'cem':
+                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, max_path_length)
+                self.running_a_array, self.running_s_array = self.initialize_w_cem()
             else:
                 raise NotImplementedError
+            # self.running_s_array = [env.goal_obs() for _ in range(self.horizon)]
+            # self.running_s_array = np.stack(self.running_s_array, axis=0)
 
-            self.optimizer_s = GTOptimizer(alpha=self.opt_learning_rate)
-            self.optimizer_a = GTOptimizer(alpha=self.opt_learning_rate)
+            # self.optimizer_s = GTOptimizer(alpha=self.opt_learning_rate)
+            # self.optimizer_a = GTOptimizer(alpha=self.opt_learning_rate)
+            self.optimizer = GTOptimizer(alpha=self.opt_learning_rate)
 
             self.get_rollouts_factory = self.get_rollouts_collocation
 
+        elif self.method_str == 'rs':
+            raise NotImplementedError
         else:
             raise NotImplementedError
 
@@ -179,11 +191,12 @@ class GTMPCController(Serializable):
             logger.log(info['old_return'][0, :])  # report return for the first rollout over optimization iterations
             self.plot_first_rollout()
 
-            # self.plot_info()
 
         logger.logkv('AverageReturn', np.mean(info['old_return'][:, -1]))
         for idx, returns in enumerate(info['old_return'][:-1]):
             logger.logkv(f'Return {idx}', returns)
+
+        # return info['old_return'][:, -1]
 
     def get_rollouts_opt_act_w_replanning(self, deterministic=False, plot_first_rollout=False):
         # TODO
@@ -199,6 +212,16 @@ class GTMPCController(Serializable):
         s_array_stacked = np.stack(s_array, axis=0)
         return s_array_stacked, returns
 
+    def _compute_collocation_loss(self, s_array, a_array):
+        sum_rewards, reg_loss = 0, 0
+        for t in range(self.horizon):
+            _ = self._env.reset_from_obs(s_array[t])
+            s_next, reward, _, _ = self._env.step(a_array[t])
+            sum_rewards += self.discount ** t * reward
+            if t < self.horizon - 1:
+                reg_loss += np.linalg.norm(s_array[t+1] - s_next)**2
+        return -sum_rewards, reg_loss
+
     def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
         _ = self.real_env.reset()
         sum_rewards = 0
@@ -212,31 +235,60 @@ class GTMPCController(Serializable):
         return [sum_rewards]
 
     def get_actions_collocation(self):
-        a_array = self.running_a_array
-        s_array, returns = self._run_open_loop(a_array)
-        logger.log('initial returns', returns)
+        a_array, s_array = self.running_a_array, self.running_s_array
+        loss1, loss2 = self._compute_collocation_loss(s_array=s_array, a_array=a_array)
+        logger.log('Initial loss', loss1, loss2)
+        # s_array, returns = self._run_open_loop(a_array)
+        # logger.log('initial returns', returns)
+
         # do gradient steps
         # rolling_returns_average, rolling_returns_average_prev = None, None
-        returns_prev = init_returns = returns
+        # returns_prev = init_returns = returns
+        lmbda = self.lmbda
         for itr in range(self.num_collocation_iters):
-            grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array)
-            delta_s = self.optimizer_s.compute_delta_var(grad_s)
+            grad_s, grad_a = self.planner.do_gradient_steps(s_array_stacked=s_array, a_array_stacked=a_array, lmbda=lmbda)
+
+            # delta_s_a_concat = self.optimizer.compute_delta_var(np.concatenate([grad_s, grad_a], axis=1))
+            # delta_s = self.optimizer_s.compute_delta_var(grad_s)
+            # delta_s, delta_a = delta_s_a_concat[:, :self.obs_space_dims], delta_s_a_concat[:, self.obs_space_dims:]
+            delta_s, delta_a = self.opt_learning_rate * grad_s, self.opt_learning_rate * grad_a
             delta_s[0, :] = np.zeros((self.obs_space_dims,))
             s_array -= delta_s
-            a_array -= self.optimizer_a.compute_delta_var(grad_a)
+
+            # delta_a = self.optimizer_a.compute_delta_var(grad_a)
+            a_array -= delta_a
             a_array = np.clip(a_array, self.env.action_space.low, self.env.action_space.high)
 
+            if itr < 10:
+                print(f'stats for delta_s, max = {np.max(delta_s)}, min = {np.min(delta_s)}, mean {np.mean(delta_s)}')
+                print(f'stats for delta_a, max = {np.max(delta_a)}, min = {np.min(delta_a)}, mean {np.mean(delta_a)}')
+                print(f'stats for s, max = {np.max(s_array)}, min = {np.min(s_array)}, mean {np.mean(s_array)}')
+                print(f'stats for a, max = {np.max(a_array)}, min = {np.min(a_array)}, mean {np.mean(a_array)}')
+
+
             # report performance
-            if itr % 500 == 0:
+            if itr % 100 == 0:
                 _, returns = self._run_open_loop(a_array)
                 logger.logkv('Itr', itr)
+                logger.logkv('Lmbda', lmbda)
                 logger.logkv('PlannerReturn', returns)
+                # loss1_prev, loss2_prev = loss1, loss2
+                loss1, loss2 = self._compute_collocation_loss(s_array, a_array)
+                logger.logkv('PlannerLoss1', loss1)
+                logger.logkv('PlannerLoss2', loss2)
+                logger.logkv('PlannerLoss', loss1 + loss2)
                 logger.dumpkvs()
 
-                if itr >= 5000 and returns >= init_returns and returns <= returns_prev: #(returns_prev < 0 and returns < returns_prev * 1.01) or (returns_prev > 0 and returns < returns_prev * 0.99):
-                    break
+                # if lmbda > 1e-2 and loss1 > loss1_prev and loss2 < loss2_prev:
+                #     lmbda /= 1.25  # more weights on first term
+                # elif lmbda < 1e2 and loss1 < loss1_prev and loss2 > loss2_prev:
+                #     lmbda *= 1.25  # more weights on second term
 
-                returns_prev = returns
+                # if itr >= 5000 and returns >= init_returns and returns <= returns_prev: #(returns_prev < 0 and returns < returns_prev * 1.01) or (returns_prev > 0 and returns < returns_prev * 0.99):
+                #     break
+                #
+                # returns_prev = returns
+
                 # if itr == 0:
                 #     if returns >= 0:
                 #         rolling_returns_average, rolling_returns_average_prev = returns * 2.0, returns * 1.5
@@ -333,8 +385,10 @@ class GTMPCController(Serializable):
         for idx, returns in enumerate(returns_array[-1, :]):
             logger.logkv(f'Return {idx}', returns)
         logger.dumpkvs()
+        # return returns_array[-1, :]  # total rewards for all envs in the batch, with the latest policy
 
-    def get_rollouts_cem(self, deterministic=False, plot_first_rollout=False):
+    def get_rollouts_cem(self, deterministic=True, plot_first_rollout=False):
+        # FIXME: NO ROTATING YET
         _ = self.real_env.reset()
         # obs_array, reward_array, act_array, act_norm_array = [], [], [], []  # info for first env to plot
         returns = np.zeros((self.num_envs,))
@@ -345,11 +399,12 @@ class GTMPCController(Serializable):
             # same effect as np.repeat
             # env_pickled_states['envs'] = sum([[env_state for _ in range(self.n_planner_per_env)] for env_state in env_pickled_states['envs']], [])
             env_pickled_states['envs'] = np.repeat(np.asarray(env_pickled_states['envs']), self.n_planner_per_env).tolist()
-            optimized_actions_mean, optimized_actions_var = self.get_actions_cem(env_pickled_states)
+            optimized_actions_mean, optimized_actions_std = self.get_actions_cem(env_pickled_states)
             if deterministic:
                 actions = optimized_actions_mean
             else:
-                actions = optimized_actions_mean + np.sqrt(optimized_actions_var) * np.random.normal(size=optimized_actions_mean.shape)
+                # actions = optimized_actions_mean + np.sqrt(optimized_actions_var) * np.random.normal(size=optimized_actions_mean.shape)
+                actions = optimized_actions_mean + optimized_actions_std * np.random.normal(size=optimized_actions_mean.shape)
             obs, rewards, _, _ = self.real_env.step(actions)
             returns += rewards
 
@@ -363,13 +418,54 @@ class GTMPCController(Serializable):
             # act_array.append(actions[0])
             # act_norm_array.append(np.linalg.norm(actions[0]))
 
-    def get_actions_cem(self, env_pickled_states):
-        mean, var = self.tau_mean_val, self.tau_var_val
-        returns_array = []
+    def initialize_w_cem(self):
+        assert self.num_envs == 1
+        mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+               * (self.env.action_space.high + self.env.action_space.low) / 2
+        std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+              * (self.env.action_space.high - self.env.action_space.low) / 4
+
         for itr in range(self.num_cem_iters):
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
-            constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
-            std = np.sqrt(constrained_var)
+            # constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
+            # std = np.sqrt(constrained_var)
+            std = np.minimum(lb_dist/2, ub_dist/2, std)
+            act = mean + np.random.normal(size=(self.horizon, self.num_envs, self.n_candidates, self.action_space_dims)) * std
+            act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
+            act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
+
+            _ = self.cem_planner_env.reset()
+            returns = np.zeros((self.num_envs*self.n_candidates,))
+            for t in range(self.horizon):
+                _, rewards, _, _ = self.cem_planner_env.step(act[t])
+                returns += self.discount ** t * np.asarray(rewards)
+
+            returns = np.reshape(returns, (self.num_envs, self.n_candidates))
+            logger.log(np.max(returns[0], axis=-1), np.min(returns[0], axis=-1))
+            act = np.reshape(act, (self.horizon, self.num_envs, self.n_candidates, self.action_space_dims))
+            elites_idx = np.argsort(-returns, axis=-1)[:, :self.num_elites]  # (num_envs, n_candidates)
+            elites_actions = np.stack([act.transpose((1, 2, 0, 3))[i, elites_idx[i]] for i in range(self.num_envs)])
+            elites_actions = elites_actions.transpose((2, 0, 1, 3))
+            mean = mean * self.alpha + np.mean(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+            std = std * self.alpha + np.std(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
+
+        a_array = mean[:, 0, 0, :]
+        s_array, returns = self._run_open_loop(a_array)
+        logger.log('cem initialization gives sum_rewards', returns)
+        return a_array, s_array
+
+    def get_actions_cem(self, env_pickled_states):
+        # mean, std = np.zeros_like(self.tau_mean_val), np.ones_like(self.tau_std_val) * 0.25
+        mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                            * (self.env.action_space.high + self.env.action_space.low) / 2
+        std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
+                           * (self.env.action_space.high - self.env.action_space.low) / 4
+        # returns_array = []
+        for itr in range(self.num_cem_iters):
+            lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+            # constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
+            # std = np.sqrt(constrained_var)
+            std = np.minimum(lb_dist/2, ub_dist/2, std)
             act = mean + np.random.normal(size=(self.horizon, self.num_envs, self.n_candidates, self.action_space_dims)) * std
             act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
             act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
@@ -381,44 +477,62 @@ class GTMPCController(Serializable):
                 returns += self.discount ** t * np.asarray(rewards)
 
             returns = np.reshape(returns, (self.num_envs, self.n_candidates))
-            print(np.max(returns[0], axis=-1), np.min(returns[0], axis=-1))
+            logger.log(np.max(returns[0], axis=-1), np.min(returns[0], axis=-1))
             act = np.reshape(act, (self.horizon, self.num_envs, self.n_candidates, self.action_space_dims))
-            elites_idx = ((-returns).argsort(axis=-1) < self.num_elites)  # (num_envs, n_candidates)
-            elites_actions = np.reshape(act[:, elites_idx, :], (self.horizon, self.num_envs, self.num_elites, self.action_space_dims))
+            elites_idx = np.argsort(-returns, axis=-1)[:, :self.num_elites]  # (num_envs, n_candidates)
+            elites_actions = np.stack([act.transpose((1, 2, 0, 3))[i, elites_idx[i]] for i in range(self.num_envs)])
+            elites_actions = elites_actions.transpose((2, 0, 1, 3))
             mean = mean * self.alpha + np.mean(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
-            var = var * self.alpha + np.var(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
-            elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
-            returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+            std = std * self.alpha + np.std(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
 
-            logger.logkv('AverageReturn', np.mean(elites_returns))
+            # elites_returns = np.reshape(returns[elites_idx], (self.num_envs, self.num_elites))
+            # returns_array.append(np.mean(elites_returns, axis=-1))  # average returns of elites_actions
+
+            # logger.logkv('AverageReturn', np.mean(elites_returns))
             # if len(elites_returns) > 1:
             #     for idx, returns in enumerate(elites_returns):
             #         logger.logkv(f'Return {idx}', returns)
-            if itr % 50 == 0:
-                logger.log([returns[0] for returns in returns_array[itr-50:itr]])
-            logger.dumpkvs()
-
-        returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
-        logger.log('returns of first env throughout opt iters', returns_array[:, 0])
+        #     if itr % 50 == 0:
+        #         logger.log([returns[0] for returns in returns_array[itr-50:itr]])
+        #     logger.dumpkvs()
+        #
+        # returns_array = np.vstack(returns_array)  # (num_opt_iters, num_envs)
+        # logger.log('returns of first env throughout opt iters', returns_array[:, 0])
 
         # save optimized actions and rotate tau stats to prepare for planning for next steps along the path
         optimized_actions_mean = mean[0, :, 0, :]
-        optimized_actions_var = var[0, :, 0, :]
+        optimized_actions_std = std[0, :, 0, :]
         assert optimized_actions_mean.shape == (self.num_envs, self.action_space_dims)
 
         # rotate
-        self.tau_mean_val = np.concatenate([
-            mean[1:],
-            np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
-            * (self.env.action_space.high + self.env.action_space.low) / 2
-        ])
-        self.tau_var_val = np.concatenate([
-            var[1:],
-            np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
-            * (self.env.action_space.high - self.env.action_space.low) / 16
-        ])
+        # self.tau_mean_val = np.concatenate([
+        #     mean[1:],
+        #     np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
+        #     * (self.env.action_space.high + self.env.action_space.low) / 2
+        # ])
+        # self.tau_var_val = np.concatenate([
+        #     var[1:],
+        #     np.ones(shape=(1, self.num_envs, 1, self.action_space_dims)) \
+        #     * (self.env.action_space.high - self.env.action_space.low) / 16
+        # ])
 
-        return optimized_actions_mean, optimized_actions_var
+        # return returns_array[-1, :]
+        return optimized_actions_mean, optimized_actions_std
+
+    def get_actions_rs(self, env_pickled_states):
+        self.planner_env.reset_from_pickles(env_pickled_states)
+        returns = np.zeros((self.num_envs*self.n_candidates,))
+        act = self.get_random_action(self.horizon * self.num_envs * self.n_candidates).reshape((self.horizon,
+                                                                                              self.n_candidates * self.num_envs, -1))
+        cand_a = act[0].reshape((self.num_envs, self.n_candidates, -1))
+        for t in range(self.horizon):
+            _, rewards, _, _ = self.planner_env.step(act[t])
+            returns += self.discount ** t * np.asarray(rewards)
+
+        returns = np.reshape(returns, (self.num_envs, self.n_candidates))
+
+        # return returns_array[-1, :]
+        return cand_a[range(self.num_envs), np.argmax(returns, axis=1)], None
 
     def plot_first_rollout(self):
         obs_array, reward_array, act_array, act_norm_array = [], [], [], []
@@ -531,6 +645,11 @@ class GTMPCController(Serializable):
         fig.suptitle(f'{self._local_step}')
         fig.savefig(os.path.join(self.save_dir_info, f'{self._local_step}.png'))
         logger.log('plt saved to', os.path.join(self.save_dir_info, f'{self._local_step}.png'))
+
+    def get_random_action(self, n):
+        return np.random.uniform(low=self.env.action_space.low,
+                                 high=self.env.action_space.high,
+                                 size=(n,) + self.env.action_space.low.shape)
 
     def get_params_internal(self, **tags):
         return []
