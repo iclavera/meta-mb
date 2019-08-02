@@ -8,7 +8,8 @@ from meta_mb.logger import logger
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 
 class ImageEmbeddingBuffer(Serializable):
-	def __init__(self, batch_size, env, encoder, latent_dim, num_stack, num_models, valid_split_ratio, buffer_size=500, normalize_input=True):
+	def __init__(self, batch_size, env, encoder, return_image, latent_dim, num_stack, num_models, valid_split_ratio, buffer_size=500,
+				 normalize_input=True):
 		self._dataset = None
 		self._embedding_dataset = None
 		self._train_idx = None
@@ -20,6 +21,7 @@ class ImageEmbeddingBuffer(Serializable):
 		self.obs_space_dims = env.observation_space.shape
 		self.action_space_dims = env.action_space.shape[0]
 		self.encoder = encoder
+		self.return_image = return_image
 		self._latent_dim = latent_dim
 		self._num_stack = num_stack
 
@@ -112,8 +114,12 @@ class ImageEmbeddingBuffer(Serializable):
 				self._train_idx[i] = np.concatenate([old_train_idx[-n_max:], train_idx])
 
 	def generate_batch(self, test=False):
-		data_act, data_obs, data_delta = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
-										 self._embedding_dataset['delta']
+		if self.return_image:
+			data_act, data_obs, data_delta = self._dataset['act'], self._dataset['obs'], \
+											 self._dataset['obs'][:, 1:]
+		else:
+			data_act, data_obs, data_delta = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
+										 	self._embedding_dataset['delta']
 		ret_obs = []
 		ret_delta = []
 		ret_actions = []
@@ -133,19 +139,22 @@ class ImageEmbeddingBuffer(Serializable):
 			delta = np.concatenate(data_delta[select_idx], axis=0)
 
 			assert obs.shape[0] == actions.shape[0] == delta.shape[0]
+
+			batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
 			
-			if not test:
-				batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
-			
-			ret_obs.append(obs if test else obs[batch_idx])
-			ret_actions.append(actions if test else actions[batch_idx])
-			ret_delta.append(delta if test else delta[batch_idx])
+			ret_obs.append(obs[batch_idx])
+			ret_actions.append(actions[batch_idx])
+			ret_delta.append(delta[batch_idx])
 
 		return np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_delta)
 
 	def generate_reward_batch(self, test=False):
-		data_act, data_obs, data_reward = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
-										  self._embedding_dataset['reward']
+		if self.return_image:
+			data_act, data_obs, data_reward = self._dataset['act'], self._dataset['obs'], \
+											 self._dataset['reward']
+		else:
+			data_act, data_obs, data_reward = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
+											  self._embedding_dataset['reward']
 		ret_obs = []
 		ret_nextobs = []
 		ret_actions = []
@@ -264,4 +273,12 @@ class ImageEmbeddingBuffer(Serializable):
 		if self._dataset is None:
 			return 0
 		else:
-			return self._dataset['act'].shape[0] * self._dataset['act'].shape[1]
+			return int(self._dataset['act'].shape[0] * (1 - self._valid_split_ratio)) * self._dataset['act'].shape[1]
+
+	@property
+	def val_size(self):
+		if self._dataset is None:
+			return 0
+		else:
+			return int(self._dataset['act'].shape[0] * self._valid_split_ratio) * self._dataset['act'].shape[1]
+

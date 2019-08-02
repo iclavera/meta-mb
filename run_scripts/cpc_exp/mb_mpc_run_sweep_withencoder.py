@@ -31,9 +31,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'cpctrainingdebug'
+EXP_NAME = 'cpctrainingsanity'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -141,15 +141,16 @@ def run_experiment(**config):
             )
 
         else:
-            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['latent_dim'],
-                                          config['obs_stack'],config['num_models'], config['valid_split_ratio'],
-                                          normalize_input=config['normalize'])
+            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['input_is_img'],
+                                          config['latent_dim'], config['obs_stack'], config['num_models'],
+                                          config['valid_split_ratio'], normalize_input=config['normalize'], )
             dynamics_model = MLPDynamicsEnsemble(
                 name="dyn_model",
                 env=env,
                 num_stack=config['obs_stack'],
                 encoder=encoder,
                 latent_dim=config['latent_dim'],
+                model_grad_thru_enc=config['model_grad_thru_enc'],
                 learning_rate=config['learning_rate'],
                 hidden_sizes=config['hidden_sizes_model'],
                 weight_normalization=config['weight_normalization_model'],
@@ -158,12 +159,18 @@ def run_experiment(**config):
                 rolling_average_persitency=config['rolling_average_persitency'],
                 hidden_nonlinearity=config['hidden_nonlinearity_model'],
                 batch_size=config['batch_size_model'],
-                buffer=buffer
+                normalize_input=config['normalize'],
+                buffer=buffer,
+                input_is_img=config['input_is_img'],
+                cpc_loss_weight=config['cpc_loss_weight'],
+                cpc_model=cpc_model,
             )
 
             reward_model = MLPRewardEnsemble(
                 name="rew_model",
                 env=env,
+                encoder=encoder,
+                input_is_img=config['input_is_img'],
                 latent_dim=config['latent_dim'],
                 buffer=buffer,
                 learning_rate=config['learning_rate'],
@@ -261,7 +268,7 @@ if __name__ == '__main__':
         # Problem
 
         'env': ['cartpole_balance'],
-        'normalize': [True],
+        'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [5],
@@ -285,12 +292,14 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [50],
+        'dynamic_model_epochs': [5],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [64],
+        'batch_size_model': [32],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
+        'input_is_img':[True],
+        'model_grad_thru_enc':[True],
 
         # Reward Model
         'reward_model_epochs': [15],
@@ -310,12 +319,13 @@ if __name__ == '__main__':
         'include_action': [False],
         'predict_action': [False],
         'contrastive':[True],
-        'cpc_epoch': [20],
+        'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [3],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [64],
-        'cpc_train_interval': [1]
+        'cpc_num_initial_rollouts': [20],
+        'cpc_train_interval': [1],
+        'cpc_loss_weight':[1.],
     }
 
     run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)

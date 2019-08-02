@@ -237,6 +237,7 @@ class CPC:
 
     def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, verbose, callbacks):
         for i in range(epochs):
+            print("Epoch %d" % i)
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
                 loss, acc = self.train_step(*(generator.next()))

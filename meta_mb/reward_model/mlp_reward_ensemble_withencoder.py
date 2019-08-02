@@ -19,6 +19,8 @@ class MLPRewardEnsemble(MLPRewardModel):
                  name,
                  env,
                  latent_dim,
+                 encoder,
+                 input_is_img, 
                  buffer,
                  num_models=5,
                  hidden_sizes=(512, 512),
@@ -39,7 +41,9 @@ class MLPRewardEnsemble(MLPRewardModel):
 
         max_logvar = 1
         min_logvar = 0.1
-
+        
+        self.encoder = encoder
+        self.input_is_img = input_is_img
         self.latent_dim = latent_dim
         self.buffer = buffer
 
@@ -121,16 +125,25 @@ class MLPRewardEnsemble(MLPRewardModel):
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             # placeholders
-            self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, latent_dim))
-            self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.nextobs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, latent_dim))
-            self.reward_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, 1))
+            if not self.input_is_img:
+                self.obs_ph = obs = tf.placeholder(tf.float32, shape=(None, latent_dim))
+                self.act_ph = act = tf.placeholder(tf.float32, shape=(None, action_space_dims))
+                self.nextobs_ph = nextobs = tf.placeholder(tf.float32, shape=(None, latent_dim))
+                self.reward_ph = reward = tf.placeholder(tf.float32, shape=(None, 1))
+
+            else:
+                self.obs_ph = obs = tf.placeholder(tf.float32, shape=(None, *obs_space_dims))
+                self.act_ph = act = tf.placeholder(tf.float32, shape=(None, action_space_dims))
+                self.nextobs_ph = nextobs = tf.placeholder(tf.float32, shape=(None, *obs_space_dims))
+                self.reward_ph = reward = tf.placeholder(tf.float32, shape=(None, 1))
+                obs = tf.stop_gradient(self.encoder(obs))  # TODO: CHECK THAT THIS STOPS THE GRADIENT!
+                nextobs = tf.stop_gradient(self.encoder(nextobs))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
-            self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
-            self.act_model_batches = tf.split(self.act_model_batches_stack_ph, self.num_models, axis=0)
-            self.nextobs_model_batches = tf.split(self.nextobs_model_batches_stack_ph, self.num_models, axis=0)
-            self.reward_model_batches = tf.split(self.reward_model_batches_stack_ph, self.num_models, axis=0)
+            self.obs_model_batches = tf.split(obs, self.num_models, axis=0)
+            self.act_model_batches = tf.split(act, self.num_models, axis=0)
+            self.nextobs_model_batches = tf.split(nextobs, self.num_models, axis=0)
+            self.reward_model_batches = tf.split(reward, self.num_models, axis=0)
 
             # reuse previously created MLP but each model receives its own batch
             mlps = []
@@ -164,9 +177,9 @@ class MLPRewardEnsemble(MLPRewardModel):
                                                             axis=0)  # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # # tensor_utils
-            # self.f_reward_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
-            #                                                     self.act_model_batches_stack_ph,
-            #                                                     self.nextobs_model_batches_stack_ph],
+            # self.f_reward_pred_model_batches = compile_function([self.obs_ph,
+            #                                                     self.act_ph,
+            #                                                     self.nextobs_ph],
             #                                                    self.reward_pred_model_batches_stack)
 
         self._networks = mlps
@@ -211,10 +224,10 @@ class MLPRewardEnsemble(MLPRewardModel):
 
                 # run train op
                 batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
-                                                feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
-                                                           self.act_model_batches_stack_ph: act_batch_stack,
-                                                           self.nextobs_model_batches_stack_ph: nextobs_batch_stack,
-                                                           self.reward_model_batches_stack_ph: reward_batch_stack})
+                                                feed_dict={self.obs_ph: obs_batch_stack,
+                                                           self.act_ph: act_batch_stack,
+                                                           self.nextobs_ph: nextobs_batch_stack,
+                                                           self.reward_ph: reward_batch_stack})
 
                 batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                 batch_losses.append(batch_loss)
@@ -224,10 +237,10 @@ class MLPRewardEnsemble(MLPRewardModel):
 
             # compute validation loss
             valid_loss = sess.run(self.loss_model_batches,
-                                  feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
-                                             self.act_model_batches_stack_ph: act_test_stack,
-                                             self.nextobs_model_batches_stack_ph: nextobs_test_stack,
-                                             self.reward_model_batches_stack_ph: reward_test_stack})
+                                  feed_dict={self.obs_ph: obs_test_stack,
+                                             self.act_ph: act_test_stack,
+                                             self.nextobs_ph: nextobs_test_stack,
+                                             self.reward_ph: reward_test_stack})
 
 
             valid_loss = np.array(valid_loss)

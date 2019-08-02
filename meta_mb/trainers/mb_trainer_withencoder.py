@@ -136,29 +136,31 @@ class Trainer(object):
             start_time = time.time()
 
             ''' --------------- Pretrain CPC on exploratory data --------------- '''
+            empty_imgs = np.zeros(shape=(0, self.cpc_initial_sampler.max_path_length, *self.env.observation_space.shape))
+            empty_acs = np.zeros(shape=(0, self.cpc_initial_sampler.max_path_length, *self.env.action_space.shape))
+
+            train_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), self.cpc_batch_size, terms=self.cpc_terms,
+                                          negative_samples=self.cpc_negative_samples,
+                                          predict_terms=self.cpc_predict_terms,
+                                          negative_same_traj=self.cpc_negative_same_traj,
+                                          predict_action=self.cpc_predict_action,
+                                          no_neg=not self.cpc_contrastive)
+            validation_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), self.cpc_batch_size, terms=self.cpc_terms,
+                                               negative_samples=self.cpc_negative_samples,
+                                               predict_terms=self.cpc_predict_terms,
+                                               negative_same_traj=self.cpc_negative_same_traj,
+                                               predict_action=self.cpc_predict_action,
+                                               no_neg=not self.cpc_contrastive)
             if self.cpc_initial_epoch > 0:
-                env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
-                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
-
-                train_data = CPCDataGenerator(train_img, train_action, self.cpc_batch_size, terms=self.cpc_terms,
-                                              negative_samples=self.cpc_negative_samples,
-                                              predict_terms=self.cpc_predict_terms,
-                                              negative_same_traj=self.cpc_negative_same_traj,
-                                              predict_action=self.cpc_predict_action,
-                                              no_neg=not self.cpc_contrastive)
-                validation_data = CPCDataGenerator(val_img, val_action, self.cpc_batch_size, terms=self.cpc_terms,
-                                                   negative_samples=self.cpc_negative_samples,
-                                                   predict_terms=self.cpc_predict_terms,
-                                                   negative_same_traj=self.cpc_negative_same_traj,
-                                                   predict_action=self.cpc_predict_action,
-                                                   no_neg=not self.cpc_contrastive)
-
-
                 # for (x, a, y), labels in train_data:
                 #     plot_seq(x[0], y, labels, name='reacher-seq')q
                 #     break
                 # import pdb; pdb.set_trace()
                 #
+                env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
+                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
+                train_data.update_dataset(train_img, train_action)
+                validation_data.update_dataset(val_img, val_action)
                 callbacks = [
                     keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=3, min_lr=1e-5, verbose=1, min_delta=0.001),
                     SaveEncoder(logger.get_dir(), metric='acc' if self.cpc_contrastive else 'error'),
@@ -200,10 +202,10 @@ class Trainer(object):
                     visualize_img(imgs, m, n,
                                   name=os.path.join(logger.get_dir(), 'path_itr%d.png' % itr))
 
-                if self.cpc_epoch > 0:
-                    train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
-                    train_data.update_dataset(train_img, train_action)
-                    validation_data.update_dataset(val_img, val_action)
+
+                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
+                train_data.update_dataset(train_img, train_action)
+                validation_data.update_dataset(val_img, val_action)
 
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
@@ -253,8 +255,8 @@ class Trainer(object):
                     # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
-
-                self.buffer.update_embedding_buffer()
+                if self.dynamics_model.input_is_img:
+                    self.buffer.update_embedding_buffer()
 
                 ''' --------------- fit dynamics model --------------- '''
 
@@ -264,6 +266,8 @@ class Trainer(object):
                 self.dynamics_model.fit(samples_data['observations'],
                                         samples_data['actions'],
                                         samples_data['next_observations'],
+                                        cpc_train_buffer=train_data,
+                                        cpc_val_buffer=validation_data,
                                         epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
