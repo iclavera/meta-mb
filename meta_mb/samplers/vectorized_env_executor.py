@@ -769,12 +769,13 @@ class ParalleliLQRExecutor(object):
     """
     def __init__(self, env, n_parallel, horizon, eps,
                  discount, verbose=False):
+        self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
         assert horizon % n_parallel == 0
         self.n_envs_per_proc = n_envs_per_proc = horizon // n_parallel
-        action_space_dims = env.action_space.shape[0]
-        obs_space_dims = env.observation_space.shape[0]
+        self.act_dim = env.action_space.shape[0]
+        self.obs_dim = env.observation_space.shape[0]
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
 
@@ -784,7 +785,7 @@ class ParalleliLQRExecutor(object):
             Process(
                 target=collocation_worker,
                 args=(work_remote, remote, pickle.dumps(env), eps,
-                      n_envs_per_proc, obs_space_dims, action_space_dims, discount,
+                      n_envs_per_proc, self.obs_dim, self.act_dim, discount,
                       seed, verbose),
             ) for (work_remote, remote, seed) \
             in zip(self.work_remotes, self.remotes, seeds)
@@ -796,7 +797,62 @@ class ParalleliLQRExecutor(object):
         for remote in self.work_remotes:
             remote.close()
 
-    def do_gradient_steps(self, s_array_stacked, a_array_stacked, lmbda):
+    def update_x_u(self, x_array, u_array):
+        assert x_array.shape == (self.horizon, self.obs_dim)
+        assert u_array.shape == (self.horizon, self.act_dim)
+
+        open_loop_array, feedback_gain_array = [], []
+
+        """
+        forward pass
+        """
+        dl_prime_dict = self._env.dl_dict(obs=x_array[-1], act=u_array[-1])
+        V_prime_x, V_prime_xx = dl_prime_dict['l_x'], dl_prime_dict['l_xx']
+
+        for i in range(self.horizon-2, -1, -1):
+
+            x, u = x_array[i], u_array[i]
+            dl_dict = self._env.dl_dict(obs=x, act=u)
+            l_x, l_u, l_xx, l_uu, l_ux = dl_dict.values()
+            f_x, f_u = jac_f_x(x, u), jac_f_u(x, u)
+            f_xx, f_uu, f_ux = hessian_f_xx(x, u), hessian_f_uu(x, u), hessian_f_ux(x, u)
+            Q_x = l_x + f_x.T @ V_prime_x
+            Q_u = l_u + f_u.T @ V_prime_x
+            Q_xx = l_xx + f_x.T @ V_prime_xx @ f_x + np.tensordot(V_prime_x, f_xx)
+            Q_uu = l_uu + f_u.T @ V_prime_xx @ f_u + np.tensordot(V_prime_x, f_uu)
+            Q_ux = l_ux + f_u.T @ V_prime_xx @ f_x + np.tensordot(V_prime_x, f_ux)
+
+            # store control matrices
+            Q_uu_inv = np.linalg.inv(Q_uu)
+            open_loop = - Q_uu_inv @ Q_u
+            feedback_gain = - Q_uu_inv @ Q_ux
+            open_loop_array.append(open_loop)
+            feedback_gain_array.append(feedback_gain)
+
+            # prepare for next i
+            # delta_V = 1/2 * open_loop
+            V_prime_x = Q_x + Q_u @ feedback_gain
+            V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+
+        """
+        backward pass
+        """
+        x_prime = x_array[0]
+        opt_x_array, opt_u_array = [], []
+
+        for i in range(horizon):
+            x = x_prime
+            u = u_array[i] + open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
+
+            # store updated state/action
+            opt_x_array.append(x)
+            opt_u_array.append(u)
+
+            # prepare for next i
+            x_prime = f(x, u)
+
+
+
         s_array_list = np.split(s_array_stacked, self.n_parallel)
         a_array_list = np.split(a_array_stacked, self.n_parallel)
         s_last_list = [s_array_stacked[t] for t in range(self.n_envs_per_proc, self.horizon, self.n_envs_per_proc)] + [None]
@@ -824,100 +880,91 @@ def iLQR_worker(remote, parent_remote, env_pickle, eps,
     env = pickle.loads(env_pickle)
     np.random.seed(seed)
 
-    def step_wrapper(s, a):
-        _ = env.reset_from_obs(s)
-        s_next, _, _, _ = env.step(a)
-        return s_next
+    def f(x, u):
+        _ = env.reset_from_obs(x)
+        x_prime, _, _, _ = env.step(u)
+        return x_prime
 
-    def df_ds(s, a): # s must not be owned by multiple workers
+    def jac_f_x(x, u):
         """
-        :param s: (act_dim,)
-        :param a: (obs_dim,)
+        :param x: (act_dim.)
+        :param u: (obs_dim,)
         :return: (obs_dim, obs_dim)
         """
-        old_s_next = step_wrapper(s, a)
-        grad_s = np.zeros((obs_dim, obs_dim))
-        for idx in range(obs_dim):  # compute grad[:, idx]
-            s[idx] += eps
-            new_s_next = step_wrapper(s, a)
-            s[idx] -= eps
-            grad_s[idx] = (new_s_next - old_s_next) / eps
+        jac = np.zeros((obs_dim, obs_dim))
+        f_val = f(x, u)
+        e_i = np.zeros((obs_dim,))
+        for i in range(obs_dim):
+            e_i[i] = eps
+            jac[:, i] = (f(x+e_i, u) - f_val) / eps
+            e_i[i] = 0
+        return jac
 
-        return grad_s
-
-    def df_da(s, a):
+    def jac_f_u(x, u):
         """
-        :param s: (act_dim.)
-        :param a: (obs_dim,)
+        :param x: (act_dim.)
+        :param u: (obs_dim,)
         :return: (obs_dim, act_dim)
         """
-        old_s_next = step_wrapper(s, a)
-        grad_a = np.zeros((obs_dim, act_dim))
-        for idx in range(act_dim): # compute grad[:, idx]
-            a[idx] += eps
-            new_s_next = step_wrapper(s, a)
-            a[idx] -= eps
-            grad_a[:, idx] = (new_s_next - old_s_next) / eps
-        return grad_a
+        jac = np.zeros((obs_dim, act_dim))
+        f_val = f(x, u)
+        e_i = np.zeros((act_dim,))
+        for i in range(act_dim):
+            e_i[i] = eps
+            jac[:, i] = (f(x, u+e_i) - f_val) / eps
+            e_i[i] = 0
+        return jac
 
     def hessian_f_xx(x, u):
-        hess = np.zeros((obs_dim))
-        old_x_prime = step_wrapper(x, u)
-        grad_x
+        hess = np.zeros((obs_dim, obs_dim, obs_dim))
+        f_val = f(x, u)
+        e_i, e_j = np.zeros((obs_dim,)), np.zeros((obs_dim,))
+        for i in range(obs_dim):
+            e_i[i] = eps
+            f_val_fix_i = f(x+e_i, u) - f_val
+            for j in range(obs_dim):
+                e_j[j] = eps
+                hess[:, i, j] = (f(x+e_i+e_j, u) - f(x+e_j, u) - f_val_fix_i) / eps**2
+                e_j[j] = 0
+            e_i[i] = 0
+        return hess
+
+    def hessian_f_uu(x, u):
+        hess = np.zeros((obs_dim, act_dim, act_dim))
+        f_val = f(x, u)
+        e_i, e_j = np.zeros((act_dim,)), np.zeros((act_dim,))
+        for i in range(act_dim):
+            e_i[i] = eps
+            f_val_fix_i = f(x, u+e_i) - f_val
+            for j in range(act_dim):
+                e_j[j] = eps
+                hess[:, i, j] = (f(x, u+e_i+e_j) - f(x, u+e_j) - f_val_fix_i) / eps**2
+                e_j[j] = 0
+            e_i[i] = 0
+        return hess
+
+    def hessian_f_ux(x, u):
+        hess = np.zeros((obs_dim, act_dim, obs_dim))
+        f_val = f(x, u)
+        e_i, e_j = np.zeros((act_dim,)), np.zeros((obs_dim,))
+        for i in range(act_dim):
+            e_i[i] = eps
+            f_val_fix_i = f(x+e_i, u) - f_val
+            for j in range(obs_dim):
+                e_j[j] = eps
+                hess[:, i, j] = (f(x+e_i, u+e_j) - f(x, u+e_j) - f_val_fix_i) / eps**2
+                e_j[j] = 0
+            e_i[i] = 0
+        return hess
 
     while True:
         # receive command and data from the remote
         cmd, *data = remote.recv()
         # do a step in each of the environment of the worker
-        if cmd == 'backward_pass':
-            inputs_dict, s_last, lmbda = data
-            s_array, a_array = inputs_dict['obs'], inputs_dict['act']
-            # to compute grad for s[1:t], a[1:t], need s[1:t+1], a[1:t]
-            # s_last = s[t+1]
-            assert s_array.shape == (n_envs, obs_dim)
-            assert a_array.shape == (n_envs, act_dim)
-
-            dl_prime_dict = env.dl_dict(obs=s_array[-1], act=a_array[-1])
-            V_prime_x, V_prime_xx = dl_prime_dict['l_x'], dl_prime_dict['l_xx']
-            dl_dict = env.dl_dict(obs=s_array[-2], act=a_array[-2])
-            l_x, l_u, l_xx, l_uu, l_ux = dl_dict.values()
-
-            for i in range(horizon-2, -1, -1):
-
-                f_x, f_u = df_ds(s_array[i], a_array[i]), df_da(s_array[i], a_array[i])
-                f_xx, f_uu, f_ux = d2f_ds2
-                Q_x = l_x + f_x.T @ V_prime_x
-                Q_u = l_u + f_u.T @ V_prime_x
-                Q_xx = l_xx + f_x.T @ V_prime_xx @ f_x + V_prime_x @ f_xx
-                Q_uu = l_uu + f_u.T @ V_prime_xx @ f_u + V_prime_x @ f_uu
-                Q_ux = l_ux + f_u.T @ V_prime_xx @ f_x + V_prime_x @ f_ux
-
-
-
-
-            f_array = [step_wrapper(s_array[idx], a_array[idx]) for idx in range(n_envs)]  # array of f(s, a)
-
-            # compute dl_ds
-            grad_s_stacked, grad_a_stacked = np.zeros((n_envs, obs_dim)), np.zeros((n_envs, act_dim))
-
-            for t in range(n_envs):
-                s, a = s_array[t], a_array[t]
-                _grad_s = -discount**t * dr_ds(s, a) + lmbda * (s - f_array[t-1])
-                _grad_a = -discount**t * dr_da(s, a)
-                if t != n_envs-1:
-                    s_next = s_array[t+1]
-                    _grad_s += -lmbda * np.matmul(df_ds(s, a).T, s_next - f_array[t])
-                    _grad_a += -lmbda * np.matmul(df_da(s, a).T, s_next - f_array[t])
-                elif s_last is not None:
-                    s_next = s_last
-                    _grad_s += -lmbda * np.matmul(df_ds(s, a).T, s_next - f_array[t])
-                    _grad_a += -lmbda * np.matmul(df_da(s, a).T, s_next - f_array[t])
-                else:
-                    pass
-                grad_s_stacked[t, :] = _grad_s
-                grad_a_stacked[t, :] = _grad_a
-
-            remote.send((grad_s_stacked, grad_a_stacked))
+        if cmd == 'jac_f_x':
+            inputs_dict, = data
+            x_array, u_array = inputs_dict['obs'], inputs_dict['act']
+            remote.send((np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)))
 
         # close the remote and stop the worker
         elif cmd == 'close':
