@@ -35,6 +35,7 @@ class GTMPCController(Serializable):
             num_cem_iters=8,
             num_opt_iters=8,
             num_collocation_iters=500,
+            num_ddp_iters=100,
             persistency=0.99,
             opt_learning_rate=1e-3,
             clip_norm=-1,
@@ -60,6 +61,7 @@ class GTMPCController(Serializable):
         self.num_cem_iters = num_cem_iters
         self.num_opt_iters = num_opt_iters
         self.num_collocation_iters = num_collocation_iters
+        self.num_ddp_iters = num_ddp_iters
         self.persistency= persistency
         self.opt_learning_rate = opt_learning_rate
         self.eps = eps
@@ -146,10 +148,14 @@ class GTMPCController(Serializable):
             if self.initializer_str == 'uniform':
                 self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
                                             size=(self.horizon, self.action_space_dims))
-                self.running_s_array, _ = self._run_open_loop(self.running_a_array)
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
             elif self.initializer_str == 'zeros':
                 self.running_a_array = np.zeros(shape=(self.horizon, self.action_space_dims))
-                self.running_s_array, _ = self._run_open_loop(self.running_a_array)
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
             elif self.initializer_str == 'cem':
                 self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, max_path_length)
                 self.running_a_array, self.running_s_array = self.initialize_w_cem()
@@ -163,6 +169,12 @@ class GTMPCController(Serializable):
             self.optimizer = GTOptimizer(alpha=self.opt_learning_rate)
 
             self.get_rollouts_factory = self.get_rollouts_collocation
+
+        elif self.method_str == 'ddp':
+            self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, verbose)
+            self.executor = copy.deepcopy(env)
+            self._env = copy.deepcopy(env)  # used in _run_open_loop
+            self.get_rollouts_factory = self.get_rollouts_DDP
 
         elif self.method_str == 'rs':
             raise NotImplementedError
@@ -204,10 +216,10 @@ class GTMPCController(Serializable):
 
     def _run_open_loop(self, a_array):
         s_array, returns = [], 0
-        obs = self.planner_env.reset()
+        obs = self._env.reset()
         for t in range(self.horizon):
             s_array.append(obs)
-            obs, reward, _, _ = self.planner_env.step(a_array[t])
+            obs, reward, _, _ = self._env.step(a_array[t])
             returns += self.discount ** t * reward
         s_array_stacked = np.stack(s_array, axis=0)
         return s_array_stacked, returns
@@ -221,6 +233,67 @@ class GTMPCController(Serializable):
             if t < self.horizon - 1:
                 reg_loss += np.linalg.norm(s_array[t+1] - s_next)**2
         return -sum_rewards, reg_loss
+
+    def get_rollouts_DDP(self, deterministic=False, plot_first_rollout=False):
+        _ = self.executor.reset()
+        self._reset_x_u()
+        sum_rewards = 0
+        for t in range(self.max_path_length):
+            optimized_action = self.get_actions_DDP()
+            self._shift_x_u_by_one()
+            _, reward, _, _ = self.executor.step(optimized_action)
+            sum_rewards += reward
+            logger.log(f'reward at path length {t}: {reward}')
+            logger.log(f'total reward at path length {t}: {sum_rewards}')
+
+        return [sum_rewards]
+
+    def get_actions_DDP(self):
+        # do gradient steps
+        for itr in range(self.num_ddp_iters):
+            self.planner.update_x_u_for_one_step()
+
+            if itr < 10:
+                print(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
+                print(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
+
+            # report performance
+            logger.logkv('Itr', itr)
+            logger.logkv('PlannerReturn', self.planner.compute_traj_returns())
+            logger.dumpkvs()
+
+        # save optimized action BEFORE SHIFTING
+        optimized_action = self.planner.u_array[0, :]
+        return optimized_action
+
+    def _reset_x_u(self):
+        # initialize s_array, a_array
+        # if self.initializer_str == 'cem':
+        #     self.cem_planner_env = IterativeEnvExecutor(self._env, num_rollouts*n_candidates, max_path_length)
+        #     self.running_a_array, self.running_s_array = self.initialize_w_cem()
+        if self.initializer_str == 'uniform':
+            init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+                                                     size=(self.horizon, self.action_space_dims))
+        elif self.initializer_str == 'zeros':
+            init_u_array = np.random.normal(scale=0.01, size=(self.horizon, self.action_space_dims))
+        else:
+            raise NotImplementedError
+
+        init_x_array, returns = self._run_open_loop(init_u_array)
+        self.planner.reset_x_u(init_x_array, init_u_array)
+        logger.logkv('InitialReturn', returns)
+        logger.dumpkvs()
+
+
+    def _shift_x_u_by_one(self):
+        # rotate running s_array, a_array
+        if self.initializer_str == 'uniform':
+            u_new = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high, size=(self.action_space_dims))
+        elif self.initializer_str == 'zeros':
+            u_new = np.zeros((self.action_space_dims,))
+        else:
+            raise NotImplementedError
+        self.planner.shift_x_u_by_one(u_new)
 
     def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
         _ = self.real_env.reset()

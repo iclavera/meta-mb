@@ -19,7 +19,7 @@ def run_experiment(**config):
     if config['method_str'] in ['cem', 'collocation']:
         config['n_itr'] = 1
         config['num_rollouts'] = 1
-    logger.log(f'n_itr = 1, num_rollouts = 1!!!')
+        logger.log(f'n_itr = 1, num_rollouts = 1!!!')
     repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
@@ -82,6 +82,7 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
             alpha=config['alpha'],
             percent_elites=config['percent_elites'],
+            lmbda=config['lmbda'],
         )
 
         sampler = GTSampler(
@@ -127,29 +128,32 @@ if __name__ == '__main__':
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['uniform'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['collocation'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['ddp'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
 
         'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
+        'opt_learning_rate': [1e-3], #[1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
-        'eps': [1e-6, 1e-4], #[1e-6, 1e-4, 1e-3],
+        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
         # cem
         'horizon': [30],  # only matters for cem/rs
         'n_candidates': [1000],
-        'num_cem_iters': [50],
-        'alpha': [0.1],
+        'num_cem_iters': [40],
+        'alpha': [0.15],
         'percent_elites': [0.1],
 
         # collocation
-        'lmbda': [1e-2, 1e-1, 1e0],
+        'lmbda': [1e0],
         'num_collocation_iters': [500*30],
         'persistency': [0.9],
+
+        # DDP
+        'num_ddp_iters': [100],
 
         # Training
         'num_rollouts': [2],  # number of experts

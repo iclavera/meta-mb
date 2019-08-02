@@ -1,4 +1,6 @@
 import numpy as np
+import time
+from collections import OrderedDict
 from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle
@@ -763,29 +765,29 @@ def collocation_worker(remote, parent_remote, env_pickle, eps,
             raise NotImplementedError
 
 
-class ParalleliLQRExecutor(object):
+class ParallelDDPExecutor(object):
     """
     Compute ground truth derivatives.
     """
     def __init__(self, env, n_parallel, horizon, eps,
-                 discount, verbose=False):
+                 verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
-        assert horizon % n_parallel == 0
-        self.n_envs_per_proc = n_envs_per_proc = horizon // n_parallel
+        self.x_array, self.u_array = None, None
         self.act_dim = env.action_space.shape[0]
         self.obs_dim = env.observation_space.shape[0]
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
+        self.fn_str_array = ['jac_f_x', 'jac_f_u', 'hessian_f_xx', 'hessian_f_uu', 'hessian_f_ux']
 
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
         self.ps = [
             Process(
-                target=collocation_worker,
+                target=DDP_worker,
                 args=(work_remote, remote, pickle.dumps(env), eps,
-                      n_envs_per_proc, self.obs_dim, self.act_dim, discount,
+                      horizon, self.obs_dim, self.act_dim,
                       seed, verbose),
             ) for (work_remote, remote, seed) \
             in zip(self.work_remotes, self.remotes, seeds)
@@ -794,10 +796,28 @@ class ParalleliLQRExecutor(object):
         for p in self.ps:
             p.daemon = True
             p.start()
+
         for remote in self.work_remotes:
             remote.close()
 
-    def update_x_u(self, x_array, u_array):
+    def _compute_deriv(self, inputs_dict):
+        # for fn_str, remote in zip(self.fn_str_array, self.remotes):
+        #     remote.send((fn_str, inputs_dict))
+        for i, fn_str in enumerate(self.fn_str_array):
+            self.remotes[i%self.n_parallel].send((fn_str, inputs_dict))
+
+        dl = self._env.dl_dict(inputs_dict).values()
+        df = [remote.recv() for remote in self.remotes]
+        return dl, df
+
+    def _f(self, x, u):
+        _ = self._env.reset_from_obs(x)
+        x_prime, _, _, _ = self._env.step(u)
+        return x_prime
+
+    def update_x_u_for_one_step(self):
+        x_array, u_array = self.x_array, self.u_array
+
         assert x_array.shape == (self.horizon, self.obs_dim)
         assert u_array.shape == (self.horizon, self.act_dim)
 
@@ -806,21 +826,20 @@ class ParalleliLQRExecutor(object):
         """
         forward pass
         """
-        dl_prime_dict = self._env.dl_dict(obs=x_array[-1], act=u_array[-1])
-        V_prime_x, V_prime_xx = dl_prime_dict['l_x'], dl_prime_dict['l_xx']
+        dl, df = self._compute_deriv(dict(obs=x_array, act=u_array))
+        l_x, l_u, l_xx, l_uu, l_ux = dl  # length = horizon
+        f_x, f_u, f_xx, f_uu, f_ux = df  # length = horizon - 1
+
+        V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
 
         for i in range(self.horizon-2, -1, -1):
 
-            x, u = x_array[i], u_array[i]
-            dl_dict = self._env.dl_dict(obs=x, act=u)
-            l_x, l_u, l_xx, l_uu, l_ux = dl_dict.values()
-            f_x, f_u = jac_f_x(x, u), jac_f_u(x, u)
-            f_xx, f_uu, f_ux = hessian_f_xx(x, u), hessian_f_uu(x, u), hessian_f_ux(x, u)
-            Q_x = l_x + f_x.T @ V_prime_x
-            Q_u = l_u + f_u.T @ V_prime_x
-            Q_xx = l_xx + f_x.T @ V_prime_xx @ f_x + np.tensordot(V_prime_x, f_xx)
-            Q_uu = l_uu + f_u.T @ V_prime_xx @ f_u + np.tensordot(V_prime_x, f_uu)
-            Q_ux = l_ux + f_u.T @ V_prime_xx @ f_x + np.tensordot(V_prime_x, f_ux)
+            Q_x = l_x[i] + f_x[i].T @ V_prime_x
+            Q_u = l_u[i] + f_u[i].T @ V_prime_x
+            # FIXME: axes = 1??
+            Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
+            Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
+            Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
 
             # store control matrices
             Q_uu_inv = np.linalg.inv(Q_uu)
@@ -840,34 +859,42 @@ class ParalleliLQRExecutor(object):
         x_prime = x_array[0]
         opt_x_array, opt_u_array = [], []
 
-        for i in range(horizon):
+        for i in range(self.horizon-1):
             x = x_prime
             u = u_array[i] + open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
+            print(f'stat for u: max = {np.max(u)}, min = {np.min(u)}')
 
             # store updated state/action
             opt_x_array.append(x)
             opt_u_array.append(u)
 
             # prepare for next i
-            x_prime = f(x, u)
+            time.sleep(0.002)
+            x_prime = self._f(x, u)
 
+        opt_x_array.append(x_prime)
+        opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
 
+        # store updated x, u array (CLIPPED)
+        opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
+        opt_u_array = np.clip(opt_u_array, self._env.action_space.low, self._env.action_space.high)
+        self.x_array, self.u_array = opt_x_array, opt_u_array
 
-        s_array_list = np.split(s_array_stacked, self.n_parallel)
-        a_array_list = np.split(a_array_stacked, self.n_parallel)
-        s_last_list = [s_array_stacked[t] for t in range(self.n_envs_per_proc, self.horizon, self.n_envs_per_proc)] + [None]
+    def shift_x_u_by_one(self, u_new):
+        # u_new must be clipped before passed in
+        x_new = self._f(x=self.x_array[-1, :], u=self.u_array[-1, :])
+        self.x_array = np.concatenate([self.x_array[1:, :], x_new[None]])
+        self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
 
-        for remote, s_array, a_array, s_last in zip(self.remotes, s_array_list, a_array_list, s_last_list):
-            remote.send(('compute_gradients', dict(obs=s_array, act=a_array), s_last, lmbda))
+    def reset_x_u(self, init_x_array, init_u_array):
+        self.x_array, self.u_array = init_x_array, init_u_array
 
-        results = [remote.recv() for remote in self.remotes]
-        grad_s_stacked, grad_a_stacked = map(lambda x: np.concatenate(x, axis=0), zip(*results))
+    def compute_traj_returns(self, discount=1):
+        rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
+        return sum([discount**t * reward for t, reward in enumerate(rewards)])
 
-        return grad_s_stacked, grad_a_stacked  # (horizon, space_dim)
-
-
-def iLQR_worker(remote, parent_remote, env_pickle, eps,
-                       horizon, n_envs, obs_dim, act_dim, discount,
+def DDP_worker(remote, parent_remote, env_pickle, eps,
+                       horizon, obs_dim, act_dim,
                        seed, verbose):
 
     # batch_size means the num_rollouts in the original env executors, and it means number of experts
@@ -949,10 +976,10 @@ def iLQR_worker(remote, parent_remote, env_pickle, eps,
         e_i, e_j = np.zeros((act_dim,)), np.zeros((obs_dim,))
         for i in range(act_dim):
             e_i[i] = eps
-            f_val_fix_i = f(x+e_i, u) - f_val
+            f_val_fix_i = f(x, u+e_i) - f_val
             for j in range(obs_dim):
                 e_j[j] = eps
-                hess[:, i, j] = (f(x+e_i, u+e_j) - f(x, u+e_j) - f_val_fix_i) / eps**2
+                hess[:, i, j] = (f(x+e_j, u+e_i) - f(x, u+e_i) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
         return hess
@@ -961,20 +988,31 @@ def iLQR_worker(remote, parent_remote, env_pickle, eps,
         # receive command and data from the remote
         cmd, *data = remote.recv()
         # do a step in each of the environment of the worker
-        if cmd == 'jac_f_x':
-            inputs_dict, = data
-            x_array, u_array = inputs_dict['obs'], inputs_dict['act']
-            remote.send((np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)))
-
-        # close the remote and stop the worker
-        elif cmd == 'close':
+        if cmd == 'close':
             remote.close()
             break
-
         else:
-            print(f'receiving command {cmd}')
-            raise NotImplementedError
+            inputs_dict, = data
+            x_array, u_array = inputs_dict['obs'], inputs_dict['act']
 
+            if cmd == 'jac_f_x':
+                fn = jac_f_x
 
+            elif cmd == 'jac_f_u':
+                fn = jac_f_u
 
+            elif cmd == 'hessian_f_xx':
+                fn = hessian_f_xx
 
+            elif cmd == 'hessian_f_uu':
+                fn = hessian_f_uu
+
+            elif cmd == 'hessian_f_ux':
+                fn = hessian_f_ux
+
+            else:
+                print(f'receiving command {cmd}')
+                raise NotImplementedError
+
+            result = [fn(x_array[i], u_array[i]) for i in range(horizon-2, -1, -1)]
+            remote.send(result)
