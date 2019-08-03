@@ -62,11 +62,18 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         return - tf.square(obs[:, 1] - np.pi)
 
     def deriv_reward_obs(self, obs, acts):
-        deriv = np.zeros_like(obs)
-        deriv[:, 1] = -2 * (obs[:, 1] - np.pi)
+        assert obs.ndim == acts.ndim
+        if obs.ndim == 1:
+            deriv = np.zeros_like(obs)
+            deriv[1] = -2 * (obs[1] - np.pi)
+        elif obs.ndim == 2:
+            deriv = np.zeros_like(obs)
+            deriv[:, 1] = -2 * (obs[:, 1] - np.pi)
+        else:
+            raise NotImplementedError
         return deriv
 
-    def deriv_reward_acts(self, obs, acts):
+    def deriv_reward_act(self, obs, acts):
         return np.zeros_like(acts)
 
     def goal_obs(self):

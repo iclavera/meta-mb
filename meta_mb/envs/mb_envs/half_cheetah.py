@@ -82,12 +82,24 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def deriv_reward_obs(self, obs, acts):
-        deriv = np.zeros_like(obs)
-        deriv[:, 8] = 1
+        assert obs.ndim == acts.ndim
+        if obs.ndim == 1:
+            deriv = np.zeros_like(obs)
+            deriv[8] = 1
+        elif obs.ndim == 2:
+            deriv = np.zeros_like(obs)
+            deriv[:, 8] = 1
+        else:
+            raise NotImplementedError
         return deriv
 
     def deriv_reward_acts(self, obs, acts):
-        return -0.2 * acts[:, :]
+        assert obs.ndim == acts.ndim
+        return (-0.2 * acts).copy()
+
+    def deriv_reward_act(self, obs, acts):
+        assert obs.ndim == acts.ndim
+        return (-0.2 * acts).copy()
 
 
 if __name__ == "__main__":
