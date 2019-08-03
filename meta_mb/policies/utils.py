@@ -207,13 +207,14 @@ class IPOPTShootingProblem(object):
             :param a: (obs_dim,)
             :return: (obs_dim, act_dim)
             """
-            old_returns = return_wrapper(s, a, horizon)
             grad_a = np.zeros((1, act_dim))
             for idx in range(act_dim):  # compute grad[:, idx]
                 a[0, idx] += eps
-                new_returns = return_wrapper(s, a, horizon)
-                a[0, idx] -= eps
-                grad_a[:, idx] = (new_returns - old_returns) / eps
+                right_returns = return_wrapper(s, a, horizon)
+                a[0, idx] -= 2 * eps
+                left_returns = return_wrapper(s, a, horizon)
+                grad_a[:, idx] = (right_returns - left_returns) / (2 * eps)
+                a[0, idx] += eps
             return -grad_a
 
         grad_a_stacked = np.zeros((horizon, act_dim))
