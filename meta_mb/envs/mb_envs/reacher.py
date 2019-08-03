@@ -65,25 +65,25 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_dist + reward_ctrl
         return reward
 
-    def deriv_reward_obses(self, obses, acts):
-        deriv = np.zeros_like(obses)
-        dist_vec = obses[:, -3:]
+    def deriv_reward_obses(self, obs, act):
+        deriv = np.zeros_like(obs)
+        dist_vec = obs[:, -3:]
         reward_dist = - np.linalg.norm(dist_vec, axis=1)
         deriv[:, -3:] /= reward_dist
         return deriv
 
-    def deriv_reward_acts(self, obses, acts):
-        return -2 * acts[:, :]
+    def deriv_reward_acts(self, obs, acts):
+        return (-2 * acts).copy()
 
-    def deriv_reward_obs(self, obs, act):
+    def deriv_reward_obs(self, obs, acts):
         deriv = np.zeros_like(obs)
         dist_vec = obs[-3:]
         reward_dist = - np.linalg.norm(dist_vec)
         deriv[-3:] /= reward_dist
         return deriv
 
-    def deriv_reward_act(self, obs, act):
-        return -2 * act[:]
+    def deriv_reward_act(self, obs, acts):
+        return (-2 * acts).copy()
 
     def l_xx(self, obs, act):
         """
