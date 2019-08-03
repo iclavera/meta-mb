@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from meta_mb.logger import logger
 import os
+import ipopt
+from meta_mb.policies.utils import IPOPTShootingProblem, IPOPTCollocationProblem
 
 
 class GTMPCController(Serializable):
@@ -176,6 +178,54 @@ class GTMPCController(Serializable):
             self._env = copy.deepcopy(env)  # used in _run_open_loop
             self.get_rollouts_factory = self.get_rollouts_DDP
 
+        elif self.method_str == 'ipopt_collocation':
+            self._env = copy.deepcopy(env)
+            self.real_env = copy.deepcopy(env)
+            self.get_rollouts_factory = self.get_rollouts_ipopt_collocation
+            self.optimizer = GTOptimizer(opt_learning_rate)
+            # initialize s_array, a_array
+            if self.initializer_str == 'uniform':
+                self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+                                                         size=(self.horizon, self.action_space_dims))
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
+            elif self.initializer_str == 'zeros':
+                self.running_a_array = np.zeros(shape=(self.horizon, self.action_space_dims))
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
+            elif self.initializer_str == 'cem':
+                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts * n_candidates, max_path_length)
+                self.running_a_array, self.running_s_array = self.initialize_w_cem()
+            else:
+                raise NotImplementedError
+            self.running_s_array = self.running_s_array[:-1]
+
+        elif self.method_str == 'ipopt_shooting':
+            self._env = copy.deepcopy(env)
+            self.real_env = copy.deepcopy(env)
+            self.get_rollouts_factory = self.get_rollouts_ipopt_shooting
+            self.optimizer = GTOptimizer(opt_learning_rate)
+            # initialize s_array, a_array
+            if self.initializer_str == 'uniform':
+                self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+                                                         size=(self.horizon, self.action_space_dims))
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
+            elif self.initializer_str == 'zeros':
+                self.running_a_array = np.zeros(shape=(self.horizon, self.action_space_dims))
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.logkv('InitialReturn', returns)
+                logger.dumpkvs()
+            elif self.initializer_str == 'cem':
+                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts * n_candidates, max_path_length)
+                self.running_a_array, self.running_s_array = self.initialize_w_cem()
+            else:
+                raise NotImplementedError
+            self.running_s_array = self.running_s_array[:-1]
+
         elif self.method_str == 'rs':
             raise NotImplementedError
         else:
@@ -284,7 +334,6 @@ class GTMPCController(Serializable):
         logger.logkv('InitialReturn', returns)
         logger.dumpkvs()
 
-
     def _shift_x_u_by_one(self):
         # rotate running s_array, a_array
         if self.initializer_str == 'uniform':
@@ -294,6 +343,86 @@ class GTMPCController(Serializable):
         else:
             raise NotImplementedError
         self.planner.shift_x_u_by_one(u_new)
+
+    def get_rollouts_ipopt_collocation(self, deterministic=False, plot_first_rollout=False):
+        obs = self.real_env.reset()
+        sum_rewards = 0
+        for t in range(self.max_path_length):
+            optimized_action = self.get_actions_ipopt_collocation(obs)
+            obs, reward, _, _ = self.real_env.step(optimized_action)
+            sum_rewards += reward
+            logger.log(f'reward at path length {t}: {reward}')
+            logger.log(f'total reward at path length {t}: {sum_rewards}')
+
+        return [sum_rewards]
+
+    def get_rollouts_ipopt_shooting(self, deterministic=False, plot_first_rollout=False):
+        obs = self.real_env.reset()
+        sum_rewards = 0
+        for t in range(self.max_path_length):
+            optimized_action = self.get_actions_ipopt_shooting(obs)
+            obs, reward, _, _ = self.real_env.step(optimized_action)
+            sum_rewards += reward
+            logger.log(f'reward at path length {t}: {reward}')
+            logger.log(f'total reward at path length {t}: {sum_rewards}')
+
+        return [sum_rewards]
+
+    def get_actions_ipopt_collocation(self, obs):
+        problem = IPOPTCollocationProblem(self._env, self.horizon, self.discount, obs, eps=self.eps)
+        a_array, s_array = self.running_a_array, self.running_s_array
+        x0 = np.concatenate([s_array.reshape(-1), a_array.reshape(-1)])
+        cl = np.zeros(((self.horizon-1) * self.obs_space_dims,))
+        cu = np.zeros(((self.horizon - 1) * self.obs_space_dims,))
+        ub = np.concatenate([np.ones(((self.horizon-1)*self.obs_space_dims,)) * 1e3]
+                            + [self.env.action_space.high] * self.horizon)
+        lb = np.concatenate([-np.ones(((self.horizon - 1) * self.obs_space_dims,)) * 1e3]
+                            + [self.env.action_space.low] * self.horizon)
+        nlp = ipopt.problem(
+            n=(self.horizon - 1) * self.obs_space_dims + self.horizon * self.action_space_dims,
+            m=(self.horizon - 1) * self.obs_space_dims,
+            problem_obj=problem,
+            cl=cl,
+            cu=cu,
+            lb=lb,
+            ub=ub,
+        )
+        nlp.addOption('mu_strategy', 'adaptive')
+        nlp.addOption('tol', 1e-7)
+        nlp.addOption('max_iter', 500)
+        x, info = nlp.solve(x0)
+        states, actions = problem.get_s_a(x)
+        u_new = np.random.uniform(low=self.env.action_space.low,
+                                  high=self.env.action_space.high,
+                                  size=self.action_space_dims)
+        self.running_a_array = np.concatenate([actions[1:], [u_new]])
+        self.running_s_array = np.concatenate([states[1:], states[-1][None]])
+        return actions[0]
+
+    def get_actions_ipopt_shooting(self, obs):
+        problem = IPOPTShootingProblem(self._env, self.horizon, self.discount, obs, eps=self.eps)
+        a_array, s_array = self.running_a_array, self.running_s_array
+        x0 = a_array.reshape(-1)
+        ub = np.concatenate([self.env.action_space.high] * self.horizon)
+        lb = np.concatenate([self.env.action_space.low] * self.horizon)
+        nlp = ipopt.problem(
+            n=self.horizon * self.action_space_dims,
+            m=0,
+            problem_obj=problem,
+            lb=lb,
+            ub=ub,
+        )
+        nlp.addOption('max_iter', 100)
+        nlp.addOption('tol', 1e-5)
+        nlp.addOption('mu_strategy', 'adaptive')
+        # nlp.addOption('hessian_approximation', 'limited-memory')
+        x, info = nlp.solve(x0)
+        actions = x.reshape(self.horizon, self.action_space_dims)
+        u_new = np.random.uniform(low=self.env.action_space.low,
+                                  high=self.env.action_space.high,
+                                  size=self.action_space_dims)
+        self.running_a_array = np.concatenate([actions[1:], [u_new]])
+        return actions[0]
 
     def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
         _ = self.real_env.reset()
