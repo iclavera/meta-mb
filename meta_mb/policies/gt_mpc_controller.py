@@ -158,8 +158,9 @@ class GTMPCController(Serializable):
                 logger.logkv('InitialReturn', returns)
                 logger.dumpkvs()
             elif self.initializer_str == 'cem':
-                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, max_path_length)
-                self.running_a_array, self.running_s_array = self.initialize_w_cem()
+                self.running_a_array = self.initialize_w_cem()
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
+                logger.log('cem initialization gives sum_rewards', returns)
             else:
                 raise NotImplementedError
             # self.running_s_array = [env.goal_obs() for _ in range(self.horizon)]
@@ -271,15 +272,13 @@ class GTMPCController(Serializable):
         return optimized_action
 
     def _reset_x_u(self):
-        # initialize s_array, a_array
-        # if self.initializer_str == 'cem':
-        #     self.cem_planner_env = IterativeEnvExecutor(self._env, num_rollouts*n_candidates, max_path_length)
-        #     self.running_a_array, self.running_s_array = self.initialize_w_cem()
-        if self.initializer_str == 'uniform':
+        if self.initializer_str == 'cem':
+            init_u_array = self.initialize_w_cem()
+        elif self.initializer_str == 'uniform':
             init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
                                                      size=(self.horizon, self.action_space_dims))
         elif self.initializer_str == 'zeros':
-            init_u_array = np.random.normal(scale=0.01, size=(self.horizon, self.action_space_dims))
+            init_u_array = np.random.normal(scale=0.3, size=(self.horizon, self.action_space_dims))
         else:
             raise NotImplementedError
 
@@ -496,6 +495,7 @@ class GTMPCController(Serializable):
 
     def initialize_w_cem(self):
         assert self.num_envs == 1
+        # _env = IterativeEnvExecutor(self._env, self.num_envs*self.n_candidates, self.max_path_length)
         mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
                * (self.env.action_space.high + self.env.action_space.low) / 2
         std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
@@ -510,11 +510,14 @@ class GTMPCController(Serializable):
             act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
             act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
 
-            _ = self.cem_planner_env.reset()
             returns = np.zeros((self.num_envs*self.n_candidates,))
-            for t in range(self.horizon):
-                _, rewards, _, _ = self.cem_planner_env.step(act[t])
-                returns += self.discount ** t * np.asarray(rewards)
+            for idx_cand in range(self.n_candidates):
+                _returns = 0
+                _ = self._env.reset()
+                for t in range(self.horizon):
+                    _, reward, _, _ = self._env.step(act[t, idx_cand, :])
+                    _returns += self.discount ** t * np.asarray(reward)
+                returns[idx_cand] = _returns
 
             returns = np.reshape(returns, (self.num_envs, self.n_candidates))
             logger.log(np.max(returns[0], axis=-1), np.min(returns[0], axis=-1))
@@ -526,9 +529,7 @@ class GTMPCController(Serializable):
             std = std * self.alpha + np.std(elites_actions, axis=2, keepdims=True) * (1-self.alpha)
 
         a_array = mean[:, 0, 0, :]
-        s_array, returns = self._run_open_loop(a_array)
-        logger.log('cem initialization gives sum_rewards', returns)
-        return a_array, s_array
+        return a_array
 
     def get_actions_cem(self, env_pickled_states):
         # mean, std = np.zeros_like(self.tau_mean_val), np.ones_like(self.tau_std_val) * 0.25

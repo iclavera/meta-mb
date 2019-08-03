@@ -769,8 +769,8 @@ class ParallelDDPExecutor(object):
     """
     Compute ground truth derivatives.
     """
-    def __init__(self, env, n_parallel, horizon, eps, mu_min=1e-6, mu_max=1e10, alpha=1, alpha_decay_factor=5.0, delta_0=2,
-                 c_1=0.01, discount=1.0, use_hessian_f=False, verbose=False):
+    def __init__(self, env, n_parallel, horizon, eps, mu_min=1e-3, mu_max=1e10, alpha=1, alpha_decay_factor=5.0, delta_0=2,
+                 c_1=0.01, use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
@@ -783,7 +783,6 @@ class ParallelDDPExecutor(object):
         self.alpha_decay_factor = alpha_decay_factor
         self.delta_0 = delta_0
         self.c_1 = c_1
-        self.discount = discount
         self.use_hessian_f = use_hessian_f
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
@@ -846,7 +845,7 @@ class ParallelDDPExecutor(object):
         """
         Backward Pass
         """
-        mu, delta = 0.1, 2.0
+        mu, delta = 1e-3, 2.0
         accepted = False
         while not accepted:
             V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
@@ -859,40 +858,26 @@ class ParallelDDPExecutor(object):
                     Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
                 else:
                     Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i]
-                    try :
-                        assert np.allclose(Q_uu, Q_uu.T)
-                    except AssertionError:
-                        print(Q_uu)
-                        raise RuntimeError
-                # # FIXME: did not pass assertion
-                # try:
-                #     np.linalg.cholesky(Q_uu)
-                #     # Q_uu is PD, decrease mu
-                #     delta = min(1, delta) / self.delta_0
-                #     mu = 0 if mu * delta < self.mu_min else mu * delta
-                #     print(f'delta, mu = {delta}, {mu}')
-                # except np.linalg.LinAlgError:
-                #     # encountering non-PD Q_uu, increase mu
-                #     delta = max(self.delta_0, delta * self.delta_0)
-                #     mu = max(self.mu_min, mu * delta)
-                #     open_loop_array, feedback_gain_array = [], []
-                #     print(f'stopped at {i}, delta, mu = {delta}, {mu}')
-                #     print('eigval', np.linalg.eigvals(Q_uu))
-                #     break
+                try :
+                    assert np.allclose(Q_uu, Q_uu.T)
+                except AssertionError:
+                    print(Q_uu)
+                    raise RuntimeError
+            # # FIXME: did not pass assertion
                 # if np.all(np.linalg.eigvals(Q_uu) > 0):
                 try:
                     np.linalg.cholesky(Q_uu)
                     # Q_uu is PD, decrease mu
+                    print(np.min(np.linalg.eigvals(Q_uu)))
                     delta = min(1, delta) / self.delta_0
                     mu *= delta
                     if mu < self.mu_min:
                         mu = 0.0
-                    print('backward pass accepted')
+                    # FIXME: mu, delta oscillates, this is not the right place to adapt?
                 # else:
                 except np.linalg.LinAlgError:
                     # encountering non-PD Q_uu, increase mu
                     print(np.min(np.linalg.eigvals(Q_uu)))
-                    print(delta, mu)
                     if mu > self.mu_max:
                         raise RuntimeError  # infinite loop
                     # adapt delta, mu
@@ -955,13 +940,15 @@ class ParallelDDPExecutor(object):
                 # prepare for next i
                 time.sleep(0.004)
                 x_prime, reward = self._f(x, u)
-                opt_J_val += - self.discount**i * reward
+                opt_J_val += -reward
 
             opt_x_array.append(x_prime)
             opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
 
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
+                print(J_val, opt_J_val, delta_J_alpha)
+                print(f'forward pass accepted with alpha = {alpha}')
                 # break while loop
                 converged = True
                 # store updated x, u array (CLIPPED)
@@ -969,7 +956,6 @@ class ParallelDDPExecutor(object):
                 opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
                 self.x_array, self.u_array = opt_x_array, opt_u_array
             else:
-                print(f'forward pass rejected with alpha = {alpha}')
                 # continue line search
                 alpha /= self.alpha_decay_factor
 
