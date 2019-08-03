@@ -16,7 +16,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 def run_experiment(**config):
     print(config['opt_learning_rate'], config['eps'], config['lmbda'])
-    if config['method_str'] in ['cem', 'collocation']:
+    if config['method_str'] in ['cem', 'collocation', 'ddp']:
         config['n_itr'] = 1
         config['num_rollouts'] = 1
         logger.log(f'n_itr = 1, num_rollouts = 1!!!')
@@ -121,7 +121,7 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [ReacherEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
         'n_itr': [201],  # only matters for opt_policy
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['cem'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['ddp'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         'num_opt_iters': [50,], #20, 40,],
         'opt_learning_rate': [1e-3], #[1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
         'clip_norm': [-1], # UNUSED
-        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
+        'eps': [1e-5], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
         # cem

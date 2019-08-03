@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 import os
+from collections import OrderedDict
 import tensorflow as tf
 import numpy as np
 from gym import utils
@@ -58,7 +59,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def reward(self, obs, acts, next_obs):
         assert obs.ndim == 2
-        assert obs.shape == next_obs.shape
+        if next_obs is not None:
+            assert obs.shape == next_obs.shape
         assert obs.shape[0] == acts.shape[0]
         reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
         reward_run = obs[:, 8]
@@ -100,6 +102,47 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def deriv_reward_act(self, obs, acts):
         assert obs.ndim == acts.ndim
         return (-0.2 * acts).copy()
+
+    def hessian_l_xx(self, obses, acts):
+        """
+
+        :param obs: (horizon, obs_dim,)
+        :param act: (horizon, act_dim,)
+        :return: (horizon, obs_dim, obs_dim)
+        """
+        hess = np.zeros((obses.shape[0], self.obs_dim, self.obs_dim))
+        return -hess
+
+    def hessian_l_uu(self, obses, acts):
+        """
+
+        :param obs: (horizon, obs_dim,)
+        :param act: (horizon, act_dim,)
+        :return: (horizon, act_dim, act_dim)
+        """
+        hess = np.zeros((obses.shape[0], self.act_dim, self.act_dim))
+        for i in range(self.act_dim):
+            hess[:, i, i] = -0.2
+        return -hess
+
+    def hessian_l_ux(self, obses, acts):
+        """
+
+        :param obs: (horizon, obs_dim,)
+        :param act: (horizon, act_dim,)
+        :return: (horizon, obs_dim, act_dim)
+        """
+        hess = np.zeros((obses.shape[0], self.act_dim, self.obs_dim))
+        return -hess
+
+    def dl_dict(self, inputs_dict):
+        # FOR NEGATIVE RETURNS
+        obses, acts = inputs_dict['obs'], inputs_dict['act']
+        return OrderedDict(l_x=-self.deriv_reward_obses(obses, acts),
+                           l_u=-self.deriv_reward_acts(obses, acts),
+                           l_xx=self.hessian_l_xx(obses, acts),
+                           l_uu=self.hessian_l_uu(obses, acts),
+                           l_ux=self.hessian_l_ux(obses, acts),)
 
 
 if __name__ == "__main__":
