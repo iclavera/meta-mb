@@ -77,6 +77,7 @@ def run_experiment(**config):
             num_cem_iters=config['num_cem_iters'],
             num_opt_iters=config['num_opt_iters'],
             num_collocation_iters=config['num_collocation_iters'],
+            num_ddp_iters=config['num_ddp_iters'],
             opt_learning_rate=config['opt_learning_rate'],
             persistency=config['persistency'],
             num_rollouts=config['num_rollouts'],

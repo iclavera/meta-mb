@@ -36,6 +36,7 @@ class GTMPCController(Serializable):
             num_opt_iters=8,
             num_collocation_iters=500,
             num_ddp_iters=100,
+            mu=1e-3,
             persistency=0.99,
             opt_learning_rate=1e-3,
             clip_norm=-1,
@@ -171,7 +172,7 @@ class GTMPCController(Serializable):
             self.get_rollouts_factory = self.get_rollouts_collocation
 
         elif self.method_str == 'ddp':
-            self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, verbose)
+            self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, verbose=verbose)
             self.executor = copy.deepcopy(env)
             self._env = copy.deepcopy(env)  # used in _run_open_loop
             self.get_rollouts_factory = self.get_rollouts_DDP
@@ -214,13 +215,16 @@ class GTMPCController(Serializable):
         # TODO
         pass
 
-    def _run_open_loop(self, a_array):
+    def _run_open_loop(self, a_array, drop_last_action=False):
         s_array, returns = [], 0
         obs = self._env.reset()
         for t in range(self.horizon):
             s_array.append(obs)
+            if t == self.horizon-1 and drop_last_action:
+                break
             obs, reward, _, _ = self._env.step(a_array[t])
             returns += self.discount ** t * reward
+
         s_array_stacked = np.stack(s_array, axis=0)
         return s_array_stacked, returns
 
@@ -253,7 +257,7 @@ class GTMPCController(Serializable):
         for itr in range(self.num_ddp_iters):
             self.planner.update_x_u_for_one_step()
 
-            if itr < 10:
+            if itr % 10 == 0:
                 print(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
                 print(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
 
@@ -279,11 +283,10 @@ class GTMPCController(Serializable):
         else:
             raise NotImplementedError
 
-        init_x_array, returns = self._run_open_loop(init_u_array)
-        self.planner.reset_x_u(init_x_array, init_u_array)
+        init_x_array, returns = self._run_open_loop(init_u_array, drop_last_action=True)
+        self.planner.reset_x_u(init_x_array, init_u_array, returns)
         logger.logkv('InitialReturn', returns)
         logger.dumpkvs()
-
 
     def _shift_x_u_by_one(self):
         # rotate running s_array, a_array

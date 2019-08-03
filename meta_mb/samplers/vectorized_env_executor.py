@@ -769,17 +769,29 @@ class ParallelDDPExecutor(object):
     """
     Compute ground truth derivatives.
     """
-    def __init__(self, env, n_parallel, horizon, eps,
-                 verbose=False):
+    def __init__(self, env, n_parallel, horizon, eps, mu_min=1e-6, mu_max=1e10, alpha=1, alpha_decay_factor=5.0, delta_0=2,
+                 c_1=0.01, discount=1.0, use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
         self.x_array, self.u_array = None, None
         self.act_dim = env.action_space.shape[0]
         self.obs_dim = env.observation_space.shape[0]
+        self.mu_min = mu_min
+        self.mu_max = mu_max
+        self.alpha = alpha
+        self.alpha_decay_factor = alpha_decay_factor
+        self.delta_0 = delta_0
+        self.c_1 = c_1
+        self.discount = discount
+        self.use_hessian_f = use_hessian_f
+        self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
-        self.fn_str_array = ['jac_f_x', 'jac_f_u', 'hessian_f_xx', 'hessian_f_uu', 'hessian_f_ux']
+        if use_hessian_f:
+            self.fn_str_array = ['jac_f_x', 'jac_f_u', 'hessian_f_xx', 'hessian_f_uu', 'hessian_f_ux']
+        else:
+            self.fn_str_array = ['jac_f_x', 'jac_f_u']
 
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
@@ -807,87 +819,169 @@ class ParallelDDPExecutor(object):
             self.remotes[i%self.n_parallel].send((fn_str, inputs_dict))
 
         dl = self._env.dl_dict(inputs_dict).values()
-        df = [remote.recv() for remote in self.remotes]
+        df = [self.remotes[i%self.n_parallel].recv() for i in range(len(self.fn_str_array))]
         return dl, df
 
     def _f(self, x, u):
         _ = self._env.reset_from_obs(x)
-        x_prime, _, _, _ = self._env.step(u)
-        return x_prime
+        x_prime, reward, _, _ = self._env.step(u)
+        return x_prime, reward
 
     def update_x_u_for_one_step(self):
-        x_array, u_array = self.x_array, self.u_array
+        x_array, u_array, J_val = self.x_array, self.u_array, self.J_val
 
         assert x_array.shape == (self.horizon, self.obs_dim)
         assert u_array.shape == (self.horizon, self.act_dim)
 
-        open_loop_array, feedback_gain_array = [], []
-
         """
-        forward pass
+        Derivatives
         """
         dl, df = self._compute_deriv(dict(obs=x_array, act=u_array))
         l_x, l_u, l_xx, l_uu, l_ux = dl  # length = horizon
-        f_x, f_u, f_xx, f_uu, f_ux = df  # length = horizon - 1
+        if self.use_hessian_f:
+            f_x, f_u, f_xx, f_uu, f_ux = df  # length = horizon - 1
+        else:
+            f_x, f_u = df
+            f_xx, f_uu, f_ux = None, None, None
+        """
+        Backward Pass
+        """
+        mu, delta = 0.1, 2.0
+        accepted = False
+        while not accepted:
+            V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
+            open_loop_array, feedback_gain_array = [], []
+            delta_J_1, delta_J_2 = 0, 0
+            accepted = True
+            for i in range(self.horizon-2, -1, -1):
+                V_prime_xx_reg = V_prime_xx + mu * np.identity(self.obs_dim)
+                if self.use_hessian_f:
+                    Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
+                else:
+                    Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i]
+                    try :
+                        assert np.allclose(Q_uu, Q_uu.T)
+                    except AssertionError:
+                        print(Q_uu)
+                        raise RuntimeError
+                # # FIXME: did not pass assertion
+                # try:
+                #     np.linalg.cholesky(Q_uu)
+                #     # Q_uu is PD, decrease mu
+                #     delta = min(1, delta) / self.delta_0
+                #     mu = 0 if mu * delta < self.mu_min else mu * delta
+                #     print(f'delta, mu = {delta}, {mu}')
+                # except np.linalg.LinAlgError:
+                #     # encountering non-PD Q_uu, increase mu
+                #     delta = max(self.delta_0, delta * self.delta_0)
+                #     mu = max(self.mu_min, mu * delta)
+                #     open_loop_array, feedback_gain_array = [], []
+                #     print(f'stopped at {i}, delta, mu = {delta}, {mu}')
+                #     print('eigval', np.linalg.eigvals(Q_uu))
+                #     break
+                # if np.all(np.linalg.eigvals(Q_uu) > 0):
+                try:
+                    np.linalg.cholesky(Q_uu)
+                    # Q_uu is PD, decrease mu
+                    delta = min(1, delta) / self.delta_0
+                    mu *= delta
+                    if mu < self.mu_min:
+                        mu = 0.0
+                    print('backward pass accepted')
+                # else:
+                except np.linalg.LinAlgError:
+                    # encountering non-PD Q_uu, increase mu
+                    print(np.min(np.linalg.eigvals(Q_uu)))
+                    print(delta, mu)
+                    if mu > self.mu_max:
+                        raise RuntimeError  # infinite loop
+                    # adapt delta, mu
+                    delta = max(1.0, delta) * self.delta_0
+                    mu = max(self.mu_min, mu * delta)
+                    # clear storage array
+                    open_loop_array, feedback_gain_array = [], []
+                    delta_J_1, delta_J_2 = 0, 0
+                    print(f'backward pass rejected at {i}, delta, mu = {delta}, {mu}')
+                    # reset flag
+                    accepted = False
+                    break
 
-        V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
+                Q_x = l_x[i] + f_x[i].T @ V_prime_x
+                Q_u = l_u[i] + f_u[i].T @ V_prime_x
+                if self.use_hessian_f:
+                    Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
+                    Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
+                else:
+                    Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
+                    Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i]
 
-        for i in range(self.horizon-2, -1, -1):
+                # store control matrices
+                # Q_uu_inv = np.linalg.inv(Q_uu)
+                # k = - Q_uu_inv @ Q_u  # k
+                # K = - Q_uu_inv @ Q_ux  # K
+                k = - np.linalg.solve(Q_uu, Q_u)
+                K = - np.linalg.solve(Q_uu, Q_ux)
+                open_loop_array.append(k)
+                feedback_gain_array.append(K)
 
-            Q_x = l_x[i] + f_x[i].T @ V_prime_x
-            Q_u = l_u[i] + f_u[i].T @ V_prime_x
-            # FIXME: axes = 1??
-            Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
-            Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
-            Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
-
-            # store control matrices
-            Q_uu_inv = np.linalg.inv(Q_uu)
-            open_loop = - Q_uu_inv @ Q_u
-            feedback_gain = - Q_uu_inv @ Q_ux
-            open_loop_array.append(open_loop)
-            feedback_gain_array.append(feedback_gain)
-
-            # prepare for next i
-            # delta_V = 1/2 * open_loop
-            V_prime_x = Q_x + Q_u @ feedback_gain
-            V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+                # prepare for next i
+                # V_prime_x = Q_x + Q_u @ feedback_gain
+                # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+                delta_J_1 += k.T @ Q_u
+                delta_J_2 += k.T @ Q_uu @ k
+                V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
+                V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
+                V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
 
         """
-        backward pass
+        Forward Pass
         """
-        x_prime = x_array[0]
-        opt_x_array, opt_u_array = [], []
+        alpha = 1.0
+        converged = False
+        while not converged:
+            x_prime = x_array[0]
+            opt_x_array, opt_u_array = [], []
+            opt_J_val = 0
+            for i in range(self.horizon-1):
+                x = x_prime
+                u = u_array[i] + alpha * open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
+                # print(f'stat for u at horizon {i}: max = {np.max(u)}, min = {np.min(u)}')
+                # u = np.clip(u, self.act_low, self.act_high)
 
-        for i in range(self.horizon-1):
-            x = x_prime
-            u = u_array[i] + open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
-            print(f'stat for u: max = {np.max(u)}, min = {np.min(u)}')
+                # store updated state/action
+                opt_x_array.append(x)
+                opt_u_array.append(u)
 
-            # store updated state/action
-            opt_x_array.append(x)
-            opt_u_array.append(u)
+                # prepare for next i
+                time.sleep(0.004)
+                x_prime, reward = self._f(x, u)
+                opt_J_val += - self.discount**i * reward
 
-            # prepare for next i
-            time.sleep(0.002)
-            x_prime = self._f(x, u)
+            opt_x_array.append(x_prime)
+            opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
 
-        opt_x_array.append(x_prime)
-        opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
-
-        # store updated x, u array (CLIPPED)
-        opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-        opt_u_array = np.clip(opt_u_array, self._env.action_space.low, self._env.action_space.high)
-        self.x_array, self.u_array = opt_x_array, opt_u_array
+            delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
+            if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
+                # break while loop
+                converged = True
+                # store updated x, u array (CLIPPED)
+                opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
+                opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
+                self.x_array, self.u_array = opt_x_array, opt_u_array
+            else:
+                print(f'forward pass rejected with alpha = {alpha}')
+                # continue line search
+                alpha /= self.alpha_decay_factor
 
     def shift_x_u_by_one(self, u_new):
         # u_new must be clipped before passed in
-        x_new = self._f(x=self.x_array[-1, :], u=self.u_array[-1, :])
+        x_new, reward = self._f(x=self.x_array[-1, :], u=self.u_array[-1, :])
         self.x_array = np.concatenate([self.x_array[1:, :], x_new[None]])
         self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
 
-    def reset_x_u(self, init_x_array, init_u_array):
+    def reset_x_u(self, init_x_array, init_u_array, returns):
         self.x_array, self.u_array = init_x_array, init_u_array
+        self.J_val = -returns
 
     def compute_traj_returns(self, discount=1):
         rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
@@ -954,7 +1048,7 @@ def DDP_worker(remote, parent_remote, env_pickle, eps,
                 hess[:, i, j] = (f(x+e_i+e_j, u) - f(x+e_j, u) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
-        return hess
+        return (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
 
     def hessian_f_uu(x, u):
         hess = np.zeros((obs_dim, act_dim, act_dim))
@@ -968,7 +1062,7 @@ def DDP_worker(remote, parent_remote, env_pickle, eps,
                 hess[:, i, j] = (f(x, u+e_i+e_j) - f(x, u+e_j) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
-        return hess
+        return (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
 
     def hessian_f_ux(x, u):
         hess = np.zeros((obs_dim, act_dim, obs_dim))
@@ -982,7 +1076,10 @@ def DDP_worker(remote, parent_remote, env_pickle, eps,
                 hess[:, i, j] = (f(x+e_j, u+e_i) - f(x, u+e_i) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
+        # return (hess + np.transpose(hessian_f_xu(x, u), axes=[0, 2, 1])) * 0.5
         return hess
+
+    str_to_fn = dict(jac_f_x=jac_f_x, jac_f_u=jac_f_u, hessian_f_xx=hessian_f_xx, hessian_f_uu=hessian_f_uu, hessian_f_ux=hessian_f_ux)
 
     while True:
         # receive command and data from the remote
@@ -995,22 +1092,10 @@ def DDP_worker(remote, parent_remote, env_pickle, eps,
             inputs_dict, = data
             x_array, u_array = inputs_dict['obs'], inputs_dict['act']
 
-            if cmd == 'jac_f_x':
-                fn = jac_f_x
+            try:
+                fn = str_to_fn[cmd]
 
-            elif cmd == 'jac_f_u':
-                fn = jac_f_u
-
-            elif cmd == 'hessian_f_xx':
-                fn = hessian_f_xx
-
-            elif cmd == 'hessian_f_uu':
-                fn = hessian_f_uu
-
-            elif cmd == 'hessian_f_ux':
-                fn = hessian_f_ux
-
-            else:
+            except KeyError:
                 print(f'receiving command {cmd}')
                 raise NotImplementedError
 
