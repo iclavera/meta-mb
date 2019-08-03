@@ -160,9 +160,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             mlps = []
             delta_preds = []
             self.obs_next_pred = []
-            self.total_loss = []
             self.model_loss = []
-            self.train_op_model_batches = []
+            # self.train_op_model_batches = []
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
                     # concatenate action and observation --> NN input
@@ -186,10 +185,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 else:
                     raise  NotImplementedError
                 self.model_loss.append(loss)
-                if cpc_loss_weight > 0:
-                    loss += cpc_loss_weight * self.cpc_model.loss
-                self.total_loss.append(loss)
-                self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
+
+            self.total_loss = 1 / self.num_models * sum(self.model_loss)
+            if cpc_loss_weight > 0:
+                self.total_loss += cpc_loss_weight * self.cpc_model.loss
+            self.optimizer = optimizer(learning_rate=self.learning_rate)
+            self.train_op =  self.optimizer.minimize(self.total_loss)
+
             # self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # # tensor_utils
@@ -221,7 +223,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess = tf.get_default_session()
 
         valid_loss_rolling_average = None
-        train_op_to_do = self.train_op_model_batches
+        # train_op_to_do = self.train_op
         idx_to_remove = []
         epoch_times = []
         epochs_per_model = []
@@ -234,7 +236,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             # preparations for recording training stats
             epoch_start_time = time.time()
-            batch_losses = []
+            total_losses = []
             cpc_losses = []
             model_losses = []
             cpc_accs = []
@@ -255,28 +257,26 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.labels_ph: labels})
 
                 # run train op
-                operations = self.total_loss + (self.model_loss + [ self.cpc_model.loss] + list(self.cpc_model.accuracy)
-                                                if self.cpc_loss_weight else []) + train_op_to_do
+                operations = [self.total_loss] + (self.model_loss + [ self.cpc_model.loss] + list(self.cpc_model.accuracy)
+                                                if self.cpc_loss_weight else []) + [self.train_op]
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
 
-                batch_loss = np.array(batch_loss_train_ops[:self.num_models])
-                prog_bar_list = [('total_loss', np.mean(batch_loss))]
+                total_loss = batch_loss_train_ops[0]
+                prog_bar_list = [('total_loss', total_loss)]
                 if self.cpc_loss_weight > 0:
-                    model_loss = batch_loss_train_ops[self.num_models:2 * self.num_models]
+                    model_loss = batch_loss_train_ops[1: self.num_models + 1]
                     model_losses.append(model_loss)
-                    cpc_loss = batch_loss_train_ops[2 * self.num_models]
+                    cpc_loss = batch_loss_train_ops[self.num_models + 1]
                     cpc_losses.append(cpc_loss)
-                    cpc_loss = batch_loss_train_ops[2 * self.num_models]
-                    cpc_losses.append(cpc_loss)
-                    cpc_acc = batch_loss_train_ops[2*self.num_models + 1]
+                    cpc_acc = batch_loss_train_ops[self.num_models + 2]
                     cpc_accs.append(cpc_acc)
                     prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
                                       ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc)]
-                batch_losses.append(batch_loss)
+                total_losses.append(total_loss)
                 train_pb.add(1,prog_bar_list)
 
             """ ------- Calculating validation loss ------- """
-            batch_losses_val = []
+            total_losses_val = []
             cpc_losses_val = []
             cpc_accs_val = []
             model_losses_val = []
@@ -295,81 +295,83 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.labels_ph: labels})
 
                     # run train op
-                    operations = self.total_loss + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
+                    operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
                                                     if self.cpc_loss_weight else [])
                     batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
 
-                    batch_loss = np.array(batch_loss_train_ops[:self.num_models])
-                    prog_bar_list = [('total_loss', np.mean(batch_loss))]
+                    total_loss = batch_loss_train_ops[0]
+                    prog_bar_list = [('total_loss', total_loss)]
                     if self.cpc_loss_weight > 0:
-                        model_loss = batch_loss_train_ops[self.num_models:2 * self.num_models]
+                        model_loss = batch_loss_train_ops[1:1 + self.num_models]
                         model_losses_val.append(model_loss)
-                        cpc_loss = batch_loss_train_ops[2 * self.num_models]
+                        cpc_loss = batch_loss_train_ops[1 + self.num_models]
                         cpc_losses_val.append(cpc_loss)
-                        cpc_acc = batch_loss_train_ops[2 * self.num_models + 1]
+                        cpc_acc = batch_loss_train_ops[2 + self.num_models]
                         cpc_accs_val.append(cpc_acc)
                         prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
                                           ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc)]
-                    batch_losses_val.append(batch_loss)
+                    total_losses_val.append(total_loss)
                     val_pb.add(1, prog_bar_list)
 
-            valid_loss = np.mean(np.array(batch_losses_val), axis=0)
-            if valid_loss_rolling_average is None:
-                valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
-                valid_loss_rolling_average_prev = 2.0 * valid_loss
-                for i in range(len(valid_loss)):
-                    if valid_loss[i] < 0:
-                        valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
-                        valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
+            # valid_loss = total_loss
+            # if valid_loss_rolling_average is None:
+            #     valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
+            #     valid_loss_rolling_average_prev = 2.0 * valid_loss
+            #     for i in range(len(valid_loss)):
+            #         if valid_loss[i] < 0:
+            #             valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
+            #             valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
+            #
+            # valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
+            #                              + (1.0-rolling_average_persitency)*valid_loss
 
-            valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
-                                         + (1.0-rolling_average_persitency)*valid_loss
-
-            if verbose:
-                str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
-                str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
-                str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-                logger.log(
-                    "Training NNDynamicsModel - finished epoch %i --\n"
-                    "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-                    %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
-                )
+            # if verbose:
+            #     str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
+            #     str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
+            #     str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
+            #     logger.log(
+            #         "Training NNDynamicsModel - finished epoch %i --\n"
+            #         "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
+            #         %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+            #     )
 
 
-            for i in range(self.num_models):
-                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
-                    idx_to_remove.append(i)
-                    epochs_per_model.append(epoch)
-                    if epoch < epochs - 1:
-                        logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
+            # for i in range(self.num_models):
+            #     if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
+            #         idx_to_remove.append(i)
+            #         epochs_per_model.append(epoch)
+            #         if epoch < epochs - 1:
+            #             logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
+            #
+            # train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
+            #
+            # if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
+            #
+            # if not train_op_to_do:
+            #     if verbose and epoch < epochs - 1:
+            #         logger.log('Stopping all DynamicsEnsemble Training before reaching max_num_epochs')
+            #     break
+            # valid_loss_rolling_average_prev = valid_loss_rolling_average
 
-            train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
-
-            if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
-
-            if not train_op_to_do:
-                if verbose and epoch < epochs - 1:
-                    logger.log('Stopping all DynamicsEnsemble Training before reaching max_num_epochs')
-                break
-            valid_loss_rolling_average_prev = valid_loss_rolling_average
+            epoch_times.append(time.time() - epoch_start_time)
 
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
-            assert len(epochs_per_model) == self.num_models
-            logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
-            logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
-            logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
-            logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
-            logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(batch_losses))
+            # logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
+            # assert len(epochs_per_model) == self.num_models
+            # logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
+            # logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
+            # logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
+            # logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
+            logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(total_losses))
             if self.cpc_loss_weight > 0:
                 logger.logkv(prefix + 'AvgFinalTrainCPCLoss', np.mean(cpc_losses))
                 logger.logkv(prefix + 'AvgFinalTrainCPCWeightedLoss', np.mean(cpc_losses) * self.cpc_loss_weight)
                 logger.logkv(prefix + 'avgFinalTrainCPCAcc', np.mean(cpc_accs))
                 logger.logkv(prefix + 'AvgFinalTrainModelLoss', np.mean(model_losses))
                 
-            logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
+            logger.logkv(prefix+'AvgFinalValidLoss', np.mean(total_losses_val))
+            # logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
             if self.cpc_loss_weight > 0:
                 logger.logkv(prefix + 'AvgFinalValidCPCLoss', np.mean(cpc_losses_val))
                 logger.logkv(prefix + 'AvgFinalValidCPCWeightedLoss', np.mean(cpc_losses_val) * self.cpc_loss_weight)

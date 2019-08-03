@@ -292,7 +292,7 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [5],
+        'dynamic_model_epochs': [1],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [32],
@@ -302,7 +302,7 @@ if __name__ == '__main__':
         'model_grad_thru_enc':[True],
 
         # Reward Model
-        'reward_model_epochs': [15],
+        'reward_model_epochs': [1],
 
         #  Other
         'n_parallel': [1],
@@ -321,11 +321,11 @@ if __name__ == '__main__':
         'contrastive':[True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [3],
+        'cpc_initial_epoch': [0],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [20],
+        'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight':[1.],
+        'cpc_loss_weight':[0.1, 1, 3, 10, 50],
     }
 
     run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
