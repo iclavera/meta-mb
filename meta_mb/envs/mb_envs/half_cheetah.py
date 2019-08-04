@@ -77,6 +77,18 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:,None]
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = np.array([False]).repeat(obs.shape[0])
+        done = done[:,None]
+        return done
+
 
 
 if __name__ == "__main__":

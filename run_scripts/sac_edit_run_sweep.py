@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Steve-T5"
+EXP_NAME = "Hopper-Q0-r"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -41,16 +41,16 @@ def run_experiment(**kwargs):
         baseline = kwargs['baseline']()
 
         env = normalize(kwargs['env']())
+        obs_dim = int(np.prod(env.observation_space.shape))
+        action_dim = int(np.prod(env.action_space.shape))
 
         Qs = [ValueFunction(name="q_fun_%d" % i,
-                            obs_dim=int(np.prod(env.observation_space.shape)),
-                            action_dim=int(np.prod(env.action_space.shape))
-                            ) for i in range(2)]
+                            obs_dim=obs_dim,
+                            action_dim=action_dim) for i in range(2)]
 
         Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                   obs_dim=int(np.prod(env.observation_space.shape)),
-                                   action_dim=int(np.prod(env.action_space.shape))
-                                   ) for i in range(2)]
+                                   obs_dim=obs_dim,
+                                   action_dim=action_dim) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -96,9 +96,11 @@ def run_experiment(**kwargs):
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            arget_entropy=kwargs['target_entropy'],
+            target_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
+            obs_dim = obs_dim,
+            action_dim = action_dim,
             Qs=Qs,
             Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
@@ -106,7 +108,6 @@ def run_experiment(**kwargs):
             prediction_type=kwargs['prediction_type'],
             T=kwargs['T'],
 			q_functioin_type=kwargs['q_functioin_type'],
-			env_name=str(kwargs['env']),
 			q_target_type=kwargs['q_target_type'],
 			H=kwargs['H'],
 			model_used_ratio=kwargs['model_used_ratio'],
@@ -117,7 +118,6 @@ def run_experiment(**kwargs):
         trainer = Trainer(
             algo=algo,
             env=env,
-            env_name=str(kwargs['env']),
             env_sampler=env_sampler,
             env_sample_processor=env_sample_processor,
             dynamics_model=dynamics_model,
@@ -133,7 +133,6 @@ def run_experiment(**kwargs):
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-            epoch_length=kwargs['epoch_length'],
             restore_path=save_model_dir+kwargs['restore_path'],
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
@@ -145,9 +144,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22,33],
+        'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -165,20 +164,19 @@ if __name__ == '__main__':
 		'n_itr': [3000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [50,200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
-		'q_target_type': [1],
-		'num_actions_per_next_observation': [3, 10],
-		'epoch_length': [1000],
-        'H': [5],
-        'T': [5, 7],
+		'q_functioin_type':[3],
+		'q_target_type': [0],
+		'num_actions_per_next_observation': [5],
+        'H': [0],
+        'T': [2],
 		'reward_scale': [1],
-		'target_entropy': [-3, -6],
-		'num_models': [8],
+		'target_entropy': [1, 0.5],
+		'num_models': [4],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
 

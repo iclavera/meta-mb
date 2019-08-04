@@ -4,7 +4,9 @@ import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.dynamics.mlp_dynamics_q import MLPDynamicsEnsembleQ
-
+from meta_mb.utils.utils import remove_scope_from_name
+from pdb import set_trace as st
+from collections import OrderedDict
 
 class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
     """
@@ -31,6 +33,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
+                 q_loss_importance=0,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -54,6 +57,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         self.hidden_sizes = hidden_sizes
         self._dataset_train = None
         self._dataset_test = None
+        self.env = env
         self.Qs = Qs
         if Q_targets is None:
             self.Q_targets = Qs
@@ -70,6 +74,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         self.used_timesteps_counter = 0
         self.reward_scale = reward_scale
         self.discount=discount
+        self.q_loss_importance = q_loss_importance
 
         hidden_nonlinearity = self._activations[hidden_nonlinearity]
         output_nonlinearity = self._activations[output_nonlinearity]
@@ -87,11 +92,17 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
                                           trainable=True,
                                           name="min_logvar")
             self._create_assign_ph()
+            log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+            alpha = tf.exp(log_alpha)
+            self.log_alpha = log_alpha
+            self.alpha = alpha
 
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.rewards_ph = tf.placeholder(tf.float32, shape=(None))
+            self.dones_ph = tf.placeholder(tf.bool, shape=(None))
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
@@ -133,55 +144,46 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
-            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
-            dist_info_sym = self.policy.distribution_info_sym(self.delta_ph)
+            next_obs = self.predict_sym(self.obs_ph, self.act_ph)
+            dist_info_sym = self.policy.distribution_info_sym(next_obs)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+
             next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
             next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
 
-            input_q_fun = tf.concat([self.delta_ph, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
-
-            min_next_Q = tf.reduce_min(next_q_values, axis=0)
-            self.alpha = 1
-            self.rewards_ph = tf.placeholder(tf.float32, shape=(None, 1))
-            self.dones_ph = tf.placeholder(tf.float32, shape=(None, 1))
-            next_values_var = min_next_Q - self.alpha * next_log_pis_var
-
-            dones_ph = tf.cast(self.dones_ph, next_values_var.dtype)
+            # change this for other environments
+            dones_ph = tf.cast(self.dones_ph, self.obs_ph.dtype)
             dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            rewards_ph = tf.expand_dims(self.rewards_ph, axis=-1)
-            target = self.reward_scale * self.rewards_ph + self.discount * (1 - self.dones_ph) * next_values_var
-            q_target =  tf.stop_gradient(target)
+            rewards = self.env.tf_reward(self.obs_ph, self.act_ph, next_obs)
+            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
+            q_values = [rewards + self.discount * (1 - dones_ph) * (Q.value_sym(input_var=input_q_fun) - next_log_pis_var) for Q in self.Qs]
 
             # define loss and train_op
-
-            # self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
             input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
 
             q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
-                                        for q_value in q_values_var]
-            # self.loss += q_losses[0]
+            q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
+                                        for i in range(2)]
+
             self.loss = [tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
                                        + self.logvar_pred)
                                        + 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
-                                       + q_losses[i]
+                                       + self.q_loss_importance * q_losses[i]
                                        for i in range(2)]
 
-            # self.loss = [loss for loss in q_losses]
-
-
-
             self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
-            # self.train_op = [optimizer.minimize(self.loss) for optimizer in self.optimizer]
-            self.train_op = [self.optimizer[i].minimize(self.loss[i]) for i in range(2)]
 
-
-            # self.optimizer = [optimizer(learning_rate=self.learning_rate,name='{}_{}_optimizer_dynamics'.format(Q.name, i))for i, Q in enumerate(self.Qs)]
-            # self.train_op = [q_optimizer.minimize(loss=q_loss, var_list=list(Q.vfun_params.values())) for i, (Q, q_loss, q_optimizer)
-            #     in enumerate(zip(self.Qs, q_losses, self.optimizer))]
-
+            current_scope = name
+            trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+            self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
+            keys = []
+            for key in self.vfun_params.keys():
+                if key[:6] == "policy" or key[:5] == "q_fun":
+                    keys.append(key)
+            for key in keys:
+                self.vfun_params.pop(key)
+            vars = list(self.vfun_params.values())
+            self.train_op = [self.optimizer[i].minimize(self.loss[i], var_list = vars) for i in range(2)]
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
             self.f_var_pred = compile_function([self.obs_ph, self.act_ph], self.var_pred)
@@ -192,11 +194,15 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.rew_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None,))
+            self.done_model_batches_stack_ph = tf.placeholder(tf.bool, shape=(None,))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
             self.act_model_batches = tf.split(self.act_model_batches_stack_ph, self.num_models, axis=0)
             self.delta_model_batches = tf.split(self.delta_model_batches_stack_ph, self.num_models, axis=0)
+            self.rew_model_batches = tf.split(self.rew_model_batches_stack_ph, self.num_models, axis=0)
+            self.done_model_batches = tf.split(self.done_model_batches_stack_ph, self.num_models, axis=0)
 
             # reuse previously created MLP but each model receives its own batch
             delta_preds = []
@@ -263,7 +269,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         delta_preds = []
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
                     assert self.normalize_input
                     in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
@@ -355,40 +361,6 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
         return pred_obs
-
-    def predict_batches(self, obs_batches, act_batches, deterministic=True):
-        """
-            Predict the batch of next observations for each model given the batch of current observations and actions for each model
-            :param obs_batches: observation batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_obs)
-            :param act_batches: action batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_act)
-            :return: pred_obs_next_batch: predicted batch of next observations -
-                                    shape:  (batch_size_per_model * num_models, ndim_obs)
-        """
-        assert obs_batches.shape[0] == act_batches.shape[0] and obs_batches.shape[0] % self.num_models == 0
-        assert obs_batches.ndim == 2 and obs_batches.shape[1] == self.obs_space_dims
-        assert act_batches.ndim == 2 and act_batches.shape[1] == self.action_space_dims
-
-        obs_batches_original = obs_batches
-
-        if self.normalize_input:
-            obs_batches, act_batches = self._normalize_data(obs_batches, act_batches)
-            delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
-            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if not deterministic:
-                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
-            delta_batches = denormalize(delta_batches, self.normalization['delta'][0], self.normalization['delta'][1])
-        else:
-            delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
-            var_batches = np.array(self.f_var_pred_model_batches(obs_batches, act_batches))
-            if not deterministic:
-                delta_batches = np.random.normal(delta_batches, np.sqrt(var_batches))
-
-        assert delta_batches.ndim == 2
-
-        pred_obs_batches = obs_batches_original + delta_batches
-        delta_batches = np.clip(delta_batches, -1e2, 1e2)
-        assert pred_obs_batches.shape == obs_batches.shape
-        return pred_obs_batches
 
     def _create_assign_ph(self):
         self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")

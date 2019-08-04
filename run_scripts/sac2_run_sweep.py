@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "SAC2"
+EXP_NAME = "SAC2-Q5-5"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac2 import SAC2
@@ -16,7 +16,7 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy_Q import GaussianMLPPolicy
 from meta_mb.logger import logger
-from meta_mb.value_functions.value_function import ValueFunction
+from meta_mb.value_functions.value_function_q import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_q import ProbMLPDynamicsEnsembleQ
@@ -94,6 +94,7 @@ def run_experiment(**kwargs):
                                                 learning_rate=kwargs['model_learning_rate'],
                                                 buffer_size=kwargs['dynamics_buffer_size'],
 												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                q_loss_importance=kwargs['q_loss_importance'],
                                                 )
 
 
@@ -101,7 +102,7 @@ def run_experiment(**kwargs):
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            arget_entropy=kwargs['target_entropy'],
+            target_entropy=kwargs['target_entropy'],
             env=env,
             dynamics_model=dynamics_model,
             reward_scale=kwargs['reward_scale'],
@@ -136,7 +137,6 @@ def run_experiment(**kwargs):
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-            epoch_length=kwargs['epoch_length'],
             restore_path=save_model_dir+kwargs['restore_path'],
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
@@ -148,7 +148,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22],
+        'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -167,23 +167,23 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [3000],
         'n_train_repeats': [8],
-        'max_path_length': [11],
-		'rollout_length_params': [[20, 100, 1, 25]],
-        'model_train_freq': [2],
+        'max_path_length': [1001],
+		'rollout_length_params': [[20, 100, 1, 1]],
+        'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [20],
+		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[1],
-		'q_target_type': [0],
-		'num_actions_per_next_observation': [5],
-		'epoch_length': [10],
-        'T': [2],
-		'H': [1],
+		'q_functioin_type':[5],
+		'q_target_type': [1],
+		'num_actions_per_next_observation': [5, 10],
+        'T': [3],
+		'H': [3, 5],
 		'reward_scale': [1],
-		'target_entropy': [-3],
-		'num_models': [2],
+		'target_entropy': [-3, -6],
+		'num_models': [8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
+        'q_loss_importance': [0.01, 1, 100],
 
 
         # Problem Conf

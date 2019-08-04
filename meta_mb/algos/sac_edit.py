@@ -31,9 +31,11 @@ class SAC_MB(Algo):
             Qs,
             env,
             dynamics_model,
+            obs_dim,
+            action_dim,
             Q_targets=None,
             discount=0.99,
-            name="sac",
+            name="sac-mbself.self.self",
             learning_rate=3e-4,
             target_entropy='auto',
             reward_scale=1.0,
@@ -48,12 +50,12 @@ class SAC_MB(Algo):
             prediction_type = 'none',
             T = 0,
             q_functioin_type=0,
-            env_name=None,
             q_target_type=0,
             H=0,
             model_used_ratio=1.0,
             experiment_name=None,
             exp_dir=None,
+            squash=True,
             **kwargs
     ):
         """
@@ -86,20 +88,18 @@ class SAC_MB(Algo):
         self.dynamics_model = dynamics_model
         self.recurrent = False
         self.training_environment = env
-        self.action_dim = np.prod(self.training_environment.action_space.shape)
-        self.ovs_dim = np.prod(self.training_environment.observation_space.shape)
-        self.target_entropy = (-self.action_dim
-                               if target_entropy == 'auto' else target_entropy)
+        self.action_dim = action_dim
+        self.obs_dim = obs_dim
+        assert 0<=target_entropy
+        self.target_entropy = (-target_entropy * self.action_dim)
 
-        self.learning_rate = learning_rate
         self.policy_lr = learning_rate
         self.Q_lr = learning_rate
         self.tau = tau
-        self._dataset = None
         self.buffer_size = buffer_size
         self.sampler_batch_size = sampler_batch_size
         self.session = session or tf.keras.backend.get_session()
-        self._squash = True
+        self._squash = squash
         self.Qs = Qs
         if Q_targets is None:
             self.Q_targets = Qs
@@ -112,7 +112,6 @@ class SAC_MB(Algo):
         self.action_prior = action_prior
         self.reparameterize = reparameterize
         self.q_functioin_type = q_functioin_type
-        self.env_name = env_name
         self.model_used_ratio = model_used_ratio
         self.T = T
         self.H = H
@@ -138,7 +137,6 @@ class SAC_MB(Algo):
         self._init_critic_update()
         self._init_diagnostics_ops()
 
-        # self._train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(-surr_obj, var_list=self.policy.get_params())
 
     def _init_global_step(self):
         self.global_step = training_util.get_or_create_global_step()
@@ -187,27 +185,6 @@ class SAC_MB(Algo):
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
 
-    def termination_fn(self, obs, act, next_obs):
-        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        if self.env_name == 'AntEnv':
-            x = next_obs[:, 0]
-            not_done = tf.reduce_all(tf.is_finite(next_obs), axis = -1, keepdims = False) * (x >= 0.2) * (x <= 1.0)
-            done = ~not_done
-        elif self.env_name == 'HalfCheetahEnv' or 'Walker2dEnv':
-            done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
-        elif self.env_name == 'HopperEnv':
-            height = next_obs[:, 0]
-            angle = next_obs[:, 1]
-            not_done =  tf.reduce_all(tf.is_finite(next_obs), axis=-1, keepdims = False) \
-                        * tf.reduce_all(tf.abs(next_obs[:,1:] < 100), axis = -1, keepdims = False) \
-                        * (height > .7) \
-                        * (tf.abs(angle) < .2)
-            done = ~not_done
-        else:
-            print("Error")
-            return
-        done = done[:,None]
-        return done
 
     def _get_q_target(self, time_step = 0):
         next_observations_ph = self.op_phs_dict['next_observations']
@@ -259,7 +236,7 @@ class SAC_MB(Algo):
 
                 rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
+                dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
                 rewards_var = rewards_var + (1 - dones) * (self.discount ** i) * self.reward_scale * rewards
 
                 input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
@@ -278,36 +255,37 @@ class SAC_MB(Algo):
             target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
             target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
             Q_target = self.q_target = tf.reduce_sum(target_means * target_confidence, 0)
-            # self.save_H_graph = True
-            # self.graph_step += 1
-            # if self.save_H_graph and self.graph_step % 1 == 0:
-            #     taget_confidence = tf.reduce_sum(target_confidence, axis = 1)
-            #     target_confidence = tf.reshape(target_confidence, [-1])
-            #     target_confidence = target_confidence / tf.reduce_sum(target_confidence)
-            #     height = 480
-            #     heights = tf.cast(height * target_confidence, tf.int32)
-            #     color_list = []
-            #     count = 0
-            #     for i in range(self.H):
-            #         color = self.rgb_lst[i]
-            #         color = tf.expand_dims(color, axis = 0)
-            #         color_block = tf.tile(color, [heights[i], 1])
-            #         color_list.append(color_block)
-            #         count += color_block.shape[0]
-            #     error = height - count
-            #     if error > 0:
-            #         color  = self.rgb_list[self.H]
-            #         color = tf.expand_dims(color, axis = 0)
-            #         color_block = tf.tile(color, [error, 1])
-            #         color_list.append(color_block)
-            #     colors = tf.reshape(tf.stack(color_list), [-1, 3])
-            #     self.confidence_lst.append(colors[:height])
-            #     colors = tf.stack(self.confidence_lst)
-            #     sinogram = tf.cast(colors, tf.uint8)
-            #     sinogram = tf.image.encode_jpeg(sinogram, quality=100)
-            #     if self.exp_dir:
-            #         writer = tf.write_file(self.exp_dir+'/H_IMAGE.jpg', sinogram)
-            #         self.training_ops.update({'H_IMAGE': writer})
+            self.save_H_graph = False
+            if self.save_H_graph:
+                self.graph_step += 1
+                if self.save_H_graph and self.graph_step % 1 == 0:
+                    taget_confidence = tf.reduce_sum(target_confidence, axis = 1)
+                    target_confidence = tf.reshape(target_confidence, [-1])
+                    target_confidence = target_confidence / tf.reduce_sum(target_confidence)
+                    height = 480
+                    heights = tf.cast(height * target_confidence, tf.int32)
+                    color_list = []
+                    count = 0
+                    for i in range(self.H):
+                        color = self.rgb_lst[i]
+                        color = tf.expand_dims(color, axis = 0)
+                        color_block = tf.tile(color, [heights[i], 1])
+                        color_list.append(color_block)
+                        count += color_block.shape[0]
+                    error = height - count
+                    if error > 0:
+                        color  = self.rgb_list[self.H]
+                        color = tf.expand_dims(color, axis = 0)
+                        color_block = tf.tile(color, [error, 1])
+                        color_list.append(color_block)
+                    colors = tf.reshape(tf.stack(color_list), [-1, 3])
+                    self.confidence_lst.append(colors[:height])
+                    colors = tf.stack(self.confidence_lst)
+                    sinogram = tf.cast(colors, tf.uint8)
+                    sinogram = tf.image.encode_jpeg(sinogram, quality=100)
+                    if self.exp_dir:
+                        writer = tf.write_file(self.exp_dir+'/H_IMAGE.jpg', sinogram)
+                        self.training_ops.update({'H_IMAGE': writer})
 
             return tf.stop_gradient(Q_target)
 
@@ -427,7 +405,7 @@ class SAC_MB(Algo):
                 next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 rewards = self.training_environment.tf_reward(obs, actions, next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.termination_fn(obs, actions, next_observation), rewards.dtype)
+                dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = [(self.discount**(i)) * self.reward_scale * rewards * (1 - dones) for _ in range(2)]
                 else:
@@ -454,7 +432,7 @@ class SAC_MB(Algo):
                 expanded_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
+                dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
@@ -513,7 +491,7 @@ class SAC_MB(Algo):
                     next_actions = next_actions[index]
                 rewards = self.training_environment.tf_reward(obs, actions, next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.termination_fn(obs, actions, next_observation), rewards.dtype)
+                dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
@@ -556,7 +534,7 @@ class SAC_MB(Algo):
                 # shape: M * N * D
                 rewards = self.training_environment.tf_reward(m_obs, m_actions, m_next_observation)
                 rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.termination_fn(m_obs, m_actions, m_next_observation), rewards.dtype)
+                dones = tf.cast(self.training_environment.tf_termination_fn(m_obs, m_actions, m_next_observation), rewards.dtype)
 
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)

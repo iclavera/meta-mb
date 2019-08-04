@@ -22,27 +22,42 @@ class Walker2dEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(self)
 
     def step(self, action):
-        old_ob = self._get_obs()
+        # old_ob = self._get_obs()
+        # self.do_simulation(action, self.frame_skip)
+        # ob = self._get_obs()
+        #
+        # if getattr(self, 'action_space', None):
+        #     action = np.clip(action, self.action_space.low,
+        #                      self.action_space.high)
+        #
+        # reward_ctrl = -0.1 * np.square(action).sum()
+        # reward_run = old_ob[8]
+        # reward_height = -3.0 * np.square(old_ob[0] - 1.3)
+        # reward = reward_run + reward_ctrl + reward_height + 1.0
+        #
+        # done = False
+        # return ob, reward, done, {}
+
+        posbefore = self.sim.data.qpos[0]
         self.do_simulation(action, self.frame_skip)
+        posafter, height, ang = self.sim.data.qpos[0:3]
+        alive_bonus = 1.0
+        reward = ((posafter - posbefore) / self.dt)
+        reward += alive_bonus
+        reward -= 1e-3 * np.square(action).sum()
+        done = not (height > 0.8 and height < 2.0 and
+                    ang > -1.0 and ang < 1.0)
         ob = self._get_obs()
-
-        if getattr(self, 'action_space', None):
-            action = np.clip(action, self.action_space.low,
-                             self.action_space.high)
-
-        reward_ctrl = -0.1 * np.square(action).sum()
-        reward_run = old_ob[8]
-        reward_height = -3.0 * np.square(old_ob[0] - 1.3)
-        reward = reward_run + reward_ctrl + reward_height + 1.0
-
-        done = False
         return ob, reward, done, {}
 
     def _get_obs(self):
-        return np.concatenate([
-            self.sim.data.qpos.flat[1:],
-            self.sim.data.qvel.flat
-        ])
+        # return np.concatenate([
+        #     self.sim.data.qpos.flat[1:],
+        #     self.sim.data.qvel.flat
+        # ])
+        qpos = self.sim.data.qpos
+        qvel = self.sim.data.qvel
+        return np.concatenate([qpos[1:], np.clip(qvel, -10, 10)]).ravel()
 
     def reset_model(self):
         self.set_state(
@@ -53,9 +68,13 @@ class Walker2dEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return self._get_obs()
 
     def viewer_setup(self):
+        # self.viewer.cam.trackbodyid = 2
+        # self.viewer.cam.distance = self.model.stat.extent * 0.5
+        # self.viewer.cam.lookat[2] += .8
+        # self.viewer.cam.elevation = -20
         self.viewer.cam.trackbodyid = 2
         self.viewer.cam.distance = self.model.stat.extent * 0.5
-        self.viewer.cam.lookat[2] += .8
+        self.viewer.cam.lookat[2] = 1.15
         self.viewer.cam.elevation = -20
 
     def reward(self, obs, acts, next_obs):
@@ -80,6 +99,18 @@ class Walker2dEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_height = -3.0 * tf.square(next_obs[:, 0] - 1.3)
         reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:,None]
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = np.array([False]).repeat(obs.shape[0])
+        done = done[:,None]
+        return done
 
 
 if __name__ == "__main__":
