@@ -6,8 +6,8 @@ import tensorflow as tf
 import keras.backend as K
 
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
@@ -292,17 +292,17 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [1],
+        'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [32],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img':[True],
-        'model_grad_thru_enc':[True],
+        'model_grad_thru_enc':[False],
 
         # Reward Model
-        'reward_model_epochs': [1],
+        'reward_model_epochs': [15],
 
         #  Other
         'n_parallel': [1],
@@ -321,11 +321,11 @@ if __name__ == '__main__':
         'contrastive':[True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [0],
+        'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight':[0.1, 1, 3, 10, 50],
+        'cpc_loss_weight':[1],
     }
 
     run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)

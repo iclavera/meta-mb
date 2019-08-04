@@ -295,23 +295,23 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.labels_ph: labels})
 
                     # run train op
-                    operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
+                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
                                                     if self.cpc_loss_weight else [])
-                    batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
+                batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
 
-                    total_loss = batch_loss_train_ops[0]
-                    prog_bar_list = [('total_loss', total_loss)]
-                    if self.cpc_loss_weight > 0:
-                        model_loss = batch_loss_train_ops[1:1 + self.num_models]
-                        model_losses_val.append(model_loss)
-                        cpc_loss = batch_loss_train_ops[1 + self.num_models]
-                        cpc_losses_val.append(cpc_loss)
-                        cpc_acc = batch_loss_train_ops[2 + self.num_models]
-                        cpc_accs_val.append(cpc_acc)
-                        prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
-                                          ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc)]
-                    total_losses_val.append(total_loss)
-                    val_pb.add(1, prog_bar_list)
+                total_loss = batch_loss_train_ops[0]
+                prog_bar_list = [('total_loss', total_loss)]
+                if self.cpc_loss_weight > 0:
+                    model_loss = batch_loss_train_ops[1:1 + self.num_models]
+                    model_losses_val.append(model_loss)
+                    cpc_loss = batch_loss_train_ops[1 + self.num_models]
+                    cpc_losses_val.append(cpc_loss)
+                    cpc_acc = batch_loss_train_ops[2 + self.num_models]
+                    cpc_accs_val.append(cpc_acc)
+                    prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
+                                      ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc)]
+                total_losses_val.append(total_loss)
+                val_pb.add(1, prog_bar_list)
 
             # valid_loss = total_loss
             # if valid_loss_rolling_average is None:
