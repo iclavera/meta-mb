@@ -95,10 +95,6 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             raise NotImplementedError
         return deriv
 
-    def deriv_reward_acts(self, obs, acts):
-        assert obs.ndim == acts.ndim
-        return (-0.2 * acts).copy()
-
     def deriv_reward_act(self, obs, acts):
         assert obs.ndim == acts.ndim
         return (-0.2 * acts).copy()
@@ -138,8 +134,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def dl_dict(self, inputs_dict):
         # FOR NEGATIVE RETURNS
         obses, acts = inputs_dict['obs'], inputs_dict['act']
-        return OrderedDict(l_x=-self.deriv_reward_obses(obses, acts),
-                           l_u=-self.deriv_reward_acts(obses, acts),
+        return OrderedDict(l_x=-self.deriv_reward_obs(obses, acts),
+                           l_u=-self.deriv_reward_act(obses, acts),
                            l_xx=self.hessian_l_xx(obses, acts),
                            l_uu=self.hessian_l_uu(obses, acts),
                            l_ux=self.hessian_l_ux(obses, acts),)

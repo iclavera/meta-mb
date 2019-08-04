@@ -198,8 +198,8 @@ class GTMPCController(Serializable):
                 logger.logkv('InitialReturn', returns)
                 logger.dumpkvs()
             elif self.initializer_str == 'cem':
-                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts * n_candidates, max_path_length)
-                self.running_a_array, self.running_s_array = self.initialize_w_cem()
+                self.running_a_array = self.initialize_w_cem()
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
             else:
                 raise NotImplementedError
             self.running_s_array = self.running_s_array[:-1]
@@ -222,8 +222,8 @@ class GTMPCController(Serializable):
                 logger.logkv('InitialReturn', returns)
                 logger.dumpkvs()
             elif self.initializer_str == 'cem':
-                self.cem_planner_env = IterativeEnvExecutor(env, num_rollouts * n_candidates, max_path_length)
-                self.running_a_array, self.running_s_array = self.initialize_w_cem()
+                self.running_a_array = self.initialize_w_cem()
+                self.running_s_array, returns = self._run_open_loop(self.running_a_array)
             else:
                 raise NotImplementedError
             self.running_s_array = self.running_s_array[:-1]
@@ -266,13 +266,11 @@ class GTMPCController(Serializable):
         # TODO
         pass
 
-    def _run_open_loop(self, a_array, drop_last_action=False):
+    def _run_open_loop(self, a_array):
         s_array, returns = [], 0
         obs = self._env.reset()
         for t in range(self.horizon):
             s_array.append(obs)
-            if t == self.horizon-1 and drop_last_action:
-                break
             obs, reward, _, _ = self._env.step(a_array[t])
             returns += self.discount ** t * reward
 
@@ -305,17 +303,22 @@ class GTMPCController(Serializable):
 
     def get_actions_DDP(self):
         # do gradient steps
-        for itr in range(self.num_ddp_iters):
-            self.planner.update_x_u_for_one_step()
+        while True:
+            try:
+                for itr in range(self.num_ddp_iters):
+                    assert self.planner.update_x_u_for_one_step()
 
-            if itr % 10 == 0:
-                print(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
-                print(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
+                    if itr % 10 == 0:
+                        print(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
+                        print(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
 
-            # report performance
-            logger.logkv('Itr', itr)
-            logger.logkv('PlannerReturn', self.planner.compute_traj_returns())
-            logger.dumpkvs()
+                    # report performance
+                    logger.logkv('Itr', itr)
+                    logger.logkv('PlannerReturn', self.planner.compute_traj_returns())
+                    logger.dumpkvs()
+                break
+            except AssertionError:
+                self.planner.reset_x_u(init_u_array=None)
 
         # save optimized action BEFORE SHIFTING
         optimized_action = self.planner.u_array[0, :]
@@ -328,14 +331,12 @@ class GTMPCController(Serializable):
             init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
                                                      size=(self.horizon, self.action_space_dims))
         elif self.initializer_str == 'zeros':
-            init_u_array = np.random.normal(scale=0.3, size=(self.horizon, self.action_space_dims))
+            init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.action_space_dims))
+            init_u_array = np.clip(init_u_array, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
         else:
             raise NotImplementedError
 
-        init_x_array, returns = self._run_open_loop(init_u_array, drop_last_action=True)
-        self.planner.reset_x_u(init_x_array, init_u_array, returns)
-        logger.logkv('InitialReturn', returns)
-        logger.dumpkvs()
+        self.planner.reset_x_u(init_u_array)
 
     def _shift_x_u_by_one(self):
         # rotate running s_array, a_array
@@ -631,7 +632,7 @@ class GTMPCController(Serializable):
         std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
               * (self.env.action_space.high - self.env.action_space.low) / 4
 
-        for itr in range(self.num_cem_iters):
+        for itr in range(2):
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
             # constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
             # std = np.sqrt(constrained_var)

@@ -144,7 +144,7 @@ if __name__ == '__main__':
         # cem
         'horizon': [30],  # only matters for cem/rs
         'n_candidates': [1000],
-        'num_cem_iters': [40],
+        'num_cem_iters': [50],
         'alpha': [0.15],
         'percent_elites': [0.1],
 
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         'num_ddp_iters': [100],
 
         # Training
-        'num_rollouts': [2],  # number of experts
+        'num_rollouts': [1],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [False],

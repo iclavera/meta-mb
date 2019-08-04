@@ -1,4 +1,5 @@
 import numpy as np
+from meta_mb.logger import logger
 import time
 from collections import OrderedDict
 from meta_mb.policies.np_linear_policy import LinearPolicy
@@ -769,8 +770,9 @@ class ParallelDDPExecutor(object):
     """
     Compute ground truth derivatives.
     """
-    def __init__(self, env, n_parallel, horizon, eps, mu_min=1e-3, mu_max=1e10, alpha=1, alpha_decay_factor=5.0, delta_0=2,
-                 c_1=0.01, use_hessian_f=False, verbose=False):
+    def __init__(self, env, n_parallel, horizon, eps,
+                 mu_min=1e-3, mu_max=1e10, mu_init=1e-3, delta_0=2, alpha=1, alpha_decay_factor=10.0,
+                 c_1=0.01, max_forward_iters=30, max_backward_iters=30, use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
@@ -779,10 +781,13 @@ class ParallelDDPExecutor(object):
         self.obs_dim = env.observation_space.shape[0]
         self.mu_min = mu_min
         self.mu_max = mu_max
+        self.mu_init = mu_init
         self.alpha = alpha
         self.alpha_decay_factor = alpha_decay_factor
         self.delta_0 = delta_0
         self.c_1 = c_1
+        self.max_forward_iters = max_forward_iters
+        self.max_backward_iters = max_backward_iters
         self.use_hessian_f = use_hessian_f
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
@@ -845,99 +850,104 @@ class ParallelDDPExecutor(object):
         """
         Backward Pass
         """
-        mu, delta = 1e-3, 2.0
         accepted = False
-        while not accepted:
+        backward_pass_counter = 0
+        while not accepted and backward_pass_counter < self.max_backward_iters and self.mu <= self.mu_max:
+            # reset
             V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
             open_loop_array, feedback_gain_array = [], []
             delta_J_1, delta_J_2 = 0, 0
-            accepted = True
-            for i in range(self.horizon-2, -1, -1):
-                V_prime_xx_reg = V_prime_xx + mu * np.identity(self.obs_dim)
-                if self.use_hessian_f:
-                    Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
-                else:
-                    Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i]
-                try :
-                    assert np.allclose(Q_uu, Q_uu.T)
-                except AssertionError:
-                    print(Q_uu)
-                    raise RuntimeError
-            # # FIXME: did not pass assertion
-                # if np.all(np.linalg.eigvals(Q_uu) > 0):
-                try:
-                    np.linalg.cholesky(Q_uu)
+
+            try:
+                # backward pass
+                for i in range(self.horizon-2, -1, -1):
+                    # compute Q
+                    logger.log(f'at {backward_pass_counter}-th backward pass, horizon {i}, with mu = {self.mu}')
+
+                    V_prime_xx_reg = V_prime_xx + self.mu * np.identity(self.obs_dim)
+                    if self.use_hessian_f:
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
+                    else:
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i]
+
+                        # Q_uu_no_reg = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
+                        # logger.log('Q_uu_no_reg min eigen value', np.min(np.linalg.eigvals(Q_uu_no_reg)))
+                        # logger.log('Q_uu min eigen value', np.min(np.linalg.eigvals(Q_uu)))
+
+                    if not np.allclose(Q_uu, Q_uu.T):
+                        print(Q_uu)
+                        raise RuntimeError
+
+                    # if np.all(np.linalg.eigvals(Q_uu) > 0):
+                    _ = np.linalg.cholesky(Q_uu)
                     # Q_uu is PD, decrease mu
-                    print(np.min(np.linalg.eigvals(Q_uu)))
-                    delta = min(1, delta) / self.delta_0
-                    mu *= delta
-                    if mu < self.mu_min:
-                        mu = 0.0
-                    # FIXME: mu, delta oscillates, this is not the right place to adapt?
-                # else:
-                except np.linalg.LinAlgError:
-                    # encountering non-PD Q_uu, increase mu
-                    print(np.min(np.linalg.eigvals(Q_uu)))
-                    if mu > self.mu_max:
-                        raise RuntimeError  # infinite loop
-                    # adapt delta, mu
-                    delta = max(1.0, delta) * self.delta_0
-                    mu = max(self.mu_min, mu * delta)
-                    # clear storage array
-                    open_loop_array, feedback_gain_array = [], []
-                    delta_J_1, delta_J_2 = 0, 0
-                    print(f'backward pass rejected at {i}, delta, mu = {delta}, {mu}')
-                    # reset flag
-                    accepted = False
-                    break
+                        # self._decrease_mu()
+                    # else:
 
-                Q_x = l_x[i] + f_x[i].T @ V_prime_x
-                Q_u = l_u[i] + f_u[i].T @ V_prime_x
-                if self.use_hessian_f:
-                    Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
-                    Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
-                else:
-                    Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
-                    Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i]
+                    Q_x = l_x[i] + f_x[i].T @ V_prime_x
+                    Q_u = l_u[i] + f_u[i].T @ V_prime_x
+                    if self.use_hessian_f:
+                        Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
+                    else:
+                        Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i]
 
-                # store control matrices
-                # Q_uu_inv = np.linalg.inv(Q_uu)
-                # k = - Q_uu_inv @ Q_u  # k
-                # K = - Q_uu_inv @ Q_ux  # K
-                k = - np.linalg.solve(Q_uu, Q_u)
-                K = - np.linalg.solve(Q_uu, Q_ux)
-                open_loop_array.append(k)
-                feedback_gain_array.append(K)
+                    # compute control matrices
+                    # Q_uu_inv = np.linalg.inv(Q_uu)
+                    # k = - Q_uu_inv @ Q_u  # k
+                    # K = - Q_uu_inv @ Q_ux  # K
+                    k = - np.linalg.solve(Q_uu, Q_u)
+                    K = - np.linalg.solve(Q_uu, Q_ux)
+                    open_loop_array.append(k)
+                    feedback_gain_array.append(K)
+                    delta_J_1 += k.T @ Q_u
+                    delta_J_2 += k.T @ Q_uu @ k
 
-                # prepare for next i
-                # V_prime_x = Q_x + Q_u @ feedback_gain
-                # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
-                delta_J_1 += k.T @ Q_u
-                delta_J_2 += k.T @ Q_uu @ k
-                V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
-                V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
-                V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
+                    # prepare for next i
+                    # V_prime_x = Q_x + Q_u @ feedback_gain
+                    # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+                    V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
+                    V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
+                    V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
+
+                # self._decrease_mu()
+                accepted = True
+
+            except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
+                logger.log('Q_uu min eigen value', np.min(np.linalg.eigvals(Q_uu)))
+                self._increase_mu()
+                backward_pass_counter += 1
+
+        logger.log(f'after backward loop, {accepted, backward_pass_counter, self.mu}')
+
+        if not accepted:
+            return False
+        else:
+            logger.log(f'backward accepted after {backward_pass_counter} failed iterations')
 
         """
         Forward Pass
         """
         alpha = 1.0
         converged = False
-        while not converged:
+        forward_pass_counter = 0
+        while not converged and forward_pass_counter < self.max_forward_iters:
+            # reset
             x_prime = x_array[0]
             opt_x_array, opt_u_array = [], []
             opt_J_val = 0
+
+            # forward pass
             for i in range(self.horizon-1):
                 x = x_prime
                 u = u_array[i] + alpha * open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
                 # print(f'stat for u at horizon {i}: max = {np.max(u)}, min = {np.min(u)}')
-                # u = np.clip(u, self.act_low, self.act_high)
+                u = np.clip(u, self.act_low, self.act_high)
 
                 # store updated state/action
                 opt_x_array.append(x)
                 opt_u_array.append(u)
-
-                # prepare for next i
                 time.sleep(0.004)
                 x_prime, reward = self._f(x, u)
                 opt_J_val += -reward
@@ -945,33 +955,77 @@ class ParallelDDPExecutor(object):
             opt_x_array.append(x_prime)
             opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
 
+            # check convergence
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
-                print(J_val, opt_J_val, delta_J_alpha)
-                print(f'forward pass accepted with alpha = {alpha}')
-                # break while loop
-                converged = True
-                # store updated x, u array (CLIPPED)
+                print(f'forward pass accepted with alpha = {alpha} after {forward_pass_counter} failed iterations')
+                # store updated x, u array (CLIPPED), J_val
                 opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-                opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
+                # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
                 self.x_array, self.u_array = opt_x_array, opt_u_array
+                self.J_val = opt_J_val
+                converged = True
             else:
                 # continue line search
                 alpha /= self.alpha_decay_factor
+                forward_pass_counter += 1
+
+            print(J_val, opt_J_val, delta_J_alpha)
+
+        # FIXME: adapt mu here?
+        if not converged:
+            # self._increase_mu()
+            logger.log('forward pass failed')
+            return True
+
+        self._decrease_mu()
+        return True
+
+    def _decrease_mu(self):
+        self.delta = min(1, self.delta) / self.delta_0
+        self.mu *= self.delta
+        if self.mu < self.mu_min:
+            self.mu = 0.0
+
+    def _increase_mu(self):
+        # adapt delta, mu
+        self.delta = max(1.0, self.delta) * self.delta_0
+        self.mu = max(self.mu_min, self.mu * self.delta)
+
+    def _reset_mu(self):
+        self.mu = self.mu_init
+        self.delta = self.delta_0
 
     def shift_x_u_by_one(self, u_new):
         # u_new must be clipped before passed in
         x_new, reward = self._f(x=self.x_array[-1, :], u=self.u_array[-1, :])
         self.x_array = np.concatenate([self.x_array[1:, :], x_new[None]])
         self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
+        self.J_val = -self._env.reward(obs=self.x_array[:-1], act=self.u_array[:-1], next_obs=None)
 
-    def reset_x_u(self, init_x_array, init_u_array, returns):
-        self.x_array, self.u_array = init_x_array, init_u_array
-        self.J_val = -returns
+    def reset_x_u(self, init_u_array):
+        self._reset_mu()
+        if init_u_array is None:
+            init_u_array = np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
+            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
+        self.u_array = init_u_array
+        self.x_array, self.J_val = self._run_open_loop(init_u_array)
+        logger.log(f'reset_x_u with J_val = {self.J_val}')
+
+    def _run_open_loop(self, u_array):
+        x_array, sum_rewards = [self._env.reset()], 0
+        for i in range(self.horizon-1):
+            x, reward, _, _ = self._env.step(u_array[i])
+            x_array.append(x)
+            sum_rewards += reward
+        x_array = np.stack(x_array, axis=0)
+        return x_array, -sum_rewards
 
     def compute_traj_returns(self, discount=1):
-        rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
-        return sum([discount**t * reward for t, reward in enumerate(rewards)])
+        # rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
+        # return sum([discount**t * reward for t, reward in enumerate(rewards)])
+        return -self.J_val
+
 
 def DDP_worker(remote, parent_remote, env_pickle, eps,
                        horizon, obs_dim, act_dim,
