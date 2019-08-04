@@ -213,6 +213,7 @@ class MLPRewardEnsemble(MLPRewardModel):
         for epoch in range(epochs):
 
             dataset_size_in_trans = self.buffer.size
+            val_size_in_trans = self.buffer.val_size
 
             # preparations for recording training stats
             epoch_start_time = time.time()
@@ -233,17 +234,19 @@ class MLPRewardEnsemble(MLPRewardModel):
                 batch_losses.append(batch_loss)
 
             """ ------- Calculating validation loss ------- """
-            obs_test_stack, act_test_stack, nextobs_test_stack, reward_test_stack = self.buffer.generate_reward_batch(test=True)
+            valid_losses = []
+            for _ in range(val_size_in_trans // self.batch_size):
+                obs_test_stack, act_test_stack, nextobs_test_stack, reward_test_stack = self.buffer.generate_reward_batch(test=True)
 
-            # compute validation loss
-            valid_loss = sess.run(self.loss_model_batches,
-                                  feed_dict={self.obs_ph: obs_test_stack,
-                                             self.act_ph: act_test_stack,
-                                             self.nextobs_ph: nextobs_test_stack,
-                                             self.reward_ph: reward_test_stack})
+                # compute validation loss
+                valid_loss = sess.run(self.loss_model_batches,
+                                      feed_dict={self.obs_ph: obs_test_stack,
+                                                 self.act_ph: act_test_stack,
+                                                 self.nextobs_ph: nextobs_test_stack,
+                                                 self.reward_ph: reward_test_stack})
+                valid_losses.append(valid_loss)
 
-
-            valid_loss = np.array(valid_loss)
+            valid_loss = np.mean(np.array(valid_losses), axis=0)
             if valid_loss_rolling_average is None:
                 valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
                 valid_loss_rolling_average_prev = 2.0 * valid_loss
@@ -266,10 +269,8 @@ class MLPRewardEnsemble(MLPRewardModel):
                     % (epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
                 )
 
-
             for i in range(self.num_models):
-                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[
-                    i] or epoch == epochs - 1) and i not in idx_to_remove:
+                if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
                     idx_to_remove.append(i)
                     epochs_per_model.append(epoch)
                     if epoch < epochs - 1:

@@ -261,7 +261,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
 
-    config_envs = {
+    config_sanity = {
         'seed': [1],
         'run_suffix': ['1'],
 
@@ -271,7 +271,7 @@ if __name__ == '__main__':
         'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [5],
+        'obs_stack': [3],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -325,7 +325,74 @@ if __name__ == '__main__':
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight':[1],
+        'cpc_loss_weight': [0, 1],
     }
 
-    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
+    config = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+
+        'env': ['cartpole_balance'],
+        'normalize': [False],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [3],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [20],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.2],
+        'rolling_average_persitency': [0.4],
+        'path_checkpoint_interval': [10],
+
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [32],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+        'input_is_img':[True],
+        'model_grad_thru_enc':[False],
+
+        # Reward Model
+        'reward_model_epochs': [15],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        'encoder': ['cpc'],
+        'latent_dim': [16],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [False],
+        'predict_action': [False],
+        'contrastive':[True],
+        'cpc_epoch': [0],
+        'cpc_lr': [5e-4],
+        'cpc_initial_epoch': [0],
+        'cpc_initial_lr': [1e-3],
+        'cpc_num_initial_rollouts': [64],
+        'cpc_train_interval': [1],
+        'cpc_loss_weight': [0.1, 1., 3, 10, 100],
+    }
+
+    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
