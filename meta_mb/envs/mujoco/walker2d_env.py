@@ -1,6 +1,7 @@
 import numpy as np
 from meta_mb.meta_envs.base import MetaEnv
 from meta_mb.logger import logger
+import tensorflow as tf
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 
@@ -32,6 +33,24 @@ class Walker2dEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         else:
             reward = self.reward(np.array([obs]), np.array([act]), np.array([obs_next]))[0]
         return reward
+
+    def tf_reward(self, obs, acts, next_obs):
+        reward_ctrl = -1e-3 * tf.reduce_sum(tf.square(acts), axis=1)
+        reward_run = obs[:, 8]
+        reward = reward_run + reward_ctrl + 1.0
+        return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        raise NotImplementedError
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:,None]
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        notdone = (obs[:, 0] > 0.8) * (obs[:, 0] < 2.0) * (obs[:, 1] > -1.0) * (obs[:, 1] < 1.0)
+        return np.logical_not(notdone)
 
     def done(self, obs):
         if obs.ndim == 2:

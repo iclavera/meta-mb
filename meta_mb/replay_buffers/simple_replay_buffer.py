@@ -81,13 +81,10 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         for _ in range(total_num):
             self._advance()
 
-
-
     def add_sample_simple(self, observation, **kwargs):
         self._observations[self._top] = observation
         # self._terminals[self._top] = terminal
         self._advance()
-
 
     def add_samples_simple(self, observations, **kwargs):
         total_num = observations.shape[0]
@@ -112,7 +109,6 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
     def all_samples(self):
         return self._observations[:self._size], self._actions[:self._size], self._next_obs[:self._size], self._rewards[:self._size], self._terminals[:self._size]
 
-
     def terminate_episode(self):
         pass
 
@@ -121,7 +117,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         if self._size < self._max_buffer_size:
             self._size += 1
 
-    def random_batch(self, batch_size, prefix = ''):
+    def random_batch(self, batch_size, prefix=''):
         indices = np.random.randint(0, self._size, batch_size)
         result = dict()
         result[prefix + 'observations'] = self._observations[indices]

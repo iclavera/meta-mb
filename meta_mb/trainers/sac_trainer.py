@@ -46,9 +46,8 @@ class Trainer(object):
             task=None,
             sess=None,
             n_initial_exploration_steps=1e3,
-            num_grad_steps=None,
-            max_replay_buffer_size=1e5,
-            epoch_length = 1000,
+            max_replay_buffer_size=int(1e6),
+            epoch_length=1000,
             ):
         self.algo = algo
         self.env = env
@@ -62,9 +61,7 @@ class Trainer(object):
         self.n_initial_exploration_steps = n_initial_exploration_steps
         self.replay_buffer = SimpleReplayBuffer(self.env, max_replay_buffer_size)
         self.epoch_length = epoch_length
-        # if num_grad_steps is None:
-        #     self.num_grad_steps = self.sampler.total_samples
-        self.num_grad_steps = self.epoch_length
+        self.num_grad_steps = self.sampler.total_samples
         if sess is None:
             sess = tf.Session()
         self.sess = sess
@@ -93,12 +90,12 @@ class Trainer(object):
                     while self.replay_buffer._size < self.n_initial_exploration_steps:
                         paths = self.sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                         samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                        sample_num = samples_data['observations'].shape[0]
-                        for i in range(sample_num):
-                            self.replay_buffer.add_sample(samples_data['observations'][i],
-                                                          samples_data['actions'][i], samples_data['rewards'][i],
-                                                          samples_data['dones'][i], samples_data['next_observations'][i],
-                                                          )
+                        self.replay_buffer.add_samples(samples_data['observations'],
+                                                       samples_data['actions'],
+                                                       samples_data['rewards'],
+                                                       samples_data['dones'],
+                                                       samples_data['next_observations'],
+                                                       )
 
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
@@ -117,11 +114,12 @@ class Trainer(object):
                 logger.log("Processing samples...")
                 time_proc_samples_start = time.time()
                 samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                sample_num = samples_data['observations'].shape[0]
-                for i in range(sample_num):
-                    self.replay_buffer.add_sample(samples_data['observations'][i], samples_data['actions'][i],
-                                                  samples_data['rewards'][i], samples_data['dones'][i],
-                                                  samples_data['next_observations'][i])
+                self.replay_buffer.add_samples(samples_data['observations'],
+                                               samples_data['actions'],
+                                               samples_data['rewards'],
+                                               samples_data['dones'],
+                                               samples_data['next_observations'],
+                                               )
                 proc_samples_time = time.time() - time_proc_samples_start
 
                 paths = self.sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
@@ -132,6 +130,7 @@ class Trainer(object):
                 """ ------------------ Policy Update ---------------------"""
 
                 logger.log("Optimizing policy...")
+
                 # This needs to take all samples_data so that it can construct graph for meta-optimization.
                 time_optimization_step_start = time.time()
                 
@@ -171,24 +170,3 @@ class Trainer(object):
         self.env.log_diagnostics(paths, prefix)
         self.policy.log_diagnostics(paths, prefix)
         self.baseline.log_diagnostics(paths, prefix)
-
-        # feed_dict = self._get_feed_dict(iteration, batch)
-        # # TODO(hartikainen): We need to unwrap self._diagnostics_ops from its
-        # # tensorflow `_DictWrapper`.
-        # diagnostics = self._session.run({**self._diagnostics_ops}, feed_dict)
-        #
-        # diagnostics.update(OrderedDict([
-        #     (f'policy/{key}', value)
-        #     for key, value in
-        #     self._policy.get_diagnostics(flatten_input_structure({
-        #         name: batch['observations'][name]
-        #         for name in self._policy.observation_keys
-        #     })).items()
-        # ]))
-        #
-        # if self._plotter:
-        #     self._plotter.draw()
-        #
-        # return diagnostics
-        #
-        # return diagnostics

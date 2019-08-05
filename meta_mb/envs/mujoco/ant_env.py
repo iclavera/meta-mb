@@ -2,6 +2,7 @@ import numpy as np
 from meta_mb.meta_envs.base import MetaEnv
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.logger import logger
+import tensorflow as tf
 import gym
 
 
@@ -15,7 +16,7 @@ class AntEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         self.do_simulation(a, self.frame_skip)
         xposafter = self.get_body_com("torso")[0]
         forward_reward = (xposafter - xposbefore)/self.dt
-        ctrl_cost = .5 * 0.1 * np.square(a).sum()
+        ctrl_cost = .5 * np.square(a).sum()
         survive_reward = 1.0
         reward = forward_reward - ctrl_cost + survive_reward
         state = self.state_vector()
@@ -33,15 +34,34 @@ class AntEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
             self.sim.data.qvel.flat,
         ])
 
-    def reward(self, obs, action, obs_next):
-        if obs_next.ndim == 2:
-            notdone = np.isfinite(obs_next).all() and (np.abs(obs_next[:, 1]) <= .2)
-            reward = notdone.astype(np.float32)
-            return reward
-        else:
-            notdone = np.isfinite(obs_next).all() and (np.abs(obs_next[1]) <= .2)
-            reward = float(notdone)
-            return reward
+    def reward(self, obs, acts, next_obs):
+        assert obs.ndim == 2
+        assert obs.shape == next_obs.shape
+        assert obs.shape[0] == acts.shape[0]
+        reward_ctrl = -0.5 * np.sum(np.square(acts), axis=1)
+        reward_run = obs[:, 13]
+        reward = reward_run + reward_ctrl + 1.0
+        return reward
+
+    def tf_reward(self, obs, acts, next_obs):
+        reward_ctrl = -0.5 * tf.reduce_sum(tf.square(acts), axis=1)
+        reward_run = next_obs[:, 13]
+        reward = reward_run + reward_ctrl + 1.0
+        return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        x = next_obs[:, 0]
+        not_done = tf.reduce_all(tf.is_finite(next_obs), axis = -1, keepdims = False) * (x >= 0.2) * (x <= 1.0)
+        done = ~not_done
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        x = next_obs[:, 0]
+        not_done = 	np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
+        done = ~not_done
+        return done
 
     def done(self, obs):
         if obs.ndim == 2:

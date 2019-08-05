@@ -114,28 +114,27 @@ class Trainer(object):
                     paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
                     samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                     self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                        samples_data['dones'], samples_data['next_observations'])
+                                                       samples_data['dones'], samples_data['next_observations'])
 
             if self.algo.obs_dim > 50:
                 self.deal_with_oom = 10
             else:
                 self.deal_with_oom = 1
 
-
+            time_step = 0
             for itr in range(self.start_itr, self.n_itr):
                 self.itr = itr
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
-                time_step = 0
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
                 self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
-                                            epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-')
+                                        epochs=self.dynamics_model_max_epochs, verbose=False,
+                                        log_tabular=True, prefix='Model-')
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
@@ -152,25 +151,32 @@ class Trainer(object):
                             term = self.env.termination_fn(random_states, actions_from_policy, next_obs)
                             term = term.reshape((-1))
                             rewards = self.env.reward(random_states, actions_from_policy, next_obs)
-                            self.model_replay_buffer.add_samples(random_states, actions_from_policy, rewards, term, next_obs)
+                            self.model_replay_buffer.add_samples(random_states,
+                                                                 actions_from_policy,
+                                                                 rewards,
+                                                                 term,
+                                                                 next_obs)
                     self.set_rollout_length(itr)
                     expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
 
                     sac_start = time.time()
                     for _ in range(self.model_train_freq):
-                        time_step += 1
                         for _ in range(self.n_train_repeats):
+                            time_step += 1
                             batch_size = self.sampler_batch_size
-                            env_batch_size = int(batch_size*self.real_ratio)
+                            env_batch_size = int(batch_size * self.real_ratio)
                             model_batch_size = batch_size - env_batch_size
                             env_batch = self.env_replay_buffer.random_batch(env_batch_size)
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            self.algo.do_training(itr * self.epoch_length + time_step, batch)
+                            self.algo.do_training(time_step, batch)
                     sac_time.append(time.time() - sac_start)
-                self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                        samples_data['dones'], samples_data['next_observations'])
+                self.env_replay_buffer.add_samples(samples_data['observations'],
+                                                   samples_data['actions'],
+                                                   samples_data['rewards'],
+                                                   samples_data['dones'],
+                                                   samples_data['next_observations'])
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
                 _ = self.env_sample_processor.process_samples(paths, log='all', log_prefix='eval-')
 
@@ -196,7 +202,6 @@ class Trainer(object):
         logger.log("Training finished")
         self.sess.close()
 
-
     def set_rollout_length(self, itr):
         min_epoch, max_epoch, min_length, max_length = self.rollout_length_params
         if itr <= min_epoch:
@@ -207,7 +212,6 @@ class Trainer(object):
             y = dx * (max_length - min_length) + min_length
 
         self.rollout_length = int(y)
-
 
     def get_itr_snapshot(self, itr):
         """

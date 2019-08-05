@@ -2,6 +2,7 @@ import numpy as np
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
+import tensorflow as tf
 
 class HopperEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def __init__(self):
@@ -49,6 +50,35 @@ class HopperEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
                       (np.abs(obs[3:]) < 100).all() and (obs[0] > .7) and \
                       (abs(obs[1]) < .2)
             return not notdone
+
+    def tf_reward(self, obs, acts, next_obs):
+        reward_ctrl = -1e-3 * tf.reduce_sum(tf.square(acts), axis=1)
+        reward_run = next_obs[:, 5]
+        reward = reward_run + reward_ctrl + 1.0
+        return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        height = next_obs[:, 0]
+        angle = next_obs[:, 1]
+        not_done = tf.math.logical_and(tf.math.logical_and(tf.math.logical_and(tf.reduce_all(tf.is_finite(next_obs), axis=-1, keepdims = False) \
+                    , tf.reduce_all(tf.abs(next_obs[:, 1:]) < 100, axis=-1, keepdims=False)) \
+                    , (height > .7)) \
+                    , ((tf.abs(angle)) < .2))
+        done = ~not_done
+        return done[:, None]
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        height = next_obs[:, 0]
+        angle = next_obs[:, 1]
+        not_done = np.isfinite(next_obs).all(axis=-1) \
+                    * (np.abs(next_obs[:, 1:]) < 100).all(axis=-1) \
+                    * (height > .7) \
+                    * (np.abs(angle)) < .2
+        done = ~not_done
+        done = done[:,None]
+        return done
 
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(low=-.005, high=.005, size=self.model.nq)

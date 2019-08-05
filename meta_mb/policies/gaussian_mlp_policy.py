@@ -205,7 +205,10 @@ class GaussianMLPPolicy(Policy):
         Returns:
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
-        raise ["mean", "log_std"]
+        if self.squashed:
+            return ["mean", "log_std", "pre_tanh"]
+        else:
+            return ["mean", "log_std"]
 
     """
     should not overwrite parent

@@ -34,7 +34,7 @@ class ValueFunction(Serializable):
                  action_dim,
                  name='v_fun',
                  hidden_sizes=(256, 256),
-                 hidden_nonlinearity=tf.tanh,
+                 hidden_nonlinearity=tf.nn.tanh,
                  output_nonlinearity=None,
                  **kwargs):
         # store the init args for serialization and call the super constructors
@@ -48,6 +48,7 @@ class ValueFunction(Serializable):
 
         self.vfun_params = None
         self.input_var = None
+        self.output_var = None
         self.qval_var = None
         self.log_std_var = None
         self.action_var = None
@@ -129,7 +130,7 @@ class ValueFunction(Serializable):
         Returns:
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
-        raise ["mean", "log_std"]
+        return ["mean", "log_std"]
 
     def _create_placeholders_for_vars(self, scope, graph_keys=tf.GraphKeys.TRAINABLE_VARIABLES):
         var_list = tf.get_collection(graph_keys, scope=scope)

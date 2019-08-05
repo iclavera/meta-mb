@@ -3,6 +3,7 @@ from meta_mb.logger import logger
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv
+import tensorflow as tf
 
 
 class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
@@ -15,7 +16,7 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
         xposafter = self.sim.data.qpos[0]
         ob = self._get_obs()
-        reward_ctrl = - 0.5 * 0.1 * np.square(action).sum()
+        reward_ctrl = - 0.1 * np.square(action).sum()
         reward_run = (xposafter - xposbefore) / self.dt
         reward = reward_ctrl + reward_run
         done = False
@@ -31,18 +32,36 @@ class HalfCheetahEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act), axis=1)
+            reward_ctrl = -0.1 * np.sum(np.square(act), axis=1)
             reward_run = obs_next[:, 8]
             reward = reward_run + reward_ctrl
             return np.clip(reward, -1e2, 1e2)
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
-            reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
+            reward_ctrl = -0.1 * np.sum(np.square(act))
             reward_run = obs_next[8]
             reward = reward_run + reward_ctrl
             return np.clip(reward, -1e2, 1e2)
         else:
             raise NotImplementedError
+
+    def tf_reward(self, obs, acts, next_obs):
+        reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
+        reward_run = next_obs[:, 8]
+        reward = reward_run + reward_ctrl
+        return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:, None]
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        done = np.array([False]).repeat(obs.shape[0])
+        done = done[:, None]
+        return done
 
     def reset_model(self):
         qpos = self.init_qpos + self.np_random.uniform(low=-.1, high=.1, size=self.model.nq)
