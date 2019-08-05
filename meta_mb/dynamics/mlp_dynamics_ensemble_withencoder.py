@@ -222,11 +222,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         sess = tf.get_default_session()
 
-        valid_loss_rolling_average = None
-        # train_op_to_do = self.train_op
-        idx_to_remove = []
+
         epoch_times = []
-        epochs_per_model = []
+        train_feed_dict_prep_time = 0
+        train_op_time = 0
+        train_batch_generation_time = 0
+
+        val_feed_dict_prep_time = 0
+        val_op_time = 0
+        val_batch_generation_time = 0
 
         """ ------- Looping over training epochs ------- """
         for epoch in range(epochs):
@@ -244,7 +248,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
             train_pb = Progbar(dataset_size_in_trans // self.batch_size)
             for batch in self.buffer.generate_batch():
-                obs_batch_stack, act_batch_stack, delta_batch_stack = batch
+                obs_batch_stack, act_batch_stack, delta_batch_stack, batch_time = batch
+                train_batch_generation_time += batch_time
+
+                time_feed_dict_start = time.time()
                 feed_dict = {self.obs_ph: obs_batch_stack,
                              self.act_ph: act_batch_stack,
                              self.delta_ph: delta_batch_stack}
@@ -256,10 +263,14 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.y_input_ph: inputs[2],
                                       self.cpc_model.labels_ph: labels})
 
+                train_feed_dict_prep_time += time.time() - time_feed_dict_start
+
                 # run train op
+                time_trainop_start = time.time()
                 operations = [self.total_loss] + (self.model_loss + [ self.cpc_model.loss] + list(self.cpc_model.accuracy)
                                                 if self.cpc_loss_weight else []) + [self.train_op]
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
+                train_op_time += time.time() - time_trainop_start
 
                 total_loss = batch_loss_train_ops[0]
                 prog_bar_list = [('total_loss', total_loss)]
@@ -282,7 +293,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             model_losses_val = []
             val_pb = Progbar(val_size_in_trans // self.batch_size)
             for batch in self.buffer.generate_batch(test=True):
-                obs_batch_stack, act_batch_stack, delta_batch_stack = batch
+                obs_batch_stack, act_batch_stack, delta_batch_stack, batch_time = batch
+                val_batch_generation_time += batch_time
+
+                time_feed_dict_start = time.time()
                 feed_dict = {self.obs_ph: obs_batch_stack,
                              self.act_ph: act_batch_stack,
                              self.delta_ph: delta_batch_stack}
@@ -293,11 +307,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.action_input_ph: inputs[1],
                                       self.cpc_model.y_input_ph: inputs[2],
                                       self.cpc_model.labels_ph: labels})
+                val_feed_dict_prep_time += time.time() - time_feed_dict_start
 
-                    # run train op
+                time_valop_start = time.time()
                 operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
                                                     if self.cpc_loss_weight else [])
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
+                val_op_time += time.time() - time_valop_start
 
                 total_loss = batch_loss_train_ops[0]
                 prog_bar_list = [('total_loss', total_loss)]
@@ -313,56 +329,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 total_losses_val.append(total_loss)
                 val_pb.add(1, prog_bar_list)
 
-            # valid_loss = total_loss
-            # if valid_loss_rolling_average is None:
-            #     valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
-            #     valid_loss_rolling_average_prev = 2.0 * valid_loss
-            #     for i in range(len(valid_loss)):
-            #         if valid_loss[i] < 0:
-            #             valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
-            #             valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
-            #
-            # valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
-            #                              + (1.0-rolling_average_persitency)*valid_loss
-
-            # if verbose:
-            #     str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
-            #     str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
-            #     str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-            #     logger.log(
-            #         "Training NNDynamicsModel - finished epoch %i --\n"
-            #         "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-            #         %(epoch, str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
-            #     )
-
-
-            # for i in range(self.num_models):
-            #     if (valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i] or epoch == epochs - 1) and i not in idx_to_remove:
-            #         idx_to_remove.append(i)
-            #         epochs_per_model.append(epoch)
-            #         if epoch < epochs - 1:
-            #             logger.log('At Epoch {}, stop model {} since its valid_loss_rolling_average decreased'.format(epoch, i))
-            #
-            # train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx not in idx_to_remove]
-            #
-            # if not idx_to_remove: epoch_times.append(time.time() - epoch_start_time) # only track epoch times while all models are trained
-            #
-            # if not train_op_to_do:
-            #     if verbose and epoch < epochs - 1:
-            #         logger.log('Stopping all DynamicsEnsemble Training before reaching max_num_epochs')
-            #     break
-            # valid_loss_rolling_average_prev = valid_loss_rolling_average
 
             epoch_times.append(time.time() - epoch_start_time)
 
         """ ------- Tabular Logging ------- """
         if log_tabular:
-            # logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
-            # assert len(epochs_per_model) == self.num_models
-            # logger.logkv(prefix+'AvgEpochs', np.mean(epochs_per_model))
-            # logger.logkv(prefix+'StdEpochs', np.std(epochs_per_model))
-            # logger.logkv(prefix+'MaxEpochs', np.max(epochs_per_model))
-            # logger.logkv(prefix+'MinEpochs', np.min(epochs_per_model))
+            logger.logkv(prefix+'AvgModelEpochTime', np.mean(epoch_times))
             logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(total_losses))
             if self.cpc_loss_weight > 0:
                 logger.logkv(prefix + 'AvgFinalTrainCPCLoss', np.mean(cpc_losses))
@@ -377,6 +349,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 logger.logkv(prefix + 'AvgFinalValidCPCWeightedLoss', np.mean(cpc_losses_val) * self.cpc_loss_weight)
                 logger.logkv(prefix + 'avgFinalValidCPCAcc', np.mean(cpc_accs_val))
                 logger.logkv(prefix + 'AvgFinalValidModelLoss', np.mean(model_losses_val))
+
+            logger.logkv(prefix + 'TimeTrainBatchGeneration', train_batch_generation_time)
+            logger.logkv(prefix + 'TimeValBatchGeneration', val_batch_generation_time)
+            logger.logkv(prefix + 'TimeTrainOp', train_op_time)
+            logger.logkv(prefix + 'TimeValOp', val_op_time)
+            logger.logkv(prefix + 'TimeTrainFeeddict', train_feed_dict_prep_time)
+            logger.logkv(prefix + 'TimeValFeeddict', val_feed_dict_prep_time)
 
 
     def predict_sym(self, obs_ph, act_ph):

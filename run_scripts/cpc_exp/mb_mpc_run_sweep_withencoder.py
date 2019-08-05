@@ -31,9 +31,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cpctraining-embedding'
+EXP_NAME = 'timedebug'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -322,11 +322,11 @@ if __name__ == '__main__':
         'contrastive':[True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [0],
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [0, 1],
+        'cpc_loss_weight': [0],
     }
 
     config = {
@@ -463,4 +463,4 @@ if __name__ == '__main__':
         'cpc_loss_weight': [0.],
     }
 
-    run_sweep(run_experiment, config_embedding, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_sanity, EXP_NAME, INSTANCE_TYPE)

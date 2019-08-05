@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
+import time
 
 from meta_mb.utils.serializable import Serializable
 
@@ -114,6 +115,7 @@ class ImageEmbeddingBuffer(Serializable):
                 self._train_idx[i] = np.concatenate([old_train_idx[-n_max:], train_idx])
 
     def generate_batch(self, test=False):
+        start_time = time.time()
         if self.return_image:
             data_act, data_obs, data_delta = self._dataset['act'], self._dataset['obs'], \
                                              self._dataset['obs'][:, 1:]
@@ -144,8 +146,10 @@ class ImageEmbeddingBuffer(Serializable):
                 ret_obs.append(obs_stack[ind1, ind2])
                 ret_actions.append(data_act[ind1, ind2])
                 ret_delta.append(data_delta[ind1, ind2])
-
-            yield np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_delta)
+            end_time = time.time()
+            time_spent = end_time - start_time
+            start_time = end_time
+            yield np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_delta), time_spent
 
     def generate_reward_batch(self, test=False):
         if self.return_image:
