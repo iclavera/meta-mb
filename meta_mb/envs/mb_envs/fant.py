@@ -72,7 +72,7 @@ class FAntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = next_obs[:, 0]
+        reward_run = next_obs[:, 13]
         reward_height = -3.0 * tf.square(next_obs[:, 0] - 0.57)
 
         height = next_obs[:, 0]
@@ -82,6 +82,20 @@ class FAntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         alive_reward = 1.0 - tf.cast(done, dtype=tf.float32)
         reward = reward_run + reward_ctrl + reward_height + alive_reward
         return reward
+
+    def tf_termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        x = next_obs[:, 0]
+        not_done = tf.reduce_all(tf.is_finite(next_obs), axis = -1, keepdims = False) * (x >= 0.2) * (x <= 1.0)
+        done = ~not_done
+        return done
+
+    def termination_fn(self, obs, act, next_obs):
+        assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+        x = next_obs[:, 0]
+        not_done = 	np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
+        done = ~not_done
+        return done
 
 
 if __name__ == "__main__":

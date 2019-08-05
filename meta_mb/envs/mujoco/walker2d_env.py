@@ -4,7 +4,7 @@ from meta_mb.logger import logger
 import gym
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 
-class Walker2DEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
+class Walker2dEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
     def __init__(self):
         MujocoEnv.__init__(self, 'walker2d.xml', 8)
         gym.utils.EzPickle.__init__(self)
