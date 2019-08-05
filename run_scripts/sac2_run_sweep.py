@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym2-ant-Q3"
+EXP_NAME = "gym2-Q3-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac2 import SAC2
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -169,10 +169,10 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [10],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 25]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200,400],
+		'dynamics_model_max_epochs': [200,50],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[3],
 		'q_target_type': [0],
@@ -194,7 +194,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['mean'],
+		'prediction_type':['none'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],

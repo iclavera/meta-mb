@@ -165,7 +165,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             q_values = [reward_values + next_q_values[j] for j in range(2)]
 
             # define loss and train_op
-            input_q_fun = tf.concat([self.obs_ph, actions_var], axis=-1)
+            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
             q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
             q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
