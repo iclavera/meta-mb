@@ -220,8 +220,8 @@ class MLPRewardEnsemble(MLPRewardModel):
             batch_losses = []
 
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
-            for _ in range(dataset_size_in_trans // self.batch_size):
-                obs_batch_stack, act_batch_stack, nextobs_batch_stack, reward_batch_stack = self.buffer.generate_reward_batch()
+            for batch in self.buffer.generate_reward_batch():
+                obs_batch_stack, act_batch_stack, nextobs_batch_stack, reward_batch_stack = batch
 
                 # run train op
                 batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
@@ -235,8 +235,8 @@ class MLPRewardEnsemble(MLPRewardModel):
 
             """ ------- Calculating validation loss ------- """
             valid_losses = []
-            for _ in range(val_size_in_trans // self.batch_size):
-                obs_test_stack, act_test_stack, nextobs_test_stack, reward_test_stack = self.buffer.generate_reward_batch(test=True)
+            for batch in self.buffer.generate_reward_batch(test=True):
+                obs_test_stack, act_test_stack, nextobs_test_stack, reward_test_stack = batch
 
                 # compute validation loss
                 valid_loss = sess.run(self.loss_model_batches,

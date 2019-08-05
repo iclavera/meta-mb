@@ -33,7 +33,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'cpctrainingsanity'
+EXP_NAME = 'cpctrainingsanity-efficient'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -366,7 +366,7 @@ if __name__ == '__main__':
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img':[True],
-        'model_grad_thru_enc':[False],
+        'model_grad_thru_enc':[True],
 
         # Reward Model
         'reward_model_epochs': [15],

@@ -120,9 +120,6 @@ class ImageEmbeddingBuffer(Serializable):
         else:
             data_act, data_obs, data_delta = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
                                             self._embedding_dataset['delta']
-        ret_obs = []
-        ret_delta = []
-        ret_actions = []
         data_obs = np.concatenate([np.zeros((data_obs.shape[0], self._num_stack - 1, *data_obs.shape[2:])), data_obs],
                                   axis=1)
         obs_stack = np.stack([data_obs[:, offset: data_obs.shape[1] + offset - self._num_stack + 1]
@@ -130,23 +127,25 @@ class ImageEmbeddingBuffer(Serializable):
         assert len(self._train_idx[0]) == len(data_act) == len(data_obs), 'the three are %d, %d, and %d respectively' \
                                                                           % (len(self._train_idx[0]), len(data_act),
                                                                              len(data_obs))
-
+        T = data_act.shape[1]
+        model_select_idxes = []
         for i in range(self._num_models):
             mask = 1 - self._train_idx[i] if test else self._train_idx[i]
             select_idx = np.arange(data_act.shape[0])[mask.astype(bool)]
-            obs = np.concatenate(obs_stack[select_idx])
-            actions = np.concatenate(data_act[select_idx], axis=0)
-            delta = np.concatenate(data_delta[select_idx], axis=0)
+            model_select_idxes.append(select_idx)
 
-            assert obs.shape[0] == actions.shape[0] == delta.shape[0]
+        for _ in range(len(model_select_idxes[0]) * T // self._batch_size):
+            ret_obs = []
+            ret_delta = []
+            ret_actions = []
+            for i in range(self._num_models):
+                ind1 = np.random.choice(model_select_idxes[i], size=self._batch_size)
+                ind2 = np.random.choice(T, size=self._batch_size)
+                ret_obs.append(obs_stack[ind1, ind2])
+                ret_actions.append(data_act[ind1, ind2])
+                ret_delta.append(data_delta[ind1, ind2])
 
-            batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
-
-            ret_obs.append(obs[batch_idx])
-            ret_actions.append(actions[batch_idx])
-            ret_delta.append(delta[batch_idx])
-
-        return np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_delta)
+            yield np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_delta)
 
     def generate_reward_batch(self, test=False):
         if self.return_image:
@@ -155,10 +154,7 @@ class ImageEmbeddingBuffer(Serializable):
         else:
             data_act, data_obs, data_reward = self._embedding_dataset['act'], self._embedding_dataset['obs'], \
                                               self._embedding_dataset['reward']
-        ret_obs = []
-        ret_nextobs = []
-        ret_actions = []
-        ret_reward = []
+
         data_nextobs = data_obs[:, 1:]
         data_obs = data_obs[:, :-1]
 
@@ -167,25 +163,28 @@ class ImageEmbeddingBuffer(Serializable):
             'the three are %d, %d, and %d respectively'  % (len(self._train_idx[0]), len(data_act),
                                                                              len(data_obs))
 
+        T = data_act.shape[1]
+        model_select_idxes = []
         for i in range(self._num_models):
             mask = 1 - self._train_idx[i] if test else self._train_idx[i]
             select_idx = np.arange(data_act.shape[0])[mask.astype(bool)]
-            obs = np.concatenate(data_obs[select_idx], axis=0)
-            actions = np.concatenate(data_act[select_idx], axis=0)
-            nextobs = np.concatenate(data_nextobs[select_idx], axis=0)
-            reward = np.concatenate(data_reward[select_idx], axis=0)
+            model_select_idxes.append(select_idx)
 
-            assert obs.shape[0] == actions.shape[0] == nextobs.shape[0] == reward.shape[0]
+        for _ in range(len(model_select_idxes[0]) * T // self._batch_size):
+            ret_obs = []
+            ret_nextobs = []
+            ret_actions = []
+            ret_reward = []
+            for i in range(self._num_models):
+                ind1 = np.random.choice(model_select_idxes[i], size=self._batch_size)
+                ind2 = np.random.choice(T, size=self._batch_size)
+                ret_obs.append(data_obs[ind1, ind2])
+                ret_actions.append(data_act[ind1, ind2])
+                ret_nextobs.append(data_nextobs[ind1, ind2])
+                ret_reward.append(data_reward[ind1, ind2])
 
-            batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
-
-            ret_obs.append(obs[batch_idx])
-            ret_actions.append(actions[batch_idx])
-            ret_nextobs.append(nextobs[batch_idx])
-            ret_reward.append(reward[batch_idx])
-
-        return np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_nextobs), \
-               np.concatenate(ret_reward).reshape((-1, 1))
+            yield np.concatenate(ret_obs), np.concatenate(ret_actions), np.concatenate(ret_nextobs), \
+                   np.concatenate(ret_reward).reshape((-1, 1))
 
     def compute_normalization(self, obs, act, delta, reward):
         assert obs.shape[0] == act.shape[0] == delta.shape[0] == reward.shape[0]

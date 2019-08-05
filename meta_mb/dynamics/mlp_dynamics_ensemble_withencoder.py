@@ -243,8 +243,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
             train_pb = Progbar(dataset_size_in_trans // self.batch_size)
-            for i in range(dataset_size_in_trans // self.batch_size):
-                obs_batch_stack, act_batch_stack, delta_batch_stack = self.buffer.generate_batch()
+            for batch in self.buffer.generate_batch():
+                obs_batch_stack, act_batch_stack, delta_batch_stack = batch
                 feed_dict = {self.obs_ph: obs_batch_stack,
                              self.act_ph: act_batch_stack,
                              self.delta_ph: delta_batch_stack}
@@ -281,8 +281,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             cpc_accs_val = []
             model_losses_val = []
             val_pb = Progbar(val_size_in_trans // self.batch_size)
-            for i in range(val_size_in_trans // self.batch_size):
-                obs_batch_stack, act_batch_stack, delta_batch_stack = self.buffer.generate_batch(test=True)
+            for batch in self.buffer.generate_batch(test=True):
+                obs_batch_stack, act_batch_stack, delta_batch_stack = batch
                 feed_dict = {self.obs_ph: obs_batch_stack,
                              self.act_ph: act_batch_stack,
                              self.delta_ph: delta_batch_stack}
