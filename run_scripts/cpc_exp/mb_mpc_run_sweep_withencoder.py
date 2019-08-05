@@ -284,7 +284,7 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.2],
-        'rolling_average_persitency': [0.4],
+        'rolling_average_persitency': [0.9],
         'path_checkpoint_interval': [10],
 
         # Dynamics Model
@@ -351,7 +351,7 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.2],
-        'rolling_average_persitency': [0.4],
+        'rolling_average_persitency': [0.9],
         'path_checkpoint_interval': [10],
 
         # Dynamics Model
@@ -395,4 +395,4 @@ if __name__ == '__main__':
         'cpc_loss_weight': [0.1, 1., 3, 10, 100],
     }
 
-    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_sanity, EXP_NAME, INSTANCE_TYPE)

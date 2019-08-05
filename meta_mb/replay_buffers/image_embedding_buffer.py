@@ -177,8 +177,7 @@ class ImageEmbeddingBuffer(Serializable):
 
             assert obs.shape[0] == actions.shape[0] == nextobs.shape[0] == reward.shape[0]
 
-            if not test:
-                batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
+            batch_idx = np.random.choice(obs.shape[0], size=self._batch_size)
 
             ret_obs.append(obs[batch_idx])
             ret_actions.append(actions[batch_idx])
