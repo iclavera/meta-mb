@@ -287,7 +287,7 @@ class SAC(Algo):
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            ('std', tf.math.reduce_std),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s" % (key, metric_name), metric_fn(values))
@@ -312,9 +312,10 @@ class SAC(Algo):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=value_dict)
             sess.run(self.training_ops, feed_dict)
-            if log:
-                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
-                for k, v in diagnostics.items():
-                    logger.logkv(k, v)
             if (timestep + i) % self.target_update_interval == 0:
                 self._update_target()
+
+        if log:
+            diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv(k, v)
