@@ -6,6 +6,7 @@ from .replay_buffer import ReplayBuffer
 from pdb import set_trace as st
 import copy
 
+
 class SimpleReplayBuffer(ReplayBuffer, Serializable):
     def __init__(self, env_spec, max_replay_buffer_size):
         super(SimpleReplayBuffer, self).__init__()
@@ -35,11 +36,11 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._size = 0
 
     def add_sample(self, observation, action, reward, terminal, next_observation, **kwargs):
-        self._observations[self._top] = observation
-        self._actions[self._top] = action
-        self._rewards[self._top] = reward
-        self._terminals[self._top] = terminal
-        self._next_obs[self._top] = next_observation
+        self._observations[self._top] = observation.copy()
+        self._actions[self._top] = action.copy()
+        self._rewards[self._top] = reward.copy()
+        self._terminals[self._top] = terminal.copy()
+        self._next_obs[self._top] = next_observation.copy()
 
         self._advance()
 
@@ -67,11 +68,13 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
                 self._rewards[self._top:] = rewards[:back_size]
                 self._terminals[self._top:] = terminals[:back_size]
                 self._next_obs[self._top:] = next_observations[:back_size]
+
                 self._observations[:total_num - back_size] = observations[back_size:]
                 self._actions[:total_num - back_size] = actions[back_size:]
                 self._rewards[:total_num - back_size] = rewards[back_size:]
                 self._terminals[:total_num - back_size] = terminals[back_size:]
                 self._next_obs[:total_num - back_size] = next_observations[back_size:]
+
             else:
                 print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
                 self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
@@ -128,17 +131,17 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
     def random_batch(self, batch_size, prefix=''):
         indices = np.random.randint(0, self._size, batch_size)
         result = dict()
-        result[prefix + 'observations'] = self._observations[indices]
-        result[prefix + 'actions'] = self._actions[indices]
-        result[prefix + 'rewards'] = self._rewards[indices]
-        result[prefix + 'dones'] = self._terminals[indices]
-        result[prefix + 'next_observations'] = self._next_obs[indices]
+        result[prefix + 'observations'] = self._observations[indices].copy()
+        result[prefix + 'actions'] = self._actions[indices].copy()
+        result[prefix + 'rewards'] = self._rewards[indices].copy()
+        result[prefix + 'dones'] = self._terminals[indices].copy()
+        result[prefix + 'next_observations'] = self._next_obs[indices].copy()
         return result
 
     def random_batch_simple(self, batch_size, prefix = ''):
         indices = np.random.randint(0, self._size, batch_size)
         result = dict()
-        result[prefix + 'observations'] = self._observations[indices]
+        result[prefix + 'observations'] = self._observations[indices].copy()
         return result
 
     @property

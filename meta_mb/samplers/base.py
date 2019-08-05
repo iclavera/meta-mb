@@ -283,7 +283,6 @@ class SampleProcessor(object):
 
         return observations, actions, rewards, dones, returns, advantages, env_infos, agent_infos
 
-
     def _stack_padding(self, paths, key, max_path):
         padded_array = np.stack([
             np.concatenate([path[key], np.zeros((max_path - path[key].shape[0],) + path[key].shape[1:])])

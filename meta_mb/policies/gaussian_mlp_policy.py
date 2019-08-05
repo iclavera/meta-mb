@@ -12,6 +12,8 @@ from collections import OrderedDict
 
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
+
+
 class GaussianMLPPolicy(Policy):
     """
     Gaussian multi-layer perceptron policy (diagonal covariance matrix)
@@ -58,40 +60,31 @@ class GaussianMLPPolicy(Policy):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             # build the actual policy network
             self.obs_var, self.output_var = create_mlp(name='network',
-                                                     output_dim=2 * self.action_dim,
-                                                     hidden_sizes=self.hidden_sizes,
-                                                     hidden_nonlinearity=self.hidden_nonlinearity,
-                                                     output_nonlinearity=self.output_nonlinearity,
-                                                     input_dim=(None, self.obs_dim,),
-                                                     )
+                                                       output_dim=2 * self.action_dim,
+                                                       hidden_sizes=self.hidden_sizes,
+                                                       hidden_nonlinearity=self.hidden_nonlinearity,
+                                                       output_nonlinearity=self.output_nonlinearity,
+                                                       input_dim=(None, self.obs_dim,),
+                                                      )
 
             self.mean_var, self.log_std_var = tf.split(self.output_var, 2, axis=-1)
-            # with tf.variable_scope("log_std_network", reuse=tf.AUTO_REUSE):
-            #     log_std_var = tf.get_variable(name='log_std_var',
-            #                                   shape=(1, self.action_dim,),
-            #                                   dtype=tf.float32,
-            #                                   initializer=tf.constant_initializer(self.init_log_std),
-            #                                   trainable=self.learn_std,
-            #                                   )
 
             self.log_std_var = tf.clip_by_value(self.log_std_var,
                                                 LOG_SIG_MIN,
-                                                LOG_SIG_MAX, name='log_std')
+                                                LOG_SIG_MAX,
+                                                name='log_std')
 
             # symbolically define sampled action and distribution
             self.action_var = self.mean_var + tf.random_normal(shape=tf.shape(self.mean_var)) * tf.exp(self.log_std_var)
 
             self._dist = DiagonalGaussian(self.action_dim, squashed=self.squashed)
 
-            # save the policy's trainable variables in dicts
-            # current_scope = tf.get_default_graph().get_name_scope()
             current_scope = self.name
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
-            self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
+            self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope),
+                                               var) for var in trainable_policy_vars])
 
             self.policy_params_ph = self._create_placeholders_for_vars(scope=self.name + "/network")
-            # log_std_network_phs = self._create_placeholders_for_vars(scope=self.name + "/log_std_network")
-            # self.policy_params_ph.update(log_std_network_phs)
             self.policy_params_keys = self.policy_params_ph.keys()
 
     def get_action(self, observation):
@@ -178,7 +171,8 @@ class GaussianMLPPolicy(Policy):
 
                 log_std_var = tf.clip_by_value(log_std_var,
                                                LOG_SIG_MIN,
-                                               LOG_SIG_MAX, name='log_std')
+                                               LOG_SIG_MAX,
+                                               name='log_std')
         else:
             obs_var, output_var = forward_mlp(output_dim=2 * self.action_dim,
                                             hidden_sizes=self.hidden_sizes,
@@ -190,9 +184,9 @@ class GaussianMLPPolicy(Policy):
 
             mean_var, log_std_var = tf.split(output_var, 2, axis=-1)
 
-            log_std_var = tf.clip_by_value(log_std_var,
-                                           LOG_SIG_MIN,
-                                           LOG_SIG_MAX)
+            # log_std_var = tf.clip_by_value(log_std_var,
+            #                                LOG_SIG_MIN,
+            #                                LOG_SIG_MAX)
 
         return dict(mean=mean_var, log_std=log_std_var)
 

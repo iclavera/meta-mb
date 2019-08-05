@@ -51,9 +51,7 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='',
-                       random=False, deterministic=False, sinusoid=False,
-                       verbose=False):
+    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, verbose=False):
         """
         Collect batch_size trajectories from each task
 
@@ -96,11 +94,6 @@ class Sampler(BaseSampler):
                 actions = [a_i['mean'] for a_i in agent_infos]
                 if self.policy.squashed:
                     actions = np.tanh(actions)
-            elif sinusoid:
-                action_space = self.env.action_space.shape[0]
-                num_envs = self.vec_env.num_envs
-                actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
-                agent_infos = dict()
             else:
                 actions, agent_infos = policy.get_actions(obses)
             policy_time += time.time() - t
