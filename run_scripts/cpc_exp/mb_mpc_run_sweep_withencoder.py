@@ -33,7 +33,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
-EXP_NAME = 'cpctrainingsanity-efficient'
+EXP_NAME = 'cpctraining-embedding'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -403,14 +403,14 @@ if __name__ == '__main__':
         # Problem
 
         'env': ['cartpole_balance'],
-        'normalize': [True, False],
+        'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [3],
+        'obs_stack': [5],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [12],  # Tau
+        'horizon': [20],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -427,10 +427,10 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [15],
+        'dynamic_model_epochs': [10],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [32],
+        'batch_size_model': [64],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img': [False],

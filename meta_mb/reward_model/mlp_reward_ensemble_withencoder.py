@@ -136,7 +136,7 @@ class MLPRewardEnsemble(MLPRewardModel):
                 self.act_ph = act = tf.placeholder(tf.float32, shape=(None, action_space_dims))
                 self.nextobs_ph = nextobs = tf.placeholder(tf.float32, shape=(None, *obs_space_dims))
                 self.reward_ph = reward = tf.placeholder(tf.float32, shape=(None, 1))
-                obs = tf.stop_gradient(self.encoder(obs))  # TODO: CHECK THAT THIS STOPS THE GRADIENT!
+                obs = tf.stop_gradient(self.encoder(obs))
                 nextobs = tf.stop_gradient(self.encoder(nextobs))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
