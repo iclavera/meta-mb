@@ -21,14 +21,24 @@ class Policy(Serializable):
         learn_std (bool) : whether to learn variance of network output
         hidden_nonlinearity (Operation) : nonlinearity used between hidden layers of network
         output_nonlinearity (Operation) : nonlinearity used after the final layer of network
+
     """
+    _activations = {
+        None: tf.identity,
+        "relu": tf.nn.relu,
+        "tanh": tf.tanh,
+        "sigmoid": tf.sigmoid,
+        "softmax": tf.nn.softmax,
+        "swish": lambda x: x * tf.sigmoid(x)
+    }
+
     def __init__(self,
                  obs_dim,
                  action_dim,
                  name='policy',
                  hidden_sizes=(32, 32),
                  learn_std=True,
-                 hidden_nonlinearity=tf.tanh,
+                 hidden_nonlinearity='tanh',
                  output_nonlinearity=None,
                  **kwargs
                  ):
@@ -40,8 +50,8 @@ class Policy(Serializable):
 
         self.hidden_sizes = hidden_sizes
         self.learn_std = learn_std
-        self.hidden_nonlinearity = hidden_nonlinearity
-        self.output_nonlinearity = output_nonlinearity
+        self.hidden_nonlinearity = self._activations[hidden_nonlinearity]
+        self.output_nonlinearity = self._activations[output_nonlinearity]
 
         self._dist = None
         self.policy_params = None

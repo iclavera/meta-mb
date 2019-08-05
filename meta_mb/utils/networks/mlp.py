@@ -9,7 +9,7 @@ def create_mlp(name,
                output_nonlinearity,
                input_dim=None,
                input_var=None,
-               w_init=tf.contrib.layers.xavier_initializer(),
+               w_init=tf.glorot_normal_initializer(),
                b_init=tf.zeros_initializer(),
                reuse=False
                ):

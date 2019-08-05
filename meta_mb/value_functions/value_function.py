@@ -29,12 +29,21 @@ class ValueFunction(Serializable):
 
     """
 
+    _activations = {
+        None: tf.identity,
+        "relu": tf.nn.relu,
+        "tanh": tf.tanh,
+        "sigmoid": tf.sigmoid,
+        "softmax": tf.nn.softmax,
+        "swish": lambda x: x * tf.sigmoid(x)
+    }
+
     def __init__(self,
                  obs_dim,
                  action_dim,
                  name='v_fun',
                  hidden_sizes=(256, 256),
-                 hidden_nonlinearity=tf.nn.tanh,
+                 hidden_nonlinearity='tanh',
                  output_nonlinearity=None,
                  **kwargs):
         # store the init args for serialization and call the super constructors
@@ -43,8 +52,8 @@ class ValueFunction(Serializable):
         self.action_dim = action_dim
         self.name = name
         self.hidden_sizes = hidden_sizes
-        self.hidden_nonlinearity = hidden_nonlinearity
-        self.output_nonlinearity = output_nonlinearity
+        self.hidden_nonlinearity = self._activations[hidden_nonlinearity]
+        self.output_nonlinearity = self._activations[output_nonlinearity]
 
         self.vfun_params = None
         self.input_var = None
