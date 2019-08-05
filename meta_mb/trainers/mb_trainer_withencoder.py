@@ -256,7 +256,7 @@ class Trainer(object):
                     # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
-                if self.dynamics_model.input_is_img:
+                if not self.dynamics_model.input_is_img:
                     self.buffer.update_embedding_buffer()
 
                 ''' --------------- fit dynamics model --------------- '''

@@ -308,10 +308,10 @@ class MLPRewardEnsemble(MLPRewardModel):
         :param act_ph: (batch_size, act_space_dims)
         :return: (batch_size, obs_space_dims)
         """
-        assert self.normalize_input
-        obs_ph = (obs_ph - self.buffer._mean_obs_var)/(self.buffer._std_obs_var + 1e-8)
-        act_ph = (act_ph - self.buffer._mean_act_var)/(self.buffer._std_act_var + 1e-8)
-        nextobs_ph = (nextobs_ph - self.buffer._mean_obs_var)/(self.buffer._std_obs_var + 1e-8)
+        if self.normalize_input:
+            obs_ph = (obs_ph - self.buffer._mean_obs_var)/(self.buffer._std_obs_var + 1e-8)
+            act_ph = (act_ph - self.buffer._mean_act_var)/(self.buffer._std_act_var + 1e-8)
+            nextobs_ph = (nextobs_ph - self.buffer._mean_obs_var)/(self.buffer._std_obs_var + 1e-8)
 
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
@@ -334,7 +334,10 @@ class MLPRewardEnsemble(MLPRewardModel):
                               input_dim=2 * self.latent_dim + self.action_space_dims,
                               )
                     # denormalize reward_pred
-                    reward_pred = mlp.output_var * self.buffer._std_reward_var + self.buffer._mean_reward_var
+                    if self.normalize_input:
+                        reward_pred = mlp.output_var * self.buffer._std_reward_var + self.buffer._mean_reward_var
+                    else:
+                        reward_pred = mlp.output_var
                     reward_preds.append(reward_pred)
 
         reward_preds = tf.concat(reward_preds, axis=0)
