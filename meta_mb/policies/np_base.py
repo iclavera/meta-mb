@@ -111,6 +111,12 @@ class NpPolicy(Serializable):
         """
         return list(self.policy_params.values())
 
+    def get_param_values_flatten(self):
+        raise NotImplementedError
+
+    def set_param_values_flatten(self, param_values_flatten):
+        raise NotImplementedError
+
     def set_params(self, policy_params):
         """
         Sets the parameters for the graph

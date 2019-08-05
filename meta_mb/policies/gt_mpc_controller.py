@@ -11,7 +11,9 @@ import numpy as np
 from meta_mb.logger import logger
 import os
 import ipopt
-from meta_mb.policies.utils import IPOPTShootingProblem, IPOPTCollocationProblem
+from meta_mb.policies.ipopt_problems.ipopt_collocation_problem import IPOPTCollocationProblem
+from meta_mb.policies.ipopt_problems.ipopt_shooting_problem import IPOPTShootingProblem
+from meta_mb.policies.ipopt_problems.ipopt_shooting_problem_w_policy import IPOPTShootingProblemWPolicy
 
 
 class GTMPCController(Serializable):
@@ -89,10 +91,10 @@ class GTMPCController(Serializable):
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+        self._env = copy.deepcopy(env)
 
         if self.method_str == 'opt_policy':
             self.horizon = horizon = max_path_length
-            self._env = copy.deepcopy(env)
             self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=np.tanh)
             self.planner = ParallelPolicyGradUpdateExecutor(
                 env, n_parallel, num_rollouts, horizon, eps,
@@ -103,7 +105,6 @@ class GTMPCController(Serializable):
 
         elif self.method_str == 'opt_act':
             self.horizon = horizon = max_path_length
-            self._env = copy.deepcopy(env)
             if initializer_str == 'uniform':
                 self.tau_mean_val = np.random.uniform(
                     low=self.env.action_space.low,
@@ -144,7 +145,6 @@ class GTMPCController(Serializable):
         elif self.method_str == 'collocation':
             self.planner_env = copy.deepcopy(env)
             self.real_env = copy.deepcopy(env)
-            self._env = copy.deepcopy(env)
             self.planner = ParallelCollocationExecutor(env, n_parallel, horizon, eps,
                                                        discount, verbose)
             # initialize s_array, a_array
@@ -177,14 +177,13 @@ class GTMPCController(Serializable):
         elif self.method_str == 'ddp':
             self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, verbose=verbose)
             self.executor = copy.deepcopy(env)
-            self._env = copy.deepcopy(env)  # used in _run_open_loop
             self.get_rollouts_factory = self.get_rollouts_DDP
 
         elif self.method_str == 'ipopt_collocation':
-            self._env = copy.deepcopy(env)
-            self.real_env = copy.deepcopy(env)
-            self.get_rollouts_factory = self.get_rollouts_ipopt_collocation
-            self.optimizer = GTOptimizer(opt_learning_rate)
+            self.executor = copy.deepcopy(env)
+            self.get_rollouts_factory = self.get_rollouts_ipopt
+            self.get_actions_factory = self.get_actions_ipopt_collocation
+            # self.optimizer = GTOptimizer(opt_learning_rate)
             # initialize s_array, a_array
             if self.initializer_str == 'uniform':
                 self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
@@ -205,10 +204,10 @@ class GTMPCController(Serializable):
             self.running_s_array = self.running_s_array[:-1]
 
         elif self.method_str == 'ipopt_shooting':
-            self._env = copy.deepcopy(env)
-            self.real_env = copy.deepcopy(env)
-            self.get_rollouts_factory = self.get_rollouts_ipopt_shooting
-            self.optimizer = GTOptimizer(opt_learning_rate)
+            self.executor = copy.deepcopy(env)
+            self.get_rollouts_factory = self.get_rollouts_ipopt
+            self.get_actions_factory = self.get_actions_ipopt_shooting
+            # self.optimizer = GTOptimizer(opt_learning_rate)
             # initialize s_array, a_array
             if self.initializer_str == 'uniform':
                 self.running_a_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
@@ -227,6 +226,27 @@ class GTMPCController(Serializable):
             else:
                 raise NotImplementedError
             self.running_s_array = self.running_s_array[:-1]
+
+        elif self.method_str == 'ipopt_shooting_w_policy':
+            self.executor = copy.deepcopy(env)
+            self.get_rollouts_factory = self.get_rollouts_ipopt
+            self.get_actions_factory = self.get_actions_ipopt_shooting_w_policy
+            self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
+            problem_obj_policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
+            self.problem_obj = IPOPTShootingProblemWPolicy(self._env, self.horizon, self.discount, policy=problem_obj_policy, eps=self.eps)
+            self.problem_config = dict(
+                n=self._policy.flatten_dim,
+                m=self.horizon*self.action_space_dims,
+                problem_obj=self.problem_obj,
+                lb=[-1e19]*self._policy.flatten_dim,
+                ub=[1e19]*self._policy.flatten_dim,
+                cl=[-1.0]*self.horizon*self.action_space_dims,
+                cu=[1.0]*self.horizon*self.action_space_dims,
+            )
+            self.nlp = nlp = ipopt.problem(**self.problem_config)
+            nlp.addOption('max_iter', 100)
+            nlp.addOption('tol', 1e-5)
+            nlp.addOption('mu_strategy', 'adaptive')
 
         elif self.method_str == 'rs':
             raise NotImplementedError
@@ -262,10 +282,6 @@ class GTMPCController(Serializable):
 
         # return info['old_return'][:, -1]
 
-    def get_rollouts_opt_act_w_replanning(self, deterministic=False, plot_first_rollout=False):
-        # TODO
-        pass
-
     def _run_open_loop(self, a_array):
         s_array, returns = [], 0
         obs = self._env.reset()
@@ -296,29 +312,33 @@ class GTMPCController(Serializable):
             self._shift_x_u_by_one()
             _, reward, _, _ = self.executor.step(optimized_action)
             sum_rewards += reward
-            logger.log(f'reward at path length {t}: {reward}')
-            logger.log(f'total reward at path length {t}: {sum_rewards}')
+            logger.logkv('PathLength', t)
+            logger.logkv('Reward', reward)
+            logger.logkv('TotalReward', sum_rewards)
+            logger.dumpkvs()
 
         return [sum_rewards]
 
     def get_actions_DDP(self):
         # do gradient steps
-        while True:
-            try:
-                for itr in range(self.num_ddp_iters):
-                    assert self.planner.update_x_u_for_one_step()
+        ddp_itr_counter = 0
+        while ddp_itr_counter < self.num_ddp_iters:
+            backward_accept, _ = self.planner.update_x_u_for_one_step()
+            if not backward_accept:
+                # reset
+                self.planner.reset_x_u(init_u_array=None)  # FIXME: reset here??
+                ddp_itr_counter = 0
+            else:
+                # log
+                if ddp_itr_counter % 10 == 0:
+                    logger.log(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
+                    logger.log(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
 
-                    if itr % 10 == 0:
-                        print(f'stats for x, max = {np.max(self.planner.x_array)}, min = {np.min(self.planner.x_array)}, mean {np.mean(self.planner.x_array)}')
-                        print(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
+                logger.logkv('Itr', ddp_itr_counter)
+                logger.logkv('PlannerReturn', self.planner.compute_traj_returns())
+                logger.dumpkvs()
 
-                    # report performance
-                    logger.logkv('Itr', itr)
-                    logger.logkv('PlannerReturn', self.planner.compute_traj_returns())
-                    logger.dumpkvs()
-                break
-            except AssertionError:
-                self.planner.reset_x_u(init_u_array=None)
+                ddp_itr_counter += 1
 
         # save optimized action BEFORE SHIFTING
         optimized_action = self.planner.u_array[0, :]
@@ -345,30 +365,20 @@ class GTMPCController(Serializable):
         elif self.initializer_str == 'zeros':
             u_new = np.zeros((self.action_space_dims,))
         else:
-            raise NotImplementedError
+            u_new = None
         self.planner.shift_x_u_by_one(u_new)
 
-    def get_rollouts_ipopt_collocation(self, deterministic=False, plot_first_rollout=False):
-        obs = self.real_env.reset()
+    def get_rollouts_ipopt(self, deterministic=False, plot_first_rollout=False):
+        obs = self.executor.reset()
         sum_rewards = 0
         for t in range(self.max_path_length):
-            optimized_action = self.get_actions_ipopt_collocation(obs)
-            obs, reward, _, _ = self.real_env.step(optimized_action)
+            optimized_action = self.get_actions_factory(obs)
+            obs, reward, _, _ = self.executor.step(optimized_action)
             sum_rewards += reward
-            logger.log(f'reward at path length {t}: {reward}')
-            logger.log(f'total reward at path length {t}: {sum_rewards}')
-
-        return [sum_rewards]
-
-    def get_rollouts_ipopt_shooting(self, deterministic=False, plot_first_rollout=False):
-        obs = self.real_env.reset()
-        sum_rewards = 0
-        for t in range(self.max_path_length):
-            optimized_action = self.get_actions_ipopt_shooting(obs)
-            obs, reward, _, _ = self.real_env.step(optimized_action)
-            sum_rewards += reward
-            logger.log(f'reward at path length {t}: {reward}')
-            logger.log(f'total reward at path length {t}: {sum_rewards}')
+            logger.logkv('PathLength', t)
+            logger.logkv('Reward', reward)
+            logger.logkv('TotalReward', sum_rewards)
+            logger.dumpkvs()
 
         return [sum_rewards]
 
@@ -427,6 +437,20 @@ class GTMPCController(Serializable):
                                   size=self.action_space_dims)
         self.running_a_array = np.concatenate([actions[1:], [u_new]])
         return actions[0]
+
+    def get_actions_ipopt_shooting_w_policy(self, obs):
+        self.problem_obj.set_init_obs(obs)
+        # nlp.addOption('hessian_approximation', 'limited-memory')
+
+        x0 = self._policy.get_param_values_flatten()
+        x, info = self.nlp.solve(x0)
+
+        self._policy.set_param_values_flatten(x)
+        optimal_action, _ = self._policy.get_action(obs)
+        logger.log(f'stats for optimal_action: max = {np.max(optimal_action)}, min = {np.min(optimal_action)}')
+        optimal_action = np.clip(optimal_action, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
+
+        return optimal_action
 
     def get_rollouts_collocation(self, deterministic=False, plot_first_rollout=False):
         _ = self.real_env.reset()
@@ -632,7 +656,7 @@ class GTMPCController(Serializable):
         std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
               * (self.env.action_space.high - self.env.action_space.low) / 4
 
-        for itr in range(2):
+        for itr in range(10):
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
             # constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
             # std = np.sqrt(constrained_var)

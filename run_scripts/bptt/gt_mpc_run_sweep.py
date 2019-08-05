@@ -3,7 +3,8 @@ from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.gt_sampler import GTSampler
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv
+from meta_mb.envs.mb_envs import *
+from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
@@ -26,6 +27,9 @@ def run_experiment(**config):
         config['max_path_length'] = max_path_length = 1000
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
+        config['max_path_length'] = max_path_length = 100
+    elif config['env'] is InvertedPendulumSwingUpEnv:
+        repr += 'ipup'
         config['max_path_length'] = max_path_length = 100
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
@@ -124,15 +128,15 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
-        'n_itr': [201],  # only matters for opt_policy
+        'n_itr': [1],  # only matters for opt_policy
         'discount': [1.0,],
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['cem'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['ddp'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['ipopt_shooting_w_policy'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
 
         'num_opt_iters': [50,], #20, 40,],
@@ -142,7 +146,7 @@ if __name__ == '__main__':
         'deterministic_policy': [True],
 
         # cem
-        'horizon': [30],  # only matters for cem/rs
+        'horizon': [30],  # only matters for cem/rs/collocation
         'n_candidates': [1000],
         'num_cem_iters': [50],
         'alpha': [0.15],
@@ -154,7 +158,7 @@ if __name__ == '__main__':
         'persistency': [0.9],
 
         # DDP
-        'num_ddp_iters': [100],
+        'num_ddp_iters': [5],
 
         # Training
         'num_rollouts': [1],  # number of experts

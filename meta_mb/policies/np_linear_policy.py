@@ -19,9 +19,10 @@ class LinearPolicy(NpPolicy):
         # self.policy_params = OrderedDict(W=np.zeros((action_dim, obs_dim), dtype=np.float64),
         #                                  b=np.zeros((action_dim,), dtype=np.float64))
         self.policy_params = OrderedDict(
-            W=np.zeros((action_dim, obs_dim), dtype=np.float64),
+            W=np.zeros((action_dim, obs_dim), dtype=np.float64) + np.random.normal(loc=0, scale=0.1, size=((action_dim, obs_dim))),
             b=np.random.normal(loc=0, scale=0.5, size=(action_dim,))
         )
+        self.flatten_dim = action_dim * (obs_dim + 1)
         self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
 
     def get_actions(self, observations, update_filter=True):
@@ -64,6 +65,16 @@ class LinearPolicy(NpPolicy):
         if self.output_nonlinearity is not None:
             actions = self.output_nonlinearity(actions)
         return actions, {}
+
+    def get_param_values_flatten(self):
+        W_ravel = self.policy_params['W'].ravel()
+        b_ravel = self.policy_params['b'].ravel()
+        return np.concatenate([W_ravel, b_ravel], axis=0)
+
+    def set_param_values_flatten(self, param_values_flatten):
+        W, b = param_values_flatten[:self.obs_dim*self.action_dim], param_values_flatten[-self.action_dim:]
+        W = np.reshape(W, (self.action_dim, self.obs_dim))
+        self.policy_params['W'], self.policy_params['b'] = W, b
 
     def perturb_W(self, i, j, eps):
         self.policy_params['W'][i, j] += eps
