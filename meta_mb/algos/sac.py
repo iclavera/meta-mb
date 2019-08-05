@@ -40,7 +40,7 @@ class SAC(Algo):
             target_update_interval=1,
             action_prior='uniform',
             reparameterize=True,
-            sampler_batch_size=256,
+            batch_size=256,
             session=None,
     ):
         """
@@ -81,7 +81,7 @@ class SAC(Algo):
         self.Q_lr = learning_rate
         self.tau = tau
         self._dataset = None
-        self.sampler_batch_size = sampler_batch_size
+        self.batch_size = batch_size
         self.session = session or tf.keras.backend.get_session()
         self._squash = True
         """===============added==========end============"""
@@ -308,7 +308,7 @@ class SAC(Algo):
     def optimize_policy(self, buffer, timestep, grad_steps, log=True):
         sess = tf.get_default_session()
         for i in range(grad_steps):
-            value_dict = buffer.random_batch(self.sampler_batch_size)
+            value_dict = buffer.random_batch(self.batch_size)
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=value_dict)
             sess.run(self.training_ops, feed_dict)
