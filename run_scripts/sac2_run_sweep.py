@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "SAC2-Q5-5"
+EXP_NAME = "gym2-ant-Q3"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac2 import SAC2
@@ -95,6 +95,7 @@ def run_experiment(**kwargs):
                                                 buffer_size=kwargs['dynamics_buffer_size'],
 												rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                 q_loss_importance=kwargs['q_loss_importance'],
+                                                T=kwargs['T'],
                                                 )
 
 
@@ -150,7 +151,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -165,25 +166,26 @@ if __name__ == '__main__':
 		'n_initial_exploration_steps': [5e3],
         'env_replay_buffer_max_size': [1e6],
         'model_replay_buffer_max_size': [2e6],
-		'n_itr': [3000],
-        'n_train_repeats': [8],
+		'n_itr': [1000],
+        'n_train_repeats': [10],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 25]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [200,400],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
-		'q_target_type': [1],
-		'num_actions_per_next_observation': [5, 10],
-        'T': [3],
-		'H': [3, 5],
+		'q_functioin_type':[3],
+		'q_target_type': [0],
+		'num_actions_per_next_observation': [0],
+        'T': [2, 3],
+		'H': [0],
 		'reward_scale': [1],
-		'target_entropy': [-3, -6],
-		'num_models': [8],
+		'target_entropy': [1],
+		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [0.01, 1, 100],
+
 
 
         # Problem Conf
