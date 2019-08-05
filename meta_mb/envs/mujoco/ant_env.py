@@ -52,14 +52,15 @@ class AntEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
     def tf_termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
         x = next_obs[:, 0]
-        not_done = tf.reduce_all(tf.is_finite(next_obs), axis = -1, keepdims = False) * (x >= 0.2) * (x <= 1.0)
+        not_done = tf.math.logical_and(tf.math.logical_and(tf.reduce_all(tf.is_finite(next_obs), axis = -1, keepdims = False), (x >= 0.2)), (x <= 1.0))
         done = ~not_done
+        done = done[:, None]
         return done
 
     def termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
         x = next_obs[:, 0]
-        not_done = 	np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
+        not_done = np.isfinite(next_obs).all(axis=-1) * (x >= 0.2) * (x <= 1.0)
         done = ~not_done
         return done
 

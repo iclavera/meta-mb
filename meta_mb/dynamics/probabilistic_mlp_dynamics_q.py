@@ -34,6 +34,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  q_loss_importance=0,
+                 T=0,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -66,13 +67,13 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         self.policy = policy
         self.reward_scale = reward_scale
         self.discount = discount
+        self.T = T
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = action_space_dims = env.action_space.shape[0]
         self.timesteps_counter = 0
         self.used_timesteps_counter = 0
-        self.reward_scale = reward_scale
         self.discount=discount
         self.q_loss_importance = q_loss_importance
 
@@ -143,25 +144,30 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-
-            next_obs = self.predict_sym(self.obs_ph, self.act_ph)
-            dist_info_sym = self.policy.distribution_info_sym(next_obs)
-            next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-
-            next_log_pis_var = self.policy.distribution.log_likelihood_sym(next_actions_var, dist_info_sym)
-            next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-
-            # change this for other environments
-            dones_ph = tf.cast(self.dones_ph, self.obs_ph.dtype)
-            dones_ph = tf.expand_dims(dones_ph, axis=-1)
-            rewards = self.env.tf_reward(self.obs_ph, self.act_ph, next_obs)
-            input_q_fun = tf.concat([next_obs, next_actions_var], axis=-1)
-            q_values = [rewards + self.discount * (1 - dones_ph) * (Q.value_sym(input_var=input_q_fun) - next_log_pis_var) for Q in self.Qs]
+            obs = self.obs_ph
+            dist_info_sym = self.policy.distribution_info_sym(obs)
+            actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+            actions = actions_var
+            for i in range(self.T+1):
+                next_observation = self.predict_sym(obs, actions)
+                dist_info_sym = self.policy.distribution_info_sym(next_observation)
+                next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                rewards = self.env.tf_reward(obs, actions, next_observation)
+                rewards = tf.expand_dims(rewards, axis=-1)
+                dones = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
+                if i == 0 :
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
+                else:
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                obs, actions = next_observation, next_actions_var
+            input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_values = [reward_values + next_q_values[j] for j in range(2)]
 
             # define loss and train_op
             input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
-
             q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+
             q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
                                         for i in range(2)]
 

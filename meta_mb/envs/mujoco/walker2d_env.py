@@ -41,10 +41,11 @@ class Walker2dEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         return reward
 
     def tf_termination_fn(self, obs, act, next_obs):
-        raise NotImplementedError
+        # raise NotImplementedError
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
-        done = done[:,None]
+        # done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        notdone = tf.math.logical_and(tf.math.logical_and(tf.math.logical_and((obs[:, 0] > 0.8),(obs[:, 0] < 2.0)), (obs[:, 1] > -1.0)),(obs[:, 1] < 1.0))
+        done = ~notdone[:,None]
         return done
 
     def termination_fn(self, obs, act, next_obs):

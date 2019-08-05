@@ -3,13 +3,13 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "Hopper-Q0-r"
+EXP_NAME = "gym-Q5"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
+from meta_mb.envs.mujoco import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
@@ -146,7 +146,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 23],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -161,22 +161,22 @@ if __name__ == '__main__':
 		'n_initial_exploration_steps': [5e3],
         'env_replay_buffer_max_size': [1e6],
         'model_replay_buffer_max_size': [2e6],
-		'n_itr': [3000],
-        'n_train_repeats': [8],
+		'n_itr': [1000],
+        'n_train_repeats': [10],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 15]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [50,200],
+		'dynamics_model_max_epochs': [200,50],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[3],
+		'q_functioin_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation': [5],
+		'num_actions_per_next_observation': [5, 30],
         'H': [0],
-        'T': [2],
+        'T': [2,3],
 		'reward_scale': [1],
-		'target_entropy': [1, 0.5],
-		'num_models': [4],
+		'target_entropy': [0.5, 1],
+		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
 
@@ -187,7 +187,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['mean'],
+		'prediction_type':['none'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],
