@@ -50,7 +50,7 @@ def run_experiment(**config):
                               'vae' if config['encoder'] == 'vae' else
                               'encoder.h5' if not config['use_context_net'] else
                               'context.h5')
-    raw_env, max_path_length = make_env(config['env'])
+    raw_env, max_path_length = make_env(config['env'], render_size=config['img_shape'][:2])
 
 
     if config['use_image']:
@@ -60,7 +60,7 @@ def run_experiment(**config):
         #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
         from meta_mb.unsupervised_learning.cpc.cpc import CPC
 
-        cpc_model = CPC((64, 64, 3), raw_env.action_space.shape[0], config['include_action'],
+        cpc_model = CPC(config['img_shape'], raw_env.action_space.shape[0], config['include_action'],
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                         learning_rate=config['cpc_initial_lr'], encoder_arch='default',
                         context_network='stack', context_size=32, predict_action=config['predict_action'],
@@ -83,15 +83,16 @@ def run_experiment(**config):
                 if config['use_context_net']:
                     encoder = CPCContextNet(None, model=cpc_model.get_layer('context_network'))
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
-                                        latent_dim=config['latent_dim'], time_major=True)
+                                        latent_dim=config['latent_dim'], time_major=True, img_size=config['img_shape'])
                 else:
                     # encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
                     encoder = cpc_model.encoder
-                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1,) #vae=encoder,
+                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, img_size=config['img_shape']) #vae=encoder,
                                         #latent_dim=config['latent_dim'])
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
-                env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder, latent_dim=config['latent_dim'])
+                env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder,
+                                    latent_dim=config['latent_dim'], img_size=config['img_shape'])
         else:
             env = NormalizedEnv(raw_env)
 
@@ -273,6 +274,7 @@ if __name__ == '__main__':
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [3],
+        'img_shape': [(32, 32, 3)],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -340,6 +342,7 @@ if __name__ == '__main__':
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [3],
+        'img_shape': [(32, 32, 3)],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -407,6 +410,7 @@ if __name__ == '__main__':
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [3],
+        'img_shape': [(32, 32, 3)],
 
         # Policy
         'n_candidates': [1000],  # K
@@ -458,7 +462,7 @@ if __name__ == '__main__':
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [20],
+        'cpc_num_initial_rollouts': [10],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [0.],
     }

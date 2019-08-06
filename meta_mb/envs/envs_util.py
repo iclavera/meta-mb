@@ -1,7 +1,7 @@
 from meta_mb.envs.mujoco.point_pos import PointEnv
 from meta_mb.envs.mujoco.inverted_pendulum_env import InvertedPendulumEnv
 
-def make_env(env, distractor=False, ptsize=2):
+def make_env(env, render_size=(64, 64), distractor=False, ptsize=2):
 
     if env == 'pt':
         if distractor:
@@ -19,31 +19,31 @@ def make_env(env, distractor=False, ptsize=2):
     elif env == 'cartpole_balance':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance'), render_size=render_size),
                                                  keys=['position', 'velocity']), amount=8)
         max_path_length = 125
     elif env == 'cartpole_balance_norepeat':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance')),
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'balance'), render_size=render_size),
                                                  keys=['position', 'velocity']), amount=1)
         max_path_length = 1000
     elif env == 'cartpole_swingup':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'swingup')),
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cartpole', 'swingup'), render_size=render_size),
                                                  keys=['position', 'velocity']), amount=8)
         max_path_length = 125
     elif env == 'reacher_easy':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy')),
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('reacher', 'easy'), render_size=render_size),
                                                  keys=['position', 'velocity', 'to_target']), amount=4)
         max_path_length = 250
     elif env == 'cheetah_run':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
-        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run')),
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run'), render_size=render_size),
                                                  keys=['position', 'velocity']), amount=4)
         max_path_length = 250
     else:

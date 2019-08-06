@@ -68,7 +68,7 @@ class Trainer(object):
             cpc_initial_lr = 1e-3,
             cpc_epoch=5,
             cpc_lr=1e-4,
-            cpc_batch_size=32,
+            cpc_batch_size=64,
             cpc_negative_samples=10,
             cpc_negative_same_traj=0,
             cpc_initial_sampler=None,

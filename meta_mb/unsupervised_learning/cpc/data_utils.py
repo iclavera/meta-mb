@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+import time
 
 class CPCDataGenerator(object):
     def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0,
@@ -54,6 +55,7 @@ class CPCDataGenerator(object):
         y_images and labels shape: batch_size x predict_terms x (negative_samples + 1)
         """
         # get the starting index of x_images
+        t0 = time.time()
         idx_n = np.random.randint(0, self.n_seqs, self.batch_size)
         start_idx_t = np.random.randint(0, self.n_chunks, (self.batch_size, 1))
         x_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
@@ -65,6 +67,9 @@ class CPCDataGenerator(object):
 
         # gather the x_images
         x_images = self.images[idx_n[:, None], x_idx_t]
+        t1 = time.time()
+
+        # print('gather x images', t1 - t0)
 
 
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
@@ -90,6 +95,10 @@ class CPCDataGenerator(object):
         if self.no_neg and self.predict_action:
             return x_images, y_pos.reshape((self.batch_size, -1))
 
+        t2 = time.time()
+        #
+        # print('gather y positives', t2 - t1)
+
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)
         neg_idx_n = np.stack([np.random.choice(seq_index[seq_index!=i], size=(self.predict_terms, self.negative_samples - self.negative_same_traj))
@@ -107,25 +116,33 @@ class CPCDataGenerator(object):
             neg_idx_t = np.concatenate([neg_idx_t, neg_idx_t2], axis=-1)
 
         if self.predict_action:
-            y_neg = self.actions[neg_idx_n, neg_idx_t]
+            # y_neg = self.actions[neg_idx_n, neg_idx_t]
+            y = np.concatenate([np.expand_dims(y_pos, 2), self.actions[neg_idx_n, neg_idx_t]], axis=2)
         else:
-            y_neg = self.images[neg_idx_n, neg_idx_t]
+            # y_neg = self.images[neg_idx_n, neg_idx_t]
+            y = np.concatenate([np.expand_dims(y_pos, 2), self.images[neg_idx_n, neg_idx_t]], axis=2)
+
+        t3 = time.time()
+        # print('gather y negatives', t3 - t2)
+
 
         # concatenate positive samples with negative ones
-        y = np.concatenate([y_pos[:, :, None, ...], y_neg], axis=2)
+
 
         pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + 1)).astype('int32')
         pos_neg_label[:, :, 0] = 1
 
+
         # permute the batch so that positive samples are at random places
-        rand_idx_n = np.arange(self.batch_size)[:, None, None]
-        rand_idx_t = np.arange(self.predict_terms)[None, :, None]
-        rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + 1)
-                                           for i in range(self.predict_terms)]) for j in range(self.batch_size)])
+        # rand_idx_n = np.arange(self.batch_size)[:, None, None]
+        # rand_idx_t = np.arange(self.predict_terms)[None, :, None]
+        # rand_idx_neg = np.stack([np.stack([np.random.permutation(self.negative_samples + 1)
+        #                                    for i in range(self.predict_terms)]) for j in range(self.batch_size)])
 
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
 
-        return [x_images, actions, y[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
+        # return [x_images, actions, y[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
+        return [x_images, actions, y], pos_neg_label
 
 def plot_seq(x, y, labels, name=''):
     """
