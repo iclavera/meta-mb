@@ -327,7 +327,7 @@ class SAC(Algo):
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            ('std', tf.math.reduce_std),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s"%(key,metric_name), metric_fn(values))

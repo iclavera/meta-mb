@@ -4,6 +4,7 @@ from meta_mb.utils.serializable import Serializable
 
 from .replay_buffer import ReplayBuffer
 from pdb import set_trace as st
+import copy
 
 class SimpleReplayBuffer(ReplayBuffer, Serializable):
     def __init__(self, env_spec, max_replay_buffer_size):
@@ -43,7 +44,13 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._advance()
 
     def add_samples(self, observations, actions, rewards, terminals, next_observations, **kwargs):
+        assert len(observations) == len(actions) == len(rewards) == len(terminals) == len(next_observations)
         total_num = observations.shape[0]
+        observations, actions, rewards, terminals, next_observations = copy.deepcopy([observations,
+                                                                                      actions,
+                                                                                      rewards,
+                                                                                      terminals,
+                                                                                      next_observations])
         if self._top + total_num <= self._max_buffer_size:
             self._observations[self._top: self._top + total_num] = observations
             self._actions[self._top: self._top + total_num] = actions
@@ -78,8 +85,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
                 self._terminals[:remaining] = terminals[back_size + redundant * self._max_buffer_size:]
                 self._next_obs[:remaining] = next_observations[back_size + redundant * self._max_buffer_size:]
 
-        for _ in range(total_num):
-            self._advance()
+        self._advance(num=total_num)
 
     def add_sample_simple(self, observation, **kwargs):
         self._observations[self._top] = observation
@@ -103,19 +109,21 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
                 self._observations[:] = observations[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
                 self._observations[:remaining] = observations[back_size + redundant * self._max_buffer_size:]
 
-        for _ in range(total_num):
-            self._advance()
+        self._advance(num=total_num)
 
     def all_samples(self):
-        return self._observations[:self._size], self._actions[:self._size], self._next_obs[:self._size], self._rewards[:self._size], self._terminals[:self._size]
+        return self._observations[:self._size], self._actions[:self._size],\
+               self._next_obs[:self._size], self._rewards[:self._size], self._terminals[:self._size]
 
     def terminate_episode(self):
         pass
 
-    def _advance(self):
-        self._top = (self._top + 1) % self._max_buffer_size
-        if self._size < self._max_buffer_size:
-            self._size += 1
+    def _advance(self, num=1):
+        self._top = (self._top + num) % self._max_buffer_size
+        if self._size + num < self._max_buffer_size:
+            self._size += num
+        else:
+            self._size = self._max_buffer_size
 
     def random_batch(self, batch_size, prefix=''):
         indices = np.random.randint(0, self._size, batch_size)
@@ -131,7 +139,6 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         indices = np.random.randint(0, self._size, batch_size)
         result = dict()
         result[prefix + 'observations'] = self._observations[indices]
-        # result[prefix + 'dones'] = self._terminals[indices]
         return result
 
     @property
