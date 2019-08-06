@@ -337,7 +337,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance'],
+        'env': ['cartpole_balance', 'cartpole_swingup'],
         'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
@@ -346,7 +346,7 @@ if __name__ == '__main__':
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [12],  # Tau
+        'horizon': [20],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -366,7 +366,7 @@ if __name__ == '__main__':
         'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [32],
+        'batch_size_model': [64],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img':[True],
@@ -396,7 +396,7 @@ if __name__ == '__main__':
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [0.1, 1., 10, 100],
+        'cpc_loss_weight': [0.1, 1., 10],
     }
 
     config_embedding = {
@@ -467,4 +467,4 @@ if __name__ == '__main__':
         'cpc_loss_weight': [0.],
     }
 
-    run_sweep(run_experiment, config_embedding, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
