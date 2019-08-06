@@ -1,14 +1,21 @@
+from collections import OrderedDict
 from numbers import Number
+
 import numpy as np
 import tensorflow as tf
+# import tensorflow_probability as tfp
+# from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
+from meta_mb.utils import create_feed_dict
 """===============added==========start============"""
+from pdb import set_trace as st
 from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
+import time
 
 
 def td_target(reward, discount, next_value):
@@ -42,6 +49,7 @@ class SAC(Algo):
             reparameterize=True,
             batch_size=256,
             session=None,
+            **kwargs
     ):
         """
         Args:
@@ -67,11 +75,9 @@ class SAC(Algo):
 
         super(SAC, self).__init__(policy)
 
-        """===============added==========start============"""
         self.name = name
         self.policy = policy
         self.discount = discount
-        # self.recurrent = getattr(self.policy, 'recurrent', False)
         self.recurrent = False
         self.training_environment = env
         self.target_entropy = (-np.prod(self.training_environment.action_space.shape)
@@ -84,7 +90,6 @@ class SAC(Algo):
         self.batch_size = batch_size
         self.session = session or tf.keras.backend.get_session()
         self._squash = True
-        """===============added==========end============"""
         self.Qs = Qs
         if Q_targets is None:
             self.Q_targets = Qs
@@ -94,7 +99,8 @@ class SAC(Algo):
         self.target_update_interval = target_update_interval
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self._optimization_keys = ['observations', 'actions', 'next_observations', 'dones', 'rewards']
+        self._optimization_keys = ['observations', 'actions',
+                                   'next_observations', 'dones', 'rewards']
 
         self.build_graph()
 
@@ -194,9 +200,7 @@ class SAC(Algo):
         input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
         q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target,
-                                                                 predictions=q_value,
-                                                                 weights=0.5)
+        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
                                     for q_value in q_values_var]
 
         self.q_optimizers = [tf.train.AdamOptimizer(
@@ -290,7 +294,7 @@ class SAC(Algo):
             ('std', tf.math.reduce_std),
         ))
         self.diagnostics_ops = OrderedDict([
-            ("%s-%s" % (key, metric_name), metric_fn(values))
+            ("%s-%s"%(key,metric_name), metric_fn(values))
             for key, values in diagnosables.items()
             for metric_name, metric_fn in diagnostic_metrics.items()
         ])
@@ -312,10 +316,10 @@ class SAC(Algo):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=value_dict)
             sess.run(self.training_ops, feed_dict)
-            if (timestep + i) % self.target_update_interval == 0:
+            if log:
+                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
+                for k, v in diagnostics.items():
+                    logger.logkv(k, v)
+            if timestep % self.target_update_interval == 0:
                 self._update_target()
 
-        if log:
-            diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
-            for k, v in diagnostics.items():
-                logger.logkv(k, v)

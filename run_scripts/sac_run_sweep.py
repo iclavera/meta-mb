@@ -9,7 +9,7 @@ EXP_NAME = 'sac-fixes'
 from meta_mb.algos.sac import SAC
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
+from meta_mb.envs.mujoco import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -102,7 +102,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [11],
+        'seed': [1, 11],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv, AntEnv, HopperEnv, Walker2dEnv],
 
@@ -121,7 +121,7 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # Problem Conf
-        'n_itr': [1000],
+        'n_itr': [3000],
         'max_path_length': [1000],
         'discount': [0.99],
         'learning_rate': [3e-4],
