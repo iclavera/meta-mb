@@ -91,7 +91,13 @@ def run_experiment(**kwargs):
                                                 learning_rate=kwargs['model_learning_rate'],
                                                 buffer_size=kwargs['dynamics_buffer_size'],
 												rolling_average_persitency=kwargs['rolling_average_persitency'],
-                                                q_loss_importance=kwargs['q_loss_importance'],,
+                                                q_loss_importance=kwargs['q_loss_importance'],
+                                                Qs=Qs,
+                                                Q_targets=Q_targets,
+                                                policy=policy,
+                                                T=kwargs['T'],
+                                                reward_scale=kwargs['reward_scale'],
+                                                discount=kwargs['discount'],
                                                 )
 
 
@@ -104,8 +110,6 @@ def run_experiment(**kwargs):
             dynamics_model=dynamics_model,
             obs_dim = obs_dim,
             action_dim = action_dim,
-            Qs=Qs,
-            Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
             prediction_type=kwargs['prediction_type'],

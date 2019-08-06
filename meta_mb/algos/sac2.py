@@ -29,6 +29,8 @@ class SAC2(Algo):
             policy,
             env,
             dynamics_model,
+            obs_dim,
+            action_dim,
             discount=0.99,
             name="sac",
             learning_rate=3e-4,
@@ -83,10 +85,10 @@ class SAC2(Algo):
         self.dynamics_model = dynamics_model
         self.recurrent = False
         self.training_environment = env
-        self.action_dim = np.prod(self.training_environment.action_space.shape)
-        self.ovs_dim = np.prod(self.training_environment.observation_space.shape)
-        self.target_entropy = (-self.action_dim
-                               if target_entropy == 'auto' else target_entropy)
+        self.action_dim = action_dim
+        self.obs_dim = obs_dim
+        assert 0<=target_entropy
+        self.target_entropy = (-target_entropy * self.action_dim)
 
         self.learning_rate = learning_rate
         self.policy_lr = learning_rate
