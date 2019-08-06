@@ -161,8 +161,8 @@ class Trainer(object):
 
                     sac_start = time.time()
                     for _ in range(self.model_train_freq):
+                        time_step += 1
                         for _ in range(self.n_train_repeats):
-                            time_step += 1
                             batch_size = self.sampler_batch_size
                             env_batch_size = int(batch_size * self.real_ratio)
                             model_batch_size = batch_size - env_batch_size

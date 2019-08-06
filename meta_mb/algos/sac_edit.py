@@ -10,6 +10,8 @@ from pdb import set_trace as st
 from meta_mb.logger import logger
 from tensorflow.python.training import training_util
 from random import randint
+import time
+
 
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
@@ -35,9 +37,9 @@ class SAC_MB(Algo):
             action_dim,
             Q_targets=None,
             discount=0.99,
-            name="sac-mbself.self.self",
+            name="sac-mb",
             learning_rate=3e-4,
-            target_entropy='auto',
+            target_entropy=1.0,
             reward_scale=1.0,
             tau=5e-3,
             target_update_interval=1,
@@ -186,7 +188,7 @@ class SAC_MB(Algo):
 
 
 
-    def _get_q_target(self, time_step = 0):
+    def _get_q_target(self):
         next_observations_ph = self.op_phs_dict['next_observations']
         dist_info_sym = self.policy.distribution_info_sym(next_observations_ph)
         next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
@@ -407,13 +409,13 @@ class SAC_MB(Algo):
                 rewards = tf.expand_dims(rewards, axis=-1)
                 dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
                 if i == 0 :
-                    reward_values = [(self.discount**(i)) * self.reward_scale * rewards * (1 - dones) for _ in range(2)]
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
-                    reward_values = [(self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values[j] for j in range(2)]
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
                 obs, actions = next_observation, next_actions_var
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
             next_q_values = [(self.discount ** (self.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            q_values_var = [reward_values[j] + next_q_values[j] for j in range(2)]
+            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
         elif self.q_functioin_type == 4:
@@ -603,45 +605,37 @@ class SAC_MB(Algo):
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
-                    input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
                 next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
                 q_values_var = [reward_values + next_q_values[j] for j in range(2)]
                 min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-                obs, actions = next_observation, next_actions_var
-                grad = self.policy_optimizer.compute_gradients(min_q_val_var, var_list=var_list)
+                min_q_val_var = tf.reshape(min_q_val_var, [self.dynamics_model.num_models, -1, 1])
+                m = self.dynamics_model.num_models
+                grad = [self.policy_optimizer.compute_gradients(tf.reduce_mean(min_q_val_var[idx]), var_list=var_list) for idx in range(m)]
                 grads.append(grad)
+                obs, actions = next_observation, next_actions_var
+            temps = []
+            for v in range(len(var_list)):
+                grad = [[grads[t][idx][v][0] for idx in range(m)] for t in range(self.T + 1)]
+                temps.append(tf.stack(grad))
+
             grad_stacks = []
+            rollout_frames = self.T+1
             for i in range(len(var_list)):
-                grad_stack = tf.stack([grad[i][0] for grad in grads])
-                grad_stacks.append(grad_stack)
-                rollout_frames = self.T+1
-                grads = tf.reshape(grad_stack, [rollout_frames, self.dynamics_model.num_models, -1, 1])
-                num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
-
-                """randomly choose a partion of the models. """
-                indices_lst = []
-                for _ in range(rollout_frames):
-                    indices = tf.range(self.dynamics_model.num_models)
-                    indices = tf.random.shuffle(indices)
-                    indices_lst.append(indices[:num_models])
-                indices = tf.stack(indices_lst)
-                indices = tf.reshape(indices, [-1])
-                rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
-                indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
-                indices = tf.concat([rollout_len_indices, indices], axis = 1)
-                grads = tf.gather_nd(grads, indices)
-                grads = tf.reshape(grads, [rollout_frames, num_models, -1, 1])
-
-                target_means, target_variances = tf.nn.moments(grads, 1)
+                grad = temps[i]
+                target_means, target_variances = tf.nn.moments(grad, 1)
                 target_confidence = 1./(target_variances + 1e-8)
-                target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
+                dim = len(grad.get_shape().as_list())
+                lst = [rollout_frames]
+                for _ in range(dim-2):
+                    lst.append(1)
+                target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
                 target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
-                self.confidence = target_confidence
-                min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
-
+                grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
+                grad_stacks.append(grad)
             if self.reparameterize:
-                policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
+                policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
             else:
                 raise NotImplementedError
 
@@ -649,13 +643,12 @@ class SAC_MB(Algo):
 
             self.policy_losses = policy_kl_losses
             policy_loss = tf.reduce_mean(policy_kl_losses)
-
-
-            test = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
-
-            policy_train_op = self.policy_optimizer.minimize(
-                loss=policy_loss,
-                var_list=list(self.policy.policy_params.values()))
+            grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
+            real_list = []
+            for i in range(len(var_list)):
+                value = (grads_and_vars[i][0] + grad_stacks[i], grads_and_vars[i][1])
+                real_list.append(value)
+            policy_train_op = self.policy_optimizer.apply_gradients(real_list)
 
             # self.actor_ops.update({'policy_train_op': policy_train_op})
             self.training_ops.update({'policy_train_op': policy_train_op})
@@ -679,7 +672,6 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
-        # self.actor_ops.update({'policy_train_op': policy_train_op})
         self.training_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):
@@ -695,7 +687,7 @@ class SAC_MB(Algo):
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
-            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            ('std', tf.math.reduce_std),
         ))
         self.diagnostics_ops = OrderedDict([
             ("%s-%s"%(key,metric_name), metric_fn(values))
@@ -712,7 +704,6 @@ class SAC_MB(Algo):
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
-
 
 
     def do_training(self, timestep, batch, log=False):

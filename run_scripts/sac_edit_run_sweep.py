@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym-hopper-Q0"
+EXP_NAME = "gym-Q7-3"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -12,13 +12,13 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mujoco import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 
 
@@ -62,12 +62,12 @@ def run_experiment(**kwargs):
             squashed=True
         )
 
-        env_sampler = Sampler(
+        env_sampler = BaseSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
-            n_parallel=kwargs['n_parallel'],
+
         )
 
         env_sample_processor = ModelSampleProcessor(
@@ -113,6 +113,7 @@ def run_experiment(**kwargs):
 			model_used_ratio=kwargs['model_used_ratio'],
 			experiment_name=EXP_NAME,
 			exp_dir=exp_dir,
+            target_update_interval=kwargs['n_train_repeats'],
         )
 
         trainer = Trainer(
@@ -144,9 +145,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22, 23],
+        'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -164,19 +165,19 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [10],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 15]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [50,200],
+		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[0],
+		'q_functioin_type':[7],
 		'q_target_type': [0],
 		'num_actions_per_next_observation': [0],
         'H': [0],
-        'T': [1],
+        'T': [2, 3, 4],
 		'reward_scale': [1],
-		'target_entropy': [0.5],
-		'num_models': [4, 7, 8],
+		'target_entropy': [1, 0.5],
+		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
 

@@ -321,5 +321,4 @@ class SAC(Algo):
                 for k, v in diagnostics.items():
                     logger.logkv(k, v)
             if timestep % self.target_update_interval == 0:
-                self._update_target()
-
+                    self._update_target()

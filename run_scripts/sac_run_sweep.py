@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-fixes'
+EXP_NAME = 'sac-rerun5'
 
 
 from meta_mb.algos.sac import SAC
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': ['tanh', 'relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh', 'relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
 
 
         # Env Sampling
@@ -126,7 +126,7 @@ if __name__ == '__main__':
         'discount': [0.99],
         'learning_rate': [3e-4],
         'reward_scale': [1.],
-        'batch_size': [256, 64],
+        'batch_size': [256],
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
