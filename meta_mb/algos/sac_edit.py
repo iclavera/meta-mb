@@ -631,7 +631,7 @@ class SAC_MB(Algo):
                 for _ in range(dim-2):
                     lst.append(1)
                 target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
-                target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
+                target_confidence = tf.stop_gradient(target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True))
                 grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
                 grad_stacks.append(grad)
             if self.reparameterize:
@@ -646,7 +646,7 @@ class SAC_MB(Algo):
             grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
             real_list = []
             for i in range(len(var_list)):
-                value = (grads_and_vars[i][0] + grad_stacks[i], grads_and_vars[i][1])
+                value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
                 real_list.append(value)
             policy_train_op = self.policy_optimizer.apply_gradients(real_list)
 

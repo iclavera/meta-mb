@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym-Q7-3"
+EXP_NAME = "gym-hopper-Q3-4"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -147,7 +147,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -163,18 +163,18 @@ if __name__ == '__main__':
         'env_replay_buffer_max_size': [1e6],
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
-        'n_train_repeats': [10],
+        'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[7],
+		'q_functioin_type':[3],
 		'q_target_type': [0],
 		'num_actions_per_next_observation': [0],
         'H': [0],
-        'T': [2, 3, 4],
+        'T': [2, 3],
 		'reward_scale': [1],
 		'target_entropy': [1, 0.5],
 		'num_models': [4, 8],
