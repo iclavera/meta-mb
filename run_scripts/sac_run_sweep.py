@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'hopper-r'
+EXP_NAME = 'sac-fixes'
 
 
 from meta_mb.algos.sac import SAC
@@ -12,7 +12,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_trainer import Trainer
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
@@ -40,12 +40,14 @@ def run_experiment(**kwargs):
 
         Qs = [ValueFunction(name="q_fun_%d" % i,
                             obs_dim=int(np.prod(env.observation_space.shape)),
-                            action_dim=int(np.prod(env.action_space.shape))
+                            action_dim=int(np.prod(env.action_space.shape)),
+                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],
                             ) for i in range(2)]
 
         Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
                                    obs_dim=int(np.prod(env.observation_space.shape)),
-                                   action_dim=int(np.prod(env.action_space.shape))
+                                   action_dim=int(np.prod(env.action_space.shape)),
+                                   hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],
                                    ) for i in range(2)]
 
         policy = GaussianMLPPolicy(
@@ -55,23 +57,21 @@ def run_experiment(**kwargs):
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
+            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             squashed=True
         )
 
-        sampler = Sampler(
+        sampler = BaseSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
-            n_parallel=kwargs['n_parallel'],
+
         )
 
         sample_processor = ModelSampleProcessor(
             baseline=baseline,
             discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
         )
 
         algo = SAC(
@@ -81,7 +81,8 @@ def run_experiment(**kwargs):
             env=env,
             Qs=Qs,
             Q_targets=Q_targets,
-            reward_scale=kwargs['reward_scale']
+            reward_scale=kwargs['reward_scale'],
+            batch_size=kwargs['batch_size']
         )
 
         trainer = Trainer(
@@ -103,12 +104,17 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [11],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
-        # 'env': [AntEnv],
+        'env': [HalfCheetahEnv, AntEnv, HopperEnv, Walker2dEnv],
+
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
+        'policy_hidden_nonlinearity': ['tanh', 'relu'],
+
+        # Value Function
+        'vfun_hidden_nonlineariy': ['tanh', 'relu'],
+
 
         # Env Sampling
         'num_rollouts': [1],
@@ -118,12 +124,9 @@ if __name__ == '__main__':
         'n_itr': [1000],
         'max_path_length': [1000],
         'discount': [0.99],
-        'gae_lambda': [1.],
-        'normalize_adv': [True],
-        'positive_adv': [False],
         'learning_rate': [3e-4],
         'reward_scale': [1.],
-        'sampler_batch_size': [256],
+        'batch_size': [256, 64],
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -28,7 +28,7 @@ class BaseSampler(object):
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
 
-    def obtain_samples(self, log=False, log_prefix='', random=False):
+    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False):
         """
         Collect batch_size trajectories from each task
 
@@ -65,6 +65,11 @@ class BaseSampler(object):
             if random:
                 action = self.env.action_space.sample()
                 agent_info = {}
+            elif deterministic:
+                action, agent_info = policy.get_action(obs)
+                action = agent_info['mean']
+                if self.policy.squashed:
+                    action = np.tanh(action)
             else:
                 action, agent_info = policy.get_action(obs)
                 if action.ndim == 2:
@@ -76,10 +81,6 @@ class BaseSampler(object):
             next_obs, reward, done, env_info = self.env.step(action)
 
             ts += 1
-            done = done or ts >= self.max_path_length
-            if done:
-                next_obs = self.env.reset()
-                ts = 0
 
             env_time += time.time() - t
 
@@ -96,7 +97,7 @@ class BaseSampler(object):
             running_paths["agent_infos"].append(agent_info)
 
             # if running path is done, add it to paths and empty the running path
-            if done:
+            if done or ts >= self.max_path_length:
                 paths.append(dict(
                     observations=np.asarray(running_paths["observations"]),
                     actions=np.asarray(running_paths["actions"]),
@@ -107,6 +108,10 @@ class BaseSampler(object):
                 ))
                 new_samples += len(running_paths["rewards"])
                 running_paths = _get_empty_running_paths_dict()
+
+            if done or ts >= self.max_path_length:
+                next_obs = self.env.reset()
+                ts = 0
 
             if log: pbar.update(new_samples)
             n_samples += new_samples
