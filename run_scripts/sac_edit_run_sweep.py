@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym-hopper-Q3-4"
+EXP_NAME = "gym-Q0-4"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -46,11 +46,13 @@ def run_experiment(**kwargs):
 
         Qs = [ValueFunction(name="q_fun_%d" % i,
                             obs_dim=obs_dim,
-                            action_dim=action_dim) for i in range(2)]
+                            action_dim=action_dim,
+                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
         Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
                                    obs_dim=obs_dim,
-                                   action_dim=action_dim) for i in range(2)]
+                                   action_dim=action_dim,
+                                   hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -59,6 +61,7 @@ def run_experiment(**kwargs):
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
+            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             squashed=True
         )
 
@@ -147,7 +150,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -165,21 +168,26 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 15]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[3],
+		'q_functioin_type':[0],
 		'q_target_type': [0],
 		'num_actions_per_next_observation': [0],
         'H': [0],
-        'T': [2, 3],
+        'T': [0],
 		'reward_scale': [1],
 		'target_entropy': [1, 0.5],
 		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
+
+        'policy_hidden_nonlinearity': ['relu'],
+
+        # Value Function
+        'vfun_hidden_nonlineariy': ['tanh'],
 
 
         # Problem Conf

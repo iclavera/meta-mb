@@ -161,9 +161,7 @@ class Trainer(object):
 
                     sac_start = time.time()
                     for _ in range(self.model_train_freq):
-                        # time_step += 1
                         for _ in range(self.n_train_repeats):
-                            time_step += 1
                             batch_size = self.sampler_batch_size
                             env_batch_size = int(batch_size * self.real_ratio)
                             model_batch_size = batch_size - env_batch_size
@@ -172,6 +170,7 @@ class Trainer(object):
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
                             self.algo.do_training(time_step, batch)
+                            time_step += 1
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
                                                    samples_data['actions'],
