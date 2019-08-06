@@ -201,7 +201,10 @@ class CPC:
             #     metrics=['categorical_accuracy']
             # )
             self.loss = cross_entropy_loss(self.labels_ph, logits)
-            self.accuracy = tf.metrics.accuracy(self.labels_ph, tf.one_hot(tf.argmax(logits, axis=-1), negative_samples+1))
+            correct_class = tf.argmax(logits, axis=-1)
+            predicted_class = tf.argmax(self.labels_ph, axis=-1)
+            self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / tf.size(correct_class)
+            # self.accuracy = tf.metrics.accuracy(self.labels_ph, tf.one_hot(tf.argmax(logits, axis=-1), negative_samples+1))
             self.train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.loss) # TODO: make this lr adaptive
 
         else:
@@ -240,13 +243,13 @@ class CPC:
             print("Epoch %d" % i)
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
-                loss, acc = self.train_step(*(generator.next()))
-                # print('epoch %d, train loss' % i, loss, acc[0])
-                train_pb.add(1, values=[('loss', loss), ('acc', acc[0])])
+                input, label = generator.next()
+                loss, acc = self.train_step(input, label)
+                train_pb.add(1, values=[('loss', loss), ('acc', acc)])
             val_pb = Progbar(validation_steps)
             for k in range(validation_steps):
                 val_loss, val_acc = self.train_step(*validation_data.next(), train=False)
-                val_pb.add(1, values=[('val_loss', val_loss), ('val_acc', val_acc[0])])
+                val_pb.add(1, values=[('val_loss', val_loss), ('val_acc', val_acc)])
                 # print('validation loss', val_loss, val_acc[0])
 
 

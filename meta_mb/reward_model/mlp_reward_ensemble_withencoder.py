@@ -20,7 +20,7 @@ class MLPRewardEnsemble(MLPRewardModel):
                  env,
                  latent_dim,
                  encoder,
-                 input_is_img, 
+                 input_is_img,
                  buffer,
                  num_models=5,
                  hidden_sizes=(512, 512),
@@ -41,7 +41,7 @@ class MLPRewardEnsemble(MLPRewardModel):
 
         max_logvar = 1
         min_logvar = 0.1
-        
+
         self.encoder = encoder
         self.input_is_img = input_is_img
         self.latent_dim = latent_dim
@@ -209,6 +209,9 @@ class MLPRewardEnsemble(MLPRewardModel):
         epoch_times = []
         epochs_per_model = []
 
+        train_op_time = 0
+        val_op_time = 0
+
         """ ------- Looping over training epochs ------- """
         for epoch in range(epochs):
 
@@ -219,17 +222,18 @@ class MLPRewardEnsemble(MLPRewardModel):
             epoch_start_time = time.time()
             batch_losses = []
 
+
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
             for batch in self.buffer.generate_reward_batch():
                 obs_batch_stack, act_batch_stack, nextobs_batch_stack, reward_batch_stack = batch
-
+                time_trainop_start = time.time()
                 # run train op
                 batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
                                                 feed_dict={self.obs_ph: obs_batch_stack,
                                                            self.act_ph: act_batch_stack,
                                                            self.nextobs_ph: nextobs_batch_stack,
                                                            self.reward_ph: reward_batch_stack})
-
+                train_op_time += time.time() - time_trainop_start
                 batch_loss = np.array(batch_loss_train_ops[:self.num_models])
                 batch_losses.append(batch_loss)
 
@@ -239,12 +243,14 @@ class MLPRewardEnsemble(MLPRewardModel):
                 obs_test_stack, act_test_stack, nextobs_test_stack, reward_test_stack = batch
 
                 # compute validation loss
+                time_valop_start = time.time()
                 valid_loss = sess.run(self.loss_model_batches,
                                       feed_dict={self.obs_ph: obs_test_stack,
                                                  self.act_ph: act_test_stack,
                                                  self.nextobs_ph: nextobs_test_stack,
                                                  self.reward_ph: reward_test_stack})
                 valid_losses.append(valid_loss)
+                val_op_time += time.time() - time_valop_start
 
             valid_loss = np.mean(np.array(valid_losses), axis=0)
             if valid_loss_rolling_average is None:
@@ -299,6 +305,9 @@ class MLPRewardEnsemble(MLPRewardModel):
             logger.logkv(prefix + 'AvgFinalTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix + 'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix + 'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
+
+            logger.logkv(prefix + 'TimeTrainOp', train_op_time)
+            logger.logkv(prefix + 'TimeValOp', val_op_time)
 
 
     def predict_sym(self, obs_ph, act_ph, nextobs_ph):

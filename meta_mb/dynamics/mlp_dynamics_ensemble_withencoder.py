@@ -247,9 +247,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
             train_pb = Progbar(dataset_size_in_trans // self.batch_size)
-            for batch in self.buffer.generate_batch():
-                obs_batch_stack, act_batch_stack, delta_batch_stack, batch_time = batch
-                train_batch_generation_time += batch_time
+            batch_generator = self.buffer.generate_batch()
+            for _ in range(dataset_size_in_trans // self.batch_size):
+                batch_time = time.time()
+                obs_batch_stack, act_batch_stack, delta_batch_stack, _= next(batch_generator)
+                train_batch_generation_time += time.time() - batch_time
 
                 time_feed_dict_start = time.time()
                 feed_dict = {self.obs_ph: obs_batch_stack,
@@ -267,7 +269,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
                 # run train op
                 time_trainop_start = time.time()
-                operations = [self.total_loss] + (self.model_loss + [ self.cpc_model.loss] + list(self.cpc_model.accuracy)
+                operations = [self.total_loss] + (self.model_loss + [ self.cpc_model.loss] + [self.cpc_model.accuracy]
                                                 if self.cpc_loss_weight else []) + [self.train_op]
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
                 train_op_time += time.time() - time_trainop_start
@@ -292,9 +294,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             cpc_accs_val = []
             model_losses_val = []
             val_pb = Progbar(val_size_in_trans // self.batch_size)
-            for batch in self.buffer.generate_batch(test=True):
-                obs_batch_stack, act_batch_stack, delta_batch_stack, batch_time = batch
-                val_batch_generation_time += batch_time
+            batch_generator = self.buffer.generate_batch(test=True)
+            for _ in range(val_size_in_trans // self.batch_size):
+                batch_time = time.time()
+                obs_batch_stack, act_batch_stack, delta_batch_stack, _ = next(batch_generator)
+                val_batch_generation_time += time.time() - batch_time
 
                 time_feed_dict_start = time.time()
                 feed_dict = {self.obs_ph: obs_batch_stack,
@@ -310,7 +314,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 val_feed_dict_prep_time += time.time() - time_feed_dict_start
 
                 time_valop_start = time.time()
-                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + list(self.cpc_model.accuracy)
+                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + [self.cpc_model.accuracy]
                                                     if self.cpc_loss_weight else [])
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
                 val_op_time += time.time() - time_valop_start

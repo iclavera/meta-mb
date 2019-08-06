@@ -285,7 +285,7 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.2],
-        'rolling_average_persitency': [0.9],
+        'rolling_average_persitency': [0.99],
         'path_checkpoint_interval': [10],
 
         # Dynamics Model
@@ -303,7 +303,7 @@ if __name__ == '__main__':
         'model_grad_thru_enc':[False],
 
         # Reward Model
-        'reward_model_epochs': [15],
+        'reward_model_epochs': [5],
 
         #  Other
         'n_parallel': [1],
@@ -326,7 +326,7 @@ if __name__ == '__main__':
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [0],
+        'cpc_loss_weight': [1],
     }
 
     config = {
@@ -406,11 +406,11 @@ if __name__ == '__main__':
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [5],
+        'obs_stack': [3],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [20],  # Tau
+        'horizon': [12],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -458,9 +458,9 @@ if __name__ == '__main__':
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [64],
+        'cpc_num_initial_rollouts': [20],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [0.],
     }
 
-    run_sweep(run_experiment, config_sanity, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_embedding, EXP_NAME, INSTANCE_TYPE)
