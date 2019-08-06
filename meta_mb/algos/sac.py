@@ -1,14 +1,21 @@
+from collections import OrderedDict
 from numbers import Number
+
 import numpy as np
 import tensorflow as tf
+# import tensorflow_probability as tfp
+# from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
+from meta_mb.utils import create_feed_dict
 """===============added==========start============"""
+from pdb import set_trace as st
 from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
 
 """===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
+import time
 
 
 def td_target(reward, discount, next_value):
@@ -35,13 +42,31 @@ class SAC(Algo):
             name="sac",
             learning_rate=3e-4,
             target_entropy='auto',
+            # evaluation_environment,
+            # samplers,
+            # pool,
+            # plotter=None,
             reward_scale=1.0,
             tau=5e-3,
             target_update_interval=1,
             action_prior='uniform',
             reparameterize=True,
-            sampler_batch_size=256,
+            buffer_size=100000,
+            sampler_batch_size=64,
+            # save_full_state=False,
+            # n_epochs=1000,
+            # train_every_n_steps=1,
+            # n_train_repeat=1,
+            # max_train_repeat_per_timestep=5,
+            # n_initial_exploration_steps=0,
+            # initial_exploration_policy=None,
+            # epoch_length=1000,
+            # eval_n_episodes=10,
+            # eval_deterministic=True,
+            # eval_render_kwargs=None,
+            # video_save_frequency=0,
             session=None,
+            **kwargs
     ):
         """
         Args:
@@ -81,9 +106,25 @@ class SAC(Algo):
         self.Q_lr = learning_rate
         self.tau = tau
         self._dataset = None
+        self.buffer_size = buffer_size
         self.sampler_batch_size = sampler_batch_size
+        # self.sampler = sampler
+        # self._n_epochs = n_epochs
+        # self._n_train_repeat = n_train_repeat
+        # self._max_train_repeat_per_timestep = max(max_train_repeat_per_timestep, n_train_repeat)
+        # self._train_every_n_steps = train_every_n_steps
+        # self._epoch_length = epoch_length
+        # self._n_initial_exploration_steps = n_initial_exploration_steps
+        # self._initial_exploration_policy = initial_exploration_policy
+        # self._eval_n_episodes = eval_n_episodes
+        # self._eval_deterministic = eval_deterministic
+        # self._video_save_frequency = video_save_frequency
+        # self._eval_render_kwargs = eval_render_kwargs or {}
         self.session = session or tf.keras.backend.get_session()
         self._squash = True
+        # self._epoch = 0
+        # self._timestep = 0
+        # self._num_train_steps = 0
         """===============added==========end============"""
         self.Qs = Qs
         if Q_targets is None:
@@ -94,7 +135,8 @@ class SAC(Algo):
         self.target_update_interval = target_update_interval
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self._optimization_keys = ['observations', 'actions', 'next_observations', 'dones', 'rewards']
+        self._optimization_keys = ['observations', 'actions',
+                                   'next_observations', 'dones', 'rewards']
 
         self.build_graph()
 
@@ -194,9 +236,7 @@ class SAC(Algo):
         input_q_fun = tf.concat([observations_ph, actions_ph], axis=-1)
 
         q_values_var = self.q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target,
-                                                                 predictions=q_value,
-                                                                 weights=0.5)
+        q_losses = self.q_losses = [tf.losses.mean_squared_error(labels=q_target, predictions=q_value, weights=0.5)
                                     for q_value in q_values_var]
 
         self.q_optimizers = [tf.train.AdamOptimizer(
@@ -290,7 +330,7 @@ class SAC(Algo):
             # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
         ))
         self.diagnostics_ops = OrderedDict([
-            ("%s-%s" % (key, metric_name), metric_fn(values))
+            ("%s-%s"%(key,metric_name), metric_fn(values))
             for key, values in diagnosables.items()
             for metric_name, metric_fn in diagnostic_metrics.items()
         ])
@@ -308,13 +348,29 @@ class SAC(Algo):
     def optimize_policy(self, buffer, timestep, grad_steps, log=True):
         sess = tf.get_default_session()
         for i in range(grad_steps):
-            value_dict = buffer.random_batch(self.sampler_batch_size)
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=value_dict)
+                                         value_dict=buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
                     logger.logkv(k, v)
-            if (timestep + i) % self.target_update_interval == 0:
+            if timestep % self.target_update_interval == 0:
                 self._update_target()
+
+        #
+        # sess = tf.get_default_session()
+        # input_dict = self._extract_input_dict(samples_data, self._optimization_keys, prefix)
+        # if self._dataset is None:
+        #     self._dataset = input_dict
+        # else:
+        #     for k, v in input_dict.items():
+        #         n_new_samples = len(v)
+        #         n_max = self.buffer_size - n_new_samples
+        #         self._dataset[k] = np.concatenate([self._dataset[k][-n_max:], v], axis=0)
+        # num_elements = len(list(self._dataset.values())[0])
+        # """===============added==========end=============="""
+        # self._do_training(num_elements, iteration=timestep, batch=input_dict)
+
+        # self._num_train_steps += self._n_train_repeat
+        # self._train_steps_this_epoch += self._n_train_repeat
