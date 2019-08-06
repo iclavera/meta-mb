@@ -26,11 +26,12 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         start_ob = self._get_obs()
         reward_run = start_ob[8]
 
-        self.do_simulation(action, self.frame_skip)
-        ob = self._get_obs()
         if getattr(self, 'action_space', None):
             action = np.clip(action, self.action_space.low,
                              self.action_space.high)
+
+        self.do_simulation(action, self.frame_skip)
+        ob = self._get_obs()
         reward_ctrl = -0.1 * np.square(action).sum()
 
         reward = reward_run + reward_ctrl
@@ -97,7 +98,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def deriv_reward_act(self, obs, acts):
         assert obs.ndim == acts.ndim
-        return (-0.2 * acts).copy()
+        return -0.2*acts #(-0.2 * acts).copy()
 
     def hessian_l_xx(self, obses, acts):
         """

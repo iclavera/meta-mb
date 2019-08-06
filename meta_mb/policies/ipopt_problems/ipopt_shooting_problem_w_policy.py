@@ -1,9 +1,10 @@
 import numpy as np
+import copy
 
 
 class IPOPTShootingProblemWPolicy(object):
     def __init__(self, env, horizon, discount, policy, eps=1e-6):
-        self.env = env
+        self.env = copy.deepcopy(env)
         self.horizon = horizon
         self.discount = discount
         self.policy = policy  # stateless
@@ -21,7 +22,7 @@ class IPOPTShootingProblemWPolicy(object):
         #
         # The callback for calculating the objective
         #
-        return self._l(x, ignore_done=False)
+        return self._l(x, ignore_done=True)
 
     def constraints(self, x):
         return self._collect_actions(x=x)

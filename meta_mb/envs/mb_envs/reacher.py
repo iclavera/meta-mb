@@ -66,31 +66,21 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_dist + reward_ctrl
         return reward
 
-    def deriv_reward_obses(self, obses, acts):
-        assert obses.ndim == acts.ndim
-        deriv = np.zeros_like(obses)
-        if obses.ndim == 1:
-            dist_vec = obses[-3:]
+    def deriv_reward_obs(self, obs, act):
+        assert obs.ndim == act.ndim
+        deriv = np.zeros_like(obs)
+        if obs.ndim == 1:
+            dist_vec = obs[-3:]
             reward_dist = - np.linalg.norm(dist_vec)
             deriv[-3:] /= reward_dist
-        elif obses.ndim == 2:
-            dist_vec = obses[:, -3:]
+        elif obs.ndim == 2:
+            dist_vec = obs[:, -3:]
             reward_dist = - np.linalg.norm(dist_vec, axis=1, keepdims=True)
             deriv[:, -3:] /= reward_dist
         return deriv
 
-    def deriv_reward_acts(self, obs, acts):
-        return (-2 * acts).copy()
-
-    def deriv_reward_obs(self, obs, acts):
-        deriv = np.zeros_like(obs)
-        dist_vec = obs[-3:]
-        reward_dist = - np.linalg.norm(dist_vec)
-        deriv[-3:] /= reward_dist
-        return deriv
-
-    def deriv_reward_act(self, obs, acts):
-        return (-2 * acts).copy()
+    def deriv_reward_act(self, obs, act):
+        return -2 * act #(-2 * acts).copy()
 
     # def l_xx(self, obs, act):
     #     """
@@ -175,12 +165,12 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def dl_dict(self, inputs_dict):
         # FOR NEGATIVE RETURNS
-        obses, acts = inputs_dict['obs'], inputs_dict['act']
-        return OrderedDict(l_x=-self.deriv_reward_obses(obses, acts),
-                           l_u=-self.deriv_reward_acts(obses, acts),
-                           l_xx=self.hessian_l_xx(obses, acts),
-                           l_uu=self.hessian_l_uu(obses, acts),
-                           l_ux=self.hessian_l_ux(obses, acts),)
+        obs, act = inputs_dict['obs'], inputs_dict['act']
+        return OrderedDict(l_x=-self.deriv_reward_obs(obs, act),
+                           l_u=-self.deriv_reward_act(obs, act),
+                           l_xx=self.hessian_l_xx(obs, act),
+                           l_uu=self.hessian_l_uu(obs, act),
+                           l_ux=self.hessian_l_ux(obs, act),)
 
     def reset_from_obs(self, obs):
         qpos, qvel = np.zeros((self.model.nq,)), np.zeros((self.model.nv,))

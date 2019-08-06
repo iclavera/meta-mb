@@ -118,9 +118,9 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_model(self):
-        self.set_state(self.init_qpos, self.init_qvel)
-        return self._get_obs()
+    # def reset_model(self):
+    #     self.set_state(self.init_qpos, self.init_qvel)
+    #     return self._get_obs()
 
     def reset_from_obs(self, obs):
         qpos, qvel = obs[:self.model.nq], obs[self.model.nq:]

@@ -1,14 +1,18 @@
 import numpy as np
+import copy
 
 
 class IPOPTShootingProblem(object):
-    def __init__(self, env, horizon, discount, init_obs, eps=1e-6):
-        self.env = env
+    def __init__(self, env, horizon, discount, eps=1e-6):
+        self.env = copy.deepcopy(env)
         self.horizon = horizon
         self.discount = discount
         self.act_dim = int(np.prod(env.action_space.shape))
-        self.init_obs = init_obs
         self.eps = eps
+        self.init_obs = None
+
+    def set_init_obs(self, obs):
+        self.init_obs = obs
 
     def get_a(self, x):
         return x.reshape(self.horizon, self.act_dim)

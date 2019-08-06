@@ -770,14 +770,14 @@ class ParallelDDPExecutor(object):
     """
     Compute ground truth derivatives.
     """
-    def __init__(self, env, n_parallel, horizon, eps,
-                 mu_min=1e-6, mu_max=1e10, mu_init=0, delta_0=1.5, alpha_decay_factor=10.0,
-                 c_1=1e-5, max_forward_iters=30, max_backward_iters=30, use_hessian_f=False, verbose=False):
+    def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
+                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=1.8, delta_init=1.0, alpha_decay_factor=10.0,
+                 c_1=1e-5, max_forward_iters=20, max_backward_iters=10, use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
-        self.x_array, self.u_array = None, None
-        self.J_val = None
+        self.u_array = u_array
+        self.reg_str = reg_str
         self.act_dim = env.action_space.shape[0]
         self.obs_dim = env.observation_space.shape[0]
         self.mu_min = mu_min
@@ -785,11 +785,14 @@ class ParallelDDPExecutor(object):
         self.mu_init = mu_init
         self.alpha_decay_factor = alpha_decay_factor
         self.delta_0 = delta_0
+        self.delta_init = delta_init
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
         self.use_hessian_f = use_hessian_f
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
+
+        self._reset_mu()
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
         if use_hessian_f:
@@ -831,8 +834,9 @@ class ParallelDDPExecutor(object):
         x_prime, reward, _, _ = self._env.step(u)
         return x_prime, reward
 
-    def update_x_u_for_one_step(self):
-        x_array, u_array, J_val = self.x_array, self.u_array, self.J_val
+    def update_x_u_for_one_step(self, obs):
+        u_array = self.u_array
+        x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
         backward_accept, forward_accept = False, False
 
         assert x_array.shape == (self.horizon, self.obs_dim)
@@ -852,7 +856,7 @@ class ParallelDDPExecutor(object):
         Backward Pass
         """
         backward_pass_counter = 0
-        while not backward_accept and backward_pass_counter < self.max_backward_iters and self.mu <= self.mu_max:
+        while not backward_accept and backward_pass_counter < self.max_backward_iters:# and self.mu <= self.mu_max:
             # reset
             V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
             open_loop_array, feedback_gain_array = [], []
@@ -864,11 +868,14 @@ class ParallelDDPExecutor(object):
                     # logger.log(f'at {backward_pass_counter}-th backward pass, horizon {i}, with mu = {self.mu}')
 
                     # compute Q
-                    V_prime_xx_reg = V_prime_xx + self.mu * np.identity(self.obs_dim)
                     if self.use_hessian_f:
-                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
                     else:
-                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx_reg @ f_u[i]
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
+                    if self.reg_str == 'Q':
+                        Q_uu_reg = Q_uu + self.mu * np.eye(self.act_dim)
+                    else:
+                        Q_uu_reg = Q_uu + self.mu * f_u[i].T @ f_u[i]
 
                         # Q_uu_no_reg = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
                         # logger.log('Q_uu_no_reg min eigen value', np.min(np.linalg.eigvals(Q_uu_no_reg)))
@@ -888,17 +895,21 @@ class ParallelDDPExecutor(object):
                     Q_u = l_u[i] + f_u[i].T @ V_prime_x
                     if self.use_hessian_f:
                         Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
-                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
                     else:
                         Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
-                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx_reg @ f_x[i]
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i]
+                    if self.reg_str == 'Q':
+                        Q_ux_reg = Q_ux
+                    else:
+                        Q_ux_reg = Q_ux + self.mu * f_u[i].T @ f_x[i]
 
                     # compute control matrices
                     # Q_uu_inv = np.linalg.inv(Q_uu)
                     # k = - Q_uu_inv @ Q_u  # k
                     # K = - Q_uu_inv @ Q_ux  # K
-                    k = - np.linalg.solve(Q_uu, Q_u)
-                    K = - np.linalg.solve(Q_uu, Q_ux)
+                    k = - np.linalg.solve(Q_uu_reg, Q_u)
+                    K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
                     open_loop_array.append(k)
                     feedback_gain_array.append(K)
                     delta_J_1 += k.T @ Q_u
@@ -915,13 +926,13 @@ class ParallelDDPExecutor(object):
                 backward_accept = True
 
             except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
-                logger.log('Q_uu min eigen value', np.min(np.linalg.eigvals(Q_uu)))
+                logger.log(f'i = {i}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
                 self._increase_mu()
                 backward_pass_counter += 1
 
         if not backward_accept:
             logger.log(f'backward not accepted')
-            return backward_accept, forward_accept
+            return backward_accept, forward_accept, None
 
         # self._decrease_mu()
         logger.log(f'backward accepted after {backward_pass_counter} failed iterations, mu = {self.mu}')
@@ -934,7 +945,9 @@ class ParallelDDPExecutor(object):
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
             x_prime = x_array[0]
-            opt_x_array, opt_u_array = [], []
+            # opt_x_array, opt_u_array = [], []
+            opt_u_array = []
+            reward_array = []
             opt_J_val = 0
 
             # forward pass
@@ -944,23 +957,25 @@ class ParallelDDPExecutor(object):
                 u = np.clip(u, self.act_low, self.act_high)
 
                 # store updated state/action
-                opt_x_array.append(x)
+                # opt_x_array.append(x)
                 opt_u_array.append(u)
                 time.sleep(0.004)
                 x_prime, reward = self._f(x, u)
+                reward_array.append(reward)
                 opt_J_val += -reward
 
-            opt_x_array.append(x_prime)
+            # opt_x_array.append(x_prime)
             opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
 
             # check convergence
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 # store updated x, u array (CLIPPED), J_val
-                opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-                # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
-                self.x_array, self.u_array = opt_x_array, opt_u_array
-                self.J_val = opt_J_val
+                # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
+                # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
+                # self.x_array, self.u_array = opt_x_array, opt_u_array
+                # self.J_val = opt_J_val
+                self.u_array = np.stack(opt_u_array, axis=0)
                 forward_accept = True
             else:
                 # continue line search
@@ -969,7 +984,6 @@ class ParallelDDPExecutor(object):
 
             # print(J_val, opt_J_val, delta_J_alpha)
 
-        # # FIXME: adapt mu here?
         if not forward_accept:
             logger.log(f'foward pass not accepted')
             self._increase_mu()
@@ -977,7 +991,7 @@ class ParallelDDPExecutor(object):
             logger.log(f'forward pass accepted with alpha = {alpha} after {forward_pass_counter} failed iterations')
             self._decrease_mu()
 
-        return backward_accept, forward_accept
+        return backward_accept, forward_accept, -J_val, reward_array
 
     def _decrease_mu(self):
         self.delta = min(1, self.delta) / self.delta_0
@@ -989,31 +1003,27 @@ class ParallelDDPExecutor(object):
         # adapt delta, mu
         self.delta = max(1.0, self.delta) * self.delta_0
         self.mu = max(self.mu_min, self.mu * self.delta)
+        if self.mu > self.mu_max:
+            RuntimeWarning(f'self.mu = {self.mu} > self.mu_max')
 
     def _reset_mu(self):
         self.mu = self.mu_init
-        self.delta = self.delta_0
+        self.delta = self.delta_init
 
-    def shift_x_u_by_one(self, u_new):
-        # u_new must be clipped before passed in
+    def perturb_u_array(self):
+        self._reset_mu()  # FIXME
+        u_array = self.u_array + np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
+        u_array = np.clip(u_array, a_min=self.act_low, a_max=self.act_high)
+        self.u_array = u_array
+
+    def shift_u_array(self, u_new):
+        self._reset_mu()  # FIXME
         if u_new is None:
             u_new = np.mean(self.u_array, axis=0) + np.random.normal(loc=0, scale=0.05, size=(self.act_dim,))
-        x_new, reward = self._f(x=self.x_array[-1, :], u=self.u_array[-1, :])
-        self.x_array = np.concatenate([self.x_array[1:, :], x_new[None]])
         self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
-        self.J_val = -np.sum(self._env.reward(obs=self.x_array[:-1], acts=self.u_array[:-1], next_obs=None))
 
-    def reset_x_u(self, init_u_array):
-        self._reset_mu()
-        if init_u_array is None:
-            init_u_array = self.u_array + np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
-            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
-        self.u_array = init_u_array
-        self.x_array, self.J_val = self._run_open_loop(init_u_array)
-        logger.log(f'reset_x_u with J_val = {self.J_val}')
-
-    def _run_open_loop(self, u_array):
-        x_array, sum_rewards = [self._env.reset()], 0
+    def _run_open_loop(self, u_array, init_obs):
+        x_array, sum_rewards = [self._env.reset_from_obs(init_obs)], 0
         for i in range(self.horizon-1):
             x, reward, _, _ = self._env.step(u_array[i])
             x_array.append(x)
@@ -1021,18 +1031,18 @@ class ParallelDDPExecutor(object):
         x_array = np.stack(x_array, axis=0)
         return x_array, -sum_rewards
 
-    def compute_traj_returns(self, discount=1):
-        # rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
-        # return sum([discount**t * reward for t, reward in enumerate(rewards)])
-        return -self.J_val
+    # def compute_traj_returns(self):
+    #     # rewards = self._env.reward(obs=self.x_array, acts=self.u_array, next_obs=None)
+    #     # return sum([discount**t * reward for t, reward in enumerate(rewards)])
+    #     return -self.J_val
 
 
 def DDP_worker(remote, parent_remote, env_pickle, eps,
                        horizon, obs_dim, act_dim,
                        seed, verbose):
 
-    # batch_size means the num_rollouts in the original env executors, and it means number of experts
-    # when the dynamics model is ground truth
+    # batch_size = num_rollouts in the original env executors (number of experts
+    # when the dynamics model is ground truth)
 
     print('collocation state worker starts...')
 

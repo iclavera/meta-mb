@@ -1,40 +1,48 @@
 import numpy as np
+import copy
 
 
 class IPOPTCollocationProblem(object):
-    def __init__(self, env, horizon, discount, init_obs, eps=1e-6):
-        self.env = env
+    def __init__(self, env, horizon, discount, eps=1e-6):
+        self.env = copy.deepcopy(env)
         self.horizon = horizon
         self.discount = discount
         self.obs_dim = int(np.prod(env.observation_space.shape))
         self.act_dim = int(np.prod(env.action_space.shape))
-        self.init_obs = init_obs
+        self.init_obs = None
         self.eps = eps
+
+    def set_init_obs(self, obs):
+        self.init_obs = obs
 
     def get_s_a(self, x):
         s = x[:(self.horizon-1) * self.obs_dim].reshape(self.horizon-1, self.obs_dim)
         a = x[(self.horizon-1) * self.obs_dim:].reshape(self.horizon, self.act_dim)
         return s, a
 
-    def objective(self, x):
+    def objective(self, x, ignore_done=True):
         #
         # The callback for calculating the objective
         #
         s, a = self.get_s_a(x)
         s_prev = np.concatenate([self.init_obs[None], s], axis=0).copy()
-        returns = 0
-        for t in range(self.horizon):
-            _ = self.env.reset_from_obs(s_prev[t])
-            _, reward, done, _ = self.env.step(a[t])
-            returns += self.discount ** t * reward
-            if done:
-                break
+        if ignore_done:
+            returns = self.env.reward(obs=s_prev, acts=a, next_obs=None)
+            returns = sum([self.discount**t * returns[t] for t in range(self.horizon)])
+        else:
+            returns = 0
+            for t in range(self.horizon):
+                _ = self.env.reset_from_obs(s_prev[t])
+                _, reward, done, _ = self.env.step(a[t])
+                returns += self.discount ** t * reward
+                if done:
+                    break
         return -returns
 
     def constraints(self, x):
         s, a = self.get_s_a(x)
         s_targets = np.zeros((self.horizon-1, self.obs_dim))
-        s_prev = np.concatenate([self.init_obs[None], s[:-1]], axis=0).copy()
+        s_prev = np.concatenate([self.init_obs[None], s], axis=0)#.copy()
         for t in range(self.horizon-1):
             _ = self.env.reset_from_obs(s_prev[t])
             n_s, *_ = self.env.step(a[t])
