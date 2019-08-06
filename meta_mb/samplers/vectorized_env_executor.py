@@ -1,7 +1,7 @@
 import numpy as np
 from meta_mb.logger import logger
 import time
-from collections import OrderedDict
+import scipy.linalg as sla
 from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle
@@ -771,8 +771,8 @@ class ParallelDDPExecutor(object):
     Compute ground truth derivatives.
     """
     def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
-                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=1.8, delta_init=1.0, alpha_decay_factor=10.0,
-                 c_1=1e-5, max_forward_iters=20, max_backward_iters=10, use_hessian_f=False, verbose=False):
+                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=5.0,
+                 c_1=1e-3, max_forward_iters=20, max_backward_iters=10, use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
         self.horizon = horizon
@@ -836,6 +836,7 @@ class ParallelDDPExecutor(object):
 
     def update_x_u_for_one_step(self, obs):
         u_array = self.u_array
+        optimized_action = u_array[0]
         x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
         backward_accept, forward_accept = False, False
 
@@ -874,8 +875,10 @@ class ParallelDDPExecutor(object):
                         Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
                     if self.reg_str == 'Q':
                         Q_uu_reg = Q_uu + self.mu * np.eye(self.act_dim)
-                    else:
+                    elif self.reg_str == 'V':
                         Q_uu_reg = Q_uu + self.mu * f_u[i].T @ f_u[i]
+                    else:
+                        raise NotImplementedError
 
                         # Q_uu_no_reg = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
                         # logger.log('Q_uu_no_reg min eigen value', np.min(np.linalg.eigvals(Q_uu_no_reg)))
@@ -886,7 +889,11 @@ class ParallelDDPExecutor(object):
                         raise RuntimeError
 
                     # if np.all(np.linalg.eigvals(Q_uu) > 0):
-                    _ = np.linalg.cholesky(Q_uu)
+                    L = np.linalg.cholesky(Q_uu_reg)
+                    L_inv = sla.solve_triangular(
+                        L, np.eye(len(L)), lower=True, check_finite=False
+                    )
+                    Q_uu_reg_inv = L_inv.T.dot(L_inv)
                     # Q_uu is PD, decrease mu
                         # self._decrease_mu()
                     # else:
@@ -901,15 +908,17 @@ class ParallelDDPExecutor(object):
                         Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i]
                     if self.reg_str == 'Q':
                         Q_ux_reg = Q_ux
-                    else:
+                    elif self.reg_str == 'V':
                         Q_ux_reg = Q_ux + self.mu * f_u[i].T @ f_x[i]
+                    else:
+                        raise NotImplementedError
 
                     # compute control matrices
                     # Q_uu_inv = np.linalg.inv(Q_uu)
-                    # k = - Q_uu_inv @ Q_u  # k
-                    # K = - Q_uu_inv @ Q_ux  # K
-                    k = - np.linalg.solve(Q_uu_reg, Q_u)
-                    K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
+                    k = - Q_uu_reg_inv @ Q_u  # k
+                    K = - Q_uu_reg_inv @ Q_ux_reg  # K
+                    # k = - np.linalg.solve(Q_uu_reg, Q_u)
+                    # K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
                     open_loop_array.append(k)
                     feedback_gain_array.append(K)
                     delta_J_1 += k.T @ Q_u
@@ -932,7 +941,7 @@ class ParallelDDPExecutor(object):
 
         if not backward_accept:
             logger.log(f'backward not accepted')
-            return backward_accept, forward_accept, None
+            return None, backward_accept, forward_accept, None, None
 
         # self._decrease_mu()
         logger.log(f'backward accepted after {backward_pass_counter} failed iterations, mu = {self.mu}')
@@ -944,7 +953,7 @@ class ParallelDDPExecutor(object):
         forward_pass_counter = 0
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
-            x_prime = x_array[0]
+            x = x_array[0]
             # opt_x_array, opt_u_array = [], []
             opt_u_array = []
             reward_array = []
@@ -952,7 +961,6 @@ class ParallelDDPExecutor(object):
 
             # forward pass
             for i in range(self.horizon-1):
-                x = x_prime
                 u = u_array[i] + alpha * open_loop_array[i] + feedback_gain_array[i] @ (x - x_array[i])
                 u = np.clip(u, self.act_low, self.act_high)
 
@@ -960,12 +968,13 @@ class ParallelDDPExecutor(object):
                 # opt_x_array.append(x)
                 opt_u_array.append(u)
                 time.sleep(0.004)
-                x_prime, reward = self._f(x, u)
+                x, reward = self._f(x, u)
                 reward_array.append(reward)
                 opt_J_val += -reward
 
             # opt_x_array.append(x_prime)
-            opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
+            # opt_u_array.append(np.zeros((self.act_dim,)))  # last action is arbitrary
+            opt_u_array.append(u_array[-1])
 
             # check convergence
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
@@ -975,6 +984,7 @@ class ParallelDDPExecutor(object):
                 # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
                 # self.x_array, self.u_array = opt_x_array, opt_u_array
                 # self.J_val = opt_J_val
+                optimized_action = opt_u_array[0]
                 self.u_array = np.stack(opt_u_array, axis=0)
                 forward_accept = True
             else:
@@ -984,14 +994,14 @@ class ParallelDDPExecutor(object):
 
             # print(J_val, opt_J_val, delta_J_alpha)
 
-        if not forward_accept:
-            logger.log(f'foward pass not accepted')
-            self._increase_mu()
-        else:
+        if forward_accept:
             logger.log(f'forward pass accepted with alpha = {alpha} after {forward_pass_counter} failed iterations')
             self._decrease_mu()
-
-        return backward_accept, forward_accept, -J_val, reward_array
+            return optimized_action, backward_accept, forward_accept, -opt_J_val, reward_array
+        else:
+            logger.log(f'foward pass not accepted, optimized_action = first action from original u_array')
+            self._increase_mu()
+            return optimized_action, backward_accept, forward_accept, None, None
 
     def _decrease_mu(self):
         self.delta = min(1, self.delta) / self.delta_0
@@ -1019,8 +1029,10 @@ class ParallelDDPExecutor(object):
     def shift_u_array(self, u_new):
         self._reset_mu()  # FIXME
         if u_new is None:
-            u_new = np.mean(self.u_array, axis=0) + np.random.normal(loc=0, scale=0.05, size=(self.act_dim,))
-        self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
+            # u_new = np.mean(self.u_array, axis=0) + np.random.normal(loc=0, scale=0.05, size=(self.act_dim,))
+            self.u_array = np.roll(self.u_array, -1, axis=0)
+        else:
+            self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
 
     def _run_open_loop(self, u_array, init_obs):
         x_array, sum_rewards = [self._env.reset_from_obs(init_obs)], 0

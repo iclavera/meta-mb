@@ -12,6 +12,9 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         utils.EzPickle.__init__(self)
         mujoco_env.MujocoEnv.__init__(self, 'reacher.xml', 2)
 
+        self.obs_dim = self.observation_space.shape[0]
+        self.act_dim = self.action_space.shape[0]
+
     def step(self, a):
         vec = self.get_body_com("fingertip") - self.get_body_com("target")
 
@@ -41,9 +44,9 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_model(self):  # FIXME: hack for bptt
-        self.set_state(self.init_qpos, self.init_qvel)
-        return self._get_obs()
+    # def reset_model(self):  # FIXME: hack for bptt
+    #     self.set_state(self.init_qpos, self.init_qvel)
+    #     return self._get_obs()
 
     def _get_obs(self):
         theta = self.sim.data.qpos.flat[:2]

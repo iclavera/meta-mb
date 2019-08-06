@@ -25,7 +25,7 @@ def run_experiment(**config):
     repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = max_path_length = 1000
+        config['max_path_length'] = max_path_length = 200
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = max_path_length = 100
@@ -155,7 +155,7 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
         'n_itr': [1],  # only matters for opt_policy
@@ -163,7 +163,7 @@ if __name__ == '__main__':
         'controller_str': ['gt'],
 
         # Policy
-        'initializer_str': ['uniform'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['ilqr'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
@@ -188,7 +188,7 @@ if __name__ == '__main__':
         'persistency': [0.9],
 
         # DDP
-        'num_ddp_iters': [10],
+        'num_ddp_iters': [5],
 
         # Training
         'num_rollouts': [1],  # number of experts

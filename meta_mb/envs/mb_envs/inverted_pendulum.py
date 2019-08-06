@@ -12,6 +12,8 @@ class InvertedPendulumEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
     def __init__(self):
         utils.EzPickle.__init__(self)
         mujoco_env.MujocoEnv.__init__(self, 'inverted_pendulum.xml', 2)
+        self.obs_dim = self.observation_space.shape[0]
+        self.act_dim = self.action_space.shape[0]
 
     def step(self, a):
         # reward = 1.0
@@ -102,6 +104,9 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         dir_path = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, '%s/assets/inverted_pendulum.xml' % dir_path, 2)
 
+        self.obs_dim = self.observation_space.shape[0]
+        self.act_dim = self.action_space.shape[0]
+
     def step(self, a):
         # reward = 1.0
         reward = self._get_reward()
@@ -142,7 +147,8 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
 
     def reward(self, obs, acts, next_obs):
         assert obs.ndim == 2
-        assert obs.shape == next_obs.shape
+        if next_obs is not None:
+            assert obs.shape == next_obs.shape
         assert obs.shape[0] == acts.shape[0]
         return -(obs[:, 1] - np.pi) ** 2
 
@@ -169,6 +175,28 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         obs += self.np_random.uniform(size=self.model.nq+self.model.nv, low=-0.01, high=0.01)
         obs[1] = np.pi
         return obs
+
+    def hessian_l_xx(self, obs, acts):
+        hess = np.zeros((obs.shape[0], self.obs_dim, self.obs_dim))
+        hess[:, 1, 1] = -2
+        return -hess
+
+    def hessian_l_uu(self, obs, acts):
+        hess = np.zeros((obs.shape[0], self.act_dim, self.act_dim))
+        return -hess
+
+    def hessian_l_ux(self, obs, acts):
+        hess = np.zeros((obs.shape[0], self.act_dim, self.obs_dim))
+        return -hess
+
+    def dl_dict(self, inputs_dict):
+        # FOR NEGATIVE RETURNS
+        obs, acts = inputs_dict['obs'], inputs_dict['act']
+        return OrderedDict(l_x=-self.deriv_reward_obs(obs, acts),
+                           l_u=-self.deriv_reward_act(obs, acts),
+                           l_xx=self.hessian_l_xx(obs, acts),
+                           l_uu=self.hessian_l_uu(obs, acts),
+                           l_ux=self.hessian_l_ux(obs, acts),)
 
 
 if __name__ == "__main__":

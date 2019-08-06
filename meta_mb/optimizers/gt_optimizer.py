@@ -1,10 +1,6 @@
-from meta_mb.logger import logger
-import matplotlib.pyplot as plt
 import numpy as np
 from meta_mb.optimizers.base import Optimizer
 from meta_mb.utils import Serializable
-import tensorflow as tf
-import os
 import copy
 
 

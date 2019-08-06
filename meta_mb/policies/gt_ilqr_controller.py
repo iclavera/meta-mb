@@ -1,7 +1,5 @@
 from meta_mb.utils.serializable import Serializable
 from meta_mb.samplers.vectorized_env_executor import ParallelDDPExecutor
-import matplotlib
-matplotlib.use('Agg')
 import numpy as np
 from meta_mb.logger import logger
 import copy
@@ -125,7 +123,7 @@ class GTiLQRController(Serializable):
             logger.logkv('PathLength', t)
             logger.logkv('Reward', reward)
             logger.logkv('TotalReward', sum_rewards)
-            logger.dumpkvs()
+            # logger.dumpkvs()
 
         return [sum_rewards]
 
@@ -133,9 +131,10 @@ class GTiLQRController(Serializable):
         # do gradient steps
         ilqr_itr_counter = 0
         while ilqr_itr_counter < self.num_ddp_iters:
-            backward_accept, forward_accept, planner_return, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
+            optimized_action, backward_accept, forward_accept, planner_return, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
             if not backward_accept:
                 # reset
+                logger.log(f'perturb u array, restart ilqr iterations')
                 self.planner.perturb_u_array()  # FIXME: ???
                 ilqr_itr_counter = 0
             else:
@@ -152,11 +151,8 @@ class GTiLQRController(Serializable):
 
                 ilqr_itr_counter += 1
 
-        # save optimized action BEFORE SHIFTING
-        optimized_action = self.planner.u_array[0, :]
-
         # shift
-        u_new = self._generate_new_u()
+        u_new = None  # self._generate_new_u()
         self.planner.shift_u_array(u_new)
 
         return optimized_action
