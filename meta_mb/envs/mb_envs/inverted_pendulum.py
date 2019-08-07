@@ -224,7 +224,21 @@ if __name__ == "__main__":
     # env2.sim.forward()
     # print(env2._get_obs())
 
-    env.reset()
     for _ in range(1000):
+        obs = np.random.random(env.observation_space.shape)
+        _obs = env.reset_from_obs(obs)
+        try:
+            assert np.allclose(obs, _obs)
+        except AssertionError:
+            print(obs, _obs)
+
+    print(env.action_space.low, env.action_space.high)
+
+    env = InvertedPendulumSwingUpEnv()
+    print(env.action_space.low, env.action_space.high)
+
+
+    env.reset()
+    for _ in range(0):
         _ = env.render()
         ob, rew, done, info = env.step(env.action_space.sample())  # take a random action

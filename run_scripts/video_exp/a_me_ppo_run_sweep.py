@@ -171,7 +171,7 @@ def run_base(exp_dir, **kwargs):
 
 if __name__ == '__main__':
 
-    params_json_path = os.getcwd() + '/data/corl_data/video_params/a-me-ppo-HalfCheetah.json'
+    params_json_path = os.getcwd() + '/corl_data/video_params/a-me-ppo-Walker2d.json'
     with open(params_json_path, 'r') as f:
         data = json.loads(f.read())
         if "args_data" in data:
@@ -180,7 +180,7 @@ if __name__ == '__main__':
         data['baseline'] = LinearFeatureBaseline
         data['policy_hidden_nonlinearity'] = tanh
         data['algo'] = 'meppo'
-        data['n_itr'] = 1000
+        data['n_itr'] = 501
 
     for k, v in data.items():
         data[k] = [v]

@@ -155,7 +155,7 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
         'n_itr': [1],  # only matters for opt_policy
@@ -216,7 +216,7 @@ if __name__ == '__main__':
         'learning_rate_rec': [0.01],
 
         #  Other
-        'n_parallel': [5],
+        'n_parallel': [1],
     }
 
     # assert config['horizon'] == config['max_path_length']

@@ -3,6 +3,7 @@ from meta_mb.samplers.vectorized_env_executor import ParallelDDPExecutor
 import numpy as np
 from meta_mb.logger import logger
 import copy
+import time
 
 
 class GTiLQRController(Serializable):
@@ -117,12 +118,15 @@ class GTiLQRController(Serializable):
         sum_rewards = 0
 
         for t in range(self.max_path_length):
+            time_opt = time.time()
             optimized_action = self.get_actions_ilqr(obs=obs)
+            time_opt = time.time() - time_opt
             obs, reward, _, _ = self.executor.step(optimized_action)
             sum_rewards += reward
-            logger.logkv('PathLength', t)
-            logger.logkv('Reward', reward)
-            logger.logkv('TotalReward', sum_rewards)
+            logger.logkv('Summ-PathLength', t)
+            logger.logkv('Summ-Reward', reward)
+            logger.logkv('Summ-TotalReward', sum_rewards)
+            logger.logkv('Summ-TimeOpt', time_opt)
             # logger.dumpkvs()
 
         return [sum_rewards]
@@ -131,7 +135,7 @@ class GTiLQRController(Serializable):
         # do gradient steps
         ilqr_itr_counter = 0
         while ilqr_itr_counter < self.num_ddp_iters:
-            optimized_action, backward_accept, forward_accept, planner_return, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
+            optimized_action, backward_accept, forward_accept, planner_returns_log, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
             if not backward_accept:
                 # reset
                 logger.log(f'perturb u array, restart ilqr iterations')
@@ -144,9 +148,16 @@ class GTiLQRController(Serializable):
                     logger.log(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
 
                 if forward_accept:
-                    logger.log(reward_array[:4])
+                    old_returns, new_returns, diff = planner_returns_log
+                    if reward_array is not None:
+                        reward_array = np.reshape(reward_array, (-1, 5))
+                        for row in reward_array:
+                            logger.log(row)
                     logger.logkv('Itr', ilqr_itr_counter)
-                    logger.logkv('PlannerReturn', planner_return)
+                    logger.logkv('PlannerPrevReturn', old_returns)
+                    logger.logkv('PlannerReturn', new_returns)
+                    logger.logkv('ExpectedDiff', diff)
+                    logger.logkv('ActualDiff', new_returns - old_returns)
                     logger.dumpkvs()
 
                 ilqr_itr_counter += 1

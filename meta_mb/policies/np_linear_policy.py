@@ -1,5 +1,6 @@
 import numpy as np
 from meta_mb.utils.filters import MeanStdFilter
+from meta_mb.utils.filters import Filter
 from meta_mb.utils import Serializable
 from meta_mb.policies.np_base import NpPolicy
 from collections import OrderedDict
@@ -23,7 +24,8 @@ class LinearPolicy(NpPolicy):
             b=np.random.normal(loc=0, scale=0.5, size=(action_dim,))
         )
         self.flatten_dim = action_dim * (obs_dim + 1)
-        self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
+        self.obs_filters = [Filter(shape=(obs_dim,))]
+        # self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)

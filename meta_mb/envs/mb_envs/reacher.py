@@ -180,7 +180,6 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         qpos[:2] = np.arctan(obs[2:4]/obs[:2])
         qpos[2:] = obs[4:6]
         qvel[:2] = obs[-5:-3]
-        # FIXME: what is qvel[2:4]?
         self.set_state(qpos, qvel)
         return self._get_obs()
 
