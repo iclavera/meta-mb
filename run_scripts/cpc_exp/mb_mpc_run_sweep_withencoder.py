@@ -31,9 +31,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'timedebug'
+EXP_NAME = 'downsized'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -64,7 +64,7 @@ def run_experiment(**config):
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                         learning_rate=config['cpc_initial_lr'], encoder_arch='default',
                         context_network='stack', context_size=32, predict_action=config['predict_action'],
-                        contrastive=config['contrastive'])
+                        contrastive=config['contrastive'], grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
         # cpc_model.load_weights(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'))
     else:
         cpc_model = None
@@ -245,6 +245,7 @@ def run_experiment(**config):
             cpc_train_interval=config['cpc_train_interval'],
             cpc_predict_action=config['predict_action'],
             cpc_contrastive=config['contrastive'],
+            cpc_batch_size=config['batch_size_model'],
 
             path_checkpoint_interval=config['path_checkpoint_interval']
         )
@@ -337,7 +338,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance', 'cartpole_swingup'],
+        'env': ['cartpole_swingup'],
         'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
@@ -348,7 +349,7 @@ if __name__ == '__main__':
         'n_candidates': [1000],  # K
         'horizon': [20],  # Tau
         'use_cem': [True],
-        'num_cem_iters': [5],
+        'num_cem_iters': [10],
         'use_graph': [True],
 
         # Training
@@ -366,7 +367,7 @@ if __name__ == '__main__':
         'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [64],
+        'batch_size_model': [32],
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img':[True],
@@ -396,7 +397,9 @@ if __name__ == '__main__':
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [0.1, 1., 10],
+        'cpc_loss_weight': [1],
+        'cpc_lambd': [0.1],
+        'grad_penalty': [False],
     }
 
     config_embedding = {

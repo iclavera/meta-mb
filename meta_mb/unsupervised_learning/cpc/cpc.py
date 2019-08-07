@@ -97,7 +97,7 @@ class CPCLayer(keras.layers.Layer):
 class CPC:
     def __init__(self, image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                code_size_action=1, contrastive=True):
+                code_size_action=1, contrastive=True, grad_penalty=True, lambd=1.):
 
         ''' Define the CPC network combining encoder and autoregressive model '''
         if predict_action:
@@ -201,6 +201,18 @@ class CPC:
             #     metrics=['categorical_accuracy']
             # )
             self.loss = cross_entropy_loss(self.labels_ph, logits)
+            self.gpenalty = 0
+
+            if grad_penalty:
+                for i in range(predict_terms):
+                    for j in range(negative_samples + 1):
+                        grad = tf.gradients(logits[:, i, j], [x_input, y_input])
+                        grad_concat = tf.concat([tf.contrib.layers.flatten(grad[0]),
+                                                 tf.contrib.layers.flatten(grad[1][:, i, j])],
+                                                axis=-1)
+                        self.gpenalty += tf.reduce_mean(tf.pow(tf.norm(grad_concat, axis=-1) - 1, 2))
+
+                self.loss += lambd * self.gpenalty
             correct_class = tf.argmax(logits, axis=-1)
             predicted_class = tf.argmax(self.labels_ph, axis=-1)
             self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / tf.size(correct_class)

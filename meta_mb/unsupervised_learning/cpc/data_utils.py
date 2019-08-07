@@ -117,6 +117,7 @@ class CPCDataGenerator(object):
 
         if self.predict_action:
             # y_neg = self.actions[neg_idx_n, neg_idx_t]
+            # TODO: with a placeholder and fill it
             y = np.concatenate([np.expand_dims(y_pos, 2), self.actions[neg_idx_n, neg_idx_t]], axis=2)
         else:
             # y_neg = self.images[neg_idx_n, neg_idx_t]

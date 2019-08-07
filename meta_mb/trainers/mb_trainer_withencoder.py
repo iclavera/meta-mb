@@ -12,10 +12,9 @@ from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
 
 def visualize_img(images, m, n, name='example.png'):
-    return
     plt.figure(figsize=(n, m))
     sample = images
-    image_size = 64
+    image_size = images.shape[-2]
     sample = np.transpose(
         np.reshape(sample, [n, image_size * m, image_size, 3]),
         [0, 2, 1, 3])
