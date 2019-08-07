@@ -194,6 +194,16 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 if __name__ == "__main__":
     env = ReacherEnv()
     env.reset()
-    for _ in range(1000):
-        _ = env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    fail_ctr = 0
+    for _ in range(100):
+        x = np.random.random(size=(env.obs_dim,))
+        new_x = env.reset_from_obs(x)
+        if not np.allclose(x, new_x):
+            fail_ctr += 1
+            print(x, new_x)
+
+    print(fail_ctr/100, ' percentage of failure')
+
+    # for _ in range(1000):
+    #     _ = env.render()
+    #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action

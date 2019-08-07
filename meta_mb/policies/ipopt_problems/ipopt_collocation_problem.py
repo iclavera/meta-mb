@@ -15,6 +15,11 @@ class IPOPTCollocationProblem(object):
     def set_init_obs(self, obs):
         self.init_obs = obs
 
+    def get_x(self, s, a):
+        assert s.shape == (self.horizon-1, self.obs_dim)
+        assert a.shape == (self.horizon, self.act_dim)
+        return np.concatenate([s.ravel(), a.ravel()])
+
     def get_s_a(self, x):
         s = x[:(self.horizon-1) * self.obs_dim].reshape(self.horizon-1, self.obs_dim)
         a = x[(self.horizon-1) * self.obs_dim:].reshape(self.horizon, self.act_dim)

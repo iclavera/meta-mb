@@ -21,6 +21,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             self, '%s/assets/half_cheetah.xml' % dir_path, frame_skip=frame_skip
         )
         utils.EzPickle.__init__(self)
+        self.obs_dim = self.observation_space.shape[0]
+        self.act_dim = self.action_space.shape[0]
 
     def step(self, action):
         start_ob = self._get_obs()
@@ -51,9 +53,9 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def reset_model(self):  # FIXME: hack for bptt
-        self.set_state(self.init_qpos, self.init_qvel)
-        return self._get_obs()
+    # def reset_model(self):  # FIXME: hack for bptt
+    #     self.set_state(self.init_qpos, self.init_qvel)
+    #     return self._get_obs()
 
     def viewer_setup(self):
         self.viewer.cam.distance = self.model.stat.extent * 0.5
@@ -146,12 +148,21 @@ if __name__ == "__main__":
     env = HalfCheetahEnv()
     env.reset()
 
+    fail_ctr = 0
+    for _ in range(10000):
+        x = np.random.random(size=(env.obs_dim,))
+        new_x = env.reset_from_obs(x)
+        if not np.allclose(x, new_x):
+            fail_ctr += 1
+            print(x, new_x)
+
+    print(fail_ctr/100, ' percentage of failure')
     # print(env.sim.derivative().shape)
     # print(env.sim.data.qpos)
 
-    for _ in range(1000):
-        _ = env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+        # for _ in range(1000):
+        #     _ = env.render()
+        #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
 
     # for _ in range(10):
     #     ob, reward, done, info = env.step(np.zeros(env.action_space.shape))

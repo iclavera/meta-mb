@@ -771,7 +771,7 @@ class ParallelDDPExecutor(object):
     Compute ground truth derivatives.
     """
     def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
-                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
+                 mu_min=1e-6, mu_max=1e10, mu_init=0, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
                  forward_stop_cond='rel',
                  use_hessian_f=False, verbose=False):
@@ -796,7 +796,7 @@ class ParallelDDPExecutor(object):
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self._reset_mu()
-        self.x_array, self.J_val = None, None
+        # self.x_array, self.J_val = None, None
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
         if use_hessian_f:
@@ -843,11 +843,11 @@ class ParallelDDPExecutor(object):
     def update_x_u_for_one_step(self, obs):
         u_array = self.u_array
         optimized_action = u_array[0]
-        if self.x_array is None:
-            x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
+        # if self.x_array is None:
+        #     x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
             # self.x_array, self.J_val = x_array, J_val
-        else:
-            x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
+        # else:
+        x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
             # x_array, J_val = self.x_array, self.J_val
         backward_accept, forward_accept = False, False
 
@@ -941,11 +941,11 @@ class ParallelDDPExecutor(object):
                 backward_pass_counter += 1
 
         if not backward_accept:
-            logger.log(f'backward not accepted')
+            logger.log(f'backward not accepted with mu = {self.mu}')
             return None, backward_accept, forward_accept, None, None
 
         # self._decrease_mu()
-        logger.log(f'backward accepted after {backward_pass_counter} failed iterations, mu = {self.mu}')
+        # logger.log(f'backward accepted after {backward_pass_counter} failed iterations, mu = {self.mu}')
 
         """
         Forward Pass (pick the best alpha after trying all)
@@ -1020,16 +1020,17 @@ class ParallelDDPExecutor(object):
                 reward_array.append(reward)
                 opt_J_val += -reward
 
-            # FIIXME: stop if convergence (J_val > opt_J_val and |J_val - opt_J_val| / |J_val| < threshold)
+            # Stop if convergence (J_val > opt_J_val and |J_val - opt_J_val| / |J_val| < threshold)
+            # Maybe decreasing max_forward_iters has same effect
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 # store updated x, u array (CLIPPED), J_val
                 optimized_action = opt_u_array[0]
-                opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
+                # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
                 # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
-                self.x_array, self.u_array = opt_x_array, opt_u_array
-                self.J_val = opt_J_val
-                # self.u_array = np.stack(opt_u_array, axis=0)
+                # self.x_array, self.u_array = opt_x_array, opt_u_array
+                # self.J_val = opt_J_val
+                self.u_array = np.stack(opt_u_array, axis=0)
                 forward_accept = True
             else:
                 # continue line search
@@ -1040,11 +1041,11 @@ class ParallelDDPExecutor(object):
                 logger.log(f'at itr {forward_pass_counter}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
 
         if forward_accept:
-            logger.log(f'forward pass accepted with alpha = {alpha} after {forward_pass_counter} failed iterations')
+            logger.log(f'forward pass accepted after {forward_pass_counter} failed iterations')
             self._decrease_mu()
             return optimized_action, backward_accept, forward_accept, (-J_val, -opt_J_val, -delta_J_alpha), reward_array
         else:
-            logger.log(f'foward pass not accepted, optimized_action = first action from original u_array')
+            logger.log(f'foward pass not accepted')
             self._increase_mu()
             return optimized_action, backward_accept, forward_accept, None, None
 
@@ -1072,7 +1073,7 @@ class ParallelDDPExecutor(object):
         u_array = np.clip(u_array, a_min=self.act_low, a_max=self.act_high)
         self.u_array = u_array
 
-        self.x_array, self.J_val = None, None
+        # self.x_array, self.J_val = None, None
 
     def shift_u_array(self, u_new):
         """
@@ -1087,11 +1088,16 @@ class ParallelDDPExecutor(object):
             u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
 
         self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
-        self.x_array, self.J_val = None, None
+        # self.x_array, self.J_val = None, None
 
     def _run_open_loop(self, u_array, init_obs):
         x_array, sum_rewards = [], 0
         x = self._env.reset_from_obs(init_obs)
+        try:
+            assert np.allclose(x, init_obs)  # FAILS IN REACHER
+        except AssertionError:
+            logger.log('WARNING from reset_from_obs')
+
         for i in range(self.horizon):
             x_array.append(x)
             x, reward, _, _ = self._env.step(u_array[i])

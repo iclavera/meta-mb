@@ -157,11 +157,6 @@ class GTMPCController(Serializable):
 
             self.get_rollouts_factory = self.get_rollouts_collocation
 
-        elif self.method_str == 'ddp':
-            self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, verbose=verbose)
-            self.executor = copy.deepcopy(env)
-            self.get_rollouts_factory = self.get_rollouts_DDP
-
         elif self.method_str == 'ipopt_collocation':
             self.executor = copy.deepcopy(env)
             self.get_rollouts_factory = self.get_rollouts_ipopt

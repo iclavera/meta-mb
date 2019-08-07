@@ -1,6 +1,7 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.policies.gt_ilqr_controller import GTiLQRController
+from meta_mb.policies.gt_ipopt_controller import GTIpoptController
 from meta_mb.samplers.gt_sampler import GTSampler
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
@@ -67,6 +68,33 @@ def run_experiment(**config):
         if config['method_str'] == 'ilqr':
 
             policy = GTiLQRController(
+                name="policy",
+                env=env,
+                dynamics_model=dynamics_model,
+                eps=config['eps'],
+                discount=config['discount'],
+                n_candidates=config['n_candidates'],
+                horizon=config['horizon'],
+                max_path_length= max_path_length, # config['max_path_length'],
+                method_str=config['method_str'],
+                n_parallel=config['n_parallel'],
+                dyn_pred_str=config['dyn_pred_str'],
+                reg_coef=config['reg_coef'],
+                reg_str=config['reg_str'],
+                initializer_str=config['initializer_str'],
+                num_cem_iters=config['num_cem_iters'],
+                num_opt_iters=config['num_opt_iters'],
+                num_collocation_iters=config['num_collocation_iters'],
+                num_ddp_iters=config['num_ddp_iters'],
+                opt_learning_rate=config['opt_learning_rate'],
+                persistency=config['persistency'],
+                num_rollouts=config['num_rollouts'],
+                alpha=config['alpha'],
+                percent_elites=config['percent_elites'],
+                lmbda=config['lmbda'],
+            )
+        elif config['method_str'].startswith('ipopt'):
+            policy = GTIpoptController(
                 name="policy",
                 env=env,
                 dynamics_model=dynamics_model,
@@ -166,7 +194,7 @@ if __name__ == '__main__':
         'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['ilqr'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['ipopt_collocation', 'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'dyn_pred_str': ['all'],  # UNUSED
 
         'num_opt_iters': [50,], #20, 40,],

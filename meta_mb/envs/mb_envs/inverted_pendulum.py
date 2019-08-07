@@ -202,7 +202,8 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
 if __name__ == "__main__":
     import pickle as pickle
 
-    env = InvertedPendulumEnv()
+    # env = InvertedPendulumEnv()
+    env = InvertedPendulumSwingUpEnv()
     # for _ in range(5):
     #      ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
     # pickled_env_state = pickle.dumps(env.sim.get_state())
@@ -224,21 +225,31 @@ if __name__ == "__main__":
     # env2.sim.forward()
     # print(env2._get_obs())
 
-    for _ in range(1000):
-        obs = np.random.random(env.observation_space.shape)
-        _obs = env.reset_from_obs(obs)
-        try:
-            assert np.allclose(obs, _obs)
-        except AssertionError:
-            print(obs, _obs)
+    fail_ctr = 0
+    for _ in range(10000):
+        x = np.random.random(size=(env.obs_dim,))
+        new_x = env.reset_from_obs(x)
+        if not np.allclose(x, new_x):
+            fail_ctr += 1
+            print(x, new_x)
 
-    print(env.action_space.low, env.action_space.high)
+    print(fail_ctr/10000, ' percentage of failure')
 
-    env = InvertedPendulumSwingUpEnv()
-    print(env.action_space.low, env.action_space.high)
-
-
-    env.reset()
-    for _ in range(0):
-        _ = env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    # for _ in range(1000):
+    #     obs = np.random.random(env.observation_space.shape)
+    #     _obs = env.reset_from_obs(obs)
+    #     try:
+    #         assert np.allclose(obs, _obs)
+    #     except AssertionError:
+    #         print(obs, _obs)
+    #
+    # print(env.action_space.low, env.action_space.high)
+    #
+    # env = InvertedPendulumSwingUpEnv()
+    # print(env.action_space.low, env.action_space.high)
+    #
+    #
+    # env.reset()
+    # for _ in range(0):
+    #     _ = env.render()
+    #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action

@@ -17,6 +17,9 @@ class IPOPTShootingProblem(object):
     def get_a(self, x):
         return x.reshape(self.horizon, self.act_dim)
 
+    def get_x(self, a):
+        return a.ravel()  # WARNING: not copied
+
     def objective(self, x):
         #
         # The callback for calculating the objective

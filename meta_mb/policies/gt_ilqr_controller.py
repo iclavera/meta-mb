@@ -92,27 +92,6 @@ class GTiLQRController(Serializable):
     def get_rollouts(self, deterministic, plot_first_rollout):
         self.get_rollouts_ilqr()
 
-    def _run_open_loop(self, a_array):
-        s_array, returns = [], 0
-        obs = self._env.reset()
-        for t in range(self.horizon):
-            s_array.append(obs)
-            obs, reward, _, _ = self._env.step(a_array[t])
-            returns += self.discount ** t * reward
-
-        s_array_stacked = np.stack(s_array, axis=0)
-        return s_array_stacked, returns
-
-    def _compute_collocation_loss(self, s_array, a_array):
-        sum_rewards, reg_loss = 0, 0
-        for t in range(self.horizon):
-            _ = self._env.reset_from_obs(s_array[t])
-            s_next, reward, _, _ = self._env.step(a_array[t])
-            sum_rewards += self.discount ** t * reward
-            if t < self.horizon - 1:
-                reg_loss += np.linalg.norm(s_array[t+1] - s_next)**2
-        return -sum_rewards, reg_loss
-
     def get_rollouts_ilqr(self):
         obs = self.executor.reset()
         sum_rewards = 0
@@ -123,6 +102,7 @@ class GTiLQRController(Serializable):
             time_opt = time.time() - time_opt
             obs, reward, _, _ = self.executor.step(optimized_action)
             sum_rewards += reward
+
             logger.logkv('Summ-PathLength', t)
             logger.logkv('Summ-Reward', reward)
             logger.logkv('Summ-TotalReward', sum_rewards)
@@ -132,14 +112,13 @@ class GTiLQRController(Serializable):
         return [sum_rewards]
 
     def get_actions_ilqr(self, obs):
-        # do gradient steps
         ilqr_itr_counter = 0
         while ilqr_itr_counter < self.num_ddp_iters:
             optimized_action, backward_accept, forward_accept, planner_returns_log, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
             if not backward_accept:
                 # reset
                 logger.log(f'perturb u array, restart ilqr iterations')
-                self.planner.perturb_u_array()  # FIXME: ???
+                self.planner.perturb_u_array()
                 ilqr_itr_counter = 0
             else:
                 # log
@@ -180,16 +159,6 @@ class GTiLQRController(Serializable):
         else:
             raise NotImplementedError
         return init_u_array
-
-    def _generate_new_u(self):
-        # rotate running s_array, a_array
-        if self.initializer_str == 'uniform':
-            u_new = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high, size=(self.action_space_dims))
-        elif self.initializer_str == 'zeros':
-            u_new = np.zeros((self.action_space_dims,))
-        else:
-            u_new = None
-        return u_new
 
     def _init_u_array_cem(self):
         assert self.num_envs == 1
