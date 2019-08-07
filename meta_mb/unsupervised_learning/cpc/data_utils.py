@@ -23,6 +23,12 @@ class CPCDataGenerator(object):
         self.max_num_seq = max_num_seq
         self.predict_action = predict_action
         self.no_neg = no_neg
+        if self.predict_action:
+            self.y = np.zeros(dtype=np.float32, shape=(self.batch_size, self.predict_terms, self.negative_samples + 1,
+                                                       action_seqs.shape[-1]))
+        else:
+            self.y = np.zeros(dtype=np.float32, shape=(self.batch_size, self.predict_terms, self.negative_samples+1,
+                                                       *img_seqs.shape[-3:]))
 
         assert self.negative_same_traj < self.negative_samples
 
@@ -117,11 +123,14 @@ class CPCDataGenerator(object):
 
         if self.predict_action:
             # y_neg = self.actions[neg_idx_n, neg_idx_t]
-            # TODO: with a placeholder and fill it
-            y = np.concatenate([np.expand_dims(y_pos, 2), self.actions[neg_idx_n, neg_idx_t]], axis=2)
+            self.y[:, :, 0, ...] = y_pos
+            self.y[:, :, 1:, ...] = self.actions[neg_idx_n, neg_idx_t]
+            # y = np.concatenate([np.expand_dims(y_pos, 2), self.actions[neg_idx_n, neg_idx_t]], axis=2)
         else:
             # y_neg = self.images[neg_idx_n, neg_idx_t]
-            y = np.concatenate([np.expand_dims(y_pos, 2), self.images[neg_idx_n, neg_idx_t]], axis=2)
+            self.y[:, :, 0, ...] = y_pos
+            self.y[:, :, 1:, ...] = self.images[neg_idx_n, neg_idx_t]
+            # y = np.concatenate([np.expand_dims(y_pos, 2), self.images[neg_idx_n, neg_idx_t]], axis=2)
 
         t3 = time.time()
         # print('gather y negatives', t3 - t2)
@@ -143,7 +152,7 @@ class CPCDataGenerator(object):
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
 
         # return [x_images, actions, y[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
-        return [x_images, actions, y], pos_neg_label
+        return [x_images, actions, self.y], pos_neg_label
 
 def plot_seq(x, y, labels, name=''):
     """

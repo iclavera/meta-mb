@@ -15,6 +15,7 @@ from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
 
 def visualize_img(images, m, n, name='example.png'):
+    return
     plt.figure(figsize=(n, m))
     sample = images
     image_size = images.shape[-2]
@@ -164,10 +165,6 @@ class Trainer(object):
                 train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
                 train_data.update_dataset(train_img, train_action)
                 validation_data.update_dataset(val_img, val_action)
-                callbacks = [
-                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=3, min_lr=1e-5, verbose=1, min_delta=0.001),
-                    SaveEncoder(logger.get_dir(), metric='acc' if self.cpc_contrastive else 'error'),
-                    keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
 
                 # Train the model
                 self.cpc_model.fit_generator(
@@ -176,8 +173,7 @@ class Trainer(object):
                     validation_data=validation_data,
                     validation_steps=len(validation_data),
                     epochs=self.cpc_initial_epoch,
-                    verbose=1,
-                    callbacks=callbacks
+                    patience=2
                 )
 
             # K.set_learning_phase(0)
@@ -229,20 +225,6 @@ class Trainer(object):
                 ''' --------------- finetune cpc --------------- '''
                 time_cpc_start = time.time()
                 if self.cpc_epoch > 0 and itr % self.cpc_train_interval == 0 and itr > 0:
-                #     self.cpc_model.compile(
-                #         optimizer=keras.optimizers.Adam(lr=self.cpc_lr),
-                #         loss=cross_entropy_loss,
-                #         metrics=['categorical_accuracy'])
-
-                    callbacks = [
-                        keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, verbose=1,
-                                                      restore_best_weights=True),
-                        # keras.callbacks.LearningRateScheduler(lambda epoch, lr: self.cpc_lr / (3 ** (epoch // 3)), verbose=1), # TODO: better lr schedule
-                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
-                                                          verbose=1, min_delta=0.001),
-                        SaveEncoder(logger.get_dir()),
-                        keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'cpc.log'), append=True)]
-
                     # Train the model
                     self.cpc_model.fit_generator(
                         generator=train_data,
@@ -250,8 +232,7 @@ class Trainer(object):
                         validation_data=validation_data,
                         validation_steps=len(validation_data),
                         epochs=self.cpc_epoch,
-                        verbose=1,
-                        callbacks=callbacks
+                        patience=2
                     )
 
                     # K.set_learning_phase(0)

@@ -32,9 +32,9 @@ from meta_mb.envs.normalized_env import NormalizedEnv
 from meta_mb.envs.obs_stack_env import ObsStackEnv
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'probablistic_model'
+EXP_NAME = 'optimize-buffer'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -279,7 +279,7 @@ if __name__ == '__main__':
         'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [3],
+        'obs_stack': [5],
         'img_shape': [(32, 32, 3)],
 
         # Policy
@@ -334,7 +334,7 @@ if __name__ == '__main__':
         'cpc_train_interval': [1],
         'cpc_loss_weight': [10],
         'cpc_lambd': [0.01, 0.1],
-        'grad_penalty': [True],
+        'grad_penalty': [False],
     }
 
     config_prob = {
@@ -473,6 +473,73 @@ if __name__ == '__main__':
         'grad_penalty': [False],
     }
 
+    config_pretrain = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+        'env': ['cheetah_run'],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [3],
+        'img_shape': [(32, 32, 3)],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.2],
+        'rolling_average_persitency': [0.9],
+        'path_checkpoint_interval': [10],
+
+        # Dynamics Model / reward model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [15],
+        'reward_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+        'input_is_img': [False],
+        'model_grad_thru_enc': [False],
+        'prob_dyn': [False],
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        'encoder': ['cpc'],
+        'latent_dim': [16],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [False],
+        'predict_action': [False],
+        'contrastive': [True],
+        'cpc_epoch': [0],
+        'cpc_lr': [5e-4],
+        'cpc_initial_epoch': [50],
+        'cpc_initial_lr': [1e-3],
+
+        'cpc_num_initial_rollouts': [5],
+        'cpc_train_interval': [1],
+        'cpc_loss_weight': [0.],
+        'cpc_lambd': [0],
+        'grad_penalty': [False],
+    }
 
 
-    run_sweep(run_experiment, config_prob, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

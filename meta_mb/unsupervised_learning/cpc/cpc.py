@@ -201,7 +201,7 @@ class CPC:
             #     metrics=['categorical_accuracy']
             # )
             self.loss = cross_entropy_loss(self.labels_ph, logits)
-            self.gpenalty = 0
+            self.gpenalty = tf.constant(0, dtype=tf.float32)
 
             if grad_penalty:
                 for i in range(predict_terms):
@@ -215,9 +215,11 @@ class CPC:
                 self.loss += lambd * self.gpenalty
             correct_class = tf.argmax(logits, axis=-1)
             predicted_class = tf.argmax(self.labels_ph, axis=-1)
-            self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / tf.size(correct_class)
-            # self.accuracy = tf.metrics.accuracy(self.labels_ph, tf.one_hot(tf.argmax(logits, axis=-1), negative_samples+1))
-            self.train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(self.loss) # TODO: make this lr adaptive
+            self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / \
+                            tf.size(correct_class)
+            self.lr_ph = tf.placeholder(dtype=tf.float32)
+
+            self.train_op = tf.train.AdamOptimizer(learning_rate=self.lr_ph).minimize(self.loss)
 
         else:
             cpc_model = keras.models.Model(inputs=[x_input], outputs=preds)
@@ -238,11 +240,11 @@ class CPC:
             return self.encoder.predict(imgs[None, ...])[0]
         return self.encoder.predict(imgs)
 
-    def train_step(self, inputs, labels, train=True):
+    def train_step(self, inputs, labels, lr=1e-3, train=True):
         if train:
             loss, acc, _ = tf.get_default_session().run([self.loss, self.accuracy, self.train_op],
                                             feed_dict={self.x_input_ph: inputs[0], self.action_input_ph:inputs[1],
-                                            self.y_input_ph:inputs[2], self.labels_ph: labels})
+                                            self.y_input_ph:inputs[2], self.labels_ph: labels, self.lr_ph: lr})
         else:
             loss, acc = tf.get_default_session().run([self.loss, self.accuracy],
                                                     feed_dict={self.x_input_ph: inputs[0],
@@ -250,21 +252,34 @@ class CPC:
                                                                self.y_input_ph: inputs[2], self.labels_ph: labels})
         return loss, acc
 
-    def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, verbose, callbacks):
+    def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, patience=3):
+        lr = 1e-3
+        non_decrease_count = 0
+        target_loss = 100.
         for i in range(epochs):
             print("Epoch %d" % i)
+            val_losses = []
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
                 input, label = generator.next()
-                loss, acc = self.train_step(input, label)
+                loss, acc = self.train_step(input, label, lr=lr)
                 train_pb.add(1, values=[('loss', loss), ('acc', acc)])
             val_pb = Progbar(validation_steps)
             for k in range(validation_steps):
                 val_loss, val_acc = self.train_step(*validation_data.next(), train=False)
                 val_pb.add(1, values=[('val_loss', val_loss), ('val_acc', val_acc)])
-                # print('validation loss', val_loss, val_acc[0])
+                val_losses.append(val_loss)
+            cur_val_loss = sum(val_losses) / len(val_losses)
 
-
+            if cur_val_loss < target_loss:
+                target_loss = cur_val_loss
+                non_decrease_count = 0
+            else:
+                non_decrease_count += 1
+                if non_decrease_count >= patience and lr > 1e-5:
+                    lr /= 3
+                    non_decrease_count = 0
+                    print("reducing the lr to %f" % lr)
 
 class CPCContextNet:
     def __init__(self, path, model=None, image_shape=(64, 64, 3)):
