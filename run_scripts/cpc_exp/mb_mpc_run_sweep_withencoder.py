@@ -145,7 +145,8 @@ def run_experiment(**config):
         else:
             buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['input_is_img'],
                                           config['latent_dim'], config['obs_stack'], config['num_models'],
-                                          config['valid_split_ratio'], normalize_input=config['normalize'], )
+                                          config['valid_split_ratio'], normalize_input=config['normalize'],
+                                          buffer_size=12500//max_path_length)
             if config['prob_dyn']:
                 DYN_CLASS = ProbMLPDynamicsEnsemble
             else:
@@ -406,4 +407,4 @@ if __name__ == '__main__':
 
 
 
-    run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_prob, EXP_NAME, INSTANCE_TYPE)
