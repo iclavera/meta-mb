@@ -10,7 +10,7 @@ from blue_interface.blue_interface import BlueInterface
 
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self,
-                 max_torques,
+                 max_torques=[2]*7,
                  exp_type='reach',
                  ctrl_penalty=1.25e-1,
                  vel_penalty=1.25e-2,
@@ -18,22 +18,21 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
                  side='right',
                  ip='169.229.223.208',
                  port=9090):
-
+        self.fixed = True
         if exp_type == 'reach':
-            self.init_qpos = np.zeros(7)
-            self.init_obs = np.array([0.00016006801439368207, -0.7502518896855894, -1.5709122959580437,
-                                     -2.663168642255995e-05,  -2.27609235431837,    1.5697494050591658,
-                                      0.0001333817191745924,   0,                   0,
-                                      0,                       0,                   0,
-                                      0,                       0,                    0, 0, 0
-            ])
-            self.goal = np.array([0.1, 0.21, -0.55])
-            #self.goal = np.array([-0.44, -0.1, 0.21])
+            self.init_qpos = np.array([4.64195583e-03,  8.63199317e-03, -3.53298290e-04, -1.20736697e-02,
+                                      -4.36734625e-02,  3.99635356e-02, -5.22832424e-02])
+            self.init_obs = np.array([4.64195583e-03,  8.63199317e-03, -3.53298290e-04, -1.20736697e-02,
+                                     -4.36734625e-02,  3.99635356e-02, -5.22832424e-02,  7.27691469e-04,
+                                     -3.06611558e-03,  2.76888153e-03,  4.25122445e-03, -4.96030552e-04,
+                                      3.52372508e-03,  3.00150844e-03, -7.27309631e-03, -1.83452888e-02,
+                                      1.10363540e+00])
+            self.goal = np.array([-0.44003503,  0.26426241,  0.25445901])
 
         elif exp_type == 'peg':
             self.init_qpos = np.zeros(7)
             self.init_obs = np.zeros(20)
-            self.goal =
+            self.goal = np.zeros(3)
 
         elif exp_type == 'bottle':
             self.init_qpos = np.zeros(7)
@@ -96,7 +95,7 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         ob = self.do_simulation(act, self.frame_skip)
         joint_vel = self.get_joint_velocities()
 
-        norm_end = np.linalg.norm(self.tip_position - self.goal)
+        norm_end = np.linalg.norm(ob[-3:] - self.goal)
         reward_ctrl = -self.ctrl_penalty * np.square(np.linalg.norm(act))
         reward_vel = -self.vel_penalty * np.square(np.linalg.norm(joint_vel))
         reward_dist = self.gps_reward()
@@ -126,30 +125,29 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         for _ in range(frame_skip):
             time.sleep(self.dt)
             self.set_joint_torques(action)
-            ob = self.get_obs()
+        ob = self._get_obs()
         return ob
 
+
+    def tf_reward(self, obs, act, obs_next):
+        norm_end = tf.linalg.norm(obs_next[:, -3:] - self.goal, axis=1)
+        reward_ctrl = -self.ctrl_penalty * tf.square(tf.linalg.norm(act, axis=1))
+        reward_vel = -self.vel_penalty * tf.square(tf.linalg.norm(obs_next[:, 7:14], axis=1))
+        reward_dist = -(tf.square(norm_end) + tf.log(tf.square(norm_end) + self.alpha))
+        reward_ctrl = tf.cast(reward_ctrl, tf.float32)
+        reward_vel = tf.cast(reward_vel, tf.float32)
+        reward_dist = tf.cast(reward_dist, tf.float32)
+        reward = reward_dist + reward_ctrl + reward_vel
+        return tf.clip_by_value(reward, -100, 100)
+
     def reward(self, obs, act, obs_next):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            norm_end = tf.linalg.norm(obs_next[:, :7] - self.goal)
-            reward_ctrl = -self.ctrl_penalty * tf.square(tf.linalg.norm(act))
-            reward_vel = -self.vel_penalty * tf.square(tf.linalg.norm(obs_next[:, 10:17]))
-            reward_dist = self.gps_reward_tf()
-
-            reward = reward_dist + reward_ctrl + reward_vel
-            return tf.clip(reward, -100, 100)
-
-
-    def reward(self, obs, act, obs_next):
-        assert obs.ndim == act.ndim == obs_next.ndim
-        if obs.ndim == 2:
-            assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            norm_end = np.linalg.norm(obs_next[:, :7] - self.goal)
-            reward_ctrl = -self.ctrl_penalty * np.square(np.linalg.norm(act))
-            reward_vel = -self.vel_penalty * np.square(np.linalg.norm(obs_next[:, 10:17]))
-            reward_dist = self.gps_reward_tf()
+            norm_end = np.linalg.norm(obs_next[:, -3:] - self.goal, axis=1)
+            reward_ctrl = -self.ctrl_penalty * np.square(np.linalg.norm(act, axis=1))
+            reward_vel = -self.vel_penalty * np.square(np.linalg.norm(obs_next[:, 7:14], axis=1))
+            reward_dist = -(np.square(norm_end) + np.log(np.square(norm_end) + self.alpha))
             reward = reward_dist + reward_ctrl + reward_vel
             return np.clip(reward, -1e2, 1e2)
 
@@ -160,17 +158,15 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
             raise NotImplementedError
 
     def reset(self):
-        self.set_joint_positions(self.init_qpos, duration=5)
+        self.set_joint_positions(np.zeros(7), duration=5)
         if not self.fixed:
             while True:
                 self.goal = np.random.uniform(low=[-0.75, -0.25, 0.25], high=[-0.25, 0.25, 0.5])
                 if np.linalg.norm(self.goal) < 2:
                     break
         else:
-            self.goal = np.array([-0.44, -0.1, 0.21])
-            #self.goal = np.array([0.1, 0.21, -0.55])
+            self.goal = np.array([-0.44003503,  0.26426241,  0.25445901])
         obs = self._get_obs()
-        print(obs)
         return obs
 
     def joint_goal(self):
@@ -247,10 +243,10 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
 
 
 if __name__ == "__main__":
-    env = ArmReacherEnv(match_joints=True)
+    env = ArmReacherEnv()
     while True:
         env.reset()
-        for _ in range(100):
-            print(env.tip_position)
-            env.step(env.action_space.sample())
-            env.render()
+        for _ in range(100000000):
+            env.set_joint_torques(np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+            #env.step(env.action_space.sample() * 0)
+            #env.render()
