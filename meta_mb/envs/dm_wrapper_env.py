@@ -2,6 +2,7 @@ from meta_mb.utils.serializable import Serializable
 import numpy as np
 import gym
 import tensorflow as tf
+from collections.abc import Iterable
 
 
 class DeepMindWrapper(Serializable):
@@ -88,7 +89,7 @@ class ConcatObservation(object):
     return obs
 
   def _select_keys(self, obs):
-    return np.concatenate([obs[key] for key in self._keys], 0)
+    return np.concatenate([obs[key] if isinstance(obs[key], Iterable) else [obs[key]] for key in self._keys], 0)
 
   def render(self, *args, **kwargs):
       return self._env.render(*args, **kwargs)

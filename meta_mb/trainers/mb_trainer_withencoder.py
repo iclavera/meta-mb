@@ -15,7 +15,6 @@ from meta_mb.unsupervised_learning.cpc.data_utils import CPCDataGenerator, plot_
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, cross_entropy_loss
 
 def visualize_img(images, m, n, name='example.png'):
-    return
     plt.figure(figsize=(n, m))
     sample = images
     image_size = images.shape[-2]
@@ -196,6 +195,7 @@ class Trainer(object):
 
                 if itr % self.path_checkpoint_interval == 0:
                     imgs =np.stack([path['observations'] for path in env_paths])
+                    imgs = imgs[:, :min(250, imgs.shape[1])]
                     n, m = imgs.shape[:2]
                     imgs = imgs.reshape(-1, *imgs.shape[2:])
                     visualize_img(imgs, m, n,

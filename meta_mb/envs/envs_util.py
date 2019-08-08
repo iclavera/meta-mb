@@ -52,6 +52,15 @@ def make_env(env, render_size=(64, 64), distractor=False, ptsize=2):
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('finger', 'spin'), render_size=render_size),
                                                  keys=['position', 'velocity', 'touch']), amount=2)
         max_path_length = 500
+    elif env == 'walker':
+        from dm_control import suite
+        from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
+        raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('walker', 'walk'), render_size=render_size),
+                                                 keys=['orientations', 'velocity']), amount=2) #leaving out height
+        max_path_length = 500
+
+
+
     else:
         raise NotImplementedError
 
