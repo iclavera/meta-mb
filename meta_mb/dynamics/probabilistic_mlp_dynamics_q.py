@@ -146,8 +146,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             obs = self.obs_ph
             dist_info_sym = self.policy.distribution_info_sym(obs)
-            actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-            actions = actions_var
+            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
             for i in range(self.T+1):
                 next_observation = self.predict_sym(obs, actions)
                 dist_info_sym = self.policy.distribution_info_sym(next_observation)
@@ -161,15 +160,16 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
                 obs, actions = next_observation, next_actions_var
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [(self.discount ** (i + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [(self.discount ** (self.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             q_values = [reward_values + next_q_values[j] for j in range(2)]
 
             # define loss and train_op
-            input_q_fun = tf.concat([self.obs_ph, self.act_ph], axis=-1)
+            input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph, (self.act_ph-self._mean_act_ph)/self._std_act_ph], axis=-1)
             q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
             q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
                                         for i in range(2)]
+            q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
 
             self.loss = [tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
                                        + self.logvar_pred)
@@ -276,7 +276,7 @@ class ProbMLPDynamicsEnsembleQ(MLPDynamicsEnsembleQ):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
-                    assert self.normalize_input
+                    # assert self.normalize_input
                     in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)

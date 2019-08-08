@@ -650,7 +650,6 @@ class SAC_MB(Algo):
                 real_list.append(value)
             policy_train_op = self.policy_optimizer.apply_gradients(real_list)
 
-            # self.actor_ops.update({'policy_train_op': policy_train_op})
             self.training_ops.update({'policy_train_op': policy_train_op})
             return
 

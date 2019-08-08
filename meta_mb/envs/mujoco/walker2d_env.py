@@ -40,18 +40,30 @@ class Walker2dEnv(MetaEnv, gym.utils.EzPickle, MujocoEnv):
         reward = reward_run + reward_ctrl + 1.0
         return reward
 
+    # def tf_termination_fn(self, obs, act, next_obs):
+    #     # raise NotImplementedError
+    #     assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+    #     # done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+    #     notdone = tf.math.logical_and(tf.math.logical_and(tf.math.logical_and((obs[:, 0] > 0.8),(obs[:, 0] < 2.0)), (obs[:, 1] > -1.0)),(obs[:, 1] < 1.0))
+    #     done = ~notdone[:,None]
+    #     return done
+    #
+    # def termination_fn(self, obs, act, next_obs):
+    #     assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
+    #     notdone = (obs[:, 0] > 0.8) * (obs[:, 0] < 2.0) * (obs[:, 1] > -1.0) * (obs[:, 1] < 1.0)
+    #     return np.logical_not(notdone)
+
     def tf_termination_fn(self, obs, act, next_obs):
-        # raise NotImplementedError
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        # done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
-        notdone = tf.math.logical_and(tf.math.logical_and(tf.math.logical_and((obs[:, 0] > 0.8),(obs[:, 0] < 2.0)), (obs[:, 1] > -1.0)),(obs[:, 1] < 1.0))
-        done = ~notdone[:,None]
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:, None]
         return done
 
     def termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        notdone = (obs[:, 0] > 0.8) * (obs[:, 0] < 2.0) * (obs[:, 1] > -1.0) * (obs[:, 1] < 1.0)
-        return np.logical_not(notdone)
+        done = np.array([False]).repeat(obs.shape[0])
+        done = done[:, None]
+        return done
 
     def done(self, obs):
         if obs.ndim == 2:

@@ -61,7 +61,7 @@ def run_experiment(**kwargs):
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-            squashed=True
+            squashed=True,
         )
 
         env_sampler = BaseSampler(
@@ -98,6 +98,7 @@ def run_experiment(**kwargs):
                                                 T=kwargs['T'],
                                                 reward_scale=kwargs['reward_scale'],
                                                 discount=kwargs['discount'],
+                                                normalize_input=kwargs['normalize_input'],
                                                 )
 
 
@@ -175,21 +176,22 @@ if __name__ == '__main__':
 		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[3],
 		'q_target_type': [0],
 		'num_actions_per_next_observation': [0],
         'H': [0],
-        'T': [2],
+        'T': [2, 3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [4],
+		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['relu', 'tanh'],
         'vfun_hidden_nonlineariy': ['tanh'],
-        'q_loss_importance': [0],
+        'q_loss_importance': [1e-3, 1e-4, 1e-5],
+        'normalize_input': [True],
 
 
         # Problem Conf
