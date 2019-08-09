@@ -352,7 +352,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         return remaining_model_idx, valid_loss_rolling_average
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
-            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
+            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix='', **kwargs):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)

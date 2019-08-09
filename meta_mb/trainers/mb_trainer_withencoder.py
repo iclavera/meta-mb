@@ -139,8 +139,10 @@ class Trainer(object):
             start_time = time.time()
 
             ''' --------------- Pretrain CPC on exploratory data --------------- '''
-            empty_imgs = np.zeros(shape=(0, self.cpc_initial_sampler.max_path_length, *self.env.observation_space.shape))
-            empty_acs = np.zeros(shape=(0, self.cpc_initial_sampler.max_path_length, *self.env.action_space.shape))
+            length = self.cpc_initial_sampler.max_path_length if self.env.encoder is None else \
+                self.cpc_initial_sampler.max_path_length  - 1
+            empty_imgs = np.zeros(shape=(0, length, *self.cpc_model.image_shape))
+            empty_acs = np.zeros(shape=(0, length, *self.env.action_space.shape))
 
             train_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), self.cpc_batch_size, terms=self.cpc_terms,
                                           negative_samples=self.cpc_negative_samples,
@@ -194,7 +196,7 @@ class Trainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
                 if itr % self.path_checkpoint_interval == 0:
-                    imgs =np.stack([path['observations'] for path in env_paths])
+                    imgs = np.concatenate(self.get_seqs(env_paths)[:1], axis=0)
                     imgs = imgs[:, :min(250, imgs.shape[1])]
                     n, m = imgs.shape[:2]
                     imgs = imgs.reshape(-1, *imgs.shape[2:])
@@ -214,11 +216,11 @@ class Trainer(object):
                 time_env_samp_proc = time.time()
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths,
                                                                               log=True, log_prefix='EnvTrajs-')
-
-                self.buffer.update_buffer(samples_data['observations'],
-                                        samples_data['actions'],
-                                        samples_data['next_observations'],
-                                        samples_data['rewards'])
+                if self.buffer is not None:
+                    self.buffer.update_buffer(samples_data['observations'],
+                                            samples_data['actions'],
+                                            samples_data['next_observations'],
+                                            samples_data['rewards'])
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
@@ -239,7 +241,7 @@ class Trainer(object):
                     # self.env._wrapped_env._vae = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
                 logger.record_tabular('Time-CPCModelFinetune', time.time() - time_cpc_start)
-                if not self.dynamics_model.input_is_img:
+                if not self.buffer is None and not self.dynamics_model.input_is_img:
                     self.buffer.update_embedding_buffer()
 
                 ''' --------------- fit dynamics model --------------- '''

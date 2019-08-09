@@ -99,6 +99,8 @@ class CPC:
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
                 code_size_action=1, contrastive=True, grad_penalty=True, lambd=1.):
 
+        self.image_shape = image_shape
+
         ''' Define the CPC network combining encoder and autoregressive model '''
         if predict_action:
             """

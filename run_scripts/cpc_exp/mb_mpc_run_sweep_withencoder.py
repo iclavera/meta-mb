@@ -10,7 +10,7 @@ from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_withencoder import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
-from meta_mb.policies.mpc_controller import MPCController
+from meta_mb.policies.mpc_controller_withencoder import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.replay_buffers.image_embedding_buffer import ImageEmbeddingBuffer
 from meta_mb.reward_model.mlp_reward_ensemble_withencoder import MLPRewardEnsemble
@@ -55,10 +55,6 @@ def run_experiment(**config):
 
 
     if config['use_image']:
-        # from meta_mb.unsupervised_learning.cpc.cpc import CPCLayer
-        # from meta_mb.unsupervised_learning.cpc.training_utils import cross_entropy_loss
-        # cpc_model = keras.models.load_model(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'),
-        #                                     custom_objects={'CPCLayer': CPCLayer, 'cross_entropy_loss': cross_entropy_loss})
         from meta_mb.unsupervised_learning.cpc.cpc import CPC
 
         cpc_model = CPC(config['img_shape'], raw_env.action_space.shape[0], config['include_action'],
@@ -66,7 +62,6 @@ def run_experiment(**config):
                         learning_rate=config['cpc_initial_lr'], encoder_arch='default',
                         context_network='stack', context_size=32, predict_action=config['predict_action'],
                         contrastive=config['contrastive'], grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
-        # cpc_model.load_weights(os.path.join('meta_mb/unsupervised_learning/cpc/data', EXP_NAME, folder, 'cpc.h5'))
     else:
         cpc_model = None
 
@@ -86,10 +81,12 @@ def run_experiment(**config):
                     env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=config['history'], vae=encoder,
                                         latent_dim=config['latent_dim'], time_major=True, img_size=config['img_shape'])
                 else:
-                    # encoder = CPCEncoder(None, model=cpc_model.get_layer('context_network').layers[1].layer)
                     encoder = cpc_model.encoder
-                    env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, img_size=config['img_shape']) #vae=encoder,
-                                        #latent_dim=config['latent_dim'])
+                    if config['env_produce_img']:
+                        env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, img_size=config['img_shape'])
+                    else:
+                        env = ImgWrapperEnv(NormalizedEnv(raw_env), time_steps=1, img_size=config['img_shape'],
+                                            latent_dim=config['latent_dim'], encoder=cpc_model)
             elif config['encoder'] == 'vae':
                 encoder = VAE(latent_dim=config['latent_dim'], decoder_bernoulli=True, model_path=model_path)
                 env = ImgWrapperEnv(NormalizedEnv(config['env']()), time_steps=1, vae=encoder,
@@ -97,8 +94,7 @@ def run_experiment(**config):
         else:
             env = NormalizedEnv(raw_env)
 
-        # if config['obs_stack'] > 1:
-        #     env = ObsStackEnv(env, time_steps=config['obs_stack'])
+
 
         if config['recurrent']:
             dynamics_model = RNNDynamicsEnsemble(
@@ -143,71 +139,121 @@ def run_experiment(**config):
             )
 
         else:
-            buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['input_is_img'],
-                                          config['latent_dim'], config['obs_stack'], config['num_models'],
-                                          config['valid_split_ratio'], normalize_input=config['normalize'],
-                                          buffer_size=12500//max_path_length)
-            if config['prob_dyn']:
-                DYN_CLASS = ProbMLPDynamicsEnsemble
+            if config['env_produce_img']:
+                buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['input_is_img'],
+                                              config['latent_dim'], config['obs_stack'], config['num_models'],
+                                              config['valid_split_ratio'], normalize_input=config['normalize'],
+                                              buffer_size=12500 // max_path_length)
+                if config['prob_dyn']:
+                    DYN_CLASS = ProbMLPDynamicsEnsemble
+                else:
+                    DYN_CLASS = MLPDynamicsEnsemble
+                dynamics_model = DYN_CLASS(
+                    name="dyn_model",
+                    env=env,
+                    num_stack=config['obs_stack'],
+                    encoder=encoder,
+                    latent_dim=config['latent_dim'],
+                    model_grad_thru_enc=config['model_grad_thru_enc'],
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                    normalize_input=config['normalize'],
+                    buffer=buffer,
+                    input_is_img=config['input_is_img'],
+                    cpc_loss_weight=config['cpc_loss_weight'],
+                    cpc_model=cpc_model,
+                )
+
+                reward_model = MLPRewardEnsemble(
+                    name="rew_model",
+                    env=env,
+                    encoder=encoder,
+                    input_is_img=config['input_is_img'],
+                    latent_dim=config['latent_dim'],
+                    buffer=buffer,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                    normalize_input=config['normalize'],
+                )
+
+                policy = MPCController(
+                    name="policy",
+                    env=env,
+                    num_stack=config['obs_stack'] if config['env_produce_img'] else 1,
+                    encoder=encoder,
+                    latent_dim=config['latent_dim'],
+                    dynamics_model=dynamics_model,
+                    discount=config['discount'],
+                    n_candidates=config['n_candidates'],
+                    horizon=config['horizon'],
+                    use_cem=config['use_cem'],
+                    num_cem_iters=config['num_cem_iters'],
+                    use_reward_model=config['use_reward_model'],
+                    reward_model=reward_model if config['use_reward_model'] else None,
+                    use_image=config['env_produce_img'],
+                )
+
+
             else:
-                DYN_CLASS = MLPDynamicsEnsemble
-            dynamics_model = DYN_CLASS(
-                name="dyn_model",
-                env=env,
-                num_stack=config['obs_stack'],
-                encoder=encoder,
-                latent_dim=config['latent_dim'],
-                model_grad_thru_enc=config['model_grad_thru_enc'],
-                learning_rate=config['learning_rate'],
-                hidden_sizes=config['hidden_sizes_model'],
-                weight_normalization=config['weight_normalization_model'],
-                num_models=config['num_models'],
-                valid_split_ratio=config['valid_split_ratio'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                batch_size=config['batch_size_model'],
-                normalize_input=config['normalize'],
-                buffer=buffer,
-                input_is_img=config['input_is_img'],
-                cpc_loss_weight=config['cpc_loss_weight'],
-                cpc_model=cpc_model,
-            )
+                from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+                from meta_mb.reward_model.mlp_reward_ensemble import MLPRewardEnsemble
+                from meta_mb.policies.mpc_controller import MPCController
+                buffer = None
+                dynamics_model = MLPDynamicsEnsemble(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                    normalize_input=config['normalize'],
+                )
 
-            reward_model = MLPRewardEnsemble(
-                name="rew_model",
-                env=env,
-                encoder=encoder,
-                input_is_img=config['input_is_img'],
-                latent_dim=config['latent_dim'],
-                buffer=buffer,
-                learning_rate=config['learning_rate'],
-                hidden_sizes=config['hidden_sizes_model'],
-                weight_normalization=config['weight_normalization_model'],
-                num_models=config['num_models'],
-                valid_split_ratio=config['valid_split_ratio'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                batch_size=config['batch_size_model'],
-                normalize_input=config['normalize'],
-            )
+                reward_model = MLPRewardEnsemble(
+                    name="rew_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                    normalize_input=config['normalize'],
+                )
+                policy = MPCController(
+                    name="policy",
+                    env=env,
+                    dynamics_model=dynamics_model,
+                    discount=config['discount'],
+                    n_candidates=config['n_candidates'],
+                    horizon=config['horizon'],
+                    use_cem=config['use_cem'],
+                    num_cem_iters=config['num_cem_iters'],
+                    use_reward_model=config['use_reward_model'],
+                    reward_model=reward_model if config['use_reward_model'] else None,
+                )
 
-            policy = MPCController(
-                name="policy",
-                env=env,
-                num_stack=config['obs_stack'],
-                encoder=encoder,
-                latent_dim=config['latent_dim'],
-                dynamics_model=dynamics_model,
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                use_cem=config['use_cem'],
-                num_cem_iters=config['num_cem_iters'],
-                use_reward_model=config['use_reward_model'],
-                reward_model= reward_model if config['use_reward_model'] else None,
-                use_image=True,
 
-            )
+            sample_processor = ModelSampleProcessor(recurrent=config['env_produce_img'])
+
 
         sampler = BaseSampler(
             env=env,
@@ -221,7 +267,6 @@ def run_experiment(**config):
             num_rollouts=config['cpc_num_initial_rollouts'],
             max_path_length=max_path_length,
         )
-        sample_processor = ModelSampleProcessor(recurrent=True)
 
 
 
@@ -409,7 +454,8 @@ if __name__ == '__main__':
         'run_suffix': ['1'],
 
         # Problem
-        'env': ['cheetah_run'],
+        'env': ['cheetah_run', 'walker'],
+		'env_produce_img': [False],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -435,7 +481,7 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [15],
+        'dynamic_model_epochs': [50],
         'reward_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
@@ -457,15 +503,15 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [False],
+        'include_action': [True, False],
         'predict_action': [False],
         'contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [50],
+        'cpc_initial_epoch': [30],
         'cpc_initial_lr': [1e-3],
 
-        'cpc_num_initial_rollouts': [5],
+        'cpc_num_initial_rollouts': [256],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [0.],
         'cpc_lambd': [0],
@@ -473,4 +519,4 @@ if __name__ == '__main__':
     }
 
 
-    run_sweep(run_experiment, config_prob, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_pretrain, EXP_NAME, INSTANCE_TYPE)
