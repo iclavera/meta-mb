@@ -8,7 +8,6 @@ import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
-from pdb import set_trace as st
 
 
 class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
@@ -28,7 +27,7 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
         if getattr(self, 'action_space', None):
             action = np.clip(action, self.action_space.low,
-                            self.action_space.high)
+                             self.action_space.high)
 
         reward_ctrl = -0.1 * np.square(action).sum()
         reward_run = old_ob[5]
@@ -70,31 +69,20 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = next_obs[:, 5]
-        reward_height = -3.0 * tf.square(next_obs[:, 0] - 1.3)
+        reward_run = obs[:, 5]
+        reward_height = -3.0 * tf.square(obs[:, 0] - 1.3)
         reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
 
     def tf_termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        height = next_obs[:, 0]
-        angle = next_obs[:, 1]
-        not_done =  tf.math.logical_and(tf.math.logical_and(tf.math.logical_and(tf.reduce_all(tf.is_finite(next_obs), axis=-1, keepdims = False) \
-                    , tf.reduce_all(tf.abs(next_obs[:,1:]) < 100, axis = -1, keepdims = False)) \
-                    , (height > .7)) \
-                    , ((tf.abs(angle)) < .2))
-        done = ~not_done
-        return done[:, None]
+        done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
+        done = done[:,None]
+        return done
 
     def termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
-        height = next_obs[:, 0]
-        angle = next_obs[:, 1]
-        not_done =  np.isfinite(next_obs).all(axis=-1) \
-                    * (np.abs(next_obs[:,1:]) < 100).all(axis=-1) \
-                    * (height > .7) \
-                    * (np.abs(angle)) < .2
-        done = ~not_done
+        done = np.array([False]).repeat(obs.shape[0])
         done = done[:,None]
         return done
 
