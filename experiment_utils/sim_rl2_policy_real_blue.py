@@ -4,7 +4,9 @@ import argparse
 import numpy as np
 from meta_mb.samplers.utils import rollout
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
+from meta_mb.envs.blue.real_blue_arm_env import ArmReacherEnv
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.envs.blue.blue_env import BlueEnv
 from meta_mb.envs.blue.mimic_blue_pos_env import MimicBluePosEnv
 from meta_mb.envs.blue.mimic_blue_action_env import MimicBlueActEnv
 from meta_mb.envs.normalized_env import normalize
@@ -36,16 +38,16 @@ if __name__ == "__main__":
     # import tensorflow as tf
     # with tf.Session():
     #     [rest of the code]
+
+    Environment = ArmReacherEnv
+
     with tf.Session() as sess:
         pkl_path = args.param
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
-        env = rl2env(normalize(BlueReacherEnv(side='right')))
-        goal = data['env'].goal_right
-        env.goal[0] = -goal[1]
-        env.goal[1] = goal[2]
-        env.goal[2] = goal[0]
+        env = rl2env(normalize(Environment(side='right')))
+        
         real_rewards = np.array([])
         act_rewards = np.array([])
         pos_rewards = np.array([])
@@ -54,29 +56,15 @@ if __name__ == "__main__":
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
 
-            mujoco_env_mimic_act = rl2env(normalize(FullBlueEnv(actions=env.actions)))
-            act_filename="reach_grav_skip_rand3_act-" + str(i) + ".mp4"
-            path_act = rollout(mujoco_env_mimic_act, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
-                           video_filename=act_filename, save_video=True, ignore_done=args.ignore_done,
-                           stochastic=args.stochastic)
+            print('rewards:', np.mean(path[0]['rewards']))
+            print('actions:', path[0]['actions'])
+            print('observations:', path[0]['observations'])
 
-            mujoco_env_mimic_pos = rl2env(normalize(MimicBluePosEnv(max_path_len=args.max_path_length, positions=env.positions)))
-            pos_filename="reach_grav_skip_rand3_pos-" + str(i) + ".mp4"
-            path_pos = rollout(mujoco_env_mimic_pos, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
-                           video_filename=pos_filename, save_video=True, ignore_done=args.ignore_done,
-                           stochastic=args.stochastic)
-            real_rewards = np.append(real_rewards, np.sum(path[0]['rewards']))
-            print("Real Reward Sum", np.sum(path[0]['rewards']))
-            act_rewards = np.append(act_rewards, np.sum(path_act[0]['rewards']))
-            print("Act Reward Sum", np.sum(path_act[0]['rewards']))
-            pos_rewards = np.append(pos_rewards, np.sum(path_pos[0]['rewards']))
-            print("Pos Reward Sum", np.sum(path_pos[0]['rewards']))
-            #print(np.mean(path[0]['rewards']))
-            #print(len(path_act[0]['rewards']))
-            #print(len(path_pos[0]['rewards']))
-        print("Real Reward Avg")
-        print(np.mean(real_rewards))
-        print("Act Reward Avg")
-        print(np.mean(act_rewards))
-        print("Pos Reward Avg")
-        print(np.mean(pos_rewards))
+            pickle.dump(path[0]['actions'], open('blue_actions.pkl', 'wb'))
+        #print("Real Reward Avg")
+        #print(np.mean(real_rewards))
+        #print("Act Reward Avg")
+        #print(np.mean(act_rewards))
+        #print("Pos Reward Avg")
+        #print(np.mean(pos_rewards))
+        

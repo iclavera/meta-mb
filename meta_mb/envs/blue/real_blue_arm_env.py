@@ -124,6 +124,8 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         assert frame_skip > 0
         for _ in range(frame_skip):
             time.sleep(self.dt)
+            print(type(action))
+            print(action)
             self.set_joint_torques(action)
         ob = self._get_obs()
         return ob

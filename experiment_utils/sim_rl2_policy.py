@@ -1,4 +1,5 @@
 import joblib
+import pickle
 import tensorflow as tf
 import argparse
 from meta_mb.samplers.utils import rollout
@@ -37,4 +38,5 @@ if __name__ == "__main__":
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=True, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
-            print(len(path['rewards']))
+            #print(len(path['rewards']))
+            pickle.dump(path[0]['actions'], open('blue_actions.pkl', 'wb'))

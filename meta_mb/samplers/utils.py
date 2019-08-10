@@ -62,7 +62,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1, save_
 
         paths.append(dict(
                 observations=observations,
-                actons=actions,
+                actions=actions,
                 rewards=rewards,
                 agent_infos=agent_infos,
                 env_infos=env_infos

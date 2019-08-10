@@ -1,6 +1,7 @@
 import numpy as np
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import RandomEnv
+from meta_mb.logger import logger
 from gym import utils
 import os
 import pickle
@@ -26,7 +27,6 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         self.vel_penalty = vel_penalty
         self.alpha=10e-5
 
-
         max_torques = np.array(max_torques)
         self._low = -max_torques
         self._high = max_torques
@@ -34,11 +34,12 @@ class BlueEnv(RandomEnv, utils.EzPickle):
         RandomEnv.__init__(self, log_rand, xml_file, 20)
 
     def _get_obs(self):
-        return np.concatenate([
+        obs = np.concatenate([
             self.sim.data.qpos.flat[:-3],
             self.sim.data.qvel.flat[:-3],
             self.get_body_com("right_gripper_link"),
         ])
+        return obs
 
     def step(self, act):
         act = np.clip(act, self._low, self._high)
