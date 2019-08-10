@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'cheetah'
+EXP_NAME = 'normalize'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -54,7 +54,8 @@ def run_experiment(**config):
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                         learning_rate=config['cpc_initial_lr'], encoder_arch='default',
                         context_network='stack', context_size=32, predict_action=config['predict_action'],
-                        contrastive=config['contrastive'], grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
+                        rew_contrastive=config['contrastive'], rew_loss_weight=config['rew_loss_weight'],
+                        grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
     else:
         cpc_model = None
 
@@ -312,7 +313,7 @@ if __name__ == '__main__':
 
     # -------------------- Define Variants -----------------------------------
 
-    config_normal = {
+    config_cheetah = {
         'seed': [1],
         'run_suffix': ['1'],
 
@@ -353,7 +354,7 @@ if __name__ == '__main__':
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img': [True],
-        'model_grad_thru_enc': [False],
+        'model_grad_thru_enc': [True],
         'prob_dyn': [False],
         #  Other
         'n_parallel': [1],
@@ -367,19 +368,161 @@ if __name__ == '__main__':
         'history': [3],
         'future': [3],
         'use_context_net': [False],
-        'include_action': [False],
+        'include_action': [True],
         'predict_action': [False],
         'contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [0],
+        'cpc_initial_epoch': [10],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [64],
+        'cpc_num_initial_rollouts': [16],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [1, 10],
+        'cpc_loss_weight': [10, 300],
+        'rew_loss_weight': [0],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
+
+    config_walker = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+
+        'env': ['walker'],
+        'env_produce_img': [True],
+        'normalize': [True, False],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [5],
+        'img_shape': [(32, 32, 3)],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.2],
+        'rolling_average_persitency': [0.9],
+        'path_checkpoint_interval': [10],
+
+        # Dynamics Model / reward model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [15],
+        'reward_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+        'input_is_img': [True],
+        'model_grad_thru_enc': [True],
+        'prob_dyn': [False],
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        'encoder': ['cpc'],
+        'latent_dim': [16],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'predict_action': [False],
+        'contrastive': [True],
+        'cpc_epoch': [0],
+        'cpc_lr': [5e-4],
+        'cpc_initial_epoch': [10],
+        'cpc_initial_lr': [1e-3],
+        'cpc_num_initial_rollouts': [16],
+        'cpc_train_interval': [1],
+        'cpc_loss_weight': [1, 10, 100],
+        'rew_loss_weight': [0.],
+        'cpc_lambd': [0],
+        'grad_penalty': [False],
+    }
+
+    config_cpb = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+
+        'env': ['cartpole_balance'],
+        'env_produce_img': [True],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [3],
+        'img_shape': [(32, 32, 3)],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.2],
+        'rolling_average_persitency': [0.9],
+        'path_checkpoint_interval': [10],
+
+        # Dynamics Model / reward model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [15],
+        'reward_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+        'input_is_img': [True],
+        'model_grad_thru_enc': [True],
+        'prob_dyn': [False],
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [True],
+        'encoder': ['cpc'],
+        'latent_dim': [16],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'predict_action': [False],
+        'contrastive': [True],
+        'cpc_epoch': [0],
+        'cpc_lr': [5e-4],
+        'cpc_initial_epoch': [10],
+        'cpc_initial_lr': [1e-3],
+        'cpc_num_initial_rollouts': [16],
+        'cpc_train_interval': [1],
+        'cpc_loss_weight': [100],
+        'rew_loss_weight': [0.],
+        'cpc_lambd': [0],
+        'grad_penalty': [False],
+    }
+
 
     config_pretrain = {
         'seed': [1],
@@ -433,17 +576,17 @@ if __name__ == '__main__':
         'latent_dim': [16],
         'negative': [10],
         'history': [3],
-        'future': [3],
+        'future': [1],
         'use_context_net': [False],
         'include_action': [True, False],
         'predict_action': [False],
         'contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
-        'cpc_initial_epoch': [30],
+        'cpc_initial_epoch': [10],
         'cpc_initial_lr': [1e-3],
 
-        'cpc_num_initial_rollouts': [256],
+        'cpc_num_initial_rollouts': [32],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [0.],
         'cpc_lambd': [0],
@@ -451,4 +594,4 @@ if __name__ == '__main__':
     }
 
 
-    run_sweep(run_experiment, config_normal, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_cheetah, EXP_NAME, INSTANCE_TYPE)

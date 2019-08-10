@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 import time
 
 class CPCDataGenerator(object):
-    def __init__(self, img_seqs, action_seqs, batch_size, terms, negative_samples=1, predict_terms=1, negative_same_traj=0,
-                 max_num_seq=512, predict_action=False, no_neg=False):
+    def __init__(self, img_seqs, action_seqs, rew_seqs, batch_size, terms, negative_samples=1, predict_terms=1,
+                 negative_same_traj=0, max_num_seq=512, predict_action=False, no_neg=False):
         self.batch_size = batch_size
         self.images = img_seqs
         self.actions = action_seqs
+        self.rewards = rew_seqs
         self.negative_samples = negative_samples
         self.negative_same_traj = negative_same_traj
         self.predict_terms = predict_terms
@@ -42,13 +43,15 @@ class CPCDataGenerator(object):
     def __len__(self):
         return self.n_samples // self.batch_size
 
-    def update_dataset(self, img_seqs, action_seqs):
+    def update_dataset(self, img_seqs, action_seqs, rew_seqs):
         self.images = np.concatenate([self.images, img_seqs])
         self.actions = np.concatenate([self.actions, action_seqs])
+        self.rewards = np.concatenate([self.rewards, rew_seqs])
 
         if self.images.shape[0] > self.max_num_seq:
             self.images = self.images[-self.max_num_seq:]
             self.actions = self.actions[-self.max_num_seq:]
+            self.rewards = self.rewards[-self.max_num_seq:]
 
         self.n_seqs = self.images.shape[0]
         self.n_step = self.images.shape[1]
@@ -56,7 +59,7 @@ class CPCDataGenerator(object):
 
     def next(self):
         """
-        :return: [x_images, y_images], labels
+        :return: [x_images, actions, y_images, y_rewards], labels
         x_images shape: batch_size x terms
         y_images and labels shape: batch_size x predict_terms x (negative_samples + 1)
         """
@@ -95,8 +98,11 @@ class CPCDataGenerator(object):
                 start_idx_t += 1
 
             y_pos = self.images[idx_n[:, None], y_idx_t]
+            rewards_pos = self.rewards[idx_n[:, None], y_idx_t - 1]
             # gather the actions
             actions = self.actions[idx_n[:, None], y_idx_t - 1]
+            # gather rewards
+
 
         if self.no_neg and self.predict_action:
             return x_images, y_pos.reshape((self.batch_size, -1))
@@ -132,6 +138,8 @@ class CPCDataGenerator(object):
             self.y[:, :, 1:, ...] = self.images[neg_idx_n, neg_idx_t]
             # y = np.concatenate([np.expand_dims(y_pos, 2), self.images[neg_idx_n, neg_idx_t]], axis=2)
 
+            rewards = np.concatenate([np.expand_dims(rewards_pos, 2), self.rewards[neg_idx_n, neg_idx_t]], axis=2)
+
         t3 = time.time()
         # print('gather y negatives', t3 - t2)
 
@@ -152,7 +160,7 @@ class CPCDataGenerator(object):
         # idxs = np.random.choice(pos_neg_label.shape[2], pos_neg_label.shape[2], replace=False)
 
         # return [x_images, actions, y[rand_idx_n, rand_idx_t, rand_idx_neg, ...]], pos_neg_label[rand_idx_n, rand_idx_t, rand_idx_neg]
-        return [x_images, actions, self.y], pos_neg_label
+        return [x_images, actions, self.y, rewards], pos_neg_label
 
 def plot_seq(x, y, labels, name=''):
     """

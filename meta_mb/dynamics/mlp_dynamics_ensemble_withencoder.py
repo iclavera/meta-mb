@@ -247,6 +247,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             cpc_losses = []
             model_losses = []
             cpc_accs = []
+            cpc_rew_accs = []
             cpc_grad_penalties = []
 
             """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
@@ -267,13 +268,16 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     feed_dict.update({self.cpc_model.x_input_ph: inputs[0],
                                       self.cpc_model.action_input_ph: inputs[1],
                                       self.cpc_model.y_input_ph: inputs[2],
+                                      self.cpc_model.rew_input_ph: inputs[3],
+                                      self.cpc_model.rew_labels_ph: labels,
                                       self.cpc_model.labels_ph: labels})
 
                 train_feed_dict_prep_time += time.time() - time_feed_dict_start
 
                 # run train op
                 time_trainop_start = time.time()
-                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss, self.cpc_model.accuracy, self.cpc_model.gpenalty]
+                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss, self.cpc_model.accuracy,
+                                                                     self.cpc_model.rew_accuracy, self.cpc_model.gpenalty]
                                                 if self.cpc_loss_weight else []) + [self.train_op]
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
                 train_op_time += time.time() - time_trainop_start
@@ -287,11 +291,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     cpc_losses.append(cpc_loss)
                     cpc_acc = batch_loss_train_ops[self.num_models + 2]
                     cpc_accs.append(cpc_acc)
-                    cpc_grad_penalty = batch_loss_train_ops[self.num_models + 3]
+                    cpc_rew_acc = batch_loss_train_ops[self.num_models + 3]
+                    cpc_rew_accs.append(cpc_rew_acc)
+                    cpc_grad_penalty = batch_loss_train_ops[self.num_models + 4]
                     cpc_grad_penalties.append(cpc_grad_penalty)
                     prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
                                       ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc),
-                                      ('cpc_grad_penalty', cpc_grad_penalty)]
+                                      ('cpc_rew_acc', cpc_rew_acc)]#, ('cpc_grad_penalty', cpc_grad_penalty)]
                 total_losses.append(total_loss)
                 train_pb.add(1,prog_bar_list)
 
@@ -299,6 +305,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             total_losses_val = []
             cpc_losses_val = []
             cpc_accs_val = []
+            cpc_rew_accs_val = []
             cpc_grad_penalties_val = []
             model_losses_val = []
             val_pb = Progbar(val_size_in_trans // self.batch_size)
@@ -318,11 +325,14 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     feed_dict.update({self.cpc_model.x_input_ph: inputs[0],
                                       self.cpc_model.action_input_ph: inputs[1],
                                       self.cpc_model.y_input_ph: inputs[2],
+                                      self.cpc_model.rew_input_ph: inputs[3],
+                                      self.cpc_model.rew_labels_ph: labels,
                                       self.cpc_model.labels_ph: labels})
                 val_feed_dict_prep_time += time.time() - time_feed_dict_start
 
                 time_valop_start = time.time()
-                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss] + [self.cpc_model.accuracy, self.cpc_model.gpenalty]
+                operations = [self.total_loss] + (self.model_loss + [self.cpc_model.loss, self.cpc_model.accuracy,
+                                                                     self.cpc_model.rew_accuracy, self.cpc_model.gpenalty]
                                                     if self.cpc_loss_weight else [])
                 batch_loss_train_ops = sess.run(operations, feed_dict=feed_dict)
                 val_op_time += time.time() - time_valop_start
@@ -336,11 +346,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     cpc_losses_val.append(cpc_loss)
                     cpc_acc = batch_loss_train_ops[2 + self.num_models]
                     cpc_accs_val.append(cpc_acc)
-                    cpc_grad_penalty = batch_loss_train_ops[self.num_models + 3]
+                    cpc_rew_acc = batch_loss_train_ops[3 + self.num_models]
+                    cpc_rew_accs_val.append(cpc_rew_acc)
+                    cpc_grad_penalty = batch_loss_train_ops[self.num_models + 4]
                     cpc_grad_penalties_val.append(cpc_grad_penalty)
                     prog_bar_list += [('model_loss', np.mean(model_loss)), ('cpc_loss', cpc_loss),
                                       ('cpc_weighted_loss', cpc_loss * self.cpc_loss_weight), ('cpc_acc', cpc_acc),
-                                      ('cpc_grad_penalty', cpc_grad_penalty)]
+                                      ('cpc_rew_acc', cpc_rew_acc)]#, ('cpc_grad_penalty', cpc_grad_penalty)]
                 total_losses_val.append(total_loss)
                 val_pb.add(1, prog_bar_list)
 
@@ -355,6 +367,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 logger.logkv(prefix + 'AvgFinalTrainCPCLoss', np.mean(cpc_losses))
                 logger.logkv(prefix + 'AvgFinalTrainCPCWeightedLoss', np.mean(cpc_losses) * self.cpc_loss_weight)
                 logger.logkv(prefix + 'avgFinalTrainCPCAcc', np.mean(cpc_accs))
+                logger.logkv(prefix + 'avgFinalTrainCPCRewAcc', np.mean(cpc_rew_accs))
                 logger.logkv(prefix + 'AvgFinalTrainCPCGPenalty', np.mean(cpc_grad_penalties))
                 logger.logkv(prefix + 'AvgFinalTrainModelLoss', np.mean(model_losses))
                 
@@ -364,6 +377,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 logger.logkv(prefix + 'AvgFinalValidCPCLoss', np.mean(cpc_losses_val))
                 logger.logkv(prefix + 'AvgFinalValidCPCWeightedLoss', np.mean(cpc_losses_val) * self.cpc_loss_weight)
                 logger.logkv(prefix + 'AvgFinalValidCPCAcc', np.mean(cpc_accs_val))
+                logger.logkv(prefix + 'AvgFinalValidCPCRewAcc', np.mean(cpc_rew_accs_val))
                 logger.logkv(prefix + 'AvgFinalValidCPCGPenalty', np.mean(cpc_grad_penalties_val))
                 logger.logkv(prefix + 'AvgFinalValidModelLoss', np.mean(model_losses_val))
 

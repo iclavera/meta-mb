@@ -98,7 +98,7 @@ class CPCLayer(keras.layers.Layer):
 class CPC:
     def __init__(self, image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                code_size_action=1, contrastive=True, grad_penalty=True, lambd=1.):
+                 grad_penalty=True, lambd=1., rew_loss_weight=0., rew_contrastive=True):
 
         self.image_shape = image_shape
 
@@ -125,15 +125,13 @@ class CPC:
 
         if predict_action:
             action_encoder_input = keras.layers.Input((action_dim,))
-            # action_encoder_output = keras.layers.Dense(32, activation='relu')(action_encoder_input)
-            # action_encoder_output = keras.layers.Dense(code_size_action, activation='linear')(action_encoder_output)
             action_encoder_output = action_encoder_input
             action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
 
         # Define context network
         self.x_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, terms, ) + image_shape)
         x_input = keras.layers.Input(tensor=self.x_input_ph, name='x_input')
-        self.action_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, terms, action_dim))
+        self.action_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, action_dim))
         action_input = keras.layers.Input(tensor=self.action_input_ph, name='action_input')
         x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
 
@@ -163,24 +161,43 @@ class CPC:
             context_output = context_network([x_input, action_input])
         else:
             context_output = context_network([x_input])
+
+
+        # ============================== for predicting reward =================================
+        if rew_contrastive:
+            rew_preds = network_prediction(context_output, 1, predict_terms)
+        else:
+            rew_preds = keras.layers.Dense(64, activation='relu')(context_output)
+            rew_preds = keras.layers.Dense(16, activation='relu')(rew_preds)
+            rew_preds = keras.layers.Dense(predict_terms, activation='linear')(rew_preds)
+
+        self.rew_input_ph = tf.placeholder(dtype=tf.float32,
+                                            shape=(None, predict_terms, (negative_samples + 1), 1))
+        rew_input = keras.layers.Input(tensor=self.rew_input_ph, name='rew_input')
+        rew_logits = CPCLayer()([rew_preds, rew_input])
+
+        self.rew_labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
+        self.rew_loss = cross_entropy_loss(self.rew_labels_ph, rew_logits)
+
+        rew_correct_class = tf.argmax(rew_logits, axis=-1)
+        rew_predicted_class = tf.argmax(self.rew_labels_ph, axis=-1)
+        self.rew_accuracy = tf.reduce_sum(tf.cast(tf.equal(rew_correct_class, rew_predicted_class), tf.int32)) / \
+                        tf.size(rew_correct_class)
+
+        # ============================== encoded future states/action ====================================
+
         if predict_action:
-            if contrastive:
-                preds = network_prediction(context_output, code_size_action, predict_terms)
-            else:
-                preds = keras.layers.Dense(64, activation='relu')(context_output)
-                preds = keras.layers.Dense(16, activation='relu')(preds)
-                preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
+            preds = network_prediction(context_output, action_dim, predict_terms)
         else:
             preds = network_prediction(context_output, code_size, predict_terms)
 
         if predict_action:
-            if contrastive:
-                self.y_input_ph = tf.placeholder(dtype=tf.float32,
-                                                 shape=(None, predict_terms, (negative_samples + 1), action_dim))
-                y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
-                y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
-                y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
-                y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size_action))(y_encoded_flat)
+            self.y_input_ph = tf.placeholder(dtype=tf.float32,
+                                             shape=(None, predict_terms, (negative_samples + 1), action_dim))
+            y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
+            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
+            y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
+            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), action_dim))(y_encoded_flat)
 
         else:
             self.y_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples+1) + image_shape)
@@ -189,49 +206,41 @@ class CPC:
             y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
             y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
 
-        # Loss
-        if contrastive:
-            logits = CPCLayer()([preds, y_encoded])
+        # ======================================== Loss ================================================
+        logits = CPCLayer()([preds, y_encoded])
 
-            # Model
-            cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
-            self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
+        # Model
+        cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
+        self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
 
-            # Compile model
-            # cpc_model.compile(
-            #     optimizer=keras.optimizers.Adam(lr=learning_rate),
-            #     loss=cross_entropy_loss,
-            #     metrics=['categorical_accuracy']
-            # )
-            self.loss = cross_entropy_loss(self.labels_ph, logits)
-            self.gpenalty = tf.constant(0, dtype=tf.float32)
-
-            if grad_penalty:
-                for i in range(predict_terms):
-                    for j in range(negative_samples + 1):
-                        grad = tf.gradients(logits[:, i, j], [x_input, y_input])
-                        grad_concat = tf.concat([tf.contrib.layers.flatten(grad[0]),
-                                                 tf.contrib.layers.flatten(grad[1][:, i, j])],
-                                                axis=-1)
-                        self.gpenalty += tf.reduce_mean(tf.pow(tf.norm(grad_concat, axis=-1) - 1, 2))
-
-                self.loss += lambd * self.gpenalty
-            correct_class = tf.argmax(logits, axis=-1)
-            predicted_class = tf.argmax(self.labels_ph, axis=-1)
-            self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / \
-                            tf.size(correct_class)
-            self.lr_ph = tf.placeholder(dtype=tf.float32)
-
-            self.train_op = tf.train.AdamOptimizer(learning_rate=self.lr_ph).minimize(self.loss)
-
+        self.state_loss = cross_entropy_loss(self.labels_ph, logits)
+        if rew_loss_weight > 0:
+            self.loss = self.state_loss + rew_loss_weight * self.rew_loss
         else:
-            cpc_model = keras.models.Model(inputs=[x_input], outputs=preds)
-            # Compile model
-            cpc_model.compile(
-                optimizer=keras.optimizers.Adam(lr=learning_rate),
-                loss='mean_squared_error',
-                metrics=['mean_squared_error']
-            )
+            self.loss = self.state_loss
+
+
+        # ==================================== Gradient Penalty ==========================================
+        self.gpenalty = tf.constant(0, dtype=tf.float32)
+        if grad_penalty:
+            for i in range(predict_terms):
+                for j in range(negative_samples + 1):
+                    grad = tf.gradients(logits[:, i, j], [x_input, y_input])
+                    grad_concat = tf.concat([tf.contrib.layers.flatten(grad[0]),
+                                             tf.contrib.layers.flatten(grad[1][:, i, j])],
+                                            axis=-1)
+                    self.gpenalty += tf.reduce_mean(tf.pow(tf.norm(grad_concat, axis=-1) - 1, 2))
+
+            self.loss += lambd * self.gpenalty
+
+        # =================================== Train op and logging =======================================
+        correct_class = tf.argmax(logits, axis=-1)
+        predicted_class = tf.argmax(self.labels_ph, axis=-1)
+        self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / \
+                        tf.size(correct_class)
+        self.lr_ph = tf.placeholder(dtype=tf.float32)
+
+        self.train_op = tf.train.AdamOptimizer(learning_rate=self.lr_ph).minimize(self.loss)
 
         cpc_model.summary()
 
@@ -245,15 +254,23 @@ class CPC:
 
     def train_step(self, inputs, labels, lr=1e-3, train=True):
         if train:
-            loss, acc, _ = tf.get_default_session().run([self.loss, self.accuracy, self.train_op],
-                                            feed_dict={self.x_input_ph: inputs[0], self.action_input_ph:inputs[1],
-                                            self.y_input_ph:inputs[2], self.labels_ph: labels, self.lr_ph: lr})
+            loss, acc, rew_acc, _ = tf.get_default_session().run([self.loss, self.accuracy, self.rew_accuracy, self.train_op],
+                                            feed_dict={self.x_input_ph: inputs[0],
+                                                       self.action_input_ph:inputs[1],
+                                                       self.y_input_ph:inputs[2],
+                                                       self.rew_input_ph: inputs[3],
+                                                       self.rew_labels_ph: labels,
+                                                       self.labels_ph: labels,
+                                                       self.lr_ph: lr})
         else:
-            loss, acc = tf.get_default_session().run([self.loss, self.accuracy],
+            loss, acc, rew_acc = tf.get_default_session().run([self.loss, self.accuracy, self.rew_accuracy],
                                                     feed_dict={self.x_input_ph: inputs[0],
                                                                self.action_input_ph: inputs[1],
-                                                               self.y_input_ph: inputs[2], self.labels_ph: labels})
-        return loss, acc
+                                                               self.y_input_ph: inputs[2],
+                                                               self.rew_input_ph: inputs[3],
+                                                               self.rew_labels_ph: labels,
+                                                               self.labels_ph: labels})
+        return loss, acc, rew_acc
 
     def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, patience=3):
         lr = 1e-3
@@ -261,20 +278,19 @@ class CPC:
         target_loss = 100.
         for i in range(epochs):
             # logging
-            logs = {'loss_cpc': [], 'val_loss_cpc': [], 'acc_cpc':[], 'val_acc_cpc': []}
+            logs = {'loss_cpc': [], 'val_loss_cpc': [], 'acc_cpc':[], 'val_acc_cpc': [], 'rew_acc_cpc':[], 'val_rew_acc_cpc': []}
 
             print("Epoch %d" % i)
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
-                input, label = generator.next()
-                loss, acc = self.train_step(input, label, lr=lr)
-                train_pb.add(1, values=[('loss_cpc', loss), ('acc_cpc', acc)])
-                logs['loss_cpc'].append(loss); logs['acc_cpc'].append(acc)
+                loss, acc, rew_acc = self.train_step(*generator.next(), lr=lr)
+                train_pb.add(1, values=[('loss_cpc', loss), ('acc_cpc', acc), ('rew_acc_cpc', rew_acc)])
+                logs['loss_cpc'].append(loss); logs['acc_cpc'].append(acc); logs['rew_acc_cpc'].append(rew_acc)
             val_pb = Progbar(validation_steps)
             for k in range(validation_steps):
-                val_loss, val_acc = self.train_step(*validation_data.next(), train=False)
-                val_pb.add(1, values=[('val_loss_cpc', val_loss), ('val_acc_cpc', val_acc)])
-                logs['val_loss_cpc'].append(val_loss); logs['val_acc_cpc'].append(val_acc)
+                val_loss, val_acc, val_rew_acc = self.train_step(*validation_data.next(), train=False)
+                val_pb.add(1, values=[('val_loss_cpc', val_loss), ('val_acc_cpc', val_acc), ('val_rew_acc_cpc', val_rew_acc)])
+                logs['val_loss_cpc'].append(val_loss); logs['val_acc_cpc'].append(val_acc); logs['val_rew_acc_cpc'].append(val_rew_acc)
 
             cur_val_loss = np.mean(logs['val_loss_cpc'])
             logs = {k : np.mean(v) for k, v in logs.items()}

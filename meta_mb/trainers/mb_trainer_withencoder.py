@@ -143,14 +143,17 @@ class Trainer(object):
                 self.cpc_initial_sampler.max_path_length  - 1
             empty_imgs = np.zeros(shape=(0, length, *self.cpc_model.image_shape))
             empty_acs = np.zeros(shape=(0, length, *self.env.action_space.shape))
+            empty_rews = np.zeros(shape=(0, length, 1))
 
-            train_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), self.cpc_batch_size, terms=self.cpc_terms,
+            train_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), empty_rews.copy(),
+                                          self.cpc_batch_size, terms=self.cpc_terms,
                                           negative_samples=self.cpc_negative_samples,
                                           predict_terms=self.cpc_predict_terms,
                                           negative_same_traj=self.cpc_negative_same_traj,
                                           predict_action=self.cpc_predict_action,
                                           no_neg=not self.cpc_contrastive)
-            validation_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), self.cpc_batch_size, terms=self.cpc_terms,
+            validation_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), empty_rews.copy(),
+                                               self.cpc_batch_size, terms=self.cpc_terms,
                                                negative_samples=self.cpc_negative_samples,
                                                predict_terms=self.cpc_predict_terms,
                                                negative_same_traj=self.cpc_negative_same_traj,
@@ -163,9 +166,9 @@ class Trainer(object):
                 # import pdb; pdb.set_trace()
                 #
                 env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
-                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
-                train_data.update_dataset(train_img, train_action)
-                validation_data.update_dataset(val_img, val_action)
+                train_img, val_img, train_action, val_action, train_rew, val_rew = self.get_seqs(env_paths)
+                train_data.update_dataset(train_img, train_action, train_rew)
+                validation_data.update_dataset(val_img, val_action, val_rew)
 
                 # Train the model
                 self.cpc_model.fit_generator(
@@ -204,10 +207,9 @@ class Trainer(object):
                                   name=os.path.join(logger.get_dir(), 'path_itr%d.png' % itr))
 
 
-                train_img, val_img, train_action, val_action = self.get_seqs(env_paths)
-                train_data.update_dataset(train_img, train_action)
-                validation_data.update_dataset(val_img, val_action)
-
+                train_img, val_img, train_action, val_action, train_rew, val_rew = self.get_seqs(env_paths)
+                train_data.update_dataset(train_img, train_action, train_rew)
+                validation_data.update_dataset(val_img, val_action, val_rew)
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
                 logger.log("Processing environment samples...")
@@ -310,11 +312,16 @@ class Trainer(object):
         if self.env.encoder is not None:
             img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:, :-1]  # N x T x (img_shape)
             action_seqs = np.stack([path['actions'] for path in env_paths])[:, 1:]
+            rew_seqs = np.stack([path['rewards'] for path in env_paths])[:, 1:]
         else:
             img_seqs = np.stack([path['observations'] for path in env_paths])  # N x T x (img_shape)
             action_seqs = np.stack([path['actions'] for path in env_paths])
+            rew_seqs = np.stack([path['rewards'] for path in env_paths])
+
+        rew_seqs = rew_seqs[:, :, None]
 
         train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
+        train_rew, val_rew = train_test_split(rew_seqs)
 
-        return train_img, val_img, train_action, val_action
+        return train_img, val_img, train_action, val_action, train_rew, val_rew
 
