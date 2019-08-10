@@ -1,11 +1,12 @@
 import os
 import keras
-
 from keras import backend as K
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import Progbar
 
 from meta_mb.unsupervised_learning.cpc.training_utils import SaveEncoder, res_block, make_periodic_lr, cross_entropy_loss
+from meta_mb.logger import logger
 
 def network_encoder(x, code_size):
 
@@ -259,20 +260,29 @@ class CPC:
         non_decrease_count = 0
         target_loss = 100.
         for i in range(epochs):
+            # logging
+            logs = {'loss_cpc': [], 'val_loss_cpc': [], 'acc_cpc':[], 'val_acc_cpc': []}
+
             print("Epoch %d" % i)
-            val_losses = []
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
                 input, label = generator.next()
                 loss, acc = self.train_step(input, label, lr=lr)
-                train_pb.add(1, values=[('loss', loss), ('acc', acc)])
+                train_pb.add(1, values=[('loss_cpc', loss), ('acc_cpc', acc)])
+                logs['loss_cpc'].append(loss); logs['acc_cpc'].append(acc)
             val_pb = Progbar(validation_steps)
             for k in range(validation_steps):
                 val_loss, val_acc = self.train_step(*validation_data.next(), train=False)
-                val_pb.add(1, values=[('val_loss', val_loss), ('val_acc', val_acc)])
-                val_losses.append(val_loss)
-            cur_val_loss = sum(val_losses) / len(val_losses)
+                val_pb.add(1, values=[('val_loss_cpc', val_loss), ('val_acc_cpc', val_acc)])
+                logs['val_loss_cpc'].append(val_loss); logs['val_acc_cpc'].append(val_acc)
 
+            cur_val_loss = np.mean(logs['val_loss_cpc'])
+            logs = {k : np.mean(v) for k, v in logs.items()}
+            # log to the file
+            logger.logkvs(logs)
+            logger.dump_tabular()
+
+            # learning rate adjustment
             if cur_val_loss < target_loss:
                 target_loss = cur_val_loss
                 non_decrease_count = 0
