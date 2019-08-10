@@ -69,6 +69,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.reward_ph = tf.placeholder(tf.float32, shape=(None, ))
 
             self._create_stats_vars()
 
@@ -95,14 +96,17 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
 
                 delta_preds.append(mlp.output_var)
 
-            self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-
-
+            self.predictions = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+            self.delta_pred = self.predictions[:, :, :self.obs_space_dims]
+            self.reward_pred = self.predictions[:, :, self.obs_space_dims:]
+            self.result = tf.concatenate([self.delta_ph, self.reward_ph], axis = -1)
             # define loss and train_op
+
+            # TODO: check dimension here
             if loss_str == 'L2':
-                self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
+                self.loss = tf.reduce_mean(tf.linalg.norm(self.result[:, :, None] - self.predictions, axis=1))
             elif loss_str == 'MSE':
-                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+                self.loss = tf.reduce_mean((self.result[:, :, None] - self.predictions)**2)
             else:
                 raise NotImplementedError
 
@@ -110,7 +114,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
-            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
+            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.predictions)
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=True):
@@ -118,14 +122,16 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.reward_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, ))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
             self.act_model_batches = tf.split(self.act_model_batches_stack_ph, self.num_models, axis=0)
             self.delta_model_batches = tf.split(self.delta_model_batches_stack_ph, self.num_models, axis=0)
+            self.reward_model_batches = tf.split(self.reward_model_batches_stack_ph, self.num_models, axis=0)
 
             # reuse previously created MLP but each model receives its own batch
-            delta_preds = []
+            preds = []
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
@@ -134,7 +140,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=obs_space_dims,
+                              output_dim=obs_space_dims+1,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -142,21 +148,26 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                               input_dim=obs_space_dims+action_space_dims,
                               weight_normalization=weight_normalization)
 
-                delta_preds.append(mlp.output_var)
+                preds.append(mlp.output_var)
                 if loss_str == 'L2':
-                    loss = tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1))
+                    results = tf.concatenate([self.delta_model_batches[i], self.reward_model_batches[i]], axis = -1)
+                    loss = tf.reduce_mean(tf.linalg.norm(results - mlp.output_var, axis=1))
                 elif loss_str == 'MSE':
-                    loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+                    results = tf.concatenate([self.delta_model_batches[i], self.reward_model_batches[i]], axis = -1)
+                    loss = tf.reduce_mean((results - mlp.output_var) ** 2)
                 else:
                     raise  NotImplementedError
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
-            self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
+            predictions = tf.concat(preds, axis=0)
+            self.delta_pred_model_batches_stack = predictions[:, :self.obs_space_dims] # shape: (batch_size_per_model*num_models, ndim_obs)
+            self.reward_pred_model_batches_stack = predictions[:, self.obs_space_dims:] # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # tensor_utils
+            self.predictions = tf.concate([self.delta_pred_model_batches_stack, self.reward_pred_model_batches_stack], axis = -1)
             self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
                                                                 self.act_model_batches_stack_ph],
-                                                                self.delta_pred_model_batches_stack)
+                                                                self.predictions)
 
         self._networks = mlps
         # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
@@ -177,20 +188,24 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
         obs_train_batches = []
         act_train_batches = []
         delta_train_batches = []
+        reward_train_batches = []
         obs_test_batches = []
         act_test_batches = []
         delta_test_batches = []
+        reward_test_batches = []
 
         delta = obs_next - obs
         for i in range(self.num_models):
-            obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
+            obs_train, act_train, delta_train, reward_train, obs_test, act_test, delta_test, reward_test = train_test_split(obs, act, delta, reward,
                                                                                                  test_split_ratio=valid_split_ratio)
             obs_train_batches.append(obs_train)
             act_train_batches.append(act_train)
             delta_train_batches.append(delta_train)
+            reward_train_batches.append(reward_train)
             obs_test_batches.append(obs_test)
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
+            reward_test_batches.append(reward_test)
             # create data queue
 
         # If case should be entered exactly once
