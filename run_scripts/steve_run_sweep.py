@@ -3,23 +3,23 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5-2-hopper"
+EXP_NAME = "steve"
 
-from pdb import set_trace as st
-from meta_mb.algos.sac_edit import SAC_MB
-from experiment_utils.run_sweep import run_sweep
-from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
-from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_edit_trainer import Trainer
-from meta_mb.samplers.base import BaseSampler
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.logger import logger
-from meta_mb.value_functions.value_function import ValueFunction
-from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+# from pdb import set_trace as st
+# from meta_mb.algos.sac_edit import SAC_MB
+# from experiment_utils.run_sweep import run_sweep
+# from meta_mb.utils.utils import set_seed, ClassEncoder
+# from meta_mb.envs.mb_envs import *
+# from meta_mb.envs.normalized_env import normalize
+# from meta_mb.trainers.sac_edit_trainer import Trainer
+# from meta_mb.samplers.base import BaseSampler
+# from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
+# from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+# from meta_mb.logger import logger
+# from meta_mb.value_functions.value_function import ValueFunction
+# from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+#
+# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -39,21 +39,25 @@ def run_experiment(**kwargs):
         set_seed(kwargs['seed'])
 
         baseline = kwargs['baseline']()
-
         env = normalize(kwargs['env']())
         obs_dim = int(np.prod(env.observation_space.shape))
         action_dim = int(np.prod(env.action_space.shape))
 
-        Qs = [ValueFunction(name="q_fun_%d" % i,
-                            obs_dim=obs_dim,
-                            action_dim=action_dim,
-                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
-        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                   obs_dim=obs_dim,
-                                   action_dim=action_dim,
-                                   hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
+        model = DeterministicWorldModel(env)
+
+
+        # Qs = [ValueFunction(name="q_fun_%d" % i,
+        #                     obs_dim=obs_dim,
+        #                     action_dim=action_dim,
+        #                     hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
+        #
+        # Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
+        #                            obs_dim=obs_dim,
+        #                            action_dim=action_dim,
+        #                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
+        #
         policy = GaussianMLPPolicy(
             name="policy",
             obs_dim=np.prod(env.observation_space.shape),
@@ -64,22 +68,22 @@ def run_experiment(**kwargs):
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             squashed=True
         )
-
-        env_sampler = BaseSampler(
-            env=env,
-            policy=policy,
-            num_rollouts=kwargs['num_rollouts'],
-            max_path_length=kwargs['max_path_length'],
-
-        )
-
-        env_sample_processor = ModelSampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
+        #
+        # env_sampler = BaseSampler(
+        #     env=env,
+        #     policy=policy,
+        #     num_rollouts=kwargs['num_rollouts'],
+        #     max_path_length=kwargs['max_path_length'],
+        #
+        # )
+        #
+        # env_sample_processor = ModelSampleProcessor(
+        #     baseline=baseline,
+        #     discount=kwargs['discount'],
+        #     gae_lambda=kwargs['gae_lambda'],
+        #     normalize_adv=kwargs['normalize_adv'],
+        #     positive_adv=kwargs['positive_adv'],
+        # )
 
 
         dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',

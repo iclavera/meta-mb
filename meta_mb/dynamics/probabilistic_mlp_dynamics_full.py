@@ -3,10 +3,10 @@ import tensorflow as tf
 import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_full import MLPDynamicsEnsembleFull
 
 
-class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
+class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
     """
     Class for MLP continous dynamics model
     """
