@@ -7,13 +7,9 @@ import keras.backend as K
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
-from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_withencoder import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
-from meta_mb.policies.mpc_controller_withencoder import MPCController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
 from meta_mb.replay_buffers.image_embedding_buffer import ImageEmbeddingBuffer
-from meta_mb.reward_model.mlp_reward_ensemble_withencoder import MLPRewardEnsemble
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -138,6 +134,10 @@ def run_experiment(**config):
 
         else:
             if config['env_produce_img']:
+                from meta_mb.dynamics.mlp_dynamics_ensemble_withencoder import MLPDynamicsEnsemble
+                from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_withencoder import ProbMLPDynamicsEnsemble
+                from meta_mb.reward_model.mlp_reward_ensemble_withencoder import MLPRewardEnsemble
+                from meta_mb.policies.mpc_controller_withencoder import MPCController
                 buffer = ImageEmbeddingBuffer(config['batch_size_model'], env, encoder, config['input_is_img'],
                                               config['latent_dim'], config['obs_stack'], config['num_models'],
                                               config['valid_split_ratio'], normalize_input=config['normalize'],
@@ -189,7 +189,7 @@ def run_experiment(**config):
                 policy = MPCController(
                     name="policy",
                     env=env,
-                    num_stack=config['obs_stack'] if config['env_produce_img'] else 1,
+                    num_stack=config['obs_stack'],
                     encoder=encoder,
                     latent_dim=config['latent_dim'],
                     dynamics_model=dynamics_model,
@@ -200,7 +200,7 @@ def run_experiment(**config):
                     num_cem_iters=config['num_cem_iters'],
                     use_reward_model=config['use_reward_model'],
                     reward_model=reward_model if config['use_reward_model'] else None,
-                    use_image=config['env_produce_img'],
+                    use_image=True,
                 )
 
 
@@ -318,8 +318,9 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['walker'],
-        'normalize': [False],
+        'env': ['cheetah_run'],
+        'env_produce_img': [True],
+        'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [5],
@@ -352,7 +353,7 @@ if __name__ == '__main__':
         'cell_type': ['lstm'],
         'use_reward_model': [True],
         'input_is_img': [True],
-        'model_grad_thru_enc': [True],
+        'model_grad_thru_enc': [False],
         'prob_dyn': [False],
         #  Other
         'n_parallel': [1],
@@ -450,4 +451,4 @@ if __name__ == '__main__':
     }
 
 
-    run_sweep(run_experiment, config_pretrain, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_normal, EXP_NAME, INSTANCE_TYPE)

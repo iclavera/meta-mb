@@ -142,14 +142,17 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 self.delta_ph = delta = tf.placeholder(tf.float32, shape=(None, *obs_space_dims))
                 if self.model_grad_thru_enc:
                     obs = self.encoder(tf.reshape(obs, shape=(-1, *obs_space_dims)))
-                    obs = tf.reshape(obs, shape=(-1, num_stack * latent_dim))
-                    delta = self.encoder(delta) - obs[:, -latent_dim:]
+                    obs = tf.reshape(obs, shape=(-1, num_stack, latent_dim))
+                    delta = self.encoder(delta) - obs[:, -1]
                 else:
                     obs = tf.stop_gradient(self.encoder(tf.reshape(obs, shape=(-1, *obs_space_dims))))
-                    obs = tf.reshape(obs, shape=(-1, num_stack * latent_dim))
-                    delta = tf.stop_gradient(self.encoder(delta) - obs[:, -latent_dim:])
+                    obs = tf.reshape(obs, shape=(-1, num_stack, latent_dim))
+                    delta = tf.stop_gradient(self.encoder(delta) - obs[:, -1])
 
-
+                if self.normalize_input:
+                    obs = self.normalize(obs, self.buffer._mean_obs_var, self.buffer._std_obs_var)
+                    delta = self.normalize(delta, self.buffer._mean_delta_var, self.buffer._std_delta_var)
+                    act = self.normalize(act, self.buffer._mean_act_var, self.buffer._std_act_var)
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(obs, self.num_models, axis=0)
@@ -527,6 +530,12 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         sess.run(self._assignations, feed_dict=feed_dict)
         for i in range(len(self._networks)):
             self._networks[i].set_params(state['networks_params'][i])
+
+    def normalize(self, data, mean, std):
+        return (data - mean) / (std + 1e-8)
+
+    def denormalize(self, data, mean, std):
+        return data * std + mean
 
 
 

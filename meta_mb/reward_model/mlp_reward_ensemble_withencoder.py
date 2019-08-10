@@ -139,6 +139,12 @@ class MLPRewardEnsemble(MLPRewardModel):
                 obs = tf.stop_gradient(self.encoder(obs))
                 nextobs = tf.stop_gradient(self.encoder(nextobs))
 
+                if self.normalize_input:
+                    obs = self.normalize(obs, self.buffer._mean_obs_var, self.buffer._std_obs_var)
+                    nextobs = self.normalize(nextobs, self.buffer._mean_obs_var, self.buffer._std_obs_var)
+                    act = self.normalize(act, self.buffer._mean_act_var, self.buffer._std_act_var)
+                    reward = self.normalize(reward, self.buffer._mean_reward_var, self.buffer._std_reward_var)
+
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(obs, self.num_models, axis=0)
             self.act_model_batches = tf.split(act, self.num_models, axis=0)
@@ -412,4 +418,8 @@ class MLPRewardEnsemble(MLPRewardModel):
         for i in range(len(self._networks)):
             self._networks[i].set_params(state['networks_params'][i])
 
+    def normalize(self, data, mean, std):
+        return (data - mean) / (std + 1e-8)
 
+    def denormalize(self, data, mean, std):
+        return data * std + mean
