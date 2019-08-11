@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import time
 from meta_mb.logger import logger
-import nn
+# import nn
 
 import abc
 from collections import OrderedDict
@@ -79,10 +79,10 @@ class Trainer(object):
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
         self.action_dim = int(np.prod(self.env.action_space.shape))
         # check the hyperparameters
-        self.done_predictor = nn.FeedForwardNet('done_predictor',
-                              self.obs_dim + self.obs_dim + self.action_dim,
-                              [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
-
+        # self.done_predictor = nn.FeedForwardNet('done_predictor',
+        #                       self.obs_dim + self.obs_dim + self.action_dim,
+        #                       [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
+        #
 
         if sess is None:
             sess = tf.Session()
