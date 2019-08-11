@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5-2-hopper"
+EXP_NAME = "mb-Q5-2-walker"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -150,7 +150,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -174,9 +174,9 @@ if __name__ == '__main__':
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[3,5],
+		'num_actions_per_next_observation':[3,5,10],
         'H': [0],
-        'T': [2,3],
+        'T': [1],
 		'reward_scale': [1],
 		'target_entropy': [0.5, 1],
 		'num_models': [4, 8],

@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 
-class MLPDynamicsEnsembleFull(MLPDynamicsModel):
+class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
     Class for MLP continous dynamics model
     """
@@ -68,14 +68,12 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
-            self.reward_ph = tf.placeholder(tf.float32, shape=(None, ))
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
 
             self._create_stats_vars()
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
-            self.nn_output = tf.concat([self.delta_ph, self.reward_ph], axis=1)
 
             obs_ph = tf.split(self.nn_input, self.num_models, axis=0)
 
@@ -97,17 +95,14 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
 
                 delta_preds.append(mlp.output_var)
 
-            self.predictions = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            self.delta_pred = self.predictions[:, :, :self.obs_space_dims]
-            self.reward_pred = self.predictions[:, :, self.obs_space_dims:]
-            self.result = tf.concatenate([self.delta_ph, self.reward_ph], axis = -1)
-            # define loss and train_op
+            self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
-            # TODO: check dimension here
+
+            # define loss and train_op
             if loss_str == 'L2':
-                self.loss = tf.reduce_mean(tf.linalg.norm(self.result[:, :, None] - self.predictions, axis=1))
+                self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
             elif loss_str == 'MSE':
-                self.loss = tf.reduce_mean((self.result[:, :, None] - self.predictions)**2)
+                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
             else:
                 raise NotImplementedError
 
@@ -115,24 +110,22 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
-            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.predictions)
+            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=True):
             # placeholders
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
-            self.reward_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, ))
+            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
             self.act_model_batches = tf.split(self.act_model_batches_stack_ph, self.num_models, axis=0)
             self.delta_model_batches = tf.split(self.delta_model_batches_stack_ph, self.num_models, axis=0)
-            self.reward_model_batches = tf.split(self.reward_model_batches_stack_ph, self.num_models, axis=0)
 
             # reuse previously created MLP but each model receives its own batch
-            preds = []
+            delta_preds = []
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
@@ -141,7 +134,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=obs_space_dims+1,
+                              output_dim=obs_space_dims,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -149,26 +142,21 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                               input_dim=obs_space_dims+action_space_dims,
                               weight_normalization=weight_normalization)
 
-                preds.append(mlp.output_var)
+                delta_preds.append(mlp.output_var)
                 if loss_str == 'L2':
-                    real = tf.concatenate([self.delta_model_batches[i], self.reward_model_batches[i]], axis = -1)
-                    loss = tf.reduce_mean(tf.linalg.norm(real - mlp.output_var, axis=1))
+                    loss = tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1))
                 elif loss_str == 'MSE':
-                    real = tf.concatenate([self.delta_model_batches[i], self.reward_model_batches[i]], axis = -1)
-                    loss = tf.reduce_mean((real - mlp.output_var) ** 2)
+                    loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
                 else:
                     raise  NotImplementedError
                 self.loss_model_batches.append(loss)
                 self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
-            predictions = tf.concat(preds, axis=0)
-            self.delta_pred_model_batches_stack = predictions[:, :self.obs_space_dims] # shape: (batch_size_per_model*num_models, ndim_obs)
-            self.reward_pred_model_batches_stack = predictions[:, self.obs_space_dims:] # shape: (batch_size_per_model*num_models, ndim_obs)
+            self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # tensor_utils
-            self.predictions = tf.concate([self.delta_pred_model_batches_stack, self.reward_pred_model_batches_stack], axis = -1)
             self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
                                                                 self.act_model_batches_stack_ph],
-                                                                self.predictions)
+                                                                self.delta_pred_model_batches_stack)
 
         self._networks = mlps
         # LayersPowered.__init__(self, [mlp.output_layer for mlp in mlps])
@@ -189,36 +177,31 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
         obs_train_batches = []
         act_train_batches = []
         delta_train_batches = []
-        reward_train_batches = []
         obs_test_batches = []
         act_test_batches = []
         delta_test_batches = []
-        reward_test_batches = []
 
         delta = obs_next - obs
         for i in range(self.num_models):
-            obs_train, act_train, delta_train, reward_train, obs_test, act_test, delta_test, reward_test = train_test_split(obs, act, delta, reward,
+            obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                                  test_split_ratio=valid_split_ratio)
             obs_train_batches.append(obs_train)
             act_train_batches.append(act_train)
             delta_train_batches.append(delta_train)
-            reward_train_batches.append(reward_train)
             obs_test_batches.append(obs_test)
             act_test_batches.append(act_test)
             delta_test_batches.append(delta_test)
-            reward_test_batches.append(reward_test)
             # create data queue
 
         # If case should be entered exactly once
         if check_init and self._dataset_test is None:
-            self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches, reward=reward_test_batches)
-            self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches, reward=reward_train_batches)
+            self._dataset_test = dict(obs=obs_test_batches, act=act_test_batches, delta=delta_test_batches)
+            self._dataset_train = dict(obs=obs_train_batches, act=act_train_batches, delta=delta_train_batches)
 
             assert self.next_batch is None
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
-                                                                 self._dataset_train['reward'],
                                                                  batch_size=self.batch_size)
             assert self.normalization is None
             if self.normalize_input:
@@ -682,6 +665,71 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
         assert pred_obs_batches.shape == obs_batches.shape
         return pred_obs_batches
 
+    """
+
+    def distribution_info_sym(self, obs_ph, act_ph):
+        # shuffle
+        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+        perm = tf.random.shuffle(perm)
+        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+        means = []
+        log_stds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]  # FIXME: this is mean for obs_next??
+                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                    # FIXME: mean is already denormalized, why need log_std? log_std should not be the std for obs_next?
+                    #  log_Std only useful for prob model??
+                means.append(mean)
+                log_stds.append(log_std)
+        mean = tf.concat(means, axis=0)
+        log_std = tf.concat(log_stds, axis=0)
+        # unshuffle
+        perm_inv = tf.invert_permutation(perm)
+        mean, perm_inv = tf.gather(mean, perm_inv), tf.gather(log_std, perm_inv)
+        # FIXME: need to clip in the parent function?????
+        return dict(mean=mean, log_std=log_std)
+    def distribution_info_sym(self, obs_var, act_var):
+        means = []
+        log_stds = []
+        with tf.variable_scope(self.name, reuse=True):
+            obs_var = tf.split(obs_var, self.num_models, axis=0)
+            act_var = tf.split(act_var, self.num_models, axis=0)
+            for i in range(self.num_models):  # if self.normalize_input is True?
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                    in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
+                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
+                means.append(mean)
+                log_stds.append(log_std)
+        mean = tf.concat(means, axis=0)
+        log_std = tf.concat(log_stds, axis=0)
+        return dict(mean=mean, log_std=log_std)
+    """
 
     def predict_std(self, obs, act):
         """
@@ -703,11 +751,11 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                                     scope=self.name+'/model_{}'.format(i))) for i in range(self.num_models)]
         sess.run(self._reinit_model_op)
 
-    def _data_input_fn(self, obs_batches, act_batches, delta_batches, reward_batches, _size=500, buffer_size=5000):
+    def _data_input_fn(self, obs_batches, act_batches, delta_batches, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert len(obs_batches) == len(act_batches) == len(delta_batches)
-        obs, act, delta, reward = obs_batches[0], act_batches[0], delta_batches[0], reward_batches[0]
+        obs, act, delta = obs_batches[0], act_batches[0], delta_batches[0]
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
         assert obs.shape[1] == delta.shape[1], "obs and obs_next must have same length along axis 1 "
@@ -715,10 +763,9 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
         self.delta_batches_dataset_ph = [tf.placeholder(tf.float32, (None, delta.shape[1])) for _ in range(self.num_models)]
-        self.reward_batches_dataset_ph = [tf.placeholder(tf.float32, (None, )) for _ in range(self.num_models)]
 
         dataset = tf.data.Dataset.from_tensor_slices(
-            tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph + self.reward_batches_dataset_ph)
+            tuple(self.obs_batches_dataset_ph + self.act_batches_dataset_ph + self.delta_batches_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
         dataset = dataset.shuffle(buffer_size=buffer_size)
@@ -727,7 +774,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
 
         return next_batch, iterator
 
-    def compute_normalization(self, obs, act, delta, reward):
+    def compute_normalization(self, obs, act, delta):
         assert len(obs) == len(act) == len(delta) == self.num_models
         assert all([o.shape[0] == d.shape[0] == a.shape[0] for o, a, d in zip(obs, act, delta)])
         assert all([d.shape[1] == o.shape[1] for d, o in zip(obs, delta)])
@@ -740,16 +787,13 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             normalization['obs'] = (np.mean(obs[i], axis=0), np.std(obs[i], axis=0))
             normalization['delta'] = (np.mean(delta[i], axis=0), np.std(delta[i], axis=0))
             normalization['act'] = (np.mean(act[i], axis=0), np.std(act[i], axis=0))
-            normalization['reward'] = (np.mean(reward[i], axis=0), np.std(reward[i], axis=0))
             self.normalization.append(normalization)
             feed_dict.update({self._mean_obs_ph[i]: self.normalization[i]['obs'][0],
                          self._std_obs_ph[i]: self.normalization[i]['obs'][1],
                          self._mean_act_ph[i]: self.normalization[i]['act'][0],
                          self._std_act_ph[i]: self.normalization[i]['act'][1],
                          self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
-                         self._mean_reward_ph[i]: self.normalization[i]['reward'][0],
                          self._std_delta_ph[i]: self.normalization[i]['delta'][1],
-                         self._std_reward_ph[i]: self.normalization[i]['reward'][1],
                          }
                            )
         sess = tf.get_default_session()
@@ -759,7 +803,6 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
         self._mean_obs_var, self._std_obs_var, self._mean_obs_ph, self._std_obs_ph = [], [], [], []
         self._mean_act_var, self._std_act_var, self._mean_act_ph, self._std_act_ph = [], [], [], []
         self._mean_delta_var, self._std_delta_var, self._mean_delta_ph, self._std_delta_ph = [], [], [], []
-        self._mean_reward_var, self._std_reward_var, self._mean_reward_ph, self._std_reward_ph = [], [], [], []
         self._assignations = []
         for i in range(self.num_models):
             self._mean_obs_var.append(tf.get_variable('mean_obs_%d' % i, shape=(self.obs_space_dims,),
@@ -774,37 +817,28 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims,),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
-            self._mean_reward_var.append(tf.get_variable('mean_reward_%d' % i, shape=(None,),
-                                                   dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
-            self._std_reward_var.append(tf.get_variable('std_reward_%d' % i, shape=(None,),
-                                                  dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
 
             self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._mean_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
-            self._mean_reward_ph.append(tf.placeholder(tf.float32, shape=(None,)))
             self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
-            self._std_reward_ph.append(tf.placeholder(tf.float32, shape=(None,)))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
                                       tf.assign(self._mean_act_var[i], self._mean_act_ph[i]),
                                       tf.assign(self._std_act_var[i], self._std_act_ph[i]),
                                       tf.assign(self._mean_delta_var[i], self._mean_delta_ph[i]),
-                                      tf.assign(self._mean_reward_var[i], self._mean_reward_ph[i]),
                                       tf.assign(self._std_delta_var[i], self._std_delta_ph[i]),
-                                      tf.assign(self._std_reward_var[i], self._std_reward_ph[i]),
                                       ])
 
-    def _normalize_data(self, obs, act, delta=None, reward=None):
+    def _normalize_data(self, obs, act, delta=None):
         assert len(obs) == len(act) == self.num_models
         assert self.normalization is not None
         norm_obses = []
         norm_acts = []
         norm_deltas = []
-        norm_rewards = []
         for i in range(self.num_models):
             norm_obs = normalize(obs[i], self.normalization[i]['obs'][0], self.normalization[i]['obs'][1])
             norm_act = normalize(act[i], self.normalization[i]['act'][0], self.normalization[i]['act'][1])
@@ -813,25 +847,20 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
             if delta is not None:
                 assert len(delta) == self.num_models
                 norm_delta = normalize(delta[i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
-                norm_reward = normalize(reward[i], self.normalization[i]['reward'][0], self.normalization[i]['reward'][1])
                 norm_deltas.append(norm_delta)
-                norm_rewards.append(norm_reward)
 
         if delta is not None:
-            return norm_obses, norm_acts, norm_deltas, norm_rewards
+            return norm_obses, norm_acts, norm_deltas
 
         return norm_obses, norm_acts
 
-    def _denormalize_data(self, delta, reward):
+    def _denormalize_data(self, delta):
         assert delta.shape[-1] == self.num_models
         denorm_deltas = []
-        denorm_rewards = []
         for i in range(self.num_models):
             denorm_delta = denormalize(delta[..., i], self.normalization[i]['delta'][0], self.normalization[i]['delta'][1])
-            denorm_reward = denormalize(reward[..., i], self.normalization[i]['reward'][0], self.normalization[i]['reward'][1])
             denorm_deltas.append(denorm_delta)
-            denorm_rewards.append(denorm_reward)
-        return np.stack(denorm_deltas, axis=-1), np.stack(denorm_rewards)
+        return np.stack(denorm_deltas, axis=-1)
 
     def get_shared_param_values(self): # to feed policy
         state = dict()
@@ -849,9 +878,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModel):
                 self._mean_act_ph[i]: self.normalization[i]['act'][0],
                 self._std_act_ph[i]: self.normalization[i]['act'][1],
                 self._mean_delta_ph[i]: self.normalization[i]['delta'][0],
-                self._mean_reward_ph[i]: self.normalization[i]['reward'][0],
                 self._std_delta_ph[i]: self.normalization[i]['delta'][1],
-                self._std_reward_ph[i]: self.normalization[i]['reward'][1],
             })
         sess = tf.get_default_session()
         sess.run(self._assignations, feed_dict=feed_dict)

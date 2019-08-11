@@ -1,3 +1,4 @@
+# from meta_mb.core import MLP
 from meta_mb.dynamics.layers import MLP
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 import tensorflow as tf
@@ -8,7 +9,7 @@ from meta_mb.logger import logger
 from collections import OrderedDict
 
 
-class MLPDynamicsModelFull(Serializable):
+class MLPDynamicsModel(Serializable):
     """
     Class for MLP continous dynamics model
     """
@@ -66,9 +67,7 @@ class MLPDynamicsModelFull(Serializable):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, self.action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
-            self.reward_ph = tf.placeholder(tf.float32, shape=(None,))
-
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims+1))
 
             self._create_stats_vars()
 
@@ -76,7 +75,6 @@ class MLPDynamicsModelFull(Serializable):
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
 
             # create MLP
-            # change this to include rewards and terminals here
             mlp = MLP(name,
                       output_dim=self.obs_space_dims+1,
                       hidden_sizes=hidden_sizes,
@@ -86,22 +84,17 @@ class MLPDynamicsModelFull(Serializable):
                       input_dim=self.obs_space_dims + self.action_space_dims,
                       weight_normalization=weight_normalization)
 
-            self.pred = mlp.output_var
-            self.delta_pred = self.pred[:, :self.obs_space_dims]
-            self.reward_pred = self.pred[:, self.obs_space_dims:self.obs_space_dims+1]
+            self.delta_pred = mlp.output_var
 
             # define loss and train_op
-            results = tf.concatenate([self.delta_ph, self.reward_ph], axis = -1)
-            prediction = tf.concatenate([self.delta_pred, self.reward_pred], axis = -1)
-            self.loss = tf.reduce_mean(tf.linalg.norm(results - prediction, axis=-1))
+            self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph - self.delta_pred, axis=-1))
             self.optimizer = optimizer(self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
-            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], prediction)
+            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
 
         self._networks = [mlp]
-        # LayersPowered.__init__(self, [mlp.output_layer])
 
     def fit(self, obs, act, obs_next, reward, epochs=1000, compute_normalization=True,
             verbose=False, valid_split_ratio=None,
@@ -128,13 +121,14 @@ class MLPDynamicsModelFull(Serializable):
         sess = tf.get_default_session()
 
         # split into valid and test set
-        delta = obs_next - obs
-        obs_train, act_train, delta_train, reward_train, obs_test, act_test, delta_test, reward_test = train_test_split(obs, act, delta, reward,
+        delta_pre = obs_next - obs
+        delta = np.concatenate([delta_pre, reward], axis = -1)
+        obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                              test_split_ratio=valid_split_ratio)
 
         if self._dataset_test is None:
-            self._dataset_test = dict(obs=obs_test, act=act_test, delta=delta_test, reward=reward)
-            self._dataset_train = dict(obs=obs_train, act=act_train, delta=delta_train, reward=reward)
+            self._dataset_test = dict(obs=obs_test, act=act_test, delta=delta_test)
+            self._dataset_train = dict(obs=obs_train, act=act_train, delta=delta_train)
         else:
             n_test_new_samples = len(obs_test)
             n_max_test = self.buffer_size - n_test_new_samples
@@ -143,19 +137,16 @@ class MLPDynamicsModelFull(Serializable):
             self._dataset_test['obs'] = np.concatenate([self._dataset_test['obs'][-n_max_test:], obs_test])
             self._dataset_test['act'] = np.concatenate([self._dataset_test['act'][-n_max_test:], act_test])
             self._dataset_test['delta'] = np.concatenate([self._dataset_test['delta'][-n_max_test:], delta_test])
-            self._dataset_test['reward'] = np.concatenate([self._dataset_test['reward'][-n_max_test:], reward_test])
 
             self._dataset_train['obs'] = np.concatenate([self._dataset_train['obs'][-n_max_train:], obs_train])
             self._dataset_train['act'] = np.concatenate([self._dataset_train['act'][-n_max_train:], act_train])
             self._dataset_train['delta'] = np.concatenate([self._dataset_train['delta'][-n_max_train:], delta_train])
-            self._dataset_train['reward'] = np.concatenate([self._dataset_train['reward'][-n_max_train:], reward_train])
 
         # create data queue
         if self.next_batch is None:
             self.next_batch, self.iterator = self._data_input_fn(self._dataset_train['obs'],
                                                                  self._dataset_train['act'],
                                                                  self._dataset_train['delta'],
-                                                                 self._dataset_train['reward'],
                                                                  batch_size=self.batch_size,
                                                                  buffer_size=self.buffer_size)
 
@@ -163,20 +154,18 @@ class MLPDynamicsModelFull(Serializable):
 
         if (self.normalization is None or compute_normalization) and self.normalize_input:
             self.compute_normalization(self._dataset_train['obs'], self._dataset_train['act'],
-                                       self._dataset_train['delta'], self._dataset_train['reward'])
+                                       self._dataset_train['delta'])
 
         if self.normalize_input:
             # normalize data
-            obs_train, act_train, delta_train, reward_train, done_train = self._normalize_data(self._dataset_train['obs'],
+            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
                                                                      self._dataset_train['act'],
-                                                                     self._dataset_train['delta'],
-                                                                     self._dataset_train['reward'])
+                                                                     self._dataset_train['delta'])
             assert obs_train.ndim == act_train.ndim == delta_train.ndim == 2
         else:
             obs_train = self._dataset_train['obs']
             act_train = self._dataset_train['act']
             delta_train = self._dataset_train['delta']
-            reward_train = self._dataset_train['reward']
 
         # Training loop
         for epoch in range(epochs):
@@ -185,20 +174,17 @@ class MLPDynamicsModelFull(Serializable):
             sess.run(self.iterator.initializer,
                      feed_dict={self.obs_dataset_ph: obs_train,
                                 self.act_dataset_ph: act_train,
-                                self.delta_dataset_ph: delta_train,
-                                self.reward_dataset_ph: reward_train,
-                                })
+                                self.delta_dataset_ph: delta_train})
 
             batch_losses = []
             while True:
                 try:
-                    obs_batch, act_batch, delta_batch, reward_batch, done_batch = sess.run(self.next_batch)
+                    obs_batch, act_batch, delta_batch = sess.run(self.next_batch)
 
                     # run train op
                     batch_loss, _ = sess.run([self.loss, self.train_op], feed_dict={self.obs_ph: obs_batch,
                                                                          self.act_ph: act_batch,
-                                                                         self.delta_ph: delta_batch,
-                                                                         self.reward_ph: reward_batch})
+                                                                         self.delta_ph: delta_batch})
 
                     batch_losses.append(batch_loss)
 
@@ -206,22 +192,18 @@ class MLPDynamicsModelFull(Serializable):
                     # compute validation loss
                     if self.normalize_input:
                         # normalize data
-                        obs_test, act_test, delta_test, reward_test = self._normalize_data(self._dataset_test['obs'],
+                        obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
                                                                               self._dataset_test['act'],
-                                                                              self._dataset_test['delta'],
-                                                                              self._dataset_test['reward'])
+                                                                              self._dataset_test['delta'])
                         assert obs_test.ndim == act_test.ndim == delta_test.ndim == 2
                     else:
                         obs_test = self._dataset_test['obs']
                         act_test = self._dataset_test['act']
                         delta_test = self._dataset_test['delta']
-                        reward_test = self._dataset_test['reward']
 
                     valid_loss = sess.run(self.loss, feed_dict={self.obs_ph: obs_test,
                                                                 self.act_ph: act_test,
-                                                                self.delta_ph: delta_test,
-                                                                self.reward_ph: reward_test,
-                                                                })
+                                                                self.delta_ph: delta_test})
                     if valid_loss_rolling_average is None:
                         valid_loss_rolling_average = 1.5 * valid_loss # set initial rolling to a higher value avoid too early stopping
                         valid_loss_rolling_average_prev = 2.0 * valid_loss
@@ -252,17 +234,13 @@ class MLPDynamicsModelFull(Serializable):
 
         if self.normalize_input:
             obs, act = self._normalize_data(obs, act)
-            results = np.array(self.f_delta_pred(obs, act))
-            delta = results[:, :self.obs_space_dims]
-            reward = results[:, self.obs_space_dims:self.obs_space_dims+1]
+            delta = np.array(self.f_delta_pred(obs, act))
             delta = denormalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
-            reward = denormalize(reward, self.normalization['reward'][0], self.normalization['reward'][1])
         else:
-            results = np.array(self.f_delta_pred(obs, act))
-            delta = results[:, :self.obs_space_dims]
-            reward = results[:, self.obs_space_dims:self.obs_space_dims+1]
+            delta = np.array(self.f_delta_pred(obs, act))
 
-        pred_obs = obs_original + delta
+        pred_obs = obs_original + delta[:, :self.obs_space_dims]
+        reward = delta[:, self.obs_space_dims:]
         return pred_obs, reward
 
     def distribution_info_sym(self, obs_var, act_var):
@@ -280,10 +258,10 @@ class MLPDynamicsModelFull(Serializable):
                       )
             mean = mlp.output_var * self._std_delta_var + self._mean_delta_var + obs_var
             log_std = tf.log(self._std_delta_var)
-        # dim [:self.obs_dim]->next_observation, [self.obs_dim:]->reward
-        return dict(mean=mean, log_std=log_std)
+        return dict(mean=mean[:, :self.obs_space_dims], log_std=log_std[:, :self.obs_space_dims]), dict(mean=mean[:, self.obs_space_dims], log_std=log_std[:, self.obs_space_dims:])
 
-    def compute_normalization(self, obs, act, obs_next, reward):
+
+    def compute_normalization(self, obs, act, pred):
         """
         Computes the mean and std of the data and saves it in a instance variable
         -> the computed values are used to normalize the data at train and test time
@@ -292,8 +270,10 @@ class MLPDynamicsModelFull(Serializable):
         :param obs_next: observations after takeing action - numpy array of shape (n_samples, ndim_obs)
         """
 
-        assert obs.shape[0] == obs_next.shape[0] == act.shape[0]
-        delta = obs_next - obs
+        assert obs.shape[0] == pred.shape[0] == act.shape[0]
+        next_obs = obs_next[:, :self.obs_space_dims] - obs
+        reward = obs_next[:, self.obs_space_dims:]
+        delta = tf.concatenate([next_obs, reward], axis = -1)
         assert delta.ndim == 2 and delta.shape[0] == obs_next.shape[0]
 
         # store means and std in dict
@@ -301,7 +281,6 @@ class MLPDynamicsModelFull(Serializable):
         self.normalization['obs'] = (np.mean(obs, axis=0), np.std(obs, axis=0))
         self.normalization['delta'] = (np.mean(delta, axis=0), np.std(delta, axis=0))
         self.normalization['act'] = (np.mean(act, axis=0), np.std(act, axis=0))
-        self.normalization['reward'] = (np.mean(reward, axis=0), np.std(reward, axis=0))
 
         sess = tf.get_default_session()
         sess.run(self._assignations, feed_dict={self._mean_obs_ph: self.normalization['obs'][0],
@@ -310,8 +289,6 @@ class MLPDynamicsModelFull(Serializable):
                                                 self._std_act_ph: self.normalization['act'][1],
                                                 self._mean_delta_ph: self.normalization['delta'][0],
                                                 self._std_delta_ph: self.normalization['delta'][1],
-                                                self._mean_reward_ph: self.normalization['reward'][0],
-                                                self._std_reward_ph: self.normalization['reward'][1],
                                                 })
 
     def _create_stats_vars(self):
@@ -323,24 +300,17 @@ class MLPDynamicsModelFull(Serializable):
                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
         self._std_act_var = tf.get_variable('std_act', shape=(self.action_space_dims,),
                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims,),
+        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims+1,),
                                                 dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims,),
-                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_reward_var = tf.get_variable('mean_reward', shape=(None,),
-                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_reward_var = tf.get_variable('std_reward', shape=(None,),
+        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims+1,),
                                                dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
 
         self._mean_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._std_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._mean_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
         self._std_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
-        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
-        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
-        self._mean_reward_ph = tf.placeholder(tf.float32, shape=(None,))
-        self._std_reward_ph = tf.placeholder(tf.float32, shape=(None,))
-
+        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
+        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
 
         self._assignations = [tf.assign(self._mean_obs_var, self._mean_obs_ph),
                               tf.assign(self._std_obs_var, self._std_obs_ph),
@@ -348,24 +318,21 @@ class MLPDynamicsModelFull(Serializable):
                               tf.assign(self._std_act_var, self._std_act_ph),
                               tf.assign(self._mean_delta_var, self._mean_delta_ph),
                               tf.assign(self._std_delta_var, self._std_delta_ph),
-                              tf.assign(self._mean_reward_var, self._mean_reward_ph),
-                              tf.assign(self._std_reward_var, self._std_reward_ph),
                               ]
 
-    def _data_input_fn(self, obs, act, delta, reward, batch_size=500, buffer_size=5000):
+    def _data_input_fn(self, obs, act, delta, batch_size=500, buffer_size=5000):
         """ Takes in train data an creates an a symbolic nex_batch operator as well as an iterator object """
 
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
-        assert obs.shape[1] == delta.shape[1], "obs and obs_next must have same length along axis 1 "
+        assert obs.shape[1] == delta.shape[1]-1, "obs and obs_next must have same length along axis 1 "
 
         self.obs_dataset_ph = tf.placeholder(tf.float32, (None, obs.shape[1]))
         self.act_dataset_ph = tf.placeholder(tf.float32, (None, act.shape[1]))
-        self.delta_dataset_ph = tf.placeholder(tf.float32, (None, delta.shape[1]))
-        self.reward_dataset_ph = tf.placeholder(tf.float32, (None))
+        self.delta_dataset_ph = tf.placeholder(tf.float32, (None, delta.shape[1]+1))
 
         dataset = tf.data.Dataset.from_tensor_slices(
-            (self.obs_dataset_ph, self.act_dataset_ph, self.delta_dataset_ph, self.reward_dataset_ph)
+            (self.obs_dataset_ph, self.act_dataset_ph, self.delta_dataset_ph)
         )
         dataset = dataset.batch(batch_size)
         dataset = dataset.shuffle(buffer_size=buffer_size)
@@ -374,15 +341,16 @@ class MLPDynamicsModelFull(Serializable):
 
         return next_batch, iterator
 
-    def _normalize_data(self, obs, act, obs_next=None, reward=None):
+    def _normalize_data(self, obs, act, pred=None):
         obs_normalized = normalize(obs, self.normalization['obs'][0], self.normalization['obs'][1])
         actions_normalized = normalize(act, self.normalization['act'][0], self.normalization['act'][1])
 
         if obs_next is not None:
-            delta = obs_next - obs
+            next_obs = pred[:, :self.obs_space_dims] - obs
+            reward = pred[:, self.obs_space_dims:]
+            delta = np.concatenate([next_obs, reward], axis = -1)
             deltas_normalized = normalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
-            rewards_normalized = normalize(reward, self.normalization['reward'][0], self.normalization['reward'][1])
-            return obs_normalized, actions_normalized, deltas_normalized, rewards_normalized
+            return obs_normalized, actions_normalized, deltas_normalized
         else:
             return obs_normalized, actions_normalized
 
