@@ -76,7 +76,6 @@ class Trainer(object):
             cpc_initial_sampler=None,
             cpc_train_interval=10,
             cpc_predict_action=False,
-            cpc_contrastive=True,
 
             path_checkpoint_interval=1,
             ):
@@ -106,7 +105,6 @@ class Trainer(object):
         self.cpc_initial_sampler = cpc_initial_sampler
         self.cpc_train_interval = cpc_train_interval
         self.cpc_predict_action = cpc_predict_action
-        self.cpc_contrastive = cpc_contrastive
 
         self.path_checkpoint_interval = path_checkpoint_interval
 
@@ -150,15 +148,13 @@ class Trainer(object):
                                           negative_samples=self.cpc_negative_samples,
                                           predict_terms=self.cpc_predict_terms,
                                           negative_same_traj=self.cpc_negative_same_traj,
-                                          predict_action=self.cpc_predict_action,
-                                          no_neg=not self.cpc_contrastive)
+                                          predict_action=self.cpc_predict_action,)
             validation_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), empty_rews.copy(),
                                                self.cpc_batch_size, terms=self.cpc_terms,
                                                negative_samples=self.cpc_negative_samples,
                                                predict_terms=self.cpc_predict_terms,
                                                negative_same_traj=self.cpc_negative_same_traj,
-                                               predict_action=self.cpc_predict_action,
-                                               no_neg=not self.cpc_contrastive)
+                                               predict_action=self.cpc_predict_action,)
             if self.cpc_initial_epoch > 0:
                 # for (x, a, y), labels in train_data:
                 #     plot_seq(x[0], y, labels, name='reacher-seq')q

@@ -5,6 +5,7 @@ import tensorflow as tf
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.policies.mpc_controller import MPCController
@@ -15,7 +16,7 @@ from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.utils.utils import ClassEncoder
-from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
+# from meta_mb.unsupervised_learning.cpc.cpc import CPCEncoder, CPCContextNet
 from meta_mb.unsupervised_learning.vae import VAE
 
 # envs
@@ -30,7 +31,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cheetah_state'
+EXP_NAME = 'cheetah_walker_state'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -123,18 +124,33 @@ def run_experiment(**config):
             )
 
         else:
-            dynamics_model = MLPDynamicsEnsemble(
-                name="dyn_model",
-                env=env,
-                learning_rate=config['learning_rate'],
-                hidden_sizes=config['hidden_sizes_model'],
-                weight_normalization=config['weight_normalization_model'],
-                num_models=config['num_models'],
-                valid_split_ratio=config['valid_split_ratio'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                batch_size=config['batch_size_model'],
-            )
+            if not config['prob_model']:
+                dynamics_model = MLPDynamicsEnsemble(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+            else:
+                dynamics_model = ProbMLPDynamicsEnsemble(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+
 
             reward_model = MLPRewardEnsemble(
                 name="rew_model",
@@ -202,246 +218,24 @@ if __name__ == '__main__':
         return InvertedPendulumEnv(include_vel=False)
 
 
-    config_ip = {
-                'seed': [1, 2],
 
-                # Problem
-                'env': [InvertedPendulumEnv],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
-                'normalize': [True],
-                 'n_itr': [50],
-                'discount': [1.],
-                'obs_stack': [1],
-
-                # Policy
-                'n_candidates': [1000],  # K
-                'horizon': [10],  # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
-                'use_graph': [True],
-
-                # Training
-                'num_rollouts': [20],
-                'learning_rate': [0.001],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4],
-
-                # Dynamics Model
-                'recurrent': [False],
-                'num_models': [5],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500,)],
-                'dynamic_model_epochs': [50],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [64],
-                'cell_type': ['lstm'],
-                'use_reward_model': [True],
-
-                # Reward Model
-                'reward_model_epochs': [15],
-
-                #  Other
-                'n_parallel': [1],
-
-                # representation learning
-
-                'use_image': [True],
-                # 'model_path': ['ip-neg-15'],
-                'encoder': ['cpc'],
-                'latent_dim': [32],
-                'negative': [10],
-                'history': [3],
-                'future': [1],
-                'use_context_net': [True]
-
-    }
-
-    config_ip_rnn = {
-                'seed': [1],
-                'run_suffix': [''],
-
-                # Problem
-                'env': [InvertedPendulumEnv], #[InvertedPendulumEnv],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
-                'normalize': [True],
-                 'n_itr': [30],
-                'discount': [1.],
-                'obs_stack': [1],
-
-                # Policy
-                'n_candidates': [1000],  # K
-                'horizon': [10],  # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
-                'use_graph': [True],
-
-                # Training
-                'num_rollouts': [20],
-                'learning_rate': [0.001],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.95],
-
-                # Dynamics Model
-                'recurrent': [True],
-                'num_models': [1],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, )],
-                'dynamic_model_epochs': [30],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [10],
-                'cell_type': ['lstm'],
-                'use_reward_model': [True],
-
-                # Reward Model
-                'reward_model_epochs': [15],
-
-                #  Other
-                'n_parallel': [5],
-
-                # representation learning
-
-                'use_image': [True],
-                'model_path': ['ip-neg10-hist3-fut3-code321'],
-                'encoder': ['cpc'],
-                'latent_dim': [32],
-                'negative': [10],
-                'history': [3],
-                'future': [1],
-                'use_context_net': [False]
-
-    }
-
-    config_pt_rnn = {
-                'seed': [1],
-                'run_suffix': [''],
-
-                # Problem
-                'env': [make_pt_env],  # 'HalfCheetahEnv'
-                'max_path_length': [32],
-                'normalize': [True],
-                 'n_itr': [50],
-                'discount': [1.],
-                'obs_stack': [1],
-
-                # Policy
-                'n_candidates': [1000],  # K
-                'horizon': [10],  # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
-                'use_graph': [True],
-
-                # Training
-                'num_rollouts': [50],
-                'learning_rate': [0.001],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.4, 0.99],
-
-                # Dynamics Model
-                'recurrent': [True],
-                'num_models': [5],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, ), (32, )],
-                'dynamic_model_epochs': [50],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [20],
-                'cell_type': ['lstm'],
-                'use_reward_model': [True],
-
-                # Reward Model
-                'reward_model_epochs': [15],
-
-                #  Other
-                'n_parallel': [1],
-
-                # representation learning
-
-                'use_image': [True],
-                'model_path': ['cpc-ptsize=2-codesize=321'],
-                'encoder': ['cpc'],
-                'latent_dim': [32],
-                'negative': [10],
-                'history': [3],
-                'future': [1],
-                'use_context_net': [False]
-
-    }
-
-    config_cp = {
-        'seed': [1],
-        'run_suffix': ['1', '2'],
-
-        # Problem
-        'env': [make_dm_cpb_env],  # 'HalfCheetahEnv'
-        'max_path_length': [125],
-        'normalize': [True],
-        'n_itr': [50],
-        'discount': [1.],
-        'obs_stack': [3],
-
-        # Policy
-        'n_candidates': [1000],  # K
-        'horizon': [12],  # Tau
-        'use_cem': [True, False],
-        'num_cem_iters': [5],
-        'use_graph': [True],
-
-        # Training
-        'num_rollouts': [5],
-        'learning_rate': [0.001],
-        'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.4],
-
-        # Dynamics Model
-        'recurrent': [False],
-        'num_models': [5],
-        'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500,)],
-        'dynamic_model_epochs': [50],
-        'backprop_steps': [100],
-        'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [64],
-        'cell_type': ['lstm'],
-        'use_reward_model': [True],
-
-        # Reward Model
-        'reward_model_epochs': [15],
-
-        #  Other
-        'n_parallel': [1],
-
-        # representation learning
-
-        'use_image': [True],
-        # 'model_path': ['ip-neg-15'],
-        'encoder': ['cpc'],
-        'latent_dim': [32],
-        'negative': [10],
-        'history': [3],
-        'future': [1],
-        'use_context_net': [False]
-
-    }
-
-    config_envs_cheetah = {
+    config_envs = {
         'seed': [1],
         'run_suffix': ['1'],
 
         # Problem
 
-        'env': ['cheetah_run'],
+        'env': ['cheetah_run', 'walker'],
         'normalize': [True],
-        'n_itr': [150],
+        'n_itr': [60],
         'discount': [1.],
         'obs_stack': [1],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [20],  # Tau
+        'horizon': [12, 20],  # Tau
         'use_cem': [True],
-        'num_cem_iters': [10],
+        'num_cem_iters': [5, 10],
         'use_graph': [True],
 
         # Training
@@ -451,6 +245,7 @@ if __name__ == '__main__':
         'rolling_average_persitency': [0.9],
 
         # Dynamics Model
+        'prob_model': [True, False],
         'recurrent': [False],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
@@ -484,61 +279,5 @@ if __name__ == '__main__':
 
     }
 
-    config_envs = {
-        'seed': [1],
-        'run_suffix': ['1'],
 
-        # Problem
-
-        'env': ['cartpole_balance', 'cartpole_swingup', 'reacher_easy', 'cheetah_run'], #, 'cheetah_run', 'cartpole_swingup'],
-        'normalize': [True],
-        'n_itr': [150],
-        'discount': [1.],
-        'obs_stack': [3],
-
-        # Policy
-        'n_candidates': [1000],  # K
-        'horizon': [12],  # Tau
-        'use_cem': [True],
-        'num_cem_iters': [5],
-        'use_graph': [True],
-
-        # Training
-        'num_rollouts': [5],
-        'learning_rate': [0.001],
-        'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.4],
-
-        # Dynamics Model
-        'recurrent': [False],
-        'num_models': [5],
-        'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(500,)],
-        'dynamic_model_epochs': [50],
-        'backprop_steps': [100],
-        'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'batch_size_model': [64],
-        'cell_type': ['lstm'],
-        'use_reward_model': [True],
-
-        # Reward Model
-        'reward_model_epochs': [15],
-
-        #  Other
-        'n_parallel': [1],
-
-        # representation learning
-
-        'use_image': [True],
-        # 'model_path': ['ip-neg-15'],
-        'encoder': ['vae'],
-        'latent_dim': [8],
-        'negative': [10],
-        'history': [3],
-        'future': [3],
-        'use_context_net': [False],
-        'include_action': [False]
-
-    }
-
-    run_sweep(run_experiment, config_envs_cheetah, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)

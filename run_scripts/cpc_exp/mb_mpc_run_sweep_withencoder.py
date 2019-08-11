@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'normalize'
+EXP_NAME ='withreward_l2'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -54,7 +54,8 @@ def run_experiment(**config):
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                         learning_rate=config['cpc_initial_lr'], encoder_arch='default',
                         context_network='stack', context_size=32, predict_action=config['predict_action'],
-                        rew_contrastive=config['contrastive'], rew_loss_weight=config['rew_loss_weight'],
+                        rew_contrastive=config['rew_contrastive'], rew_loss_weight=config['rew_loss_weight'],
+                        action_contrastive=config['action_contrastive'],
                         grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
     else:
         cpc_model = None
@@ -294,7 +295,6 @@ def run_experiment(**config):
             cpc_initial_sampler=sampler_initial_cpc,
             cpc_train_interval=config['cpc_train_interval'],
             cpc_predict_action=config['predict_action'],
-            cpc_contrastive=config['contrastive'],
             cpc_batch_size=config['batch_size_model'],
 
             path_checkpoint_interval=config['path_checkpoint_interval']
@@ -313,15 +313,15 @@ if __name__ == '__main__':
 
     # -------------------- Define Variants -----------------------------------
 
-    config_cheetah = {
+    config_withreward_l2 = {
         'seed': [1],
         'run_suffix': ['1'],
 
         # Problem
 
-        'env': ['cheetah_run'],
+        'env': ['cheetah_run', 'cartpole_balance'],
         'env_produce_img': [True],
-        'normalize': [True],
+        'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
         'obs_stack': [5],
@@ -370,15 +370,16 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [True],
         'predict_action': [False],
-        'contrastive': [True],
+        'rew_contrastive': [False],
+        'action_contrastive':[False],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [10],
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [16],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [10, 300],
-        'rew_loss_weight': [0],
+        'cpc_loss_weight': [100],
+        'rew_loss_weight': [0, 1, 10],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -440,7 +441,8 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [True],
         'predict_action': [False],
-        'contrastive': [True],
+        'rew_contrastive': [True],
+        'action_contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [10],
@@ -510,7 +512,8 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [True],
         'predict_action': [False],
-        'contrastive': [True],
+        'rew_contrastive': [True],
+        'action_contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [10],
@@ -580,7 +583,8 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [True, False],
         'predict_action': [False],
-        'contrastive': [True],
+        'rew_contrastive': [True],
+        'action_contrastive': [True],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [10],
@@ -594,4 +598,4 @@ if __name__ == '__main__':
     }
 
 
-    run_sweep(run_experiment, config_cheetah, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)

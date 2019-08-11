@@ -98,7 +98,7 @@ class CPCLayer(keras.layers.Layer):
 class CPC:
     def __init__(self, image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
                 learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                 grad_penalty=True, lambd=1., rew_loss_weight=0., rew_contrastive=True):
+                 grad_penalty=True, lambd=1., rew_loss_weight=0., rew_contrastive=True, action_contrastive=False):
 
         self.image_shape = image_shape
 
@@ -167,9 +167,10 @@ class CPC:
         if rew_contrastive:
             rew_preds = network_prediction(context_output, 1, predict_terms)
         else:
-            rew_preds = keras.layers.Dense(64, activation='relu')(context_output)
-            rew_preds = keras.layers.Dense(16, activation='relu')(rew_preds)
+            rew_preds = keras.layers.Dense(256, activation='relu')(context_output)
+            rew_preds = keras.layers.Dense(256, activation='relu')(rew_preds)
             rew_preds = keras.layers.Dense(predict_terms, activation='linear')(rew_preds)
+            rew_preds = keras.layers.Reshape((predict_terms, 1))(rew_preds)
 
         self.rew_input_ph = tf.placeholder(dtype=tf.float32,
                                             shape=(None, predict_terms, (negative_samples + 1), 1))
@@ -177,7 +178,11 @@ class CPC:
         rew_logits = CPCLayer()([rew_preds, rew_input])
 
         self.rew_labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
-        self.rew_loss = cross_entropy_loss(self.rew_labels_ph, rew_logits)
+        if rew_contrastive:
+            self.rew_loss = cross_entropy_loss(self.rew_labels_ph, rew_logits)
+        else:
+            positive_ys = tf.reshape(self.rew_input_ph[:, :, 0, :], (-1, predict_terms, 1))
+            self.rew_loss = tf.reduce_mean(tf.square(positive_ys - rew_preds))
 
         rew_correct_class = tf.argmax(rew_logits, axis=-1)
         rew_predicted_class = tf.argmax(self.rew_labels_ph, axis=-1)
@@ -187,17 +192,24 @@ class CPC:
         # ============================== encoded future states/action ====================================
 
         if predict_action:
-            preds = network_prediction(context_output, action_dim, predict_terms)
+            if action_contrastive:
+                preds = network_prediction(context_output, action_dim, predict_terms)
+            else:
+                preds = keras.layers.Dense(256, activation='relu')(context_output)
+                preds = keras.layers.Dense(256, activation='relu')(preds)
+                preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
+                preds = keras.layers.Reshape((predict_terms, action_dim))(preds)
+
         else:
             preds = network_prediction(context_output, code_size, predict_terms)
 
         if predict_action:
-            self.y_input_ph = tf.placeholder(dtype=tf.float32,
+            self.y_input_ph = y_encoded = tf.placeholder(dtype=tf.float32,
                                              shape=(None, predict_terms, (negative_samples + 1), action_dim))
             y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
-            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
-            y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
-            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), action_dim))(y_encoded_flat)
+            # y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
+            # y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
+            # y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), action_dim))(y_encoded_flat)
 
         else:
             self.y_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples+1) + image_shape)
@@ -213,7 +225,12 @@ class CPC:
         cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
         self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
 
-        self.state_loss = cross_entropy_loss(self.labels_ph, logits)
+        if predict_action and not action_contrastive:
+            positive_ys = tf.reshape(self.y_input_ph[:, :, 0, :], (-1, predict_terms, action_dim))
+            self.state_loss = tf.reduce_mean(tf.square(positive_ys - preds))
+        else:
+            self.state_loss = cross_entropy_loss(self.labels_ph, logits)
+
         if rew_loss_weight > 0:
             self.loss = self.state_loss + rew_loss_weight * self.rew_loss
         else:
@@ -244,7 +261,6 @@ class CPC:
 
         cpc_model.summary()
 
-        self.model = cpc_model
         self.encoder = encoder_model
 
     def encode(self, imgs):

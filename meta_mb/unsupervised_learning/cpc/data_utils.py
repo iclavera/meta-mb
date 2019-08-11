@@ -76,10 +76,6 @@ class CPCDataGenerator(object):
 
         # gather the x_images
         x_images = self.images[idx_n[:, None], x_idx_t]
-        t1 = time.time()
-
-        # print('gather x images', t1 - t0)
-
 
         y_idx_t = np.array([], dtype=np.int32).reshape((self.batch_size, 0))
         if self.predict_action:
@@ -98,18 +94,16 @@ class CPCDataGenerator(object):
                 start_idx_t += 1
 
             y_pos = self.images[idx_n[:, None], y_idx_t]
-            rewards_pos = self.rewards[idx_n[:, None], y_idx_t - 1]
-            # gather the actions
-            actions = self.actions[idx_n[:, None], y_idx_t - 1]
-            # gather rewards
+
+        # gather the actions
+        actions = self.actions[idx_n[:, None], y_idx_t - 1]
+        # gather rewards
+        rewards_pos = self.rewards[idx_n[:, None], y_idx_t - 1]
 
 
-        if self.no_neg and self.predict_action:
-            return x_images, y_pos.reshape((self.batch_size, -1))
+        # if self.no_neg and self.predict_action:
+        #     return x_images, y_pos.reshape((self.batch_size, -1))
 
-        t2 = time.time()
-        #
-        # print('gather y positives', t2 - t1)
 
         # get the negative samples (batch_size x predict_terms x negative_samples)
         seq_index = np.arange(self.n_seqs)
@@ -138,14 +132,7 @@ class CPCDataGenerator(object):
             self.y[:, :, 1:, ...] = self.images[neg_idx_n, neg_idx_t]
             # y = np.concatenate([np.expand_dims(y_pos, 2), self.images[neg_idx_n, neg_idx_t]], axis=2)
 
-            rewards = np.concatenate([np.expand_dims(rewards_pos, 2), self.rewards[neg_idx_n, neg_idx_t]], axis=2)
-
-        t3 = time.time()
-        # print('gather y negatives', t3 - t2)
-
-
-        # concatenate positive samples with negative ones
-
+        rewards = np.concatenate([np.expand_dims(rewards_pos, 2), self.rewards[neg_idx_n, neg_idx_t]], axis=2)
 
         pos_neg_label = np.zeros((self.batch_size, self.predict_terms, self.negative_samples + 1)).astype('int32')
         pos_neg_label[:, :, 0] = 1
