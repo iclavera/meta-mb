@@ -869,8 +869,8 @@ class ParallelDDPExecutor(object):
         """
         backward_pass_counter = 0
         while not backward_accept and backward_pass_counter < self.max_backward_iters:# and self.mu <= self.mu_max:
-            # reset
-            V_prime_x, V_prime_xx = l_x[-1], l_xx[-1]
+            # initialize
+            V_prime_x, V_prime_xx = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)  # l_x[-1], l_xx[-1]
             open_k_array, closed_K_array = [], []
             delta_J_1, delta_J_2 = 0, 0
 
@@ -949,6 +949,7 @@ class ParallelDDPExecutor(object):
 
         """
         Forward Pass (pick the best alpha after trying all)
+        This chunk is not executed.
         """
         if self.forward_stop_cond == 'abs':
             inputs_dict = dict(
@@ -1072,8 +1073,13 @@ class ParallelDDPExecutor(object):
         u_array = self.u_array + np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
         u_array = np.clip(u_array, a_min=self.act_low, a_max=self.act_high)
         self.u_array = u_array
-
         # self.x_array, self.J_val = None, None
+
+    def reset_u_array(self):
+        self._reset_mu()
+
+        u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
+        self.u_array = u_array
 
     def shift_u_array(self, u_new):
         """
@@ -1096,7 +1102,7 @@ class ParallelDDPExecutor(object):
         try:
             assert np.allclose(x, init_obs)  # FAILS IN REACHER
         except AssertionError:
-            logger.log('WARNING from reset_from_obs')
+            logger.log('ERROR from reset_from_obs')
 
         for i in range(self.horizon):
             x_array.append(x)
@@ -1296,6 +1302,11 @@ def DDP_worker(remote, parent_remote, env_pickle, eps,
 
 
 def chol_inv(matrix):
+    """
+    Copied from mbbl.
+    :param matrix:
+    :return:
+    """
     L = np.linalg.cholesky(matrix)
     L_inv = sla.solve_triangular(
         L, np.eye(len(L)), lower=True, check_finite=False
