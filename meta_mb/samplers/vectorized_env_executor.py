@@ -771,7 +771,7 @@ class ParallelDDPExecutor(object):
     Compute ground truth derivatives.
     """
     def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
-                 mu_min=1e-6, mu_max=1e10, mu_init=0, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
+                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
                  forward_stop_cond='rel',
                  use_hessian_f=False, verbose=False):
