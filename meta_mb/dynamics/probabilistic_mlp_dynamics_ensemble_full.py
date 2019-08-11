@@ -77,15 +77,17 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
             self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
+            self.reward_ph = tf.placeholder(tf.float32, shape=(None, ))
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
+            self.nn_output = tf.concat([self.delta_ph, self.reward_ph], axis=1)
 
             obs_ph = tf.split(self.nn_input, self.num_models, axis=0)
 
             # create MLP
             mlps = []
-            delta_preds = []
+            preds = []
             var_preds = []
             logvar_preds = []
             invar_preds = []
@@ -93,7 +95,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i)):
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=2 * obs_space_dims,
+                              output_dim=2 * (obs_space_dims+1),
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -108,25 +110,28 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                 var = tf.exp(logvar)
                 inv_var = tf.exp(-logvar)
 
-                delta_preds.append(mean)
+                preds.append(mean)
                 logvar_preds.append(logvar)
                 var_preds.append(var)
                 invar_preds.append(inv_var)
 
-            self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+            self.predictions = tf.stack(preds, axis = 2)
+            self.delta_pred = self.predictions[:, :, :self.obs_space_dims]  # shape: (batch_size, ndim_obs, n_models)
             self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
             # define loss and train_op
-            self.loss = tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
+            truth = tf.concatenate([self.delta_ph, self.reward_ph], axis = -1)[:, :, None]
+
+            self.loss = tf.reduce_mean(tf.square(truth - self.predictions) * self.invar_pred
                                        + self.logvar_pred)
             self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
             self.optimizer = optimizer(learning_rate=self.learning_rate)
             self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
-            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
+            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.predictions)
             self.f_var_pred = compile_function([self.obs_ph, self.act_ph], self.var_pred)
 
         """ computation graph for inference where each of the models receives a different batch"""
