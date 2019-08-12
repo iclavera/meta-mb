@@ -93,7 +93,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i)):
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=2 * (obs_space_dims+1),
+                              output_dim=2 * (obs_space_dims+2),
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -134,7 +134,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             # placeholders
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
+            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+2))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
@@ -152,7 +152,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=2 * (obs_space_dims+1),
+                              output_dim=2 * (obs_space_dims+2),
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -213,7 +213,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=2 * (self.obs_space_dims+1),
+                              output_dim=2 * (self.obs_space_dims+2),
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
                               output_nonlinearity=self.output_nonlinearity,
@@ -234,77 +234,80 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
         delta_preds = tf.gather(delta_preds, perm_inv)
-        pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
-        return pred_obs
+        pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
+        pred_rewards = delta_preds[:, self.obs_space_dims:self.obs_space_dims+1]
+        pred_dones = tf.nn.sigmoid(delta_preds[:, self.obs_space_dims+1:])
+        # pred_dones = tf.nn.sigmoid(pred_dones)
+        return pred_obs, pred_rewards, pred_dones
 
-    def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
-        """
-        Same batch fed into all models. Randomly output one of the predictions for each observation.
-        :param obs_ph: (batch_size, obs_space_dims)
-        :param act_ph: (batch_size, act_space_dims)
-        :return: (batch_size, obs_space_dims)
-        """
-        original_obs = obs_ph
-
-        if pred_type == 'all':
-            obs_ph = tf.split(obs_ph, self.num_models, axis=0)
-            act_ph = tf.split(act_ph, self.num_models, axis=0)
-
-        delta_preds = []
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    assert self.normalize_input
-                    obs = obs_ph[i] if pred_type == 'all' else obs_ph
-                    act = act_ph[i] if pred_type == 'all' else act_ph
-                    in_obs_var = (obs - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=2 * (self.obs_space_dims+1),
-                              hidden_sizes=self.hidden_sizes,
-                              hidden_nonlinearity=self.hidden_nonlinearity,
-                              output_nonlinearity=self.output_nonlinearity,
-                              input_var=input_var,
-                              input_dim=self.obs_space_dims + self.action_space_dims,
-                              )
-
-                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
-                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
-                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
-                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
-                    # denormalize
-                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
-                    delta_preds.append(delta_pred)
-
-        # delta_preds = [(batch_size_per_model, obs_dims)] * num_models
-        reg =  0
-        if pred_type == 'all':
-            if reg_str == 'uncertainty':
-                reg = tf.math.reduce_variance(tf.stack(delta_preds, axis=-1), axis=-1)
-                reg = tf.reduce_sum(reg, axis=1)  # (batch_size_per_model,)
-                assert len(reg.get_shape()) == 1
-
-            delta_preds = tf.concat(delta_preds, axis=0)  # (batch_size_per_model*num_models, obs_dims)
-            pred_obs = original_obs + delta_preds
-        else:
-            delta_preds = tf.stack(delta_preds, axis=-1)  # (batch_size, obs_dims, num_models)
-            if reg_str == 'uncertainty':
-                reg = tf.math.reduce_variance(delta_preds, axis=-1)
-                reg = tf.reduce_sum(reg, axis=1)
-                assert len(reg.get_shape()) == 1
-
-            pred_obs = tf.expand_dims(original_obs, axis=-1) + delta_preds
-            if pred_type == 'mean':
-                pred_obs = tf.reduce_mean(pred_obs, axis=-1)
-            elif pred_type == 'rand':
-                idx = tf.random.uniform(shape=(tf.shape(pred_obs)[0],), minval=0, maxval=self.num_models, dtype=tf.int32)
-                pred_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
-                pred_obs = tf.squeeze(pred_obs, axis=1)
-            else:
-                raise NotImplementedError
-
-        return pred_obs, reg
+    # def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
+    #     """
+    #     Same batch fed into all models. Randomly output one of the predictions for each observation.
+    #     :param obs_ph: (batch_size, obs_space_dims)
+    #     :param act_ph: (batch_size, act_space_dims)
+    #     :return: (batch_size, obs_space_dims)
+    #     """
+    #     original_obs = obs_ph
+    #
+    #     if pred_type == 'all':
+    #         obs_ph = tf.split(obs_ph, self.num_models, axis=0)
+    #         act_ph = tf.split(act_ph, self.num_models, axis=0)
+    #
+    #     delta_preds = []
+    #     with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+    #         for i in range(self.num_models):
+    #             with tf.variable_scope('model_{}'.format(i), reuse=True):
+    #                 assert self.normalize_input
+    #                 obs = obs_ph[i] if pred_type == 'all' else obs_ph
+    #                 act = act_ph[i] if pred_type == 'all' else act_ph
+    #                 in_obs_var = (obs - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+    #                 in_act_var = (act - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+    #                 input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+    #                 mlp = MLP(self.name+'/model_{}'.format(i),
+    #                           output_dim=2 * (self.obs_space_dims+1),
+    #                           hidden_sizes=self.hidden_sizes,
+    #                           hidden_nonlinearity=self.hidden_nonlinearity,
+    #                           output_nonlinearity=self.output_nonlinearity,
+    #                           input_var=input_var,
+    #                           input_dim=self.obs_space_dims + self.action_space_dims,
+    #                           )
+    #
+    #                 mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+    #                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+    #                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+    #                 delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+    #                 # denormalize
+    #                 delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+    #                 delta_preds.append(delta_pred)
+    #
+    #     # delta_preds = [(batch_size_per_model, obs_dims)] * num_models
+    #     reg =  0
+    #     if pred_type == 'all':
+    #         if reg_str == 'uncertainty':
+    #             reg = tf.math.reduce_variance(tf.stack(delta_preds, axis=-1), axis=-1)
+    #             reg = tf.reduce_sum(reg, axis=1)  # (batch_size_per_model,)
+    #             assert len(reg.get_shape()) == 1
+    #
+    #         delta_preds = tf.concat(delta_preds, axis=0)  # (batch_size_per_model*num_models, obs_dims)
+    #         pred_obs = original_obs + delta_preds
+    #     else:
+    #         delta_preds = tf.stack(delta_preds, axis=-1)  # (batch_size, obs_dims, num_models)
+    #         if reg_str == 'uncertainty':
+    #             reg = tf.math.reduce_variance(delta_preds, axis=-1)
+    #             reg = tf.reduce_sum(reg, axis=1)
+    #             assert len(reg.get_shape()) == 1
+    #
+    #         pred_obs = tf.expand_dims(original_obs, axis=-1) + delta_preds
+    #         if pred_type == 'mean':
+    #             pred_obs = tf.reduce_mean(pred_obs, axis=-1)
+    #         elif pred_type == 'rand':
+    #             idx = tf.random.uniform(shape=(tf.shape(pred_obs)[0],), minval=0, maxval=self.num_models, dtype=tf.int32)
+    #             pred_obs = tf.batch_gather(tf.transpose(pred_obs, (0, 2, 1)), tf.reshape(idx, [-1, 1]))
+    #             pred_obs = tf.squeeze(pred_obs, axis=1)
+    #         else:
+    #             raise NotImplementedError
+    #
+    #     return pred_obs, reg
 
         # if reg_str is None:
         #     return pred_obs
@@ -321,47 +324,47 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         # else:
         #     raise NotImplementedError('pred_type must be one of [mean, all, (int)]')
 
-    def predict_batches_sym(self, obs_ph, act_ph):
-        """
-        Same batch fed into all models. Randomly output one of the predictions for each observation.
-        :param obs_ph: (batch_size, obs_space_dims)
-        :param act_ph: (batch_size, act_space_dims)
-        :return: (batch_size, obs_space_dims)
-        """
-        original_obs = obs_ph
-        # shuffle
-        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
-
-        delta_preds = []
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    assert self.normalize_input
-                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=2 * self.obs_space_dims,
-                              hidden_sizes=self.hidden_sizes,
-                              hidden_nonlinearity=self.hidden_nonlinearity,
-                              output_nonlinearity=self.output_nonlinearity,
-                              input_var=input_var,
-                              input_dim=self.obs_space_dims + self.action_space_dims,
-                              )
-
-                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
-                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
-                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
-                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
-                    # denormalize
-                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
-                    delta_preds.append(delta_pred)
-
-        delta_preds = tf.concat(delta_preds, axis=0)
-        # pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
-        pred_obs = original_obs + delta_preds
-
-        return pred_obs
+    # def predict_batches_sym(self, obs_ph, act_ph):
+    #     """
+    #     Same batch fed into all models. Randomly output one of the predictions for each observation.
+    #     :param obs_ph: (batch_size, obs_space_dims)
+    #     :param act_ph: (batch_size, act_space_dims)
+    #     :return: (batch_size, obs_space_dims)
+    #     """
+    #     original_obs = obs_ph
+    #     # shuffle
+    #     obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
+    #
+    #     delta_preds = []
+    #     with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+    #         for i in range(self.num_models):
+    #             with tf.variable_scope('model_{}'.format(i), reuse=True):
+    #                 assert self.normalize_input
+    #                 in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+    #                 in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+    #                 input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+    #                 mlp = MLP(self.name+'/model_{}'.format(i),
+    #                           output_dim=2 * self.obs_space_dims,
+    #                           hidden_sizes=self.hidden_sizes,
+    #                           hidden_nonlinearity=self.hidden_nonlinearity,
+    #                           output_nonlinearity=self.output_nonlinearity,
+    #                           input_var=input_var,
+    #                           input_dim=self.obs_space_dims + self.action_space_dims,
+    #                           )
+    #
+    #                 mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+    #                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+    #                 logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+    #                 delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+    #                 # denormalize
+    #                 delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+    #                 delta_preds.append(delta_pred)
+    #
+    #     delta_preds = tf.concat(delta_preds, axis=0)
+    #     # pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
+    #     pred_obs = original_obs + delta_preds
+    #
+    #     return pred_obs
 
     def predict(self, obs, act, pred_type='rand', deterministic=False, return_infos=False):
         """
@@ -431,10 +434,11 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             NotImplementedError('pred_type must be one of [rand, mean, all]')
 
         pred_obs = predictions[:, :self.obs_space_dims]
-        rewards = predictions[:, self.obs_space_dims:]
+        rewards = predictions[:, self.obs_space_dims:self.obs_space_dims+1]
+        dones = predictions[:, self.obs_space_dims+1:]
         if return_infos:
-            return pred_obs, rewards, agent_infos
-        return pred_obs, rewards
+            return pred_obs, rewards, dones, agent_infos
+        return pred_obs, rewards, dones
 
     # def predict_batches(self, obs_batches, act_batches, deterministic=True):
     #     """

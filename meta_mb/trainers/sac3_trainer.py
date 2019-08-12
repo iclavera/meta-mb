@@ -13,6 +13,9 @@ import os
 from pdb import set_trace as st
 from meta_mb.replay_buffers import SimpleReplayBuffer
 
+def sigmoid(x):
+    return (1 / (1 + np.exp(-x)))
+
 class Trainer(object):
     """
     Performs steps for MAML
@@ -79,11 +82,6 @@ class Trainer(object):
         self.sampler_batch_size = sampler_batch_size
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
         self.action_dim = int(np.prod(self.env.action_space.shape))
-        # check the hyperparameters
-        self.aux_hidden_dim = aux_hidden_dim
-        self.done_predictor = nn.FeedForwardNet('done_predictor',
-                              self.obs_dim + self.obs_dim + self.action_dim,
-                              [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
 
 
         if sess is None:
@@ -141,7 +139,7 @@ class Trainer(object):
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
-                self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], all_samples[3]], axis = -1),
+                self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], all_samples[3], all_samples[4]], axis = -1),
                                         epochs=self.dynamics_model_max_epochs, verbose=False,
                                         log_tabular=True, prefix='Model-')
                 logger.logkv('Fit model time', time.time() - fit_start)
@@ -156,11 +154,8 @@ class Trainer(object):
                             samples_num = int(self.rollout_batch_size)//self.deal_with_oom
                             random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
                             actions_from_policy = self.policy.get_actions(random_states)[0]
-                            predictions = self.dynamics_model.predict(random_states, actions_from_policy)
-                            next_obs = predictions[:, :self.obs_dim]
-                            rewards = predictions[:, self.obs_dim:]
-                            inputs = np.concatenate([random_states, actions_from_policy, next_obs], axis = -1)
-                            dones = np.array(self.done_predictor(inputs,is_eval=False, reduce_mode="random"))
+                            next_obs, rewards, dones = self.dynamics_model.predict(random_states, actions_from_policy)
+                            dones = sigmoid(dones)
                             self.model_replay_buffer.add_samples(random_states,
                                                                  actions_from_policy,
                                                                  rewards,

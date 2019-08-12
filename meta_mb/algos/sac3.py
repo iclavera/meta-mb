@@ -384,13 +384,11 @@ class SAC_MB3(Algo):
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             min_q_val_var = tf.reduce_min(next_q_values, axis=0)
         elif self. q_functioin_type == 1:
-            next_observation = self.dynamics_model.predict_sym(observations_ph, actions_var)
+            next_observation, rewards = self.dynamics_model.predict_sym(observations_ph, actions_var)
             dist_info_sym = self.policy.distribution_info_sym(next_observation)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
-            rewards = tf.expand_dims(rewards, axis=-1)
             q_values_var = [td_target(
                 reward=self.reward_scale * rewards,
                 discount=self.discount,
@@ -398,15 +396,13 @@ class SAC_MB3(Algo):
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
         elif self.q_functioin_type == 2:
             next_observation = self.dynamics_model.predict_sym(observations_ph, actions_var)
-            expanded_next_observations = tf.tile(next_observation, [self.num_actions_per_next_observation, 1])
+            expanded_next_observations, rewards = tf.tile(next_observation, [self.num_actions_per_next_observation, 1])
             dist_info_sym = self.policy.distribution_info_sym(expanded_next_observations)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1])for value in next_q_values]
             next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
-            rewards = self.training_environment.tf_reward(observations_ph, actions_var, next_observation)
-            rewards = tf.expand_dims(rewards, axis=-1)
             q_values_var = [td_target(
                reward=self.reward_scale * rewards,
                discount=self.discount,
@@ -418,12 +414,9 @@ class SAC_MB3(Algo):
             obs = observations_ph
             actions = actions_var
             for i in range(self.T+1):
-                next_observation = self.dynamics_model.predict_sym(obs, actions)
+                next_observation, rewards, dones = self.dynamics_model.predict_sym(obs, actions)
                 dist_info_sym = self.policy.distribution_info_sym(next_observation)
                 next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                rewards = self.training_environment.tf_reward(obs, actions, next_observation)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
@@ -445,12 +438,12 @@ class SAC_MB3(Algo):
                 next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
                 expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
-                expanded_next_observation = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
+                expanded_next_observation, rewards, dones = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
                 dist_info_sym = self.policy.distribution_info_sym(expanded_next_observation)
                 expanded_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
+                # rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
+                # rewards = tf.expand_dims(rewards, axis=-1)
+                # dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
@@ -497,7 +490,7 @@ class SAC_MB3(Algo):
                 dist_info_sym = self.policy.distribution_info_sym(next_observation)
                 if self.prediction_type == 'none':
                     next_actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                expanded_next_observations = tf.tile(next_observation, [self.num_actions_per_next_observation, 1])
+                expanded_next_observations, rewards, dones = tf.tile(next_observation, [self.num_actions_per_next_observation, 1])
                 dist_info_sym = self.policy.distribution_info_sym(expanded_next_observations)
                 next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 if self.prediction_type == 'mean':
@@ -507,9 +500,9 @@ class SAC_MB3(Algo):
                     next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
                     index = np.random.randint(self.num_actions_per_next_observation)
                     next_actions = next_actions[index]
-                rewards = self.training_environment.tf_reward(obs, actions, next_observation)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
+                # rewards = self.training_environment.tf_reward(obs, actions, next_observation)
+                # rewards = tf.expand_dims(rewards, axis=-1)
+                # dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:
@@ -613,12 +606,12 @@ class SAC_MB3(Algo):
                 next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
                 expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
-                expanded_next_observation = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
+                expanded_next_observation, rewards, dones = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
                 dist_info_sym = self.policy.distribution_info_sym(expanded_next_observation)
                 expanded_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
+                # rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
+                # rewards = tf.expand_dims(rewards, axis=-1)
+                # dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:

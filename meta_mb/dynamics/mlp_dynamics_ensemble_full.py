@@ -68,7 +68,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+2))
 
             self._create_stats_vars()
 
@@ -84,7 +84,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=obs_space_dims+1,
+                              output_dim=obs_space_dims+2,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -134,7 +134,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=obs_space_dims,
+                              output_dim=obs_space_dims+2,
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -164,7 +164,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
     def update_buffer(self, obs, act, obs_next, valid_split_ratio=None, check_init=True):
 
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
-        assert obs_next.ndim == 2 and obs_next.shape[1] == self.obs_space_dims
+        assert obs_next.ndim == 2 and obs_next.shape[1]-2 == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
         self.timesteps_counter += obs.shape[0]
@@ -520,7 +520,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=(self.obs_space_dims+1),
+                              output_dim=(self.obs_space_dims+2),
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
                               output_nonlinearity=self.output_nonlinearity,
@@ -535,49 +535,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         # unshuffle
         perm_inv = tf.invert_permutation(perm)
-        results = tf.gather(delta_preds, perm_inv)
+        results_dones = tf.gather(delta_preds, perm_inv)
         next_obs = original_obs + results[:, :self.obs_space_dims]
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
-        rewards = results[:, self.obs_space_dims:]
-        return next_obs, rewards
-    #
-    # def predict_batches_sym(self, obs_ph, act_ph):
-    #     """
-    #     Same batch fed into all models. Randomly output one of the predictions for each observation.
-    #     :param obs_ph: (batch_size, obs_space_dims)
-    #     :param act_ph: (batch_size, act_space_dims)
-    #     :return: (batch_size, obs_space_dims)
-    #     """
-    #     original_obs = obs_ph
-    #
-    #     # shuffle
-    #     obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
-    #
-    #     delta_preds = []
-    #     with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-    #         for i in range(self.num_models):
-    #             with tf.variable_scope('model_{}'.format(i), reuse=True):
-    #                 assert self.normalize_input
-    #                 in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-    #                 in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-    #                 input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-    #                 mlp = MLP(self.name+'/model_{}'.format(i),
-    #                           output_dim=(self.obs_space_dims+1),
-    #                           hidden_sizes=self.hidden_sizes,
-    #                           hidden_nonlinearity=self.hidden_nonlinearity,
-    #                           output_nonlinearity=self.output_nonlinearity,
-    #                           input_var=input_var,
-    #                           input_dim=self.obs_space_dims + self.action_space_dims,
-    #                           )
-    #
-    #                 delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
-    #                 delta_preds.append(delta_pred)
-    #
-    #     delta_preds = tf.concat(delta_preds, axis=0)
-    #
-    #     # unshuffle
-    #     next_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
-    #     return next_obs
+        rewards = results[:, self.obs_space_dims:self.obs_space_dims+1]
+        dones = tf.nn.sigmoid(results[:, self.obs_space_dims+1:])
+        return next_obs, rewards, dones
+
 
     def predict(self, obs, act, pred_type='rand', **kwargs):
         """
@@ -628,112 +592,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             NotImplementedError('pred_type must be one of [rand, mean, all]')
 
         pred_obs = predictions[:, :self.obs_space_dims]
-        rewards = predictions[:, self.obs_space_dims:]
+        rewards = predictions[:, self.obs_space_dims:self.obs_space_dims+1]
+        dones = predictions[:, self.obs_space_dims+1:]
         pred_obs = np.clip(pred_obs, -1e2, 1e2)
-        return pred_obs, rewards
-
-    # def predict_batches(self, obs_batches, act_batches, *args, **kwargs):
-    #     """
-    #         Predict the batch of next observations for each model given the batch of current observations and actions for each model
-    #         :param obs_batches: observation batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_obs)
-    #         :param act_batches: action batches for each model concatenated along axis 0 - numpy array of shape (batch_size_per_model * num_models, ndim_act)
-    #         :return: pred_obs_next_batch: predicted batch of next observations -
-    #                                 shape:  (batch_size_per_model * num_models, ndim_obs)
-    #     """
-    #     assert obs_batches.shape[0] == act_batches.shape[0] and obs_batches.shape[0] % self.num_models == 0
-    #     assert obs_batches.ndim == 2 and obs_batches.shape[1] == self.obs_space_dims
-    #     assert act_batches.ndim == 2 and act_batches.shape[1] == self.action_space_dims
-    #
-    #     obs_batches_original = obs_batches
-    #
-    #     if self.normalize_input:
-    #         # Normalize Input
-    #         obs_batches, act_batches = np.split(obs_batches, self.num_models), np.split(act_batches, self.num_models)
-    #         obs_batches, act_batches = self._normalize_data(obs_batches, act_batches)
-    #         obs_batches, act_batches = np.concatenate(obs_batches, axis=0), np.concatenate(act_batches, axis=0)
-    #
-    #         delta_batches = np.array(self.f_delta_pred_model_batches(obs_batches, act_batches))
-    #
-    #         # Denormalize output
-    #         delta_batches = np.array(np.split(delta_batches, self.num_models)).transpose((1, 2, 0))
-    #         delta_batches = self._denormalize_data(delta_batches)
-    #         delta_batches = np.concatenate(delta_batches.transpose((2, 0, 1)), axis=0)
-    #
-    #     else:
-    #         delta_batches = np.array(self.f_delta_pred(obs_batches, act_batches))
-    #
-    #     assert delta_batches.ndim == 2
-    #
-    #     pred_obs_batches = obs_batches_original + delta_batches
-    #     pred_obs_batches = np.clip(pred_obs_batches, -1e2, 1e2)
-    #     assert pred_obs_batches.shape == obs_batches.shape
-    #     return pred_obs_batches
-
-    """
-
-    def distribution_info_sym(self, obs_ph, act_ph):
-        # shuffle
-        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
-        perm = tf.random.shuffle(perm)
-        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
-        obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
-        means = []
-        log_stds = []
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    assert self.normalize_input
-                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=self.obs_space_dims,
-                              hidden_sizes=self.hidden_sizes,
-                              hidden_nonlinearity=self.hidden_nonlinearity,
-                              output_nonlinearity=self.output_nonlinearity,
-                              input_var=input_var,
-                              input_dim=self.obs_space_dims + self.action_space_dims,
-                              )
-                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_ph[i]  # FIXME: this is mean for obs_next??
-                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
-                    # FIXME: mean is already denormalized, why need log_std? log_std should not be the std for obs_next?
-                    #  log_Std only useful for prob model??
-                means.append(mean)
-                log_stds.append(log_std)
-        mean = tf.concat(means, axis=0)
-        log_std = tf.concat(log_stds, axis=0)
-        # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        mean, perm_inv = tf.gather(mean, perm_inv), tf.gather(log_std, perm_inv)
-        # FIXME: need to clip in the parent function?????
-        return dict(mean=mean, log_std=log_std)
-    def distribution_info_sym(self, obs_var, act_var):
-        means = []
-        log_stds = []
-        with tf.variable_scope(self.name, reuse=True):
-            obs_var = tf.split(obs_var, self.num_models, axis=0)
-            act_var = tf.split(act_var, self.num_models, axis=0)
-            for i in range(self.num_models):  # if self.normalize_input is True?
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
-                    in_obs_var = (obs_var[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_var[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
-                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
-                    mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=self.obs_space_dims,
-                              hidden_sizes=self.hidden_sizes,
-                              hidden_nonlinearity=self.hidden_nonlinearity,
-                              output_nonlinearity=self.output_nonlinearity,
-                              input_var=input_var,
-                              input_dim=self.obs_space_dims + self.action_space_dims,
-                              )
-                    mean = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i] + obs_var[i]
-                    log_std = tf.tile(tf.expand_dims(tf.log(self._std_delta_var[i]), axis=0), [tf.shape(in_obs_var)[0], 1])
-                means.append(mean)
-                log_stds.append(log_std)
-        mean = tf.concat(means, axis=0)
-        log_std = tf.concat(log_stds, axis=0)
-        return dict(mean=mean, log_std=log_std)
-    """
+        return pred_obs, rewards, dones
 
     def predict_std(self, obs, act):
         """
@@ -762,7 +624,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         obs, act, delta = obs_batches[0], act_batches[0], delta_batches[0]
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
-        assert obs.shape[1] == delta.shape[1]-1, "obs and obs_next must have same length along axis 1 "
+        assert obs.shape[1] == delta.shape[1]-2, "obs and obs_next must have same length along axis 1 "
 
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
@@ -817,17 +679,17 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                                  dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_act_var.append(tf.get_variable('std_act_%d' % i, shape=(self.action_space_dims,),
                                                 dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
-            self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims+1,),
+            self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims+2,),
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
-            self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims+1,),
+            self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims+2,),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
 
             self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._mean_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
-            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,)))
-            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,)))
+            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,)))
+            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,)))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),

@@ -67,7 +67,7 @@ class MLPDynamicsModel(Serializable):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, self.action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims+1))
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims+2))
 
             self._create_stats_vars()
 
@@ -76,7 +76,7 @@ class MLPDynamicsModel(Serializable):
 
             # create MLP
             mlp = MLP(name,
-                      output_dim=self.obs_space_dims+1,
+                      output_dim=self.obs_space_dims+2,
                       hidden_sizes=hidden_sizes,
                       hidden_nonlinearity=hidden_nonlinearity,
                       output_nonlinearity=output_nonlinearity,
@@ -96,7 +96,7 @@ class MLPDynamicsModel(Serializable):
 
         self._networks = [mlp]
 
-    def fit(self, obs, act, obs_next, reward, epochs=1000, compute_normalization=True,
+    def fit(self, obs, act, obs_next, reward, done, epochs=1000, compute_normalization=True,
             verbose=False, valid_split_ratio=None,
             rolling_average_persitency=None, log_tabular=False, early_stopping=True):
         """
@@ -122,7 +122,7 @@ class MLPDynamicsModel(Serializable):
 
         # split into valid and test set
         delta_pre = obs_next - obs
-        delta = np.concatenate([delta_pre, reward], axis = -1)
+        delta = np.concatenate([delta_pre, reward, done], axis = -1)
         obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                              test_split_ratio=valid_split_ratio)
 
@@ -240,8 +240,9 @@ class MLPDynamicsModel(Serializable):
             delta = np.array(self.f_delta_pred(obs, act))
 
         pred_obs = obs_original + delta[:, :self.obs_space_dims]
-        reward = delta[:, self.obs_space_dims:]
-        return pred_obs, reward
+        reward = delta[:, self.obs_space_dims:self.obs_space_dims+1]
+        dones = delta[:, self.obs_space_dims+1:]
+        return pred_obs, reward, dones
 
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
@@ -249,7 +250,7 @@ class MLPDynamicsModel(Serializable):
             in_act_var = (act_var - self._mean_act_var) / (self._std_act_var + 1e-8)
             input_var = tf.concat([in_obs_var, in_act_var], axis=1)
             mlp = MLP(self.name,
-                      output_dim=self.obs_space_dims+1,
+                      output_dim=self.obs_space_dims+2,
                       hidden_sizes=self.hidden_sizes,
                       hidden_nonlinearity=self.hidden_nonlinearity,
                       output_nonlinearity=self.output_nonlinearity,
@@ -258,7 +259,7 @@ class MLPDynamicsModel(Serializable):
                       )
             mean = mlp.output_var * self._std_delta_var + self._mean_delta_var + obs_var
             log_std = tf.log(self._std_delta_var)
-        return dict(mean=mean[:, :self.obs_space_dims], log_std=log_std[:, :self.obs_space_dims]), dict(mean=mean[:, self.obs_space_dims], log_std=log_std[:, self.obs_space_dims:])
+        return dict(mean=mean[:, :self.obs_space_dims], log_std=log_std[:, :self.obs_space_dims]), dict(mean=mean[:, self.obs_space_dims:self.obs_space_dims+1], log_std=log_std[:, self.obs_space_dims:self.obs_space_dims+1]), dict(mean=mean[:, self.obs_space_dims+1:], log_std=log_std[:, self.obs_space_dims+1:])
 
 
     def compute_normalization(self, obs, act, pred):
@@ -272,8 +273,8 @@ class MLPDynamicsModel(Serializable):
 
         assert obs.shape[0] == pred.shape[0] == act.shape[0]
         next_obs = obs_next[:, :self.obs_space_dims] - obs
-        reward = obs_next[:, self.obs_space_dims:]
-        delta = tf.concatenate([next_obs, reward], axis = -1)
+        reward_dones = obs_next[:, self.obs_space_dims:]
+        delta = tf.concatenate([next_obs, reward_dones], axis = -1)
         assert delta.ndim == 2 and delta.shape[0] == obs_next.shape[0]
 
         # store means and std in dict
@@ -300,17 +301,17 @@ class MLPDynamicsModel(Serializable):
                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
         self._std_act_var = tf.get_variable('std_act', shape=(self.action_space_dims,),
                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims+1,),
+        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims+2,),
                                                 dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims+1,),
+        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims+2,),
                                                dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
 
         self._mean_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._std_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._mean_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
         self._std_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
-        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
-        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
+        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,))
+        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,))
 
         self._assignations = [tf.assign(self._mean_obs_var, self._mean_obs_ph),
                               tf.assign(self._std_obs_var, self._std_obs_ph),
@@ -329,7 +330,7 @@ class MLPDynamicsModel(Serializable):
 
         self.obs_dataset_ph = tf.placeholder(tf.float32, (None, obs.shape[1]))
         self.act_dataset_ph = tf.placeholder(tf.float32, (None, act.shape[1]))
-        self.delta_dataset_ph = tf.placeholder(tf.float32, (None, delta.shape[1]+1))
+        self.delta_dataset_ph = tf.placeholder(tf.float32, (None, delta.shape[1]+2))
 
         dataset = tf.data.Dataset.from_tensor_slices(
             (self.obs_dataset_ph, self.act_dataset_ph, self.delta_dataset_ph)
@@ -347,8 +348,8 @@ class MLPDynamicsModel(Serializable):
 
         if obs_next is not None:
             next_obs = pred[:, :self.obs_space_dims] - obs
-            reward = pred[:, self.obs_space_dims:]
-            delta = np.concatenate([next_obs, reward], axis = -1)
+            reward_done = pred[:, self.obs_space_dims:]
+            delta = np.concatenate([next_obs, reward_done], axis = -1)
             deltas_normalized = normalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
             return obs_normalized, actions_normalized, deltas_normalized
         else:
