@@ -416,8 +416,8 @@ if __name__ == '__main__':
     config_predac_contr['action_contrastive'] = [True]
     config_predac_contr['cpc_loss_weight'] = [1.]
 
-    # configs = [config_withreward_contrastive, config_normalize, config_normalize_thru, config_predac_l2,
-    #            config_predac_contr]
+    configs = [config_withreward_contrastive, config_normalize, config_normalize_thru, config_predac_l2,
+               config_predac_contr]
 
     i = 0
     run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
