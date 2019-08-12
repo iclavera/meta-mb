@@ -22,6 +22,7 @@ class GTIpoptController(Serializable):
             discount=1,
             lmbda=1,
             method_str='opt_policy',
+            policy_filter=True,
             n_parallel=1,
             dyn_pred_str='rand',
             initializer_str='uniform',
@@ -73,6 +74,7 @@ class GTIpoptController(Serializable):
         self.num_particles = num_particles
         self.clip_norm = clip_norm
         self.lmbda = lmbda
+        self.policy_filter = policy_filter
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -111,8 +113,8 @@ class GTIpoptController(Serializable):
             self.nlp = nlp = ipopt.problem(**problem_config)
             nlp.addOption('mu_strategy', 'adaptive')
             nlp.addOption('tol', 1e-5)
-            nlp.addOption('max_iter', 30)
-            nlp.addOption('derivative_test', 'first-order')  # SLOW
+            nlp.addOption('max_iter', 100)
+            # nlp.addOption('derivative_test', 'first-order')  # SLOW
 
         elif self.method_str == 'ipopt_shooting':
             self.executor = copy.deepcopy(env)
@@ -134,7 +136,7 @@ class GTIpoptController(Serializable):
                 ub=np.concatenate([self.env.action_space.high] * self.horizon),
             )
             self.nlp = nlp = ipopt.problem(**problem_config)
-            nlp.addOption('max_iter', 30)
+            nlp.addOption('max_iter', 100)
             nlp.addOption('tol', 1e-5)
             nlp.addOption('mu_strategy', 'adaptive')
             # nlp.addOption('hessian_approximation', 'limited-memory')
@@ -144,17 +146,17 @@ class GTIpoptController(Serializable):
         elif self.method_str == 'ipopt_shooting_w_policy':
             self.executor = copy.deepcopy(env)
             self.get_actions_factory = self.get_actions_ipopt_shooting_w_policy
-            self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
+            # self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
 
             # initialize nlp problem
-            problem_obj_policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
+            problem_obj_policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None, use_filter=self.policy_filter)
             self.problem_obj = IPOPTShootingProblemWPolicy(env, self.horizon, self.discount, policy=problem_obj_policy, eps=self.eps)
             problem_config = dict(
-                n=self._policy.flatten_dim,
+                n=problem_obj_policy.flatten_dim,
                 m=self.horizon * self.action_space_dims,
                 problem_obj=self.problem_obj,
-                lb=np.ones((self._policy.flatten_dim)) * (-1e10),
-                ub=np.ones((self._policy.flatten_dim)) * (1e10),
+                lb=np.ones((problem_obj_policy.flatten_dim)) * (-1e10),
+                ub=np.ones((problem_obj_policy.flatten_dim)) * (1e10),
                 cl=np.concatenate([self.act_low] * self.horizon),
                 cu=np.concatenate([self.act_high] * self.horizon),
             )
@@ -162,6 +164,9 @@ class GTIpoptController(Serializable):
             nlp.addOption('max_iter', 100)
             nlp.addOption('tol', 1e-5)
             nlp.addOption('mu_strategy', 'adaptive')
+            # nlp.addOption('derivative_test', 'first-order')  # SLOW
+
+            self.policy_flatten_params = problem_obj_policy.get_param_values_flatten()
 
         else:
             raise NotImplementedError
@@ -285,13 +290,14 @@ class GTIpoptController(Serializable):
 
     def get_actions_ipopt_shooting_w_policy(self, obs):
         self.problem_obj.set_init_obs(obs)
-        x0 = self._policy.get_param_values_flatten()
+        x0 = self.policy_flatten_params  #self._policy.get_param_values_flatten()
         x, info = self.nlp.solve(x0)
-        self._policy.set_param_values_flatten(x)
-        optimized_action, _ = self._policy.get_action(obs)
+        self.policy_flatten_params = x # self._policy.set_param_values_flatten(x)
+        optimized_action = self.problem_obj.get_a(x, obs=obs)  # optimized_action, _ = self._policy.get_action(obs)
 
         # logging
-        logger.log(f'stats for optimal_action: max = {np.max(optimized_action)}, min = {np.min(optimized_action)}')
+        logger.logkv('Action100%', np.max(optimized_action, axis=None))
+        logger.logkv('Action0%', np.min(optimized_action, axis=None))
         optimized_action = np.clip(optimized_action, a_min=self.act_low, a_max=self.act_high)
 
         return optimized_action

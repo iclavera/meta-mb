@@ -18,6 +18,12 @@ class IPOPTShootingProblemWPolicy(object):
     def set_init_obs(self, obs):
         self.init_obs = obs
 
+    def get_a(self, x, obs):
+        self.policy.set_param_values_flatten(x)
+        obs = self.env.reset_from_obs(obs)
+        act, _ = self.policy.get_action(obs)
+        return act
+
     def objective(self, x):
         #
         # The callback for calculating the objective
@@ -65,7 +71,7 @@ class IPOPTShootingProblemWPolicy(object):
         for t in range(self.horizon):
             act, _ = self.policy.get_action(obs)
             raw_actions_stacked[t] = act
-            act = np.clip(act, self.act_low, self.act_high)
+            act = np.clip(act, self.act_low, self.act_high)  # FIXME: clip here?
             obs, _, done, _ = self.env.step(act)
             if not ignore_done and done:
                 break

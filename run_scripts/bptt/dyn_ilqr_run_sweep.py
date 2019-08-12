@@ -1,8 +1,8 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
-from meta_mb.policies.gt_mpc_controller import GTMPCController
-from meta_mb.policies.gt_ilqr_controller import GTiLQRController
-from meta_mb.policies.gt_ipopt_controller import GTIpoptController
-from meta_mb.samplers.gt_sampler import GTSampler
+from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
+from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
+from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
@@ -13,7 +13,7 @@ import os
 import tensorflow as tf
 
 
-EXP_NAME = 'gt-mpc'
+EXP_NAME = 'dyn-ilqr'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -68,12 +68,23 @@ def run_experiment(**config):
         #     discount=config['discount'],
         #     n_parallel=config['n_parallel'],
         # )
-        dynamics_model = None
-        sample_processor = None
+        dynamics_model = MLPDynamicsModel(
+            name="dyn_model",
+            env=env,
+            learning_rate=config['learning_rate'],
+            hidden_sizes=config['hidden_sizes_model'],
+            weight_normalization=config['weight_normalization_model'],
+            # num_models=config['num_models'],
+            valid_split_ratio=config['valid_split_ratio'],
+            rolling_average_persitency=config['rolling_average_persitency'],
+            hidden_nonlinearity=config['hidden_nonlinearity_model'],
+            batch_size=config['batch_size_model'],
+        )
+        sample_processor = ModelSampleProcessor()
 
         if config['method_str'] == 'ilqr':
 
-            policy = GTiLQRController(
+            policy = DyniLQRController(
                 name="policy",
                 env=env,
                 dynamics_model=dynamics_model,
@@ -90,6 +101,7 @@ def run_experiment(**config):
                 percent_elites=config['percent_elites'],
             )
         elif config['method_str'].startswith('ipopt'):
+            raise NotImplementedError
             policy = GTIpoptController(
                 name="policy",
                 env=env,
@@ -117,40 +129,12 @@ def run_experiment(**config):
                 lmbda=config['lmbda'],
                 policy_filter=config['policy_filter'],
             )
-        else:
-            policy = GTMPCController(
-                name="policy",
-                env=env,
-                dynamics_model=dynamics_model,
-                eps=config['eps'],
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                max_path_length= max_path_length, # config['max_path_length'],
-                method_str=config['method_str'],
-                n_parallel=config['n_parallel'],
-                dyn_pred_str=config['dyn_pred_str'],
-                reg_coef=config['reg_coef'],
-                reg_str=config['reg_str'],
-                initializer_str=config['initializer_str'],
-                num_cem_iters=config['num_cem_iters'],
-                num_opt_iters=config['num_opt_iters'],
-                num_collocation_iters=config['num_collocation_iters'],
-                num_ddp_iters=config['num_ddp_iters'],
-                opt_learning_rate=config['opt_learning_rate'],
-                persistency=config['persistency'],
-                num_rollouts=config['num_rollouts'],
-                alpha=config['alpha'],
-                percent_elites=config['percent_elites'],
-                lmbda=config['lmbda'],
-            )
 
-        sampler = GTSampler(
+        sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=max_path_length, # config['max_path_length'],
-            dyn_pred_str=config['dyn_pred_str'],
         )
 
         algo = PolicyOnlyTrainer(
@@ -193,7 +177,6 @@ if __name__ == '__main__':
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
         'method_str': ['ilqr'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'policy_filter': [False,],
-        'dyn_pred_str': ['all'],  # UNUSED
 
         'num_opt_iters': [50,], #20, 40,],
         'opt_learning_rate': [1e-3], #[1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
@@ -233,13 +216,6 @@ if __name__ == '__main__':
         'hidden_sizes_model': [(512, 512)],  # (500, 500)
         'batch_size_model': [64],
         'learning_rate': [0.001],
-
-        # Recurrent  # UNUSED
-        'hidden_sizes_model_rec': [(128,)],  # (500, 500)
-        'batch_size_model_rec': [10],
-        'backprop_steps': [100],
-        'cell_type': ['lstm'],  # ['lstm', 'gru', 'rnn']
-        'learning_rate_rec': [0.01],
 
         #  Other
         'n_parallel': [1],

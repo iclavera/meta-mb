@@ -69,8 +69,8 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_dist + reward_ctrl
         return reward
 
-    def deriv_reward_obs(self, obs, act):
-        assert obs.ndim == act.ndim
+    def deriv_reward_obs(self, obs, acts):
+        assert obs.ndim == acts.ndim
         deriv = np.zeros_like(obs)
         if obs.ndim == 1:
             dist_vec = obs[-3:]
@@ -82,8 +82,8 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             deriv[:, -3:] /= reward_dist
         return deriv
 
-    def deriv_reward_act(self, obs, act):
-        return -2 * act #(-2 * acts).copy()
+    def deriv_reward_act(self, obs, acts):
+        return -2 * acts #(-2 * acts).copy()
 
     # def l_xx(self, obs, act):
     #     """

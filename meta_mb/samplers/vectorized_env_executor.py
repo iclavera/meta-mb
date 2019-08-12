@@ -870,7 +870,7 @@ class ParallelDDPExecutor(object):
         backward_pass_counter = 0
         while not backward_accept and backward_pass_counter < self.max_backward_iters:# and self.mu <= self.mu_max:
             # initialize
-            V_prime_x, V_prime_xx = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)  # l_x[-1], l_xx[-1]
+            V_prime_xx, V_prime_x = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)  # l_x[-1], l_xx[-1]
             open_k_array, closed_K_array = [], []
             delta_J_1, delta_J_2 = 0, 0
 
@@ -936,7 +936,7 @@ class ParallelDDPExecutor(object):
                 backward_accept = True
 
             except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
-                logger.log(f'i = {i}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
+                logger.log(f'i = {i}, mu = {self.mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
                 self._increase_mu()
                 backward_pass_counter += 1
 

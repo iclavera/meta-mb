@@ -369,7 +369,6 @@ class MPCController(Serializable):
         returns, reg = 0, 0
         obs = self.obs_ph
 
-
         if not self.reg_str and self.dyn_pred_str == 'rand':   # transition ~ f^(i) where i = 1...T, f^(i) randomly picked
             for t in range(self.horizon):
                 dist_policy = self.policy.distribution_info_sym(obs)

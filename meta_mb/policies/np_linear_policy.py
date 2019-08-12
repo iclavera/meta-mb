@@ -24,8 +24,10 @@ class LinearPolicy(NpPolicy):
             b=np.random.normal(loc=0, scale=0.5, size=(action_dim,))
         )
         self.flatten_dim = action_dim * (obs_dim + 1)
-        self.obs_filters = [Filter(shape=(obs_dim,))]
-        # self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
+        if kwargs.get('use_filter', False):
+            self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
+        else:
+            self.obs_filters = [Filter(shape=(obs_dim,))]
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)

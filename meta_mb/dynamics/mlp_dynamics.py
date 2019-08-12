@@ -242,6 +242,28 @@ class MLPDynamicsModel(Serializable):
         pred_obs = obs_original + delta
         return pred_obs
 
+    def predict_sym(self, obs_var, act_var):
+        assert self.normalize_input
+        with tf.variable_scope(self.name, reuse=True):
+            in_obs_var = normalize(obs_var, mean=self._mean_obs_var, std=self._std_obs_var)
+            in_act_var = normalize(act_var, mean=self._mean_act_var, std=self._std_act_var)
+            input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+            mlp = MLP(self.name,
+                      output_dim=self.obs_space_dims,
+                      hidden_sizes=self.hidden_sizes,
+                      hidden_nonlinearity=self.hidden_nonlinearity,
+                      output_nonlinearity=self.output_nonlinearity,
+                      input_var=input_var,
+                      input_dim=self.obs_space_dims + self.action_space_dims,
+                      )
+            mean = mlp.output_var * self._std_delta_var + self._mean_delta_var
+            delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * self._std_delta_var
+            delta_pred = denormalize(delta_pred, mean=self._mean_delta_var, std=self._std_delta_var)
+            pred_obs = delta_pred + obs_var
+            pred_obs = tf.clip_by_value(pred_obs, -1e2, 1e2)
+
+        return pred_obs
+
     # FIXME: use predict_sym instead
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name, reuse=True):
