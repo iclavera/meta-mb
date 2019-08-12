@@ -257,20 +257,20 @@ class SAC_MB(Algo):
             target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
             target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
             Q_target = self.q_target = tf.reduce_sum(target_means * target_confidence, 0)
-
-            """randomly choose a partion of the models. """
-            indices_lst = []
-            for _ in range(rollout_frames):
-                indices = tf.range(self.dynamics_model.num_models)
-                indices = tf.random.shuffle(indices)
-                indices_lst.append(indices[:num_models])
-            indices = tf.stack(indices_lst)
-            indices = tf.reshape(indices, [-1])
-            rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
-            indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
-            indices = tf.concat([rollout_len_indices, indices], axis = 1)
-            q_values = tf.gather_nd(q_values, indices)
-            q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
+            #
+            # """randomly choose a partion of the models. """
+            # indices_lst = []
+            # for _ in range(rollout_frames):
+            #     indices = tf.range(self.dynamics_model.num_models)
+            #     indices = tf.random.shuffle(indices)
+            #     indices_lst.append(indices[:num_models])
+            # indices = tf.stack(indices_lst)
+            # indices = tf.reshape(indices, [-1])
+            # rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
+            # indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
+            # indices = tf.concat([rollout_len_indices, indices], axis = 1)
+            # q_values = tf.gather_nd(q_values, indices)
+            # q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
 
 
             # self.save_H_graph = False
