@@ -1,20 +1,5 @@
 from builtins import range
 from builtins import object
-# Copyright 2018 The TensorFlow Authors All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-
 import tensorflow as tf
 import numpy as np
 from itertools import product
@@ -33,6 +18,9 @@ class FeedForwardNet(object):
 
         self.weights = [None] * layers
         self.biases = [None] * layers
+
+        self.input = tf.placeholder(tf.float32, shape=(None, self.in_size))
+        self.prediction = self.__call__(self.input, stop_params_gradient=False, is_eval=True, ensemble_idxs=None, pre_expanded=None, reduce_mode="none")
 
         self.params_list = []
 
@@ -60,6 +48,16 @@ class FeedForwardNet(object):
             if len(self.out_shape) > 0: h = tf.expand_dims(h, -2)
             else:                       h = tf.expand_dims(h, -1)
         return h
+
+    def compile_function(self, inputs, outputs, log_name=None):
+        def run(*input_vals):
+            sess = tf.get_default_session()
+            return sess.run(outputs, feed_dict=dict(list(zip(inputs, input_vals))))
+        return run
+
+    def np_pred(x, stop_params_gradient=False, is_eval=True, ensemble_idxs=None, pre_expanded=None, reduce_mode="none"):
+        sess = tf.get_default_session()
+        return sess.run(self.prediction, feed_dict=dict(list(x)))
 
     def l2_loss(self):
         return tf.add_n([tf.reduce_sum(.5 * tf.square(mu)) for mu in self.params_list])
