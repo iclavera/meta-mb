@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cheetah_run', 'walker'],
+        'env': [ 'walker'],
         'normalize': [True],
         'n_itr': [60],
         'discount': [1.],
@@ -235,7 +235,7 @@ if __name__ == '__main__':
         'n_candidates': [1000],  # K
         'horizon': [12, 20],  # Tau
         'use_cem': [True],
-        'num_cem_iters': [5, 10],
+        'num_cem_iters': [10],
         'use_graph': [True],
 
         # Training

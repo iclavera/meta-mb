@@ -238,6 +238,9 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         """ ------- Looping over training epochs ------- """
         for epoch in range(epochs):
 
+            if self.normalize_input:
+                self.buffer.update_embedding_buffer()
+
             dataset_size_in_trans = self.buffer.size
             val_size_in_trans = self.buffer.val_size
 

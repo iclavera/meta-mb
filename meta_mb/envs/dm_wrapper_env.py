@@ -70,8 +70,8 @@ class ConcatObservation(object):
   def observation_space(self):
     spaces = self._env.observation_space.spaces
     spaces = [spaces[key] for key in self._keys]
-    low = np.concatenate([space.low for space in spaces], 0)
-    high = np.concatenate([space.high for space in spaces], 0)
+    low = np.concatenate([space.low if space.low.ndim > 0 else space.low[None] for space in spaces], 0)
+    high = np.concatenate([space.low if space.high.ndim >  0 else space.high[None] for space in spaces], 0)
     dtypes = [space.dtype for space in spaces]
     if not all(dtype == dtypes[0] for dtype in dtypes):
       message = 'Spaces must have the same data type; are {}.'
@@ -89,7 +89,7 @@ class ConcatObservation(object):
     return obs
 
   def _select_keys(self, obs):
-    return np.concatenate([obs[key] if isinstance(obs[key], Iterable) else [obs[key]] for key in self._keys], 0)
+    return np.concatenate([obs[key] if obs[key].ndim > 0 else obs[key][None] for key in self._keys], 0)
 
   def render(self, *args, **kwargs):
       return self._env.render(*args, **kwargs)

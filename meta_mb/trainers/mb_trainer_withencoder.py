@@ -280,6 +280,8 @@ class Trainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
+                logger.logkv('ActionAvgMagnitude', np.mean([np.mean(np.absolute(path['actions'])) for path in env_paths]))
+
                 # logger.log("Saving snapshot...")
                 # params = self.get_itr_snapshot(itr)
                 self.log_diagnostics(env_paths, '')
