@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME ='pred_ac_contrastive'
+EXP_NAME ='cpb_auxiliary_loss'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -303,12 +303,12 @@ def run_experiment(**config):
 
 
 if __name__ == '__main__':
-    # import argparse
-    #
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('EXP_NAME', type=str)
-    #
-    # args = parser.parse_args()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config', type=int)
+
+    args = parser.parse_args()
 
 
     # -------------------- Define Variants -----------------------------------
@@ -329,7 +329,7 @@ if __name__ == '__main__':
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [10],  # Tau
+        'horizon': [20],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -389,27 +389,34 @@ if __name__ == '__main__':
     config_withreward_contrastive['rew_contrastive'] = [True]
     config_withreward_contrastive['rew_loss_weight'] = [1]
 
-    # 2 variant
+    # 1 variant
     config_normalize = config_withreward_l2.copy()
     config_normalize['rew_loss_weight'] = [0]
     config_normalize['normalize'] = [True]
     config_normalize['cpc_num_initial_rollouts'] = [16]
     config_normalize['cpc_initial_epoch'] = [10]
-    config_normalize['cpc_loss_weight'] = [100]
-    config_normalize['model_grad_thru_enc'] = [True, False]
+    config_normalize['cpc_loss_weight'] = [1]
+    config_normalize['model_grad_thru_enc'] = [False]
 
     # 3 variants
+    config_normalize_thru = config_normalize.copy()
+    config_normalize_thru['model_grad_thru_enc'] = [True]
+    config_normalize_thru['cpc_loss_weight'] = [1, 10, 100]
+
+    # 2 variants
     config_predac_l2 = config_withreward_l2.copy()
     config_predac_l2['future'] = [1]
     config_predac_l2['rew_loss_weight'] = [0]
     config_predac_l2['predict_action'] = [True]
-    config_predac_l2['cpc_loss_weight'] = [1, 10, 100]
+    config_predac_l2['cpc_loss_weight'] = [1, 10]
 
 
     # 1 variant
     config_predac_contr = config_predac_l2.copy()
-    config_predac_contr['action_contrastive'] = ['True']
+    config_predac_contr['action_contrastive'] = [True]
     config_predac_contr['cpc_loss_weight'] = [1.]
 
+    configs = [config_withreward_contrastive, config_normalize, config_normalize_thru, config_predac_l2,
+               config_predac_contr]
 
-    run_sweep(run_experiment, config_normalize, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, configs[args.config], EXP_NAME, INSTANCE_TYPE)
