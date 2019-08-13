@@ -319,8 +319,8 @@ class Trainer(object):
 
         rew_seqs = rew_seqs[:, :, None]
 
-        train_img, val_img, train_action, val_action = train_test_split(img_seqs, action_seqs)
-        train_rew, val_rew = train_test_split(rew_seqs)
+        train_img, val_img, train_action, val_action, train_rew, val_rew  = \
+            train_test_split(img_seqs, action_seqs, rew_seqs, test_size=0.1)
 
         return train_img, val_img, train_action, val_action, train_rew, val_rew
 
