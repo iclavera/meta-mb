@@ -233,20 +233,18 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
 
         delta_preds = tf.concat(delta_preds, axis=0)
 
-        # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        delta_preds = tf.gather(delta_preds, perm_inv)
-        pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
-        pred_rewards = delta_preds[:, self.obs_space_dims:self.obs_space_dims+1]
-        pred_dones = tf.nn.sigmoid(delta_preds[:, self.obs_space_dims+1:])
 
         if shuffle:
             perm_inv = tf.invert_permutation(perm)
-            # next_obs = clip(obs + delta_pred
-            next_obs = original_obs + pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
+            original = tf.gather(delta_preds, perm_inv)
+            pred_obs = tf.clip_by_value(original_obs + original[:, :self.obs_space_dims], -1e2, 1e2)
+            pred_rewards = original[:, self.obs_space_dims:self.obs_space_dims+1]
+            pred_dones = tf.nn.sigmoid(original[:, self.obs_space_dims+1:])
         else:
-            next_obs = original_obs + delta_preds
-        # pred_dones = tf.nn.sigmoid(pred_dones)
+            next_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
+            pred_rewards = delta_preds[:, self.obs_space_dims:self.obs_space_dims+1]
+            pred_dones = tf.nn.sigmoid(delta_preds[:, self.obs_space_dims+1:])
+
         return pred_obs, pred_rewards, pred_dones
 
 

@@ -6,7 +6,6 @@ import numpy as np
 import nn
 
 
-
 class STEVE(Algo):
     def __init__(
         self,
