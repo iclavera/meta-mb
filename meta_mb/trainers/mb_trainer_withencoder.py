@@ -204,7 +204,8 @@ class Trainer(object):
                                   name=os.path.join(logger.get_dir(), 'path_itr%d.png' % itr))
 
 
-                train_img, val_img, train_action, val_action, train_rew, val_rew = self.get_seqs(env_paths)
+                train_img, val_img, train_action, val_action, train_rew, val_rew = \
+                    self.get_seqs(env_paths, test_size=0.25 if itr == 0 else 0.1)
                 train_data.update_dataset(train_img, train_action, train_rew)
                 validation_data.update_dataset(val_img, val_action, val_rew)
 
@@ -307,7 +308,7 @@ class Trainer(object):
             self.env.log_diagnostics(paths, prefix)
         self.policy.log_diagnostics(paths, prefix)
 
-    def get_seqs(self, env_paths):
+    def get_seqs(self, env_paths, test_size=0.1):
         if self.env.encoder is not None:
             img_seqs = np.stack([path['env_infos']['image'] for path in env_paths])[:, :-1]  # N x T x (img_shape)
             action_seqs = np.stack([path['actions'] for path in env_paths])[:, 1:]
@@ -320,7 +321,7 @@ class Trainer(object):
         rew_seqs = rew_seqs[:, :, None]
 
         train_img, val_img, train_action, val_action, train_rew, val_rew  = \
-            train_test_split(img_seqs, action_seqs, rew_seqs, test_size=0.1)
+            train_test_split(img_seqs, action_seqs, rew_seqs, test_size=test_size)
 
         return train_img, val_img, train_action, val_action, train_rew, val_rew
 
