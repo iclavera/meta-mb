@@ -126,6 +126,7 @@ class Trainer(object):
                 algo.optimize_policy()
                 sampler.update_goals()
         """
+
         with self.sess.as_default() as sess:
 
             # initialize uninitialized vars  (only initialize vars that were not loaded)

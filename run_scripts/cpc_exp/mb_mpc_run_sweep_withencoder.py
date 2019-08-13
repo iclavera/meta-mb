@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME ='cpb_auxiliary_loss'
+EXP_NAME = 'cheetah_auxiliary'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -89,8 +89,6 @@ def run_experiment(**config):
                                     latent_dim=config['latent_dim'], img_size=config['img_shape'])
         else:
             env = NormalizedEnv(raw_env)
-
-
 
         if config['recurrent']:
             dynamics_model = RNNDynamicsEnsemble(
@@ -319,17 +317,17 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cartpole_balance'],
+        'env': ['cheetah_run'],
         'env_produce_img': [True],
         'normalize': [False],
         'n_itr': [150],
         'discount': [1.],
-        'obs_stack': [3],
+        'obs_stack': [5],
         'img_shape': [(32, 32, 3)],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [20],  # Tau
+        'horizon': [12],  # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
         'use_graph': [True],
@@ -370,7 +368,7 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [False],
         'predict_action': [False],
-        'rew_contrastive': [False],
+        'rew_contrastive': [True, False],
         'action_contrastive':[False],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
@@ -378,8 +376,8 @@ if __name__ == '__main__':
         'cpc_initial_lr': [1e-3],
         'cpc_num_initial_rollouts': [16],
         'cpc_train_interval': [1],
-        'cpc_loss_weight': [1],
-        'rew_loss_weight': [0, 1],
+        'cpc_loss_weight': [300],
+        'rew_loss_weight': [1],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -389,19 +387,15 @@ if __name__ == '__main__':
     config_withreward_contrastive['rew_contrastive'] = [True]
     config_withreward_contrastive['rew_loss_weight'] = [1]
 
-    # 1 variant
+
+    # 3 variants
     config_normalize = config_withreward_l2.copy()
     config_normalize['rew_loss_weight'] = [0]
     config_normalize['normalize'] = [True]
     config_normalize['cpc_num_initial_rollouts'] = [16]
     config_normalize['cpc_initial_epoch'] = [10]
-    config_normalize['cpc_loss_weight'] = [1]
-    config_normalize['model_grad_thru_enc'] = [False]
-
-    # 3 variants
-    config_normalize_thru = config_normalize.copy()
-    config_normalize_thru['model_grad_thru_enc'] = [True]
-    config_normalize_thru['cpc_loss_weight'] = [1, 10, 100]
+    config_normalize['model_grad_thru_enc'] = [True]
+    config_normalize['cpc_loss_weight'] = [100, 1000]
 
     # 2 variants
     config_predac_l2 = config_withreward_l2.copy()
@@ -410,14 +404,13 @@ if __name__ == '__main__':
     config_predac_l2['predict_action'] = [True]
     config_predac_l2['cpc_loss_weight'] = [1, 10]
 
-
     # 1 variant
     config_predac_contr = config_predac_l2.copy()
     config_predac_contr['action_contrastive'] = [True]
-    config_predac_contr['cpc_loss_weight'] = [1.]
+    config_predac_contr['cpc_loss_weight'] = [100.]
 
-    configs = [config_withreward_contrastive, config_normalize, config_normalize_thru, config_predac_l2,
+    configs = [config_withreward_l2, config_normalize,  #config_predac_l2,
                config_predac_contr]
 
     i = 0
-    run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)
