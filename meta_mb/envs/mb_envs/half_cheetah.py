@@ -61,13 +61,19 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = self.model.stat.extent * 0.5
 
     def reward(self, obs, acts, next_obs):
-        assert obs.ndim == 2
         if next_obs is not None:
             assert obs.shape == next_obs.shape
-        assert obs.shape[0] == acts.shape[0]
-        reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
-        reward_run = obs[:, 8]
-        reward = reward_run + reward_ctrl
+        if obs.n_dim == 2:
+            assert obs.shape[0] == acts.shape[0]
+            reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
+            reward_run = obs[:, 8]
+            reward = reward_run + reward_ctrl
+        elif obs.n_dim == 1:
+            reward_ctrl = -0.1 * np.sum(np.square(acts))
+            reward_run = obs[8]
+            reward = reward_run + reward_ctrl  # scalar
+        else:
+            raise ValueError
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
@@ -75,6 +81,28 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_run = obs[:, 8]  # changed from next_obs to obs
         reward = reward_run + reward_ctrl
         return reward
+
+    def tf_deriv_reward_obs(self, obs, acts, batch_size):
+        deriv = np.zeros((batch_size, self.obs_dim))
+        deriv[:, 8] = 1
+        return tf.constant(deriv)
+
+    def tf_deriv_reward_act(self, obs, acts, batch_size):
+        return -0.2*acts
+
+    def tf_hessian_l_xx(self, obs, acts, batch_size):
+        hess = tf.zeros((batch_size, self.obs_dim, self.obs_dim))
+        return -hess
+
+    def tf_hessian_l_uu(self, obs, acts, batch_size):
+        hess = np.zeros((batch_size, self.act_dim, self.act_dim))
+        for i in range(self.act_dim):
+            hess[:, i, i] = -0.2
+        return tf.constant(-hess)
+
+    def tf_hessian_l_ux(self, obs, acts, batch_size):
+        hess = tf.zeros((batch_size, self.act_dim, self.obs_dim))
+        return -hess
 
     def reset_from_obs(self, obs):
         nq, nv = self.model.nq, self.model.nv
@@ -102,46 +130,55 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         assert obs.ndim == acts.ndim
         return -0.2*acts #(-0.2 * acts).copy()
 
-    def hessian_l_xx(self, obses, acts):
+    def hessian_l_xx(self, obs, acts):
         """
 
         :param obs: (horizon, obs_dim,)
         :param act: (horizon, act_dim,)
         :return: (horizon, obs_dim, obs_dim)
         """
-        hess = np.zeros((obses.shape[0], self.obs_dim, self.obs_dim))
+        hess = np.zeros((obs.shape[0], self.obs_dim, self.obs_dim))
         return -hess
 
-    def hessian_l_uu(self, obses, acts):
+    def hessian_l_uu(self, obs, acts):
         """
 
         :param obs: (horizon, obs_dim,)
         :param act: (horizon, act_dim,)
         :return: (horizon, act_dim, act_dim)
         """
-        hess = np.zeros((obses.shape[0], self.act_dim, self.act_dim))
+        hess = np.zeros((obs.shape[0], self.act_dim, self.act_dim))
         for i in range(self.act_dim):
             hess[:, i, i] = -0.2
         return -hess
 
-    def hessian_l_ux(self, obses, acts):
+    def hessian_l_ux(self, obs, acts):
         """
 
         :param obs: (horizon, obs_dim,)
         :param act: (horizon, act_dim,)
         :return: (horizon, obs_dim, act_dim)
         """
-        hess = np.zeros((obses.shape[0], self.act_dim, self.obs_dim))
+        hess = np.zeros((obs.shape[0], self.act_dim, self.obs_dim))
         return -hess
+
+    def tf_dl_dict(self, obs, acts, next_obs, batch_size):
+        return OrderedDict(
+            l_x=-self.tf_deriv_reward_obs(obs, acts, batch_size),
+            l_u=-self.tf_deriv_reward_act(obs, acts, batch_size),
+            l_xx=self.tf_hessian_l_xx(obs, acts, batch_size),
+            l_uu=self.tf_hessian_l_uu(obs, acts, batch_size),
+            l_ux=self.tf_hessian_l_ux(obs, acts, batch_size),
+        )
 
     def dl_dict(self, inputs_dict):
         # FOR NEGATIVE RETURNS
-        obses, acts = inputs_dict['obs'], inputs_dict['act']
-        return OrderedDict(l_x=-self.deriv_reward_obs(obses, acts),
-                           l_u=-self.deriv_reward_act(obses, acts),
-                           l_xx=self.hessian_l_xx(obses, acts),
-                           l_uu=self.hessian_l_uu(obses, acts),
-                           l_ux=self.hessian_l_ux(obses, acts),)
+        obs, acts = inputs_dict['obs'], inputs_dict['act']
+        return OrderedDict(l_x=-self.deriv_reward_obs(obs, acts),
+                           l_u=-self.deriv_reward_act(obs, acts),
+                           l_xx=self.hessian_l_xx(obs, acts),
+                           l_uu=self.hessian_l_uu(obs, acts),
+                           l_ux=self.hessian_l_ux(obs, acts),)
 
 
 if __name__ == "__main__":

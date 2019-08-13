@@ -1,9 +1,8 @@
 from meta_mb.logger import logger
 import scipy.linalg as sla
 import numpy as np
-from collections import OrderedDict
 import tensorflow as tf
-import itertools
+import time
 
 
 class DyniLQRPlanner(object):
@@ -52,7 +51,9 @@ class DyniLQRPlanner(object):
             name='obs',
         )
 
+        build_time = time.time()
         self.utils_sym_by_env = self._build_deriv_graph()
+        logger.log('TimeBuildGraph', build_time - time.time())
 
     def _build_deriv_graph(self):
         x_array, df_array, dl_array = [], [], []
@@ -73,19 +74,18 @@ class DyniLQRPlanner(object):
 
             obs = next_obs
 
+        # post process
         x_array = tf.stack(x_array, axis=0)
         J_val = -returns
         x_array_by_env = [x_array[:, env_idx] for env_idx in range(self.num_envs)]
         J_val_by_env = [J_val[env_idx] for env_idx in range(self.num_envs)]
-
         # outputs by deriv type: (horizon, num_envs, *)
         f_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*df_array)))
         l_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*dl_array)))
-
         # store by env
         derivs_by_env = list(map(lambda arr: [arr[:, env_idx] for env_idx in range(self.num_envs)], f_array + l_array))
-
         utils_sym_by_env = list(zip(x_array_by_env, J_val_by_env, *derivs_by_env))
+
         return utils_sym_by_env
 
     def _gradients_wrapper(self, y, x, dim_y):
@@ -306,19 +306,13 @@ class DyniLQRPlanner(object):
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
 
             for env_idx, utils in enumerate(utils_by_env):
-                outputs = self.get_action_per_env(env_idx, utils)
+                returns_dyn = self.update_u_per_env(env_idx, utils)
 
-                if self.verbose and outputs is not None:
-                    old_returns, new_returns, diff = outputs
-                    logger.logkv(f'{env_idx}-PlannerPrevReturn', old_returns)
-                    logger.logkv(f'{env_idx}-PlannerReturn', new_returns)
-                    logger.logkv(f'{env_idx}-ExpectedDiff', diff)
-                    logger.logkv(f'{env_idx}-ActualDiff', new_returns - old_returns)
-
-            if self.verbose:
-                logger.logkv('Itr', itr)
-                logger.dumpkvs()
-
+        if self.verbose:
+            returns = self._run_open_loop(self.u_array_val, obs)
+            logger.log('ReturnDyn', returns_dyn)
+            logger.log('ReturnEnv', returns)
+            logger.log('ReturnDiff', returns - returns_dyn)
         optimized_action = self.u_array_val[0, :, :]
 
         # shift
@@ -326,7 +320,17 @@ class DyniLQRPlanner(object):
 
         return optimized_action, []
 
-    def get_action_per_env(self, idx, utils_list):
+    def _run_open_loop(self, u_array, init_obs):
+        returns = 0
+        _ = self._env.reset_from_obs(init_obs)
+
+        for i in range(self.horizon):
+            x, reward, _, _ = self._env.step(u_array[i])
+            returns += self.discount**i * reward
+
+        return returns
+
+    def update_u_per_env(self, idx, utils_list):
         x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
         u_array = self.u_array_val[:, idx, :]
 
@@ -387,16 +391,18 @@ class DyniLQRPlanner(object):
                 backward_accept = True
 
             except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
-                logger.log(f'backward_pass_counter = {backward_pass_counter}, i = {i}, mu = {mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
+                if self.verbose:
+                    logger.log(f'backward_pass_counter = {backward_pass_counter}, i = {i}, mu = {mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
                 self._increase_mu(idx)
                 backward_pass_counter += 1
 
         if not backward_accept:
-            logger.log(f'backward not accepted with mu = {mu}')
-            return None
+            if self.verbose:
+                logger.log(f'backward not accepted with mu = {mu}')
+            return -J_val
 
         """
-        Forward Pass (stop if 0 < c_1 < z)
+        Forward Pass (break if 0 < c_1 < z)
         """
         forward_accept = False
         alpha = 1.0
@@ -434,13 +440,15 @@ class DyniLQRPlanner(object):
             #     logger.log(f'at itr {forward_pass_counter}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
 
         if forward_accept:
-            logger.log(f'backward_pass, forward pass accepted after {backward_pass_counter, forward_pass_counter} failed iterations')
+            if self.verbose:
+                logger.log(f'backward_pass, forward pass accepted after {backward_pass_counter, forward_pass_counter} failed iterations')
             self._decrease_mu(idx)
-            return -J_val, -opt_J_val, -delta_J_alpha
+            return -opt_J_val  #-J_val, -opt_J_val, -delta_J_alpha
         else:
-            logger.log(f'forward pass not accepted with mu = {mu}')
+            if self.verbose:
+                logger.log(f'forward pass not accepted with mu = {mu}')
             self._increase_mu(idx)
-            return None
+            return -J_val
 
     def _decrease_mu(self, idx):
         mu, delta = self.param_array[idx]

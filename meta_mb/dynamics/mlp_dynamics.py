@@ -256,8 +256,7 @@ class MLPDynamicsModel(Serializable):
                       input_var=input_var,
                       input_dim=self.obs_space_dims + self.action_space_dims,
                       )
-            delta = mlp.output_var
-            delta = denormalize(delta, mean=self._mean_delta_var, std=self._std_delta_var)
+            delta = denormalize(mlp.output_var, mean=self._mean_delta_var, std=self._std_delta_var)
             pred_obs = delta + obs_var
             pred_obs = tf.clip_by_value(pred_obs, -1e2, 1e2)
 

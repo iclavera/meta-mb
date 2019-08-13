@@ -3,6 +3,8 @@ from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
@@ -32,7 +34,7 @@ def run_experiment(**config):
         repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = max_path_length = 200
+        config['max_path_length'] = max_path_length = 50
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = max_path_length = 100
@@ -42,9 +44,6 @@ def run_experiment(**config):
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = max_path_length = 50
-    # repr += '-reg-' + str(config['reg_coef'])
-    # if config['reg_str'] is not None:
-    #     repr += config['reg_str']
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -59,76 +58,51 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        # dynamics_model = GTDynamics(
-        #     name="dyn_model",
-        #     env=env,
-        #     num_rollouts=config['num_rollouts'],
-        #     horizon=config['horizon'],
-        #     max_path_length=config['max_path_length'],
-        #     discount=config['discount'],
-        #     n_parallel=config['n_parallel'],
-        # )
-        dynamics_model = MLPDynamicsModel(
-            name="dyn_model",
-            env=env,
-            learning_rate=config['learning_rate'],
-            hidden_sizes=config['hidden_sizes_model'],
-            weight_normalization=config['weight_normalization_model'],
-            # num_models=config['num_models'],
-            valid_split_ratio=config['valid_split_ratio'],
-            rolling_average_persitency=config['rolling_average_persitency'],
-            hidden_nonlinearity=config['hidden_nonlinearity_model'],
-            batch_size=config['batch_size_model'],
-        )
+        if config['dyn_str'] == 'model':
+            dynamics_model = MLPDynamicsModel(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
+
+        elif config['dyn_str'] == 'ensemble':
+            dynamics_model = MLPDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                num_models=config['num_models'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
+
         sample_processor = ModelSampleProcessor()
 
-        if config['method_str'] == 'ilqr':
-
-            policy = DyniLQRController(
-                name="policy",
-                env=env,
-                dynamics_model=dynamics_model,
-                eps=config['eps'],
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                max_path_length= max_path_length, # config['max_path_length'],
-                n_parallel=config['n_parallel'],
-                initializer_str=config['initializer_str'],
-                num_ddp_iters=config['num_ddp_iters'],
-                num_rollouts=config['num_rollouts'],
-                alpha=config['alpha'],
-                percent_elites=config['percent_elites'],
-            )
-        elif config['method_str'].startswith('ipopt'):
-            raise NotImplementedError
-            policy = GTIpoptController(
-                name="policy",
-                env=env,
-                dynamics_model=dynamics_model,
-                eps=config['eps'],
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                max_path_length= max_path_length, # config['max_path_length'],
-                method_str=config['method_str'],
-                n_parallel=config['n_parallel'],
-                dyn_pred_str=config['dyn_pred_str'],
-                reg_coef=config['reg_coef'],
-                reg_str=config['reg_str'],
-                initializer_str=config['initializer_str'],
-                num_cem_iters=config['num_cem_iters'],
-                num_opt_iters=config['num_opt_iters'],
-                num_collocation_iters=config['num_collocation_iters'],
-                num_ddp_iters=config['num_ddp_iters'],
-                opt_learning_rate=config['opt_learning_rate'],
-                persistency=config['persistency'],
-                num_rollouts=config['num_rollouts'],
-                alpha=config['alpha'],
-                percent_elites=config['percent_elites'],
-                lmbda=config['lmbda'],
-                policy_filter=config['policy_filter'],
-            )
+        policy = DyniLQRController(
+            name="policy",
+            env=env,
+            dynamics_model=dynamics_model,
+            eps=config['eps'],
+            discount=config['discount'],
+            n_candidates=config['n_candidates'],
+            horizon=config['horizon'],
+            max_path_length= max_path_length, # config['max_path_length'],
+            n_parallel=config['n_parallel'],
+            initializer_str=config['initializer_str'],
+            num_ddp_iters=config['num_ddp_iters'],
+            num_rollouts=config['num_rollouts'],
+            alpha=config['alpha'],
+            percent_elites=config['percent_elites'],
+        )
 
         sampler = Sampler(
             env=env,
@@ -172,9 +146,7 @@ if __name__ == '__main__':
         'controller_str': ['dyn'],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
-        'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
-        'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],
         'method_str': ['ilqr'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'policy_filter': [False,],
 
@@ -185,7 +157,7 @@ if __name__ == '__main__':
         'deterministic_policy': [True],
 
         # cem
-        'horizon': [30],  # only matters for cem/rs/collocation
+        'horizon': [10],  # only matters for cem/rs/collocation
         'n_candidates': [1000],
         'num_cem_iters': [50],
         'alpha': [0.15],
@@ -200,13 +172,14 @@ if __name__ == '__main__':
         'num_ddp_iters': [5],
 
         # Training
-        'num_rollouts': [2],  # number of experts
+        'num_rollouts': [5],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
-        # Dynamics Model  # UNUSED
+        # Dynamics Model
+        'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],
