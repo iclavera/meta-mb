@@ -377,7 +377,7 @@ if __name__ == '__main__':
         'cpc_num_initial_rollouts': [16],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [300],
-        'rew_loss_weight': [1],
+        'rew_loss_weight': [1, 10],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     # 1 variant
     config_withreward_contrastive = config_withreward_l2.copy()
     config_withreward_contrastive['rew_contrastive'] = [True]
-    config_withreward_contrastive['rew_loss_weight'] = [1]
+    config_withreward_contrastive['rew_loss_weight'] = [0.2, 1]
 
 
     # 3 variants
@@ -409,8 +409,7 @@ if __name__ == '__main__':
     config_predac_contr['action_contrastive'] = [True]
     config_predac_contr['cpc_loss_weight'] = [100.]
 
-    configs = [config_withreward_l2, config_normalize,  #config_predac_l2,
-               config_predac_contr]
+    configs = [config_withreward_l2, config_withreward_contrastive]
 
     i = 0
-    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
