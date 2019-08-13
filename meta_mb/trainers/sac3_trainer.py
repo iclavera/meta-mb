@@ -56,6 +56,7 @@ class Trainer(object):
             dynamics_model_max_epochs=50,
             sampler_batch_size=64,
             aux_hidden_dim=256,
+            done_bar=1,
             ):
         self.algo = algo
         self.env = env
@@ -82,6 +83,7 @@ class Trainer(object):
         self.sampler_batch_size = sampler_batch_size
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
         self.action_dim = int(np.prod(self.env.action_space.shape))
+        self.done_bar = done_bar
 
 
         if sess is None:
@@ -157,6 +159,7 @@ class Trainer(object):
                             actions_from_policy = self.policy.get_actions(random_states)[0]
                             next_obs, rewards, dones = self.dynamics_model.predict(random_states, actions_from_policy)
                             dones = np.reshape(sigmoid(dones), [-1])
+                            dones = dones>=self.done_bar
                             rewards = np.reshape(rewards, [-1])
                             self.model_replay_buffer.add_samples(random_states,
                                                                  actions_from_policy,

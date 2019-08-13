@@ -93,8 +93,6 @@ def run_experiment(**kwargs):
                                                 buffer_size=kwargs['dynamics_buffer_size'],
 												rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                 )
-
-
         algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],

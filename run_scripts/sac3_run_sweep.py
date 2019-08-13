@@ -117,6 +117,7 @@ def run_experiment(**kwargs):
 			experiment_name=EXP_NAME,
 			exp_dir=exp_dir,
             target_update_interval=kwargs['n_train_repeats'],
+            done_bar=kwargs['done_bar'],
         )
 
         trainer = Trainer(
@@ -140,7 +141,8 @@ def run_experiment(**kwargs):
             restore_path=save_model_dir+kwargs['restore_path'],
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
-            aux_hidden_dim=kwargs['aux_hidden_dim'],
+            aux_hidden_dim=kwargs['aux_hidden_dim'],,
+            done_bar=kwargs['done_bar']
         )
 
         trainer.train()
@@ -183,6 +185,7 @@ if __name__ == '__main__':
 		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
+        'done_bar': [0.9, 1.0],
 
         'policy_hidden_nonlinearity': ['relu'],
 
