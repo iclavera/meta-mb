@@ -160,16 +160,16 @@ if __name__ == '__main__':
 
     config = {
         'seed': [1],
-        'fit_model': [False],
+        'fit_model': [True],
         'plot_freq': [-1],
 
         # Problem
         'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
-        'n_itr': [1],  # only matters for opt_policy
+        'n_itr': [50],  # only matters for opt_policy
         'discount': [1.0,],
-        'controller_str': ['gt'],
+        'controller_str': ['dyn'],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
@@ -197,13 +197,13 @@ if __name__ == '__main__':
         'persistency': [0.9],
 
         # DDP
-        'num_ddp_iters': [20],
+        'num_ddp_iters': [5],
 
         # Training
-        'num_rollouts': [1],  # number of experts
+        'num_rollouts': [2],  # number of experts
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
-        'initial_random_samples': [False],
+        'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model  # UNUSED

@@ -24,7 +24,7 @@ class DyniLQRController(Serializable):
             num_ddp_iters=100,
             percent_elites=0.1,
             alpha=0.25,
-            verbose=True,
+            verbose=False,
     ):
         Serializable.quick_init(self, locals())
         self.discount = discount
@@ -52,48 +52,29 @@ class DyniLQRController(Serializable):
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
         self._env = copy.deepcopy(env)
-        self.planner = DyniLQRPlanner(env, dynamics_model, num_rollouts, horizon, self._init_u_array(), verbose=verbose)
+        self.planner = DyniLQRPlanner(env, dynamics_model, num_rollouts, horizon, self._init_u_array(), num_ddp_iters, verbose=verbose)
 
     @property
     def vectorized(self):
         return True
 
+    def get_sinusoid_actions(self, action_space, t):
+        actions = np.array([])
+        for i in range(action_space):
+            actions = np.append(actions, 0.5 * np.sin(i * t))
+        return actions
+
     def get_actions(self, obs):
-        ilqr_itr_counter = 0
-        while ilqr_itr_counter < self.num_ddp_iters:
-            optimized_action, backward_accept, forward_accept, planner_returns_log, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
-            if ilqr_itr_counter % 10 == 0:
-                logger.log(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array_val)}')
-
-            if backward_accept and forward_accept:
-                old_returns, new_returns, diff = planner_returns_log
-                if reward_array is not None:
-                    reward_array = np.reshape(reward_array, (-1, 5))
-                    for row in reward_array:
-                        logger.log(row)
-                logger.logkv('Itr', ilqr_itr_counter)
-                logger.logkv('PlannerPrevReturn', old_returns)
-                logger.logkv('PlannerReturn', new_returns)
-                logger.logkv('ExpectedDiff', diff)
-                logger.logkv('ActualDiff', new_returns - old_returns)
-                logger.dumpkvs()
-
-            ilqr_itr_counter += 1
-
-        # shift
-        u_new = None  # self._generate_new_u()
-        self.planner.shift_u_array(u_new)
-
-        return optimized_action, []
+        return self.planner.get_actions(obs)
 
     def _init_u_array(self):
         if self.initializer_str == 'cem':
             init_u_array = self._init_u_array_cem()
         elif self.initializer_str == 'uniform':
             init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
-                                             size=(self.horizon, self.action_space_dims))
+                                             size=(self.horizon, self.num_envs, self.action_space_dims))
         elif self.initializer_str == 'zeros':
-            init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.action_space_dims))
+            init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.action_space_dims))
             init_u_array = np.clip(init_u_array, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
         else:
             raise NotImplementedError

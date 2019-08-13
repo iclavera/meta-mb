@@ -1,20 +1,16 @@
 from meta_mb.logger import logger
+import scipy.linalg as sla
 import numpy as np
 from collections import OrderedDict
-import time
 import tensorflow as tf
-import scipy.linalg as sla
-
-
-def stack_wrapper(arr):
-    return tf.stack(arr, axis=0)
+import itertools
 
 
 class DyniLQRPlanner(object):
     """
     Compute ground truth derivatives.
     """
-    def __init__(self, env, dynamics_model, num_envs, horizon, u_array, reg_str='V', discount=1,
+    def __init__(self, env, dynamics_model, num_envs, horizon, u_array, num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
                  forward_stop_cond='rel',
@@ -24,6 +20,7 @@ class DyniLQRPlanner(object):
         self.num_envs = num_envs
         self.horizon = horizon
         self.u_array_val = u_array
+        self.num_ilqr_iters = num_ilqr_iters
         self.reg_str = reg_str
         self.discount = discount
         self.act_dim = env.action_space.shape[0]
@@ -39,6 +36,7 @@ class DyniLQRPlanner(object):
         self.max_backward_iters = max_backward_iters
         self.forward_stop_cond = forward_stop_cond
         self.use_hessian_f = use_hessian_f
+        self.verbose = verbose
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self._reset_mu()
@@ -54,70 +52,41 @@ class DyniLQRPlanner(object):
             name='obs',
         )
 
-        self.utils_sym_dict = self._build_deriv_graph()
+        self.utils_sym_by_env = self._build_deriv_graph()
 
     def _build_deriv_graph(self):
-        """
-        u_array = (horizon,
-        :return:
-        """
         x_array, df_array, dl_array = [], [], []
 
         obs = self.obs_ph
-        returns = 0
+        returns = tf.zeros((self.num_envs,))
         for i in range(self.horizon):
             x_array.append(obs)
-            acts = self.u_array_ph[i]
+            acts = self.u_array_ph[i, :, :]
             next_obs = self.dynamics_model.predict_sym(obs, acts)
+
             df = self._df_sym(obs, acts, next_obs)
             df_array.append(df)
-            rewards = self._env.tf_reward(obs, acts, next_obs)
-            dl = self._dl_sym(rewards, obs, acts, next_obs)
+            dl = self._env.tf_dl_dict(obs, acts, next_obs, self.num_envs).values()
             dl_array.append(dl)
+            rewards = self._env.tf_reward(obs, acts, next_obs)
             returns += self.discount**i * rewards
+
             obs = next_obs
 
-        x_array = stack_wrapper(x_array)
+        x_array = tf.stack(x_array, axis=0)
         J_val = -returns
-        f_x, f_u = list(map(stack_wrapper, zip(*df_array)))  # [f_x, f_u]
-        l_x, l_u, l_xx, l_uu, l_ux = list(map(stack_wrapper, zip(*dl_array)))
+        x_array_by_env = [x_array[:, env_idx] for env_idx in range(self.num_envs)]
+        J_val_by_env = [J_val[env_idx] for env_idx in range(self.num_envs)]
 
-        return OrderedDict(
-            x_array=x_array,
-            J_val=J_val,
-            f_x=f_x,
-            f_u=f_u,
-            l_x=l_x,
-            l_u=l_u,
-            l_xx=l_xx,
-            l_uu=l_uu,
-            l_ux=l_ux,
-        )
+        # outputs by deriv type: (horizon, num_envs, *)
+        f_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*df_array)))
+        l_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*dl_array)))
 
-    def _dl_sym(self, rewards, obs, acts, next_obs):
-        """
+        # store by env
+        derivs_by_env = list(map(lambda arr: [arr[:, env_idx] for env_idx in range(self.num_envs)], f_array + l_array))
 
-        :param rewards: (num_envs,)
-        :param obs:
-        :param acts:
-        :param next_obs:
-        :return:
-        """
-        # obs = tf.stop_gradient(obs)
-        # acts = tf.stop_gradient(acts)
-
-        # l_x = (num_envs, obs_dim)
-        l_x, = tf.gradients(rewards, xs=obs)
-        # l_u = (num_envs, act_dim)
-        l_u, = tf.gradients(rewards, xs=acts)
-        # l_xx = (num_envs, obs_dim, obs_dim)
-        l_xx, = tf.hessians(rewards, xs=obs)
-        # l_uu = (num_envs, act_dim, act_dim)
-        l_uu, = tf.hessians(rewards, xs=acts)
-        # l_ux = (num_envs, act_dim, obs_dim)
-        l_ux = self._gradients_wrapper(l_u, obs, self.act_dim)
-
-        return l_x, l_u, l_xx, l_uu, l_ux
+        utils_sym_by_env = list(zip(x_array_by_env, J_val_by_env, *derivs_by_env))
+        return utils_sym_by_env
 
     def _gradients_wrapper(self, y, x, dim_y):
         """
@@ -130,7 +99,6 @@ class DyniLQRPlanner(object):
         """
         jac_array = []
         for i in range(dim_y):
-            print(tf.gradients(ys=y[:, i], xs=[x]))
             jac_array.extend(tf.gradients(ys=y[:, i], xs=[x]))
         return tf.stack(jac_array, axis=1)
 
@@ -146,54 +114,233 @@ class DyniLQRPlanner(object):
         # acts = tf.stop_gradient(acts)
 
         # jac_f_x: (num_envs, obs_dim, obs_dim)
-        jac_f_x_array = self._gradients_wrapper(next_obs, obs, self.obs_dim)
-        # jac_f_x = []
-        # for n in range(self.num_envs):
-        #     jac_f_x_per_env = []
-        #     for i in range(self.obs_dim):
-        #         jac_f_i_x_per_env = tf.gradients(next_obs[n, i], var_list=obs[n])  # i-th row of jac_f_x
-        #         jac_f_x_per_env.append(jac_f_i_x_per_env)
-        #     jac_f_x_per_env = tf.stack(jac_f_x_per_env, axis=0)  # (obs_dim, obs_dim)
-        #     jac_f_x.append(jac_f_x_per_env)
-        # jac_f_x = tf.stack(jac_f_x, axis=0)
+        jac_f_x = self._gradients_wrapper(next_obs, obs, self.obs_dim)
 
         # jac_f_u: (num_envs, obs_dim, act_dim)
-        jac_f_u_array = self._gradients_wrapper(next_obs, acts, self.obs_dim)
-        # jac_f_u = []
-        # for n in range(self.num_envs):
-        #     jac_f_u_per_env = []
-        #     for i in range(self.obs_dim):
-        #         jac_f_i_u_per_env = tf.gradients(next_obs[n, i], var_list=acts[n])  # i-th row of jac_f_u
-        #         jac_f_u_per_env.append(jac_f_i_u_per_env)
-        #     jac_f_u_per_env = tf.stack(jac_f_u_per_env, axis=0)
-        #     jac_f_u.append(jac_f_u_per_env)
-        # jac_f_u = tf.stack(jac_f_u, axis=0)
+        jac_f_u = self._gradients_wrapper(next_obs, acts, self.obs_dim)
 
-        return jac_f_x_array, jac_f_u_array
+        return jac_f_x, jac_f_u
+    #
+    # def update_x_u_for_one_step(self, obs):
+    #     """
+    #
+    #     :param obs: (num_envs, obs_dim)
+    #     :return:
+    #     """
+    #     u_array = self.u_array_val
+    #     optimized_action = u_array[0, :, :]  # (num_envs, act_dim)
+    #     for info_dict in self.info_dict_array:
+    #         info_dict.update(dict(backward_accept=False, forward_accept=False))
+    #     active_env_idx = np.arange(self.num_envs)
+    #     num_active_envs = self.num_envs
+    #
+    #     """
+    #     Derivatives
+    #     """
+    #     feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs}
+    #     sess = tf.get_default_session()
+    #     global_x_array, global_J_val, global_f_x, global_f_u, global_l_x, global_l_u, global_l_xx, global_l_uu, global_l_ux = sess.run(
+    #         list(self.utils_sym_dict.values()),
+    #         feed_dict=feed_dict,
+    #     )
+    #     """
+    #     Backward Pass
+    #     """
+    #     backward_pass_counter = 0
+    #     global_open_k_array, global_closed_K_array = np.empty((self.horizon, self.num_envs)), np.empty((self.horizon, self.num_envs,))
+    #     global_delta_J_1, global_delta_J_2 = np.zeros((self.num_envs,)), np.zeros((self.num_envs,))
+    #     while num_active_envs > 0 and backward_pass_counter < self.max_backward_iters:  # and self.mu <= self.mu_max:
+    #         # initialize
+    #         global_open_k_array[active_env_idx] = None
+    #         global_closed_K_array[active_env_idx] = None
+    #         global_delta_J_1[active_env_idx] = 0
+    #         global_delta_J_2[active_env_idx] = 0
+    #
+    #         f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = (
+    #             global_f_x[:, active_env_idx],
+    #             global_f_u[:, active_env_idx],
+    #             global_l_x[:, active_env_idx],
+    #             global_l_u[:, active_env_idx],
+    #             global_l_xx[:, active_env_idx],
+    #             global_l_uu[:, active_env_idx],
+    #             global_l_ux[:, active_env_idx],
+    #         )
+    #         V_prime_xx, V_prime_x = np.zeros((num_active_envs, self.obs_dim, self.obs_dim)), np.zeros((num_active_envs, self.obs_dim))  # l_x[-1], l_xx[-1]
+    #
+    #         try:
+    #             # backward pass
+    #             for i in range(self.horizon-1, -1, -1):
+    #                 # compute Q
+    #                 f_u_i_T = np.transpose(f_u[i], axes=[0, 2, 1])  # (num_active_envs, obs_dim, obs_dim)
+    #                 Q_uu = l_uu[i] + f_u_i_T @ V_prime_xx @ f_u[i]  # (num_active_envs, act_dim, act_dim)
+    #                 if self.reg_str == 'Q':
+    #                     Q_uu_reg = Q_uu + self.mu * np.eye(self.act_dim)
+    #                 elif self.reg_str == 'V':
+    #                     Q_uu_reg = Q_uu + self.mu * f_u_i_T @ f_u[i]
+    #                 else:
+    #                     raise NotImplementedError
+    #
+    #                 if not np.allclose(Q_uu, np.transpose(Q_uu, axes=[0, 2, 1])):
+    #                     print(Q_uu)
+    #                     raise RuntimeError
+    #
+    #                 Q_uu_reg_inv = chol_inv(Q_uu_reg)  # except error here  # (num_active_envs, act_dim, act_dim)
+    #
+    #                 f_x_i_T = np.transpose(f_x[i], axes=[0, 2, 1])  # (num_active_envs, obs_dim, act_dim)
+    #                 V_prime_x_expand = np.expand_dims(V_prime_x, axis=2)  # (num_active_envs, obs_dim, 1)
+    #                 Q_x = l_x[i] + (f_x_i_T @ V_prime_x_expand)[:, :, 0]  # (num_active_envs, obs_dim)
+    #                 Q_u = l_u[i] + (f_u_i_T @ V_prime_x_expand)[:, :, 0]  # (num_active_envs, act_dim)
+    #                 Q_xx = l_xx[i] + f_x_i_T @ V_prime_xx @ f_x[i]  # (num_active_envs, obs_dim, obs_dim)
+    #                 Q_ux = l_ux[i] + f_u_i_T @ V_prime_xx @ f_x[i]  # (num_active_envs, act_dim, obs_dim)
+    #                 if self.reg_str == 'Q':
+    #                     Q_ux_reg = Q_ux
+    #                 elif self.reg_str == 'V':
+    #                     Q_ux_reg = Q_ux + self.mu * f_u_i_T @ f_x[i]
+    #                 else:
+    #                     raise NotImplementedError
+    #
+    #                 # compute control matrices
+    #                 # Q_uu_inv = np.linalg.inv(Q_uu)
+    #                 Q_u_expand = np.expand_dims(Q_u, axis=2)  # (num_active_envs, act_dim, 1)
+    #                 k = - (Q_uu_reg_inv @ Q_u_expand)[:, :, 0]  # (num_active_envs, act_dim)
+    #                 K = - Q_uu_reg_inv @ Q_ux_reg  # (num_active_envs, act_dim, obs_dim)
+    #                 global_open_k_array[i, active_env_idx] = k
+    #                 global_closed_K_array[i, active_env_idx] = K
+    #
+    #                 k_expand = np.expand_dims(k, axis=2)  # (num_active_envs, act_dim, 1)
+    #                 k_expand_T = np.transpose(k_expand, axes=[0, 2, 1])  # (num_active_envs, 1, act_dim)
+    #                 K_T = np.transpose(K, axes=[0, 2, 1])  # (num_active_envs, obs_dim, act_dim)
+    #                 # k = - np.linalg.solve(Q_uu_reg, Q_u)
+    #                 # K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
+    #                 global_delta_J_1[active_env_idx] += (k_expand_T @ Q_u_expand)[:, 0, 0]  # (num_active_envs,)
+    #                 global_delta_J_2[active_env_idx] += (k_expand_T @ Q_uu @ k_expand)[:, 0, 0]  # (num_active_envs,)
+    #
+    #                 # prepare for next i
+    #                 # V_prime_x = Q_x + Q_u @ feedback_gain
+    #                 # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+    #                 Q_ux_T = np.transpose(Q_ux, axes=[0, 2, 1])
+    #                 V_prime_x = Q_x + (K_T @ Q_uu @ k_expand + K_T @ Q_u_expand + Q_ux_T @ k_expand)[:, :, 0]  # (num_envs, obs_dim)
+    #                 V_prime_xx = Q_xx + K_T @ Q_uu @ K + K_T @ Q_ux + Q_ux_T @ K
+    #                 V_prime_xx = (V_prime_xx + np.transpose(V_prime_xx, axes=[0, 2, 1])) * 0.5
+    #
+    #             # self._decrease_mu()
+    #             backward_accept = True
+    #
+    #         except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
+    #             logger.log(f'i = {i}, mu = {self.mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
+    #             self._increase_mu()
+    #             backward_pass_counter += 1
+    #
+    #     if not backward_accept:
+    #         logger.log(f'backward not accepted with mu = {self.mu}')
+    #         return None, backward_accept, forward_accept, None, None
+    #
+    #     """
+    #     Forward Pass (stop if 0 < c_1 < z)
+    #     """
+    #     alpha = 1.0
+    #     forward_pass_counter = 0
+    #     while not forward_accept and forward_pass_counter < self.max_forward_iters:
+    #         # reset
+    #         assert np.allclose(obs, x_array[0])
+    #         x = obs  #x_array[0]
+    #         opt_x_array, opt_u_array = [], []
+    #         reward_array = []
+    #         opt_J_val = 0
+    #
+    #         # forward pass
+    #         for i in range(self.horizon):
+    #             # (num_envs, act_dim) + (num_envs, act_dim) + ((num_envs, act_dim, obs_dim) @ (num_envs, obs_dim, 1))[:, :, 0]
+    #             u = u_array[i] + alpha * open_k_array[i] + (closed_K_array[i] @ np.expand_dims(x - x_array[i], axis=2))[:, :, 0]
+    #             u = np.clip(u, self.act_low, self.act_high)
+    #
+    #             # store updated state/action
+    #             opt_x_array.append(x)
+    #             opt_u_array.append(u)
+    #
+    #             x_prime = self.dynamics_model.predict(x, u)
+    #             reward = self._env.reward(x, u, x_prime)
+    #             reward_array.append(reward)
+    #             opt_J_val += -reward
+    #             x = x_prime
+    #
+    #         # Stop if convergence (J_val > opt_J_val and |J_val - opt_J_val| / |J_val| < threshold)
+    #         # Maybe decreasing max_forward_iters has same effect
+    #         delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
+    #         if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
+    #             # store updated x, u array (CLIPPED), J_val
+    #             optimized_action = opt_u_array[0]
+    #             # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
+    #             # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
+    #             # self.x_array, self.u_array = opt_x_array, opt_u_array
+    #             # self.J_val = opt_J_val
+    #             self.u_array = np.stack(opt_u_array, axis=0)
+    #             forward_accept = True
+    #         else:
+    #             # continue line search
+    #             alpha /= self.alpha_decay_factor
+    #             forward_pass_counter += 1
+    #
+    #         if J_val > opt_J_val:
+    #             logger.log(f'at itr {forward_pass_counter}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
+    #
+    #     if forward_accept:
+    #         logger.log(f'forward pass accepted after {forward_pass_counter} failed iterations')
+    #         self._decrease_mu()
+    #         return optimized_action, backward_accept, forward_accept, (-J_val, -opt_J_val, -delta_J_alpha), reward_array
+    #     else:
+    #         logger.log(f'foward pass not accepted')
+    #         self._increase_mu()
+    #         return optimized_action, backward_accept, forward_accept, None, None
 
-    def update_x_u_for_one_step(self, obs):
-        u_array = self.u_array_val
-        optimized_action = u_array[0]
-        backward_accept, forward_accept = False, False
+    def get_actions(self, obs):
+        self._reset_mu()
 
-        """
-        Derivatives
-        """
-        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs}
-        sess = tf.get_default_session()
-        x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = sess.run(
-            list(self.utils_sym_dict.values()),
-            feed_dict=feed_dict,
-        )
+        for itr in range(self.num_ilqr_iters):
+            """
+            Derivatives
+            """
+            # compute: x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
+            feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs}
+            sess = tf.get_default_session()
+            utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
+
+            for env_idx, utils in enumerate(utils_by_env):
+                outputs = self.get_action_per_env(env_idx, utils)
+
+                if self.verbose and outputs is not None:
+                    old_returns, new_returns, diff = outputs
+                    logger.logkv(f'{env_idx}-PlannerPrevReturn', old_returns)
+                    logger.logkv(f'{env_idx}-PlannerReturn', new_returns)
+                    logger.logkv(f'{env_idx}-ExpectedDiff', diff)
+                    logger.logkv(f'{env_idx}-ActualDiff', new_returns - old_returns)
+
+            if self.verbose:
+                logger.logkv('Itr', itr)
+                logger.dumpkvs()
+
+        optimized_action = self.u_array_val[0, :, :]
+
+        # shift
+        self.shift_u_array(u_new=None)
+
+        return optimized_action, []
+
+    def get_action_per_env(self, idx, utils_list):
+        x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        u_array = self.u_array_val[:, idx, :]
+
         """
         Backward Pass
         """
+        backward_accept = False
         backward_pass_counter = 0
-        while not backward_accept and backward_pass_counter < self.max_backward_iters:# and self.mu <= self.mu_max:
+        while not backward_accept and backward_pass_counter < self.max_backward_iters:
             # initialize
-            V_prime_xx, V_prime_x = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)  # l_x[-1], l_xx[-1]
+            V_prime_xx, V_prime_x = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)
             open_k_array, closed_K_array = [], []
             delta_J_1, delta_J_2 = 0, 0
+            mu, _ = self.param_array[idx]
 
             try:
                 # backward pass
@@ -201,15 +348,11 @@ class DyniLQRPlanner(object):
                     # compute Q
                     Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
                     if self.reg_str == 'Q':
-                        Q_uu_reg = Q_uu + self.mu * np.eye(self.act_dim)
+                        Q_uu_reg = Q_uu + mu * np.eye(self.act_dim)
                     elif self.reg_str == 'V':
-                        Q_uu_reg = Q_uu + self.mu * f_u[i].T @ f_u[i]
+                        Q_uu_reg = Q_uu + mu * f_u[i].T @ f_u[i]
                     else:
                         raise NotImplementedError
-
-                        # Q_uu_no_reg = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
-                        # logger.log('Q_uu_no_reg min eigen value', np.min(np.linalg.eigvals(Q_uu_no_reg)))
-                        # logger.log('Q_uu min eigen value', np.min(np.linalg.eigvals(Q_uu)))
 
                     if not np.allclose(Q_uu, Q_uu.T):
                         print(Q_uu)
@@ -224,51 +367,44 @@ class DyniLQRPlanner(object):
                     if self.reg_str == 'Q':
                         Q_ux_reg = Q_ux
                     elif self.reg_str == 'V':
-                        Q_ux_reg = Q_ux + self.mu * f_u[i].T @ f_x[i]
+                        Q_ux_reg = Q_ux + mu * f_u[i].T @ f_x[i]
                     else:
                         raise NotImplementedError
 
                     # compute control matrices
-                    # Q_uu_inv = np.linalg.inv(Q_uu)
-                    k = - Q_uu_reg_inv @ Q_u  # k
-                    K = - Q_uu_reg_inv @ Q_ux_reg  # K
-                    # k = - np.linalg.solve(Q_uu_reg, Q_u)
-                    # K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
+                    k = - Q_uu_reg_inv @ Q_u
+                    K = - Q_uu_reg_inv @ Q_ux_reg
                     open_k_array.append(k)
                     closed_K_array.append(K)
                     delta_J_1 += k.T @ Q_u
                     delta_J_2 += k.T @ Q_uu @ k
 
                     # prepare for next i
-                    # V_prime_x = Q_x + Q_u @ feedback_gain
-                    # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
                     V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
                     V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
                     V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
 
-                # self._decrease_mu()
                 backward_accept = True
 
             except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
-                logger.log(f'i = {i}, mu = {self.mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
-                self._increase_mu()
+                logger.log(f'backward_pass_counter = {backward_pass_counter}, i = {i}, mu = {mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
+                self._increase_mu(idx)
                 backward_pass_counter += 1
 
         if not backward_accept:
-            logger.log(f'backward not accepted with mu = {self.mu}')
-            return None, backward_accept, forward_accept, None, None
+            logger.log(f'backward not accepted with mu = {mu}')
+            return None
 
         """
         Forward Pass (stop if 0 < c_1 < z)
         """
+        forward_accept = False
         alpha = 1.0
         forward_pass_counter = 0
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
-            assert np.allclose(obs, x_array[0])
-            x = obs  #x_array[0]
+            x = x_array[0]
             opt_x_array, opt_u_array = [], []
-            reward_array = []
             opt_J_val = 0
 
             # forward pass
@@ -279,69 +415,56 @@ class DyniLQRPlanner(object):
                 # store updated state/action
                 opt_x_array.append(x)
                 opt_u_array.append(u)
-                time.sleep(0.004)
-                x, reward = self._f(x, u)
-                reward_array.append(reward)
-                opt_J_val += -reward
+                x_prime= self.dynamics_model.predict(x[None], u[None])[0]
+                reward = self._env.reward(x, u, x_prime)
+                opt_J_val += -self.discount**i * reward
+                x = x_prime
 
-            # Stop if convergence (J_val > opt_J_val and |J_val - opt_J_val| / |J_val| < threshold)
-            # Maybe decreasing max_forward_iters has same effect
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
-                # store updated x, u array (CLIPPED), J_val
-                optimized_action = opt_u_array[0]
-                # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-                # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
-                # self.x_array, self.u_array = opt_x_array, opt_u_array
-                # self.J_val = opt_J_val
-                self.u_array = np.stack(opt_u_array, axis=0)
+                # store updated u array (CLIPPED)
+                self.u_array_val[:, idx, :] = np.stack(opt_u_array, axis=0)
                 forward_accept = True
             else:
                 # continue line search
                 alpha /= self.alpha_decay_factor
                 forward_pass_counter += 1
 
-            if J_val > opt_J_val:
-                logger.log(f'at itr {forward_pass_counter}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
+            # if J_val > opt_J_val:
+            #     logger.log(f'at itr {forward_pass_counter}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
 
         if forward_accept:
-            logger.log(f'forward pass accepted after {forward_pass_counter} failed iterations')
-            self._decrease_mu()
-            return optimized_action, backward_accept, forward_accept, (-J_val, -opt_J_val, -delta_J_alpha), reward_array
+            logger.log(f'backward_pass, forward pass accepted after {backward_pass_counter, forward_pass_counter} failed iterations')
+            self._decrease_mu(idx)
+            return -J_val, -opt_J_val, -delta_J_alpha
         else:
-            logger.log(f'foward pass not accepted')
-            self._increase_mu()
-            return optimized_action, backward_accept, forward_accept, None, None
+            logger.log(f'forward pass not accepted with mu = {mu}')
+            self._increase_mu(idx)
+            return None
 
-    def _decrease_mu(self):
-        self.delta = min(1, self.delta) / self.delta_0
-        self.mu *= self.delta
-        if self.mu < self.mu_min:
-            self.mu = 0.0
+    def _decrease_mu(self, idx):
+        mu, delta = self.param_array[idx]
+        delta = min(1, delta) / self.delta_0
+        mu *= delta
+        if mu < self.mu_min:
+            mu = 0.0
+        self.param_array[idx] = (mu, delta)
 
-    def _increase_mu(self):
-        # adapt delta, mu
-        self.delta = max(1.0, self.delta) * self.delta_0
-        self.mu = max(self.mu_min, self.mu * self.delta)
-        if self.mu > self.mu_max:
-            RuntimeWarning(f'self.mu = {self.mu} > self.mu_max')
+    def _increase_mu(self, idx):
+        mu, delta = self.param_array[idx]
+        delta = max(1.0, delta) * self.delta_0
+        mu = max(self.mu_min, mu * delta)
+        if mu > self.mu_max:
+            RuntimeWarning(f'self.mu = {mu} > self.mu_max')
+        self.param_array[idx] = (mu, delta)
 
     def _reset_mu(self):
-        self.mu = self.mu_init
-        self.delta = self.delta_init
-
-    def perturb_u_array(self):
-        self._reset_mu()
-
-        u_array = self.u_array + np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
-        u_array = np.clip(u_array, a_min=self.act_low, a_max=self.act_high)
-        self.u_array = u_array
-        # self.x_array, self.J_val = None, None
+        self.param_array = [(self.mu_init, self.delta_init) for _ in range(self.num_envs)]
 
     def reset_u_array(self):
-        self._reset_mu()
+        # self._reset_mu()
 
-        u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
+        u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.num_envs, self.act_dim))
         self.u_array_val = u_array
 
     def shift_u_array(self, u_new):
@@ -350,14 +473,11 @@ class DyniLQRPlanner(object):
         :param u_new: (act_dim,)
         :return:
         """
-        self._reset_mu()
+        # self._reset_mu()
         if u_new is None:
-            # u_new = np.mean(self.u_array, axis=0) + np.random.normal(loc=0, scale=0.05, size=(self.act_dim,))
-            # self.u_array = np.roll(self.u_array, -1, axis=0)
-            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
+            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
 
-        self.u_array_val = np.concatenate([self.u_array_val[1:, :], u_new[None]])
-        # self.x_array, self.J_val = None, None
+        self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
 
 
 def chol_inv(matrix):
