@@ -3,15 +3,15 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5-2-walker"
+EXP_NAME = "gym3-Q0-ant"
 
 from pdb import set_trace as st
-from meta_mb.algos.sac_edit import SAC_MB
+from meta_mb.algos.sac3 import SAC3
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
+from meta_mb.envs.mujoco import *
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_edit_trainer import Trainer
+from meta_mb.trainers.sac3_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
@@ -19,7 +19,7 @@ from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_full import ProbMLPDynamicsEnsembleFull
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -82,7 +82,7 @@ def run_experiment(**kwargs):
         )
 
 
-        dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
+        dynamics_model = ProbMLPDynamicsEnsembleFull('dynamics-ensemble',
                                                 env=env,
                                                 num_models=kwargs['num_models'],
                                                 hidden_sizes=kwargs['dynamics_hidden_sizes'],
@@ -95,7 +95,7 @@ def run_experiment(**kwargs):
                                                 )
 
 
-        algo = SAC_MB(
+        algo = SAC3(
             policy=policy,
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
@@ -151,7 +151,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -168,26 +168,26 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 25]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200, 50],
+		'dynamics_model_max_epochs': [400, 200],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
+		'q_functioin_type':[0],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[3,5,10],
+		'num_actions_per_next_observation':[0],
         'H': [0],
-        'T': [1],
+        'T': [0],
 		'reward_scale': [1],
 		'target_entropy': [0.5, 1],
 		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
 
-        'policy_hidden_nonlinearity': ['relu', 'tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'aux_hidden_dim':[256],
 
 

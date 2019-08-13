@@ -4,12 +4,14 @@ import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
-from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
+from meta_mb.dynamics.mlp_dynamics_full import MLPDynamicsModelFull
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
+from pdb import set_trace as st
 
-class MLPDynamicsEnsemble(MLPDynamicsModel):
+
+class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
     """
     Class for MLP continous dynamics model
     """
@@ -181,7 +183,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         act_test_batches = []
         delta_test_batches = []
 
-        delta = obs_next - obs
+        delta = obs_next[:, :self.obs_space_dims] - obs
+        delta = np.concatenate([delta, obs_next[:, self.obs_space_dims:]], axis = -1)
         for i in range(self.num_models):
             obs_train, act_train, delta_train, obs_test, act_test, delta_test = train_test_split(obs, act, delta,
                                                                                                  test_split_ratio=valid_split_ratio)
@@ -643,7 +646,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
     def compute_normalization(self, obs, act, delta):
         assert len(obs) == len(act) == len(delta) == self.num_models
         assert all([o.shape[0] == d.shape[0] == a.shape[0] for o, a, d in zip(obs, act, delta)])
-        assert all([d.shape[1]-1 == o.shape[1] for d, o in zip(obs, delta)])
+        assert all([d.shape[1]-2 == o.shape[1] for o,d in zip(obs, delta)])
 
         # store means and std in dict
         self.normalization = []

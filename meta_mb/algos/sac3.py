@@ -17,7 +17,7 @@ def td_target(reward, discount, next_value):
     return reward + discount * next_value
 
 
-class SAC_MB3(Algo):
+class SAC3(Algo):
     """Soft Actor-Critic (SAC)
     References
     ----------
@@ -82,7 +82,7 @@ class SAC_MB3(Algo):
                 a likelihood ratio based estimator otherwise.
         """
 
-        super(SAC_MB3, self).__init__(policy)
+        super(SAC3, self).__init__(policy)
 
         self.name = name
         self.policy = policy
@@ -609,9 +609,6 @@ class SAC_MB3(Algo):
                 expanded_next_observation, rewards, dones = self.dynamics_model.predict_sym(expanded_obs, expanded_actions, shuffle = False)
                 dist_info_sym = self.policy.distribution_info_sym(expanded_next_observation)
                 expanded_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                # rewards = self.training_environment.tf_reward(expanded_obs, expanded_actions, expanded_next_observation)
-                # rewards = tf.expand_dims(rewards, axis=-1)
-                # dones = tf.cast(self.training_environment.tf_termination_fn(expanded_obs, expanded_actions, expanded_next_observation), rewards.dtype)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
                 else:

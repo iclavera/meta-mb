@@ -139,7 +139,8 @@ class Trainer(object):
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
-                self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], all_samples[3], all_samples[4]], axis = -1),
+                expanded_rewards, expanded_dones = np.expand_dims(all_samples[3], axis = -1), np.expand_dims(all_samples[4], axis = -1)
+                self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], expanded_rewards, expanded_dones], axis = -1),
                                         epochs=self.dynamics_model_max_epochs, verbose=False,
                                         log_tabular=True, prefix='Model-')
                 logger.logkv('Fit model time', time.time() - fit_start)
@@ -155,7 +156,8 @@ class Trainer(object):
                             random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
                             actions_from_policy = self.policy.get_actions(random_states)[0]
                             next_obs, rewards, dones = self.dynamics_model.predict(random_states, actions_from_policy)
-                            dones = sigmoid(dones)
+                            dones = np.reshape(sigmoid(dones), [-1])
+                            rewards = np.reshape(rewards, [-1])
                             self.model_replay_buffer.add_samples(random_states,
                                                                  actions_from_policy,
                                                                  rewards,

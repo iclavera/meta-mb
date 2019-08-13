@@ -9,7 +9,7 @@ from meta_mb.logger import logger
 from collections import OrderedDict
 
 
-class MLPDynamicsModel(Serializable):
+class MLPDynamicsModelFull(Serializable):
     """
     Class for MLP continous dynamics model
     """
