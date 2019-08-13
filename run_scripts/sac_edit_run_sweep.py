@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5T-2"
+EXP_NAME = "mb-Q5T-2-hopper"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -150,7 +150,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -167,10 +167,10 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200, 400],
+		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[5],
 		'q_target_type': [1],
@@ -179,14 +179,14 @@ if __name__ == '__main__':
         'T': [2, 3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [4],
 		'model_used_ratio': [1, 0.5],
 		'dynamics_buffer_size': [1e4],
 
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['tanh'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
 
 
         # Problem Conf

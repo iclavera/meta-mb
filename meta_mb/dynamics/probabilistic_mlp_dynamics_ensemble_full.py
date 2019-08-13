@@ -190,7 +190,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
         self._networks = mlps
 
 
-    def predict_sym(self, obs_ph, act_ph):
+    def predict_sym(self, obs_ph, act_ph, shuffle=True):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
         :param obs_ph: (batch_size, obs_space_dims)
@@ -200,9 +200,10 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
         original_obs = obs_ph
 
         # shuffle
-        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
-        perm = tf.random.shuffle(perm)
-        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        if shuffle:
+            perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+            perm = tf.random.shuffle(perm)
+            obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
         delta_preds = []
@@ -238,8 +239,16 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
         pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
         pred_rewards = delta_preds[:, self.obs_space_dims:self.obs_space_dims+1]
         pred_dones = tf.nn.sigmoid(delta_preds[:, self.obs_space_dims+1:])
+
+        if shuffle:
+            perm_inv = tf.invert_permutation(perm)
+            # next_obs = clip(obs + delta_pred
+            next_obs = original_obs + pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
+        else:
+            next_obs = original_obs + delta_preds
         # pred_dones = tf.nn.sigmoid(pred_dones)
         return pred_obs, pred_rewards, pred_dones
+
 
 
     def predict(self, obs, act, pred_type='rand', deterministic=False, return_infos=False):

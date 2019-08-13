@@ -256,7 +256,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         return dict(mean=mean, var=log_std)
     """
 
-    def predict_sym(self, obs_ph, act_ph):
+    def predict_sym(self, obs_ph, act_ph, shuffle=True):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
         :param obs_ph: (batch_size, obs_space_dims)
@@ -264,11 +264,11 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         :return: (batch_size, obs_space_dims)
         """
         original_obs = obs_ph
-
         # shuffle
-        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
-        perm = tf.random.shuffle(perm)
-        obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        if shuffle:
+            perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+            perm = tf.random.shuffle(perm)
+            obs_ph, act_ph = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
         delta_preds = []
@@ -288,22 +288,27 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               )
 
-                    mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
-                    logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
-                    logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
-                    delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
-                    # denormalize
-                    delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
-                    delta_preds.append(delta_pred)
+                mean, logvar = tf.split(mlp.output_var, 2, axis=-1)
+                logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+                logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+                delta_pred = mean + tf.random.normal(shape=tf.shape(mean)) * tf.exp(logvar)
+                # denormalize
+                delta_pred = delta_pred * self._std_delta_var[i] + self._mean_delta_var[i]
+                delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
 
         # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        delta_preds = tf.gather(delta_preds, perm_inv)
-        pred_obs = tf.clip_by_value(original_obs + delta_preds, -1e2, 1e2)
-        return pred_obs
+        if shuffle:
+            perm_inv = tf.invert_permutation(perm)
+            # next_obs = clip(obs + delta_pred
+            next_obs = original_obs + tf.gather(delta_preds, perm_inv)
+        else:
+            next_obs = original_obs + delta_preds
+        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
+        return next_obs
 
+        
     def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
