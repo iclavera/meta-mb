@@ -6,7 +6,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 EXP_NAME = "steve"
 
 # from pdb import set_trace as st
-# from meta_mb.algos.sac_edit import SAC_MB
+from meta_mb.algos.steve import STEVE
 # from experiment_utils.run_sweep import run_sweep
 # from meta_mb.utils.utils import set_seed, ClassEncoder
 # from meta_mb.envs.mb_envs import *
@@ -58,32 +58,26 @@ def run_experiment(**kwargs):
         #                            action_dim=action_dim,
         #                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
         #
-        policy = GaussianMLPPolicy(
-            name="policy",
-            obs_dim=np.prod(env.observation_space.shape),
-            action_dim=np.prod(env.action_space.shape),
-            hidden_sizes=kwargs['policy_hidden_sizes'],
-            learn_std=kwargs['policy_learn_std'],
-            output_nonlinearity=kwargs['policy_output_nonlinearity'],
-            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-            squashed=True
+        # policy = GaussianMLPPolicy(
+        #     name="policy",
+        #     obs_dim=np.prod(env.observation_space.shape),
+        #     action_dim=np.prod(env.action_space.shape),
+        #     hidden_sizes=kwargs['policy_hidden_sizes'],
+        #     learn_std=kwargs['policy_learn_std'],
+        #     output_nonlinearity=kwargs['policy_output_nonlinearity'],
+        #     hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+        #     squashed=True
+        # )
+        #
+        env_sampler = BaseSampler(
+            env=env,
+            policy=policy,
+            num_rollouts=kwargs['num_rollouts'],
+            max_path_length=kwargs['max_path_length'],
+
         )
-        #
-        # env_sampler = BaseSampler(
-        #     env=env,
-        #     policy=policy,
-        #     num_rollouts=kwargs['num_rollouts'],
-        #     max_path_length=kwargs['max_path_length'],
-        #
-        # )
-        #
-        # env_sample_processor = ModelSampleProcessor(
-        #     baseline=baseline,
-        #     discount=kwargs['discount'],
-        #     gae_lambda=kwargs['gae_lambda'],
-        #     normalize_adv=kwargs['normalize_adv'],
-        #     positive_adv=kwargs['positive_adv'],
-        # )
+
+
 
 
         dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
@@ -99,28 +93,14 @@ def run_experiment(**kwargs):
                                                 )
 
 
-        algo = SAC_MB(
-            policy=policy,
+        algo = STEVE(
             discount=kwargs['discount'],
             learning_rate=kwargs['learning_rate'],
-            target_entropy=kwargs['target_entropy'],
             env=env,
-            dynamics_model=dynamics_model,
+            dynamics=dynamics_model,
             obs_dim = obs_dim,
             action_dim = action_dim,
-            Qs=Qs,
-            Q_targets=Q_targets,
             reward_scale=kwargs['reward_scale'],
-            num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-            prediction_type=kwargs['prediction_type'],
-            T=kwargs['T'],
-			q_functioin_type=kwargs['q_functioin_type'],
-			q_target_type=kwargs['q_target_type'],
-			H=kwargs['H'],
-			model_used_ratio=kwargs['model_used_ratio'],
-			experiment_name=EXP_NAME,
-			exp_dir=exp_dir,
-            target_update_interval=kwargs['n_train_repeats'],
         )
 
         trainer = Trainer(

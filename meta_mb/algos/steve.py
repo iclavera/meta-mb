@@ -3,13 +3,11 @@ from builtins import zip
 
 import tensorflow as tf
 import numpy as np
-import nn
-
+from meta_mb.dynamics import nn
 
 class STEVE(Algo):
     def __init__(
         self,
-        policy,
         env,
         obs_dim,
         act_dim,
@@ -26,7 +24,6 @@ class STEVE(Algo):
     ):
     super(STEVE, self).__init__(policy)
     self.name = "STEVE"
-    self.policy = policy
     self.env = env
     self.obs_dim = obs_dim
     self.act_dim = act_dim
@@ -42,7 +39,7 @@ class STEVE(Algo):
 
 
     with tf.variable_scope(self.name):
-      # self.policy = nn.FeedForwardNet('policy', self.obs_dim, [self.action_dim], layers=4, hidden_dim=self.hidden_dim, get_uncertainty=False)
+      self.policy = nn.FeedForwardNet('policy', self.obs_dim, [self.action_dim], layers=4, hidden_dim=self.hidden_dim, get_uncertainty=False)
 
       if self.bayesian_config:
         self.Q = nn.EnsembleFeedForwardNet('Q', self.obs_dim + self.action_dim, [], layers=4, hidden_dim=self.hidden_dim, get_uncertainty=True, ensemble_size=self.bayesian_config["ensemble_size"], train_sample_count=self.bayesian_config["train_sample_count"], eval_sample_count=self.bayesian_config["eval_sample_count"])
@@ -57,6 +54,15 @@ class STEVE(Algo):
 
     self.copy_to_old_ops = [tf.assign(p_old, p) for p_old, p in zip(self.old_Q.params_list, self.Q.params_list)]
     self.assign_epoch_op = [tf.assign(self.epoch_n, self.epoch_n_placeholder), tf.assign(self.update_n, self.update_n_placeholder), tf.assign(self.frame_n, self.frame_n_placeholder), tf.assign(self.hours, self.hours_placeholder]
+
+ def make_loader_placeholders(self):
+    self.obs_loader = tf.placeholder(tf.float32, [self.learner_config["batch_size"], np.prod(self.env_config["obs_dims"])])
+    self.next_obs_loader = tf.placeholder(tf.float32, [self.learner_config["batch_size"], np.prod(self.env_config["obs_dims"])])
+    self.action_loader = tf.placeholder(tf.float32, [self.learner_config["batch_size"], self.env_config["action_dim"]])
+    self.reward_loader = tf.placeholder(tf.float32, [self.learner_config["batch_size"]])
+    self.done_loader = tf.placeholder(tf.float32, [self.learner_config["batch_size"]])
+    self.datasize_loader = tf.placeholder(tf.float64, [])
+    return [self.obs_loader, self.next_obs_loader, self.action_loader, self.reward_loader, self.done_loader, self.datasize_loader]
 
   def update_epoch(self, sess, epoch, updates, frames, hours):
     sess.run(self.assign_epoch_op, feed_dict={self.epoch_n_placeholder: int(epoch), self.update_n_placeholder: int(updates), self.frame_n_placeholder: int(frames), self.hours_placeholder: float(hours)})

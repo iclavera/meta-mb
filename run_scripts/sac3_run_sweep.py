@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym3-Q0-ant"
+EXP_NAME = "gym3-Q3-1-hopper"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac3 import SAC3
@@ -141,8 +141,8 @@ def run_experiment(**kwargs):
             restore_path=save_model_dir+kwargs['restore_path'],
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
-            aux_hidden_dim=kwargs['aux_hidden_dim'],,
-            done_bar=kwargs['done_bar']
+            aux_hidden_dim=kwargs['aux_hidden_dim'],
+            done_bar=kwargs['done_bar'],
         )
 
         trainer.train()
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [22, 33],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -170,22 +170,22 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 25]],
+		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [400, 200],
+		'dynamics_model_max_epochs': [200, 50],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[0],
+		'q_functioin_type':[3],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[0],
         'H': [0],
-        'T': [0],
+        'T': [1, 2, 3],
 		'reward_scale': [1],
-		'target_entropy': [0.5, 1],
+		'target_entropy': [1, 0.5],
 		'num_models': [4, 8],
 		'model_used_ratio': [0],
 		'dynamics_buffer_size': [1e4],
-        'done_bar': [0.9, 1.0],
+        'done_bar': [1.0, 0.9],
 
         'policy_hidden_nonlinearity': ['relu'],
 
