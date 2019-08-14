@@ -368,16 +368,16 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [False],
         'predict_action': [False],
-        'rew_contrastive': [True, False],
+        'rew_contrastive': [False],
         'action_contrastive':[False],
         'cpc_epoch': [0],
         'cpc_lr': [5e-4],
         'cpc_initial_epoch': [0],
         'cpc_initial_lr': [1e-3],
-        'cpc_num_initial_rollouts': [16],
+        'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [300],
-        'rew_loss_weight': [1, 10],
+        'rew_loss_weight': [0],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     config_normalize['cpc_num_initial_rollouts'] = [16]
     config_normalize['cpc_initial_epoch'] = [10]
     config_normalize['model_grad_thru_enc'] = [True]
-    config_normalize['cpc_loss_weight'] = [100, 1000]
+    config_normalize['cpc_loss_weight'] = [10, 50, 300]
 
     # 2 variants
     config_predac_l2 = config_withreward_l2.copy()
@@ -407,9 +407,10 @@ if __name__ == '__main__':
     # 1 variant
     config_predac_contr = config_predac_l2.copy()
     config_predac_contr['action_contrastive'] = [True]
-    config_predac_contr['cpc_loss_weight'] = [100.]
+    config_predac_contr['cpc_loss_weight'] = [10, 300]
+    config_predac_contr['cpc_initial_epoch'] = [30]
 
-    configs = [config_withreward_l2, config_withreward_contrastive]
+    configs = [config_normalize, config_predac_contr]
 
     i = 0
     run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
