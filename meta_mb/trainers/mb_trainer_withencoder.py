@@ -148,14 +148,12 @@ class Trainer(object):
                                           self.cpc_batch_size, terms=self.cpc_terms,
                                           negative_samples=self.cpc_negative_samples,
                                           predict_terms=self.cpc_predict_terms,
-                                          negative_same_traj=self.cpc_negative_same_traj,
-                                          predict_action=self.cpc_predict_action,)
+                                          negative_same_traj=self.cpc_negative_same_traj,)
             validation_data = CPCDataGenerator(empty_imgs.copy(), empty_acs.copy(), empty_rews.copy(),
                                                self.cpc_batch_size, terms=self.cpc_terms,
                                                negative_samples=self.cpc_negative_samples,
                                                predict_terms=self.cpc_predict_terms,
-                                               negative_same_traj=self.cpc_negative_same_traj,
-                                               predict_action=self.cpc_predict_action,)
+                                               negative_same_traj=self.cpc_negative_same_traj,)
             if self.cpc_initial_epoch > 0:
                 # for (x, a, y), labels in train_data:
                 #     plot_seq(x[0], y, labels, name='reacher-seq')q
