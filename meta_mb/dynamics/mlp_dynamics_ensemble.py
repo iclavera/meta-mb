@@ -517,7 +517,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     assert self.normalize_input
                     in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    in_act_var = (act_ph[i] - self._mean_act_var[i])/(self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
                               output_dim=self.obs_space_dims,

@@ -99,7 +99,7 @@ class MLPDynamicsModel(Serializable):
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             verbose=False, valid_split_ratio=None,
-            rolling_average_persitency=None, log_tabular=False, early_stopping=True):
+            rolling_average_persitency=None, log_tabular=False, early_stopping=True, prefix=''):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)

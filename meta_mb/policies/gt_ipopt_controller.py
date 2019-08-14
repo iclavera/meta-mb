@@ -50,20 +50,12 @@ class GTIpoptController(Serializable):
         self.reward_model = reward_model
         self.discount = discount
         self.method_str = method_str
-        self.dyn_pred_str = dyn_pred_str
         self.initializer_str = initializer_str
         self.reg_coef = reg_coef
         assert 0 <= self.reg_coef <= 1
-        self.reg_str = reg_str
         self.n_candidates = n_candidates
         self.horizon = horizon
         self.max_path_length = max_path_length
-        self.num_cem_iters = num_cem_iters
-        self.num_opt_iters = num_opt_iters
-        self.num_collocation_iters = num_collocation_iters
-        self.num_ddp_iters = num_ddp_iters
-        self.persistency= persistency
-        self.opt_learning_rate = opt_learning_rate
         self.eps = eps
         self.num_envs = num_rollouts
         self.percent_elites = percent_elites
@@ -72,8 +64,6 @@ class GTIpoptController(Serializable):
         self.use_reward_model = use_reward_model
         self.alpha = alpha
         self.num_particles = num_particles
-        self.clip_norm = clip_norm
-        self.lmbda = lmbda
         self.policy_filter = policy_filter
 
         self.unwrapped_env = env

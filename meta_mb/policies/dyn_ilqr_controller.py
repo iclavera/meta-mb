@@ -1,10 +1,8 @@
 from meta_mb.utils.serializable import Serializable
 import numpy as np
-import tensorflow as tf
 from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.logger import logger
 import copy
-import time
 
 
 class DyniLQRController(Serializable):
@@ -127,7 +125,11 @@ class DyniLQRController(Serializable):
         :param dones:
         :return:
         """
-        self.planner.reset_u_array()
+        pass
+
+    def warm_reset(self, u_array):
+        logger.log('planner resets with collected samples...')
+        self.planner.reset_u_array(u_array[:self.horizon, :, :])
 
     def log_diagnostics(*args):
         pass

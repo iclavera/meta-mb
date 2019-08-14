@@ -63,12 +63,12 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def reward(self, obs, acts, next_obs):
         if next_obs is not None:
             assert obs.shape == next_obs.shape
-        if obs.n_dim == 2:
+        if obs.ndim == 2:
             assert obs.shape[0] == acts.shape[0]
             reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
             reward_run = obs[:, 8]
             reward = reward_run + reward_ctrl
-        elif obs.n_dim == 1:
+        elif obs.ndim == 1:
             reward_ctrl = -0.1 * np.sum(np.square(acts))
             reward_run = obs[8]
             reward = reward_run + reward_ctrl  # scalar

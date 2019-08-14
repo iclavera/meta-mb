@@ -5,12 +5,14 @@ from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics import ProbMLPDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
+import joblib
 import os
 import tensorflow as tf
 
@@ -34,7 +36,7 @@ def run_experiment(**config):
         repr = f"{config['controller_str']}-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = max_path_length = 50
+        config['max_path_length'] = max_path_length = 100
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = max_path_length = 100
@@ -44,6 +46,12 @@ def run_experiment(**config):
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = max_path_length = 50
+
+    if config.get('model_path', None) is not None:
+        config['fit_model'] = False
+        config['n_itr'] = 1
+        config['initial_random_samples'] = False
+        config['initial_sinusoid_samples'] = False
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -58,32 +66,66 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        if config['dyn_str'] == 'model':
-            dynamics_model = MLPDynamicsModel(
-                name="dyn_model",
-                env=env,
-                learning_rate=config['learning_rate'],
-                hidden_sizes=config['hidden_sizes_model'],
-                weight_normalization=config['weight_normalization_model'],
-                valid_split_ratio=config['valid_split_ratio'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                batch_size=config['batch_size_model'],
-            )
+        if config.get('model_path', None) is not None:
+            data = joblib.load(config['model_path'])
+            dynamics_model = data['dynamics_model']
+            assert dynamics_model.obs_space_dims == env.observation_space.shape[0]
+            assert dynamics_model.action_space_dims == env.action_space.shape[0]
 
-        elif config['dyn_str'] == 'ensemble':
-            dynamics_model = MLPDynamicsEnsemble(
-                name="dyn_model",
-                env=env,
-                learning_rate=config['learning_rate'],
-                hidden_sizes=config['hidden_sizes_model'],
-                weight_normalization=config['weight_normalization_model'],
-                num_models=config['num_models'],
-                valid_split_ratio=config['valid_split_ratio'],
-                rolling_average_persitency=config['rolling_average_persitency'],
-                hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                batch_size=config['batch_size_model'],
-            )
+        else:
+            if config['dyn_str'] == 'model':
+                dynamics_model = MLPDynamicsModel(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+
+            elif config['dyn_str'] == 'ensemble':
+                dynamics_model = MLPDynamicsEnsemble(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+            elif config['dyn_str'] == 'prob_model':
+                dynamics_model = ProbMLPDynamics(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+            elif config['dyn_str'] == 'prob_ensemble':
+                dynamics_model = ProbMLPDynamicsEnsemble(
+                    name="dyn_model",
+                    env=env,
+                    learning_rate=config['learning_rate'],
+                    hidden_sizes=config['hidden_sizes_model'],
+                    weight_normalization=config['weight_normalization_model'],
+                    num_models=config['num_models'],
+                    valid_split_ratio=config['valid_split_ratio'],
+                    rolling_average_persitency=config['rolling_average_persitency'],
+                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                    batch_size=config['batch_size_model'],
+                )
+            else:
+                raise NotImplementedError
 
         sample_processor = ModelSampleProcessor()
 
@@ -138,8 +180,11 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        # HalfCheetah
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
+        # HalfCheetah
+        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
         'normalize': [False],
         'n_itr': [50],  # only matters for opt_policy
         'discount': [1.0,],
@@ -169,24 +214,22 @@ if __name__ == '__main__':
         'persistency': [0.9],
 
         # DDP
-        'num_ddp_iters': [5],
+        'num_ddp_iters': [10],
 
         # Training
-        'num_rollouts': [5],  # number of experts
+        'num_rollouts': [5],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
+        'dyn_str': ['model'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-
-        # MLP  # UNSUED
-        'hidden_sizes_model': [(512, 512)],  # (500, 500)
+        'hidden_sizes_model': [(512, 512)],
         'batch_size_model': [64],
         'learning_rate': [0.001],
 

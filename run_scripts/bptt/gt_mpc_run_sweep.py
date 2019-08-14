@@ -180,7 +180,7 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
         'n_itr': [1],  # only matters for opt_policy

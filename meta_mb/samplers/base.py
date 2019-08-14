@@ -23,6 +23,7 @@ class BaseSampler(object):
 
         self.env = env
         self.policy = policy
+        self.num_envs = num_rollouts
         self.max_path_length = max_path_length
 
         self.total_samples = num_rollouts * max_path_length

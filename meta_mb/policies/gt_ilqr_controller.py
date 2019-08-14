@@ -1,5 +1,5 @@
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import ParallelDDPExecutor
+from meta_mb.policies.planners.gt_ilqr_planner import GTiLQRPlanner
 import numpy as np
 from meta_mb.logger import logger
 import copy
@@ -50,7 +50,7 @@ class GTiLQRController(Serializable):
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
         self._env = copy.deepcopy(env)
-        self.planner = ParallelDDPExecutor(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
+        self.planner = GTiLQRPlanner(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
         self.executor = copy.deepcopy(env)
 
     @property
@@ -98,10 +98,10 @@ class GTiLQRController(Serializable):
 
             if backward_accept and forward_accept:
                 old_returns, new_returns, diff = planner_returns_log
-                if reward_array is not None:
-                    reward_array = np.reshape(reward_array, (-1, 5))
-                    for row in reward_array:
-                        logger.log(row)
+                # if reward_array is not None:
+                #     reward_array = np.reshape(reward_array, (-1, 5))
+                #     for row in reward_array:
+                #         logger.log(row)
                 logger.logkv('Itr', ilqr_itr_counter)
                 logger.logkv('PlannerPrevReturn', old_returns)
                 logger.logkv('PlannerReturn', new_returns)

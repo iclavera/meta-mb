@@ -1,5 +1,6 @@
 from meta_mb.dynamics.layers import MLP
 import tensorflow as tf
+from meta_mb.dynamics.utils import normalize, denormalize
 import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
@@ -136,6 +137,30 @@ class ProbMLPDynamics(MLPDynamicsModel):
         pred_obs = obs_original + delta
         return pred_obs
 
+    def predict_sym(self, obs_var, act_var):
+        assert self.normalize_input
+        with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
+            in_obs_var = normalize(obs_var, mean=self._mean_obs_var, std=self._std_obs_var)
+            in_act_var = normalize(act_var, mean=self._mean_act_var, std=self._std_act_var)
+            input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+            mlp = MLP(self.name,
+                      output_dim=2 * self.obs_space_dims,
+                      hidden_sizes=self.hidden_sizes,
+                      hidden_nonlinearity=self.hidden_nonlinearity,
+                      output_nonlinearity=self.output_nonlinearity,
+                      input_var=input_var,
+                      input_dim=self.obs_space_dims + self.action_space_dims,
+                      )
+            mean, logvar = tf.split(mlp.output_var, 2,  axis=-1)
+            logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
+            logvar = self.min_logvar + tf.nn.softplus(logvar - self.min_logvar)
+            std = tf.exp(logvar*0.5)
+            delta = tf.random.normal(shape=tf.shape(mean)) * std + mean
+            delta = denormalize(delta, mean=self._mean_delta_var, std=self._std_delta_var)
+            pred_obs = delta + obs_var
+
+        return pred_obs
+
     # FIXME: use predicy_sym instead
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
@@ -150,7 +175,7 @@ class ProbMLPDynamics(MLPDynamicsModel):
                       input_var=input_var,
                       input_dim=self.obs_space_dims + self.action_space_dims,
                       )
-        mean, log_std = tf.split(mlp.output_var, 2, axis=-1)
+        mean, log_std = tf.split(mlp.output_var, 2, axis=-1)  # FIXME: should be log_var??
         mean = mean * self._std_delta_var + self._mean_delta_var + obs_var
         log_std = log_std + tf.log(self._std_delta_var)
         return dict(mean=mean, log_std=log_std)
