@@ -77,7 +77,6 @@ class HopperEnv(MetaEnv, MujocoEnv, gym.utils.EzPickle):
                     * (height > .7) \
                     * (np.abs(angle)) < .2
         done = ~not_done
-        done = done[:,None]
         return done
 
     def reset_model(self):

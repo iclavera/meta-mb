@@ -3,13 +3,12 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5T-2-hopper"
+EXP_NAME = "gym_test-Q3-hopper"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -19,7 +18,11 @@ from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_full import ProbMLPDynamicsEnsembleFull
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+
+from meta_mb.envs.mujoco import *
+# from meta_mb.envs.mb_envs import *
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -33,6 +36,7 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
+
     with sess.as_default() as sess:
 
         # Instantiate classes
@@ -81,18 +85,33 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-
-        dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
-                                                env=env,
-                                                num_models=kwargs['num_models'],
-                                                hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                                hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                                output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                                batch_size=kwargs['dynamics_batch_size'],
-                                                learning_rate=kwargs['model_learning_rate'],
-                                                buffer_size=kwargs['dynamics_buffer_size'],
-												rolling_average_persitency=kwargs['rolling_average_persitency'],
-                                                )
+        assert kwargs['model_type'] == 0 or kwargs['model_type'] == 1
+        if kwargs['model_type'] == 0:
+            dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
+                                                    env=env,
+                                                    num_models=kwargs['num_models'],
+                                                    hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                    hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                    output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                                    batch_size=kwargs['dynamics_batch_size'],
+                                                    learning_rate=kwargs['model_learning_rate'],
+                                                    buffer_size=kwargs['dynamics_buffer_size'],
+    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    )
+        elif kwargs['model_type'] == 1:
+            dynamics_model = ProbMLPDynamicsEnsembleFull('dynamics-ensemble',
+                                                    env=env,
+                                                    num_models=kwargs['num_models'],
+                                                    hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                    hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                    output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                                    batch_size=kwargs['dynamics_batch_size'],
+                                                    learning_rate=kwargs['model_learning_rate'],
+                                                    buffer_size=kwargs['dynamics_buffer_size'],
+    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    )
+        else:
+            return
         algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],
@@ -114,7 +133,10 @@ def run_experiment(**kwargs):
 			model_used_ratio=kwargs['model_used_ratio'],
 			experiment_name=EXP_NAME,
 			exp_dir=exp_dir,
+            done_bar=kwargs['done_bar'],
             target_update_interval=kwargs['n_train_repeats'],
+            step_type=kwargs['step_type'],
+            dynamics_type=kwargs['model_type'],
         )
 
         trainer = Trainer(
@@ -137,7 +159,10 @@ def run_experiment(**kwargs):
             real_ratio=kwargs['real_ratio'],
             restore_path=save_model_dir+kwargs['restore_path'],
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+            done_bar=kwargs['done_bar'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
+            dynamics_type=kwargs['model_type'],
+            step_type=kwargs['step_type'],
         )
 
         trainer.train()
@@ -146,7 +171,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [22, 33],
+        'seed': [66, 55],
         'baseline': [LinearFeatureBaseline],
         'env': [HopperEnv],
         # Policy
@@ -157,6 +182,8 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_rollouts': [1],
+        'step_type': [2],
+        'model_type': [1],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -168,23 +195,24 @@ if __name__ == '__main__':
 		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [200, 50],
 		'rolling_average_persitency':[0.9],
-		'q_functioin_type':[5],
-		'q_target_type': [1],
-		'num_actions_per_next_observation':[5, 10],
-        'H': [2, 3, 5],
-        'T': [2, 3],
+		'q_functioin_type':[3],
+		'q_target_type': [0],
+		'num_actions_per_next_observation':[1],
+        'H': [0],
+        'T': [1,2,3],
 		'reward_scale': [1],
-		'target_entropy': [1],
-		'num_models': [4],
-		'model_used_ratio': [1, 0.5],
+		'target_entropy': [0.5, 1],
+		'num_models': [4, 8],
+		'model_used_ratio': [1],
+        'done_bar': [1.0],
 		'dynamics_buffer_size': [1e4],
 
-        'policy_hidden_nonlinearity': ['tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
 
 
         # Problem Conf
