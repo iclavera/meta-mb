@@ -273,7 +273,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.action_input_ph: inputs[1],
                                       self.cpc_model.y_input_ph: inputs[2],
                                       self.cpc_model.rew_input_ph: inputs[3],
-                                      self.cpc_model.rew_labels_ph: labels,
                                       self.cpc_model.labels_ph: labels})
 
                 train_feed_dict_prep_time += time.time() - time_feed_dict_start
@@ -334,7 +333,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                                       self.cpc_model.action_input_ph: inputs[1],
                                       self.cpc_model.y_input_ph: inputs[2],
                                       self.cpc_model.rew_input_ph: inputs[3],
-                                      self.cpc_model.rew_labels_ph: labels,
                                       self.cpc_model.labels_ph: labels})
                 val_feed_dict_prep_time += time.time() - time_feed_dict_start
 

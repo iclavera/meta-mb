@@ -97,20 +97,12 @@ class CPCLayer(keras.layers.Layer):
 
 class CPC:
     def __init__(self, image_shape, action_dim, include_action, terms, predict_terms, negative_samples, code_size,
-                learning_rate, encoder_arch='default', context_network='stack', context_size=32, predict_action=False,
-                 grad_penalty=True, lambd=1., rew_loss_weight=0., rew_contrastive=True, action_contrastive=False):
+                 encoder_arch='default', context_network='stack', context_size=32, grad_penalty=True, lambd=1.,
+                 rew_loss_weight=0., rew_contrastive=True, action_loss_weight=0., action_contrastive=False):
 
         self.image_shape = image_shape
 
         ''' Define the CPC network combining encoder and autoregressive model '''
-        if predict_action:
-            """
-            if predict_action, x_input will be [o_t, o_{t+k+1}]
-            y_input is of shape k x (negative + 1) x action_dim
-            """
-            include_action = False
-            terms += 1
-
         # Set learning phase (https://stackoverflow.com/questions/42969779/keras-error-you-must-feed-a-value-for-placeholder-tensor-bidirectional-1-keras)
         K.set_learning_phase(1)
 
@@ -123,45 +115,61 @@ class CPC:
         encoder_model = keras.models.Model(encoder_input, encoder_output, name='encoder')
         encoder_model.summary()
 
-        if predict_action:
-            action_encoder_input = keras.layers.Input((action_dim,))
-            action_encoder_output = action_encoder_input
-            action_encoder_model = keras.models.Model(action_encoder_input, action_encoder_output, name='action_encoder')
-
         # Define context network
         self.x_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, terms, ) + image_shape)
         x_input = keras.layers.Input(tensor=self.x_input_ph, name='x_input')
-        self.action_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, action_dim))
+        self.action_input_ph =  tf.placeholder(dtype=tf.float32,
+                                                          shape=(None, predict_terms, (negative_samples + 1), action_dim))
         action_input = keras.layers.Input(tensor=self.action_input_ph, name='action_input')
+        action_input_context = keras.layers.Input(tensor=self.action_input_ph[:, :, 0, :], name='action_input')
         x_encoded = keras.layers.TimeDistributed(encoder_model)(x_input)
 
         if context_network == 'stack':
             context = keras.layers.Reshape((code_size * terms,))(x_encoded)
-            if include_action:
-                action_flat = keras.layers.Reshape((action_dim * predict_terms, ))(action_input)
-                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
             context = keras.layers.Dense(512, activation='relu')(context)
-            context = keras.layers.Dense(context_size, name='context_output')(context)
+            context_noaction = keras.layers.Dense(context_size, activation='linear')(context)
+            if include_action:
+                action_flat = keras.layers.Reshape((action_dim * predict_terms, ))(action_input_context)
+                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context_noaction, action_flat])
+            context = keras.layers.Dense(context_size, name='context_output', activation='linear')(context)
         elif context_network == 'rnn':
             context = network_autoregressive(x_encoded)
+            context_noaction = keras.layers.Dense(context_size, activation='linear')(context)
             if include_action:
-                action_flat = keras.layers.Reshape((action_dim * predict_terms,))(action_input)
-                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context, action_flat])
+                action_flat = keras.layers.Reshape((action_dim * predict_terms,))(action_input_context)
+                context = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))([context_noaction, action_flat])
                 context = keras.layers.Dense(512, activation='relu')(context)
             context = keras.layers.Dense(context_size, name='context_output')(context)
 
         if include_action:
-            context_network = keras.models.Model(inputs=[x_input, action_input], outputs=context, name='context_network')
-        else:
-            context_network = keras.models.Model(inputs=[x_input], outputs=context, name='context_network')
-        context_network.summary()
-
-        # Define rest of the model
-        if include_action:
+            context_network = keras.models.Model(inputs=[x_input, action_input_context], outputs=context, name='context_network')
             context_output = context_network([x_input, action_input])
         else:
+            context_network = keras.models.Model(inputs=[x_input], outputs=context, name='context_network')
             context_output = context_network([x_input])
+        context_network.summary()
 
+        # =============================== for predicting next latent ==========================================
+
+        preds = network_prediction(context_output, code_size, predict_terms)
+        self.y_input_ph = tf.placeholder(dtype=tf.float32,
+                                         shape=(None, predict_terms, negative_samples + 1) + image_shape)
+        y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
+        y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
+        y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
+        y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
+
+        logits = CPCLayer()([preds, y_encoded])
+
+        # Model
+        cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
+        self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
+        self.state_loss = cross_entropy_loss(self.labels_ph, logits)
+
+        correct_class = tf.argmax(logits, axis=-1)
+        predicted_class = tf.argmax(self.labels_ph, axis=-1)
+        self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / \
+                        tf.size(correct_class)
 
         # ============================== for predicting reward =================================
         if rew_contrastive:
@@ -177,65 +185,50 @@ class CPC:
         rew_input = keras.layers.Input(tensor=self.rew_input_ph, name='rew_input')
         rew_logits = CPCLayer()([rew_preds, rew_input])
 
-        self.rew_labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
         if rew_contrastive:
-            self.rew_loss = cross_entropy_loss(self.rew_labels_ph, rew_logits)
+            self.rew_loss = cross_entropy_loss(self.labels_ph, rew_logits)
         else:
             positive_ys = tf.reshape(self.rew_input_ph[:, :, 0, :], (-1, predict_terms, 1))
             self.rew_loss = tf.reduce_mean(tf.square(positive_ys - rew_preds))
 
         rew_correct_class = tf.argmax(rew_logits, axis=-1)
-        rew_predicted_class = tf.argmax(self.rew_labels_ph, axis=-1)
+        rew_predicted_class = tf.argmax(self.labels_ph, axis=-1)
         self.rew_accuracy = tf.reduce_sum(tf.cast(tf.equal(rew_correct_class, rew_predicted_class), tf.int32)) / \
                         tf.size(rew_correct_class)
 
-        # ============================== encoded future states/action ====================================
-
-        if predict_action:
-            if action_contrastive:
-                preds = network_prediction(context_output, action_dim, predict_terms)
-            else:
-                preds = keras.layers.Dense(256, activation='relu')(context_output)
-                preds = keras.layers.Dense(256, activation='relu')(preds)
-                preds = keras.layers.Dense(predict_terms * action_dim, activation='linear')(preds)
-                preds = keras.layers.Reshape((predict_terms, action_dim))(preds)
-
+        # ============================== for predicting actions taken ====================================
+        # only predict one action, one observation ahead
+        predict_terms_temp = 1
+        assert predict_terms_temp <= predict_terms
+        action_pred_input = keras.layers.Lambda(lambda x: K.concatenate(x, axis=-1))\
+            ([context_noaction, tf.reshape(y_encoded[:, :predict_terms_temp, 0], (-1, predict_terms_temp * code_size))])
+        if action_contrastive:
+            action_preds = network_prediction(action_pred_input, action_dim, predict_terms_temp)
         else:
-            preds = network_prediction(context_output, code_size, predict_terms)
+            action_preds = keras.layers.Dense(256, activation='relu')(action_pred_input)
+            action_preds = keras.layers.Dense(256, activation='relu')(action_preds)
+            action_preds = keras.layers.Dense(predict_terms_temp * action_dim, activation='linear')(action_preds)
+            action_preds = keras.layers.Reshape((predict_terms_temp, action_dim))(action_preds)
 
-        if predict_action:
-            self.y_input_ph = y_encoded = tf.placeholder(dtype=tf.float32,
-                                             shape=(None, predict_terms, (negative_samples + 1), action_dim))
-            y_input = keras.layers.Input(tensor=self.y_input_ph, name='y_input')
-            # y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), action_dim))(y_input)
-            # y_encoded_flat = keras.layers.TimeDistributed(action_encoder_model)(y_input_flat)
-            # y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), action_dim))(y_encoded_flat)
+        action_logits = CPCLayer()([action_preds, action_input[:, :predict_terms_temp]])
 
+        if action_contrastive:
+            self.action_loss = cross_entropy_loss(self.labels_ph[:, :predict_terms_temp], action_logits)
         else:
-            self.y_input_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples+1) + image_shape)
-            y_input = keras.layers.Input(tensor=self.y_input_ph, name = 'y_input')
-            y_input_flat = keras.layers.Reshape((predict_terms * (negative_samples + 1), *image_shape))(y_input)
-            y_encoded_flat = keras.layers.TimeDistributed(encoder_model)(y_input_flat)
-            y_encoded = keras.layers.Reshape((predict_terms, (negative_samples + 1), code_size))(y_encoded_flat)
+            positive_ys = tf.reshape(self.action_input_ph[:, :predict_terms_temp, 0], (-1, predict_terms_temp, action_dim))
+            self.action_loss = tf.reduce_mean(tf.square(positive_ys - action_preds))
+
+        action_correct_class = tf.argmax(action_logits, axis=-1)
+        action_predicted_class = tf.argmax(self.labels_ph[:, :predict_terms_temp], axis=-1)
+        self.action_accuracy = tf.reduce_sum(tf.cast(tf.equal(action_correct_class, action_predicted_class), tf.int32)) / \
+                            tf.size(action_correct_class)
 
         # ======================================== Loss ================================================
-        logits = CPCLayer()([preds, y_encoded])
-
-        # Model
-        cpc_model = keras.models.Model(inputs=[x_input, action_input, y_input], outputs=logits)
-        self.labels_ph = tf.placeholder(dtype=tf.float32, shape=(None, predict_terms, negative_samples + 1))
-
-        if predict_action and not action_contrastive:
-            positive_ys = tf.reshape(self.y_input_ph[:, :, 0, :], (-1, predict_terms, action_dim))
-            self.state_loss = tf.reduce_mean(tf.square(positive_ys - preds))
-        else:
-            self.state_loss = cross_entropy_loss(self.labels_ph, logits)
-
+        self.loss = self.state_loss
         if rew_loss_weight > 0:
-            self.loss = self.state_loss + rew_loss_weight * self.rew_loss
-        else:
-            self.loss = self.state_loss
-
+            self.loss += rew_loss_weight * self.rew_loss
+        if action_loss_weight > 0:
+            self.loss += action_loss_weight * self.action_loss
 
         # ==================================== Gradient Penalty ==========================================
         self.gpenalty = tf.constant(0, dtype=tf.float32)
@@ -251,10 +244,6 @@ class CPC:
             self.loss += lambd * self.gpenalty
 
         # =================================== Train op and logging =======================================
-        correct_class = tf.argmax(logits, axis=-1)
-        predicted_class = tf.argmax(self.labels_ph, axis=-1)
-        self.accuracy = tf.reduce_sum(tf.cast(tf.equal(correct_class, predicted_class), tf.int32)) / \
-                        tf.size(correct_class)
         self.lr_ph = tf.placeholder(dtype=tf.float32)
 
         self.train_op = tf.train.AdamOptimizer(learning_rate=self.lr_ph).minimize(self.loss)
@@ -275,7 +264,6 @@ class CPC:
                                                        self.action_input_ph:inputs[1],
                                                        self.y_input_ph:inputs[2],
                                                        self.rew_input_ph: inputs[3],
-                                                       self.rew_labels_ph: labels,
                                                        self.labels_ph: labels,
                                                        self.lr_ph: lr})
         else:
@@ -284,7 +272,6 @@ class CPC:
                                                                self.action_input_ph: inputs[1],
                                                                self.y_input_ph: inputs[2],
                                                                self.rew_input_ph: inputs[3],
-                                                               self.rew_labels_ph: labels,
                                                                self.labels_ph: labels})
         return loss, acc, rew_acc
 

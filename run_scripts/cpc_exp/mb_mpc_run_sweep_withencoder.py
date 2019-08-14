@@ -52,8 +52,7 @@ def run_experiment(**config):
 
         cpc_model = CPC(config['img_shape'], raw_env.action_space.shape[0], config['include_action'],
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
-                        learning_rate=config['cpc_initial_lr'], encoder_arch='default',
-                        context_network='stack', context_size=32, predict_action=config['predict_action'],
+                        encoder_arch='default',context_network='stack', context_size=32,
                         rew_contrastive=config['rew_contrastive'], rew_loss_weight=config['rew_loss_weight'],
                         action_contrastive=config['action_contrastive'],
                         grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
