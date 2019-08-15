@@ -4,7 +4,7 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_refactor import ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics import ProbMLPDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
@@ -214,14 +214,14 @@ if __name__ == '__main__':
         'num_ddp_iters': [20],
 
         # Training
-        'num_rollouts': [1],
+        'num_rollouts': [5],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'dyn_str': ['model'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
+        'dyn_str': ['prob_ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],

@@ -364,13 +364,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         :param (boolean) whether to log training stats in tabular format
         :param verbose: logging verbosity
         """
+        if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
+        sess = tf.get_default_session()
 
         if obs is not None:
             self.update_buffer(obs, act, obs_next, valid_split_ratio, compute_normalization)
-
-        if rolling_average_persitency is None: rolling_average_persitency = self.rolling_average_persitency
-
-        sess = tf.get_default_session()
 
         if compute_normalization and self.normalize_input:
             self.compute_normalization(self._dataset_train['obs'],

@@ -56,7 +56,7 @@ class DyniLQRPlanner(object):
         returns = tf.zeros((self.num_envs,))
         for i in range(self.horizon):
             acts = self.u_array_ph[i, :, :]
-            next_obs = self.dynamics_model.predict_sym(obs, acts)
+            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='mean', deterministic=True)
 
             x_array.append(obs)
             df = self._df_sym(obs, acts, next_obs).values()
@@ -159,10 +159,12 @@ class DyniLQRPlanner(object):
                             # logger.logkv(f'ActDiff', log_info['J_val'] - log_info['opt_J_val'])
                         logger.dumpkvs()
 
-                            # sanity check  # FIXME: assertion fails with ensemble or stochastic model
-                            # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
-                            # logger.log(f'opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
-                            # assert tf_opt_J_val == -returns_dyn[env_idx]
+                        # sanity check  # FIXME: assertion fails with ensemble or stochastic model
+                        # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
+                        # logger.log(f'itr = {itr}, idx = {env_idx}, opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
+                        # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
+                        # logger.log(f'itr = {itr}, idx = {env_idx}, opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
+                        # assert tf_opt_J_val == -returns_dyn[env_idx]
                 except OverflowError:
                     active_envs.remove(env_idx)
             if len(active_envs) == 0:
@@ -288,7 +290,12 @@ class DyniLQRPlanner(object):
                 # store updated state/action
                 opt_x_array.append(x)
                 opt_u_array.append(u)
-                x_prime = self.dynamics_model.predict(x[None], u[None])[0]
+                x_prime = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
+                # # sanity check
+                # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
+                # if not np.allclose(x_prime, x_prime_second_predict):
+                #     logger.log(f'call predict twice, {x_prime}, {x_prime_second_predict}')
+                #     raise RuntimeError
                 reward = self._env.reward(x, u, x_prime)
                 opt_J_val += -self.discount**i * reward
                 x = x_prime
@@ -304,7 +311,7 @@ class DyniLQRPlanner(object):
                 forward_pass_counter += 1
 
         if forward_accept:
-            if self.verbose:
+            if self.verbose and idx == 0:
                 # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed iterations, mu = {mu}')
                 logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
 
