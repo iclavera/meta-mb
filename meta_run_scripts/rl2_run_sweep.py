@@ -28,8 +28,8 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'rl2-kate-def'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'rl2-blue-exp4'
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
@@ -45,7 +45,11 @@ def run_experiment(**config):
         baseline = config['baseline']()
         #timeskip = config['timeskip']
         log_rand = config['log_rand']
-        env = rl2env(normalize(config['env'](log_rand=log_rand)))#timeskip=timeskip)))
+        if config['env'] == 'PR2ReacherEnv':
+            exp_type = config['exp_type']
+            env = rl2env(normalize(config['env'](exp_type=exp_type)))
+        else:
+            env = rl2env(normalize(config['env'](log_rand=log_rand)))#timeskip=timeskip)))
         obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
         policy = GaussianRNNPolicy(
                 name="meta-policy",
@@ -97,28 +101,55 @@ if __name__ == '__main__':
 
     sweep_params = {
         'algo': ['rl2'],
-        'seed': [1, 2, 3],
+        'seed': [1],
 
         'baseline': [LinearFeatureBaseline],
         'env': [BlueEnv],
         'meta_batch_size': [100],
-        "hidden_sizes": [(64,), (128,)],
-        'backprop_steps': [50, 100, 200],
-        "rollouts_per_meta_task": [2],
+        "hidden_sizes": [(64,)],
+        'backprop_steps': [100, 200],
+        "rollouts_per_meta_task": [5, 10], 
         "parallel": [True],
-        "max_path_length": [200],
-        "discount": [0.99],
+        "max_path_length": [30, 60],       # Directly proportional to learning (makes sense)
+        "discount": [0.975, 0.99],
         "gae_lambda": [1.0],
         "normalize_adv": [True],
         "positive_adv": [False],
         "learning_rate": [1e-3],
         "max_epochs": [5],
         "cell_type": ["lstm"],
-        "num_minibatches": [1],
+        "num_minibatches": [5],
         "n_itr": [1000],
         'exp_tag': ['v0'],
-        'log_rand': [0, 1, 2, 3],
+        'log_rand': [0],
         #'timeskip': [1, 2, 3, 4]
     }
+
+    #sweep_params = {
+    #    'algo': ['rl2'],
+    #    'seed': [1, 2, 3, 4],
+
+    #    'baseline': [LinearFeatureBaseline],
+    #    'env': [PR2ReacherEnv],
+    #    'exp_type': ['reach'],
+    #    'meta_batch_size': [100],
+    #    "hidden_sizes": [(64,)],
+    #    'backprop_steps': [100],
+    #    "rollouts_per_meta_task": [5],
+    #    "parallel": [True],
+    #    "max_path_length": [30],
+    #    "discount": [0.99],
+    #    "gae_lambda": [1.0],
+    #    "normalize_adv": [True],
+    #    "positive_adv": [False],
+    #    "learning_rate": [1e-3],
+    #    "max_epochs": [5],
+    #    "cell_type": ["lstm"],
+    #    "num_minibatches": [1],
+    #    "n_itr": [1000],
+    #    'exp_tag': ['v0'],
+    #    'log_rand': [0, 1, 2]
+    #    #'timeskip': [1, 2, 3, 4]
+    #}
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
