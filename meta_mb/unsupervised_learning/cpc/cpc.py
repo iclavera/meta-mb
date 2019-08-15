@@ -259,7 +259,10 @@ class CPC:
 
     def train_step(self, inputs, labels, lr=1e-3, train=True):
         if train:
-            loss, acc, rew_acc, _ = tf.get_default_session().run([self.loss, self.accuracy, self.rew_accuracy, self.train_op],
+            loss, acc, rew_loss, rew_acc, action_loss, action_acc, _ = tf.get_default_session().run([self.loss, self.accuracy,
+                                                                      self.rew_loss, self.rew_accuracy,
+                                                                      self.action_loss, self.action_accuracy,
+                                                                      self.train_op],
                                             feed_dict={self.x_input_ph: inputs[0],
                                                        self.action_input_ph:inputs[1],
                                                        self.y_input_ph:inputs[2],
@@ -267,13 +270,15 @@ class CPC:
                                                        self.labels_ph: labels,
                                                        self.lr_ph: lr})
         else:
-            loss, acc, rew_acc = tf.get_default_session().run([self.loss, self.accuracy, self.rew_accuracy],
+            loss, acc, rew_loss, rew_acc, action_loss, action_acc = tf.get_default_session().run([self.loss, self.accuracy,
+                                                               self.rew_loss, self.rew_accuracy,
+                                                               self.action_loss, self.action_accuracy,],
                                                     feed_dict={self.x_input_ph: inputs[0],
                                                                self.action_input_ph: inputs[1],
                                                                self.y_input_ph: inputs[2],
                                                                self.rew_input_ph: inputs[3],
                                                                self.labels_ph: labels})
-        return loss, acc, rew_acc
+        return loss, acc, rew_loss, rew_acc, action_loss, action_acc
 
     def fit_generator(self, generator, steps_per_epoch, validation_data, validation_steps, epochs, patience=3):
         lr = 1e-3
@@ -281,21 +286,35 @@ class CPC:
         target_loss = 100.
         for i in range(epochs):
             # logging
-            logs = {'loss_cpc': [], 'val_loss_cpc': [], 'acc_cpc':[], 'val_acc_cpc': [], 'rew_acc_cpc':[], 'val_rew_acc_cpc': []}
+            logs = {'loss': [], 'val_loss': [],
+                    'acc':[], 'val_acc': [],
+                    'rew_loss':[], 'val_rew_loss': [],
+                    'rew_acc':[], 'val_rew_acc': [],
+                    'action_loss': [], 'val_action_loss': [],
+                    'action_acc': [], 'val_action_acc': [],
+                    }
 
             print("Epoch %d" % i)
             train_pb = Progbar(steps_per_epoch)
             for k in range(steps_per_epoch):
-                loss, acc, rew_acc = self.train_step(*generator.next(), lr=lr)
-                train_pb.add(1, values=[('loss_cpc', loss), ('acc_cpc', acc), ('rew_acc_cpc', rew_acc)])
-                logs['loss_cpc'].append(loss); logs['acc_cpc'].append(acc); logs['rew_acc_cpc'].append(rew_acc)
+                loss, acc, rew_loss, rew_acc, action_loss, action_acc = self.train_step(*generator.next(), lr=lr)
+                train_pb.add(1, values=[('loss', loss), ('acc', acc),
+                                        ('rew_loss', rew_loss), ('rew_acc', rew_acc),
+                                        ('action_loss', action_loss), ('action_acc', action_acc),])
+                logs['loss'].append(loss); logs['acc'].append(acc);
+                logs['rew_loss'].append(rew_loss); logs['rew_acc'].append(rew_acc)
+                logs['action_loss'].append(action_loss);logs['action_acc'].append(action_acc)
             val_pb = Progbar(validation_steps)
             for k in range(validation_steps):
-                val_loss, val_acc, val_rew_acc = self.train_step(*validation_data.next(), train=False)
-                val_pb.add(1, values=[('val_loss_cpc', val_loss), ('val_acc_cpc', val_acc), ('val_rew_acc_cpc', val_rew_acc)])
-                logs['val_loss_cpc'].append(val_loss); logs['val_acc_cpc'].append(val_acc); logs['val_rew_acc_cpc'].append(val_rew_acc)
+                loss, acc, rew_loss, rew_acc, action_loss, action_acc = self.train_step(*validation_data.next(), train=False)
+                val_pb.add(1, values=[('val_loss', loss), ('val_acc', acc),
+                                        ('val_rew_loss', rew_loss), ('val_rew_acc', rew_acc),
+                                        ('val_action_loss', action_loss), ('val_action_acc', action_acc), ])
+                logs['val_loss'].append(loss); logs['val_acc'].append(acc);
+                logs['val_rew_loss'].append(rew_loss); logs['val_rew_acc'].append(rew_acc)
+                logs['val_action_loss'].append(action_loss); logs['val_action_acc'].append(action_acc)
 
-            cur_val_loss = np.mean(logs['val_loss_cpc'])
+            cur_val_loss = np.mean(logs['val_loss'])
             logs = {k : np.mean(v) for k, v in logs.items()}
             # log to the file
             logger.logkvs(logs)

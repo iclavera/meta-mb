@@ -54,7 +54,7 @@ def run_experiment(**config):
                         config['history'], config['future'], config['negative'], code_size=config['latent_dim'],
                         encoder_arch='default',context_network='stack', context_size=32,
                         rew_contrastive=config['rew_contrastive'], rew_loss_weight=config['rew_loss_weight'],
-                        action_contrastive=config['action_contrastive'],
+                        action_contrastive=config['action_contrastive'], action_loss_weight=config['action_loss_weight'],
                         grad_penalty=config['grad_penalty'], lambd=config['cpc_lambd'])
     else:
         cpc_model = None
@@ -377,6 +377,7 @@ if __name__ == '__main__':
         'cpc_train_interval': [1],
         'cpc_loss_weight': [300],
         'rew_loss_weight': [0],
+        'action_loss_weight': [1.],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -412,4 +413,4 @@ if __name__ == '__main__':
     configs = [config_normalize, config_predac_contr]
 
     i = 0
-    run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)
