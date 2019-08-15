@@ -6,7 +6,7 @@ import os
 from meta_mb.envs.blue.blue_env import BlueEnv
 import time
 
-class MimicBluePosEnv(BlueEnv):
+class MimicBluePosEnv(BlueEnv): 
 
 	def __init__(self, max_path_len, positions=None):
 		self.max_path_len = max_path_len
@@ -15,19 +15,24 @@ class MimicBluePosEnv(BlueEnv):
 			self.positions = positions
 		BlueEnv.__init__(self)
 
-	def step(self, action):
-		self.do_simulation(action, self.frame_skip)
-		vec_right = self.ee_position - self.goal
-		reward_dist = -np.linalg.norm(vec_right)
-		reward_ctrl = -np.square(action/(2* self._high)).sum()
-		reward = reward_dist + 0.5 * 0.1 * reward_ctrl
-		observation = self._get_obs()
-		if (self.path_len == self.max_path_len):
-			done = True
-		else:
-			done = False
-		info = dict(reward_dist=reward_dist, reward_ctrl=reward_ctrl)
-		return observation, reward, done, info
+	def step(self, act):
+        act = np.clip(act, self._low, self._high)
+        self.do_simulation(act, self.frame_skip)
+
+        norm = np.linalg.norm(self.get_body_com("right_gripper_link") - self.goal)
+        joint_vel = self.sim.data.qvel[:-3]
+
+        reward_ctrl = -self.ctrl_penalty * np.square(np.linalg.norm(act))
+        reward_vel = -self.vel_penalty * np.square(np.linalg.norm(joint_vel))
+        reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
+
+        reward = reward_dist + reward_ctrl + reward_vel
+
+        observation = self._get_obs()
+        info = dict(dist=norm, reward_dist=reward_dist, reward_ctrl=reward_ctrl, reward_vel=reward_vel)
+        done = False
+        self.iters += 1
+        return observation, reward, done, info
 
 	def do_simulation(self, action, frame_skip):
 		action = np.clip(action, self._low, self._high)
@@ -42,12 +47,11 @@ class MimicBluePosEnv(BlueEnv):
 		self.path_len += 1
 
 	def _get_obs(self):
-		return np.concatenate([
-			self.sim.data.qpos.flat,
-			self.sim.data.qvel.flat[:-3],
-			self.ee_position,
-			self.ee_position - self.goal,
-		])
+        return np.concatenate([
+            self.sim.data.qpos.flat[:-3],
+            self.sim.data.qvel.flat[:-3],
+            self.get_body_com("right_gripper_link"),
+        ])
 
 if __name__ == "__main__":
     env = MimicBluePosEnv(max_path_len=200)
