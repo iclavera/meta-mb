@@ -19,7 +19,7 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
                  side='right',
                  ip='169.229.223.208',
                  port=9090):
-        self.fixed = True
+        self.fixed = False
         if exp_type == 'reach':
             self.init_qpos = np.array([4.64195583e-03,  8.63199317e-03, -3.53298290e-04, -1.20736697e-02,
                                       -4.36734625e-02,  3.99635356e-02, -5.22832424e-02])
@@ -130,7 +130,6 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         time.sleep(max(0, dt - (now - self.last_command_time)))
         self.last_command_time = now
         self.set_joint_torques(action)
-        print(action)
 
         ob = self._get_obs()
         return ob
