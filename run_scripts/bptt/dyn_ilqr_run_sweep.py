@@ -22,7 +22,6 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    print(config['opt_learning_rate'], config['eps'], config['lmbda'])
     if config['method_str'] in ['cem', 'collocation', 'ddp']:
         config['n_itr'] = 1
         config['num_rollouts'] = 1
@@ -47,9 +46,12 @@ def run_experiment(**config):
         repr += 'reacher'
         config['max_path_length'] = max_path_length = 50
 
-    if config.get('model_path', None) is not None:
-        config['fit_model'] = False
+    if not config['fit_model']:
         config['n_itr'] = 1
+
+    if config.get('model_path', None) is not None:
+        # config['fit_model'] = False
+        # config['max_path_length'] = 30
         config['initial_random_samples'] = False
         config['initial_sinusoid_samples'] = False
 
@@ -133,7 +135,6 @@ def run_experiment(**config):
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
-            eps=config['eps'],
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
@@ -184,7 +185,7 @@ if __name__ == '__main__':
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
         # HalfCheetah
-        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
         'normalize': [False],
         'n_itr': [50],  # only matters for opt_policy
         'discount': [1.0,],
@@ -195,10 +196,6 @@ if __name__ == '__main__':
         'method_str': ['ilqr'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'policy_filter': [False,],
 
-        'num_opt_iters': [50,], #20, 40,],
-        'opt_learning_rate': [1e-3], #[1e-3, 1e-2], #[1e-5, 1e-4, 1e-3], #1e-3,], #1e-2],
-        'clip_norm': [-1], # UNUSED
-        'eps': [1e-5], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
 
         # cem
@@ -214,10 +211,10 @@ if __name__ == '__main__':
         'persistency': [0.9],
 
         # DDP
-        'num_ddp_iters': [10],
+        'num_ddp_iters': [20],
 
         # Training
-        'num_rollouts': [5],
+        'num_rollouts': [1],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
@@ -241,7 +238,6 @@ if __name__ == '__main__':
 
     config_debug = config.copy()
     config_debug['max_path_length'] = [7]
-    config_debug['num_opt_iters'] = [1]
     config_debug['horizon'] = [4]
     config_debug['num_models'] = [3]
     config_debug['num_rollouts'] = [2]

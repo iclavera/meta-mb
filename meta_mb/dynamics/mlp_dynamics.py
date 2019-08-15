@@ -231,15 +231,15 @@ class MLPDynamicsModel(Serializable):
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
         obs_original = obs
-
         if self.normalize_input:
             obs, act = self._normalize_data(obs, act)
             delta = np.array(self.f_delta_pred(obs, act))
-            delta = denormalize(delta, self.normalization['delta'][0], self.normalization['delta'][1])
+            delta = denormalize(delta, mean=self.normalization['delta'][0], std=self.normalization['delta'][1])
         else:
             delta = np.array(self.f_delta_pred(obs, act))
 
-        pred_obs = obs_original + delta
+        pred_obs = delta + obs_original
+        pred_obs = np.clip(pred_obs, -1e2, 1e2)
         return pred_obs
 
     def predict_sym(self, obs_var, act_var):
@@ -259,7 +259,6 @@ class MLPDynamicsModel(Serializable):
             delta = denormalize(mlp.output_var, mean=self._mean_delta_var, std=self._std_delta_var)
             pred_obs = delta + obs_var
             pred_obs = tf.clip_by_value(pred_obs, -1e2, 1e2)
-
         return pred_obs
 
     # # FIXME: use predict_sym instead

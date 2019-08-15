@@ -11,7 +11,6 @@ class DyniLQRController(Serializable):
             name,
             env,
             dynamics_model,
-            eps,
             num_rollouts,
             discount,
             n_parallel,
@@ -22,7 +21,7 @@ class DyniLQRController(Serializable):
             num_ddp_iters=100,
             percent_elites=0.1,
             alpha=0.25,
-            verbose=False,
+            verbose=True,
     ):
         Serializable.quick_init(self, locals())
         self.discount = discount
@@ -31,7 +30,6 @@ class DyniLQRController(Serializable):
         self.horizon = horizon
         self.max_path_length = max_path_length
         self.num_ddp_iters = num_ddp_iters
-        self.eps = eps
         self.num_envs = num_rollouts
         self.num_elites = max(int(percent_elites * n_candidates), 1)
         self.env = env

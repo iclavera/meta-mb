@@ -93,6 +93,7 @@ class Sampler(BaseSampler):
             if self.vae is not None:
                 obses = np.array(obses)
                 obses = self.vae.encode(obses)
+
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
                 agent_infos = []
@@ -116,6 +117,13 @@ class Sampler(BaseSampler):
             t = time.time()
             next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
             env_time += time.time() - t
+
+            # step using model
+            if not random and not sinusoid:
+                logger.log('PathLength', itr_counter)
+                next_obses_fake = policy.dynamics_model.predict(obses, actions)
+                rewards_fake = self.env.reward(obses, actions, next_obses_fake)
+                next_obses, rewards = next_obses_fake, rewards_fake # FIXME : CHANGE LATER!!
 
             # prepare for warm reset
             rewards_array += rewards

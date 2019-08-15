@@ -126,10 +126,6 @@ class GTiLQRPlanner(object):
                     else:
                         raise NotImplementedError
 
-                        # Q_uu_no_reg = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
-                        # logger.log('Q_uu_no_reg min eigen value', np.min(np.linalg.eigvals(Q_uu_no_reg)))
-                        # logger.log('Q_uu min eigen value', np.min(np.linalg.eigvals(Q_uu)))
-
                     if not np.allclose(Q_uu, Q_uu.T):
                         print(Q_uu)
                         raise RuntimeError
@@ -153,8 +149,8 @@ class GTiLQRPlanner(object):
 
                     # compute control matrices
                     # Q_uu_inv = np.linalg.inv(Q_uu)
-                    k = - Q_uu_reg_inv @ Q_u  # k
-                    K = - Q_uu_reg_inv @ Q_ux_reg  # K
+                    k = - Q_uu_reg_inv @ Q_u
+                    K = - Q_uu_reg_inv @ Q_ux_reg
                     # k = - np.linalg.solve(Q_uu_reg, Q_u)
                     # K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
                     open_k_array.append(k)
@@ -258,8 +254,6 @@ class GTiLQRPlanner(object):
                 reward_array.append(reward)
                 opt_J_val += -reward
 
-            # Stop if convergence (J_val > opt_J_val and |J_val - opt_J_val| / |J_val| < threshold)
-            # Maybe decreasing max_forward_iters has same effect
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 # store updated x, u array (CLIPPED), J_val
@@ -303,14 +297,6 @@ class GTiLQRPlanner(object):
     def _reset_mu(self):
         self.mu = self.mu_init
         self.delta = self.delta_init
-
-    def perturb_u_array(self):
-        self._reset_mu()
-
-        u_array = self.u_array + np.random.normal(loc=0, scale=0.1, size=self.u_array.shape)
-        u_array = np.clip(u_array, a_min=self.act_low, a_max=self.act_high)
-        self.u_array = u_array
-        # self.x_array, self.J_val = None, None
 
     def reset_u_array(self):
         self._reset_mu()
