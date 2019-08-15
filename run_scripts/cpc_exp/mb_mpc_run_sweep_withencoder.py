@@ -291,7 +291,6 @@ def run_experiment(**config):
             cpc_negative_same_traj=config['negative'] // 3 * 2 if config['env'] == 'reacher_easy' else 0,
             cpc_initial_sampler=sampler_initial_cpc,
             cpc_train_interval=config['cpc_train_interval'],
-            cpc_predict_action=config['predict_action'],
             cpc_batch_size=config['batch_size_model'],
 
             path_checkpoint_interval=config['path_checkpoint_interval']
@@ -366,7 +365,6 @@ if __name__ == '__main__':
         'future': [3],
         'use_context_net': [False],
         'include_action': [False],
-        'predict_action': [False],
         'rew_contrastive': [False],
         'action_contrastive':[False],
         'cpc_epoch': [0],
@@ -397,20 +395,20 @@ if __name__ == '__main__':
     config_normalize['model_grad_thru_enc'] = [True]
     config_normalize['cpc_loss_weight'] = [10, 50, 300]
 
-    # 2 variants
-    config_predac_l2 = config_withreward_l2.copy()
-    config_predac_l2['future'] = [1]
-    config_predac_l2['rew_loss_weight'] = [0]
-    config_predac_l2['predict_action'] = [True]
-    config_predac_l2['cpc_loss_weight'] = [1, 10]
 
-    # 1 variant
-    config_predac_contr = config_predac_l2.copy()
-    config_predac_contr['action_contrastive'] = [True]
-    config_predac_contr['cpc_loss_weight'] = [10, 300]
-    config_predac_contr['cpc_initial_epoch'] = [30]
+    config_ac_l2 = config_withreward_l2.copy()
+    config_ac_l2['rew_loss_weight'] = [0]
+    config_ac_l2['action_loss_weight'] = [1, 10, 100]
+    config_ac_l2['action_contrastive'] = [False]
+    config_ac_l2['cpc_loss_weight'] = [10, 100]
 
-    configs = [config_normalize, config_predac_contr]
+
+    config_ac_contrastive = config_ac_l2.copy()
+    config_ac_contrastive['action_loss_weight'] = [0.1, 1, 10]
+    config_ac_contrastive['action_contrastive'] = [True]
+
+
+    configs = [config_ac_l2, config_ac_contrastive]
 
     i = 0
-    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)

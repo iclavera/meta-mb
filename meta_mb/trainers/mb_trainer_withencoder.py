@@ -75,8 +75,6 @@ class Trainer(object):
             cpc_negative_same_traj=0,
             cpc_initial_sampler=None,
             cpc_train_interval=10,
-            cpc_predict_action=False,
-
             path_checkpoint_interval=1,
             ):
         self.env = env
@@ -104,7 +102,6 @@ class Trainer(object):
         self.cpc_negative_same_traj = cpc_negative_same_traj
         self.cpc_initial_sampler = cpc_initial_sampler
         self.cpc_train_interval = cpc_train_interval
-        self.cpc_predict_action = cpc_predict_action
 
         self.path_checkpoint_interval = path_checkpoint_interval
 
