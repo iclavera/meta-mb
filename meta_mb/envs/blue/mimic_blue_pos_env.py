@@ -31,7 +31,10 @@ class MimicBluePosEnv(BlueEnv):
         observation = self._get_obs()
         info = dict(dist=norm, reward_dist=reward_dist, reward_ctrl=reward_ctrl, reward_vel=reward_vel)
         done = False
-        self.iters += 1
+        if (self.path_len == self.max_path_len):
+			done = True
+		else:
+			done = False
         return observation, reward, done, info
 
 	def do_simulation(self, action, frame_skip):
