@@ -10,6 +10,7 @@ from blue_interface.blue_interface import BlueInterface
 
 class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def __init__(self,
+                 control_freq=10,
                  max_torques=[2]*7,
                  exp_type='reach',
                  ctrl_penalty=1.25e-1,
@@ -65,7 +66,10 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         self.joint_goal_pos = np.zeros(7) # joint position control vs torque control
 
         self.frame_skip = 1
-        self.dt = 0.2
+        self.control_freq = control_freq #Hz
+        self.dt = 1.0/self.control_freq
+        self.last_command_time = time.time()
+
         super(ArmReacherEnv, self).__init__(side, ip, port)
         self.init_qpos = self.get_joint_positions()
         self._prev_qpos = self.init_qpos.copy()
@@ -92,7 +96,7 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
         if len(act) == 1:
             act = act[0]
 
-        ob = self.do_simulation(act, self.frame_skip)
+        ob = self.do_simulation(act, self.dt)
         joint_vel = self.get_joint_velocities()
 
         norm_end = np.linalg.norm(ob[-3:] - self.goal)
@@ -119,17 +123,17 @@ class ArmReacherEnv(MetaEnv, BlueInterface, gym.utils.EzPickle):
     def viewer_setup(self):
         self.viewer.cam.trackbodyid = 0
 
-    def do_simulation(self, action,frame_skip):
+    def do_simulation(self, action, dt):
         action = np.clip(action, self._low, self._high)
-        assert frame_skip > 0
-        for _ in range(frame_skip):
-            time.sleep(self.dt)
-            print(type(action))
-            print(action)
-            self.set_joint_torques(action)
+
+        now = time.time()
+        time.sleep(max(0, dt - (now - self.last_command_time)))
+        self.last_command_time = now
+        self.set_joint_torques(action)
+        print(action)
+
         ob = self._get_obs()
         return ob
-
 
     def tf_reward(self, obs, act, obs_next):
         norm_end = tf.linalg.norm(obs_next[:, -3:] - self.goal, axis=1)

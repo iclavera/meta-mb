@@ -12,8 +12,8 @@ class BlueEnv(RandomEnv, utils.EzPickle):
                 arm='right', 
                 log_rand=0, 
                 max_torques=[2] * 7,
-                ctrl_penalty=1.25e-1,
-                vel_penalty=1.25e-2):
+                ctrl_penalty=1.25e-2,
+                vel_penalty=1.25e-1):
         utils.EzPickle.__init__(**locals())
 
         assert arm in ['left', 'right']

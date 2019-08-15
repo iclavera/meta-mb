@@ -2,6 +2,7 @@ import joblib
 import tensorflow as tf
 import argparse
 import numpy as np
+import pickle
 from meta_mb.samplers.utils import rollout
 from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
 from meta_mb.envs.blue.real_blue_arm_env import ArmReacherEnv
@@ -40,14 +41,20 @@ if __name__ == "__main__":
     #     [rest of the code]
 
     Environment = ArmReacherEnv
+    SimEnv = BlueEnv
 
     with tf.Session() as sess:
         pkl_path = args.param
         print("Testing policy %s" % pkl_path)
         data = joblib.load(pkl_path)
         policy = data['policy']
-        env = rl2env(normalize(Environment(side='right')))
-        
+
+        control_freq = 5
+        dt = 1.0/control_freq
+
+        env = rl2env(normalize(Environment(side='right', control_freq=control_freq)))
+        simenv = SimEnv(arm='right')
+
         real_rewards = np.array([])
         act_rewards = np.array([])
         pos_rewards = np.array([])
@@ -55,6 +62,17 @@ if __name__ == "__main__":
             path = rollout(env, policy, max_path_length=args.max_path_length, animated=False, speedup=args.speedup,
                            video_filename=args.video_filename, save_video=False, ignore_done=args.ignore_done,
                            stochastic=args.stochastic)
+
+            # Render sim of the task
+            simenv.reset()
+            for action in path[0]['actions']:
+                start_time = time.time()
+                simenv.step(action)
+                simenv.render()
+
+                end_time = time.time()
+                diff = end_time - start_time
+                time.sleep(max(0, dt - diff))
 
             print('rewards:', np.mean(path[0]['rewards']))
             print('actions:', path[0]['actions'])
@@ -67,4 +85,3 @@ if __name__ == "__main__":
         #print(np.mean(act_rewards))
         #print("Pos Reward Avg")
         #print(np.mean(pos_rewards))
-        
