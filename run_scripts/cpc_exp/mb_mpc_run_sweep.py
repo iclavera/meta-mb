@@ -227,14 +227,14 @@ if __name__ == '__main__':
 
         'env': [ 'walker'],
         'normalize': [True],
-        'n_itr': [60],
+        'n_itr': [150],
         'discount': [1.],
         'obs_stack': [1],
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [12, 20],  # Tau
-        'use_cem': [True],
+        'horizon': [20],  # Tau
+        'use_cem': [True, False],
         'num_cem_iters': [10],
         'use_graph': [True],
 
@@ -242,15 +242,15 @@ if __name__ == '__main__':
         'num_rollouts': [5],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.9],
+        'rolling_average_persitency': [0.95],
 
         # Dynamics Model
-        'prob_model': [True, False],
+        'prob_model': [False],
         'recurrent': [False],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [50],
+        'dynamic_model_epochs': [100],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [64],
@@ -258,7 +258,7 @@ if __name__ == '__main__':
         'use_reward_model': [True],
 
         # Reward Model
-        'reward_model_epochs': [15],
+        'reward_model_epochs': [100],
 
         #  Other
         'n_parallel': [1],

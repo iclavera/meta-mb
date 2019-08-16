@@ -138,12 +138,13 @@ class MPCController(Serializable):
         mean = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
                               self.action_space_dims]) * (self.env.action_space.high + self.env.action_space.low) / 2
         var = tf.ones(shape=[self.horizon, tf.shape(self.obs_ph)[0], 1,
-                             self.action_space_dims]) * (self.env.action_space.high - self.env.action_space.low) / 16
+                             self.action_space_dims]) * (self.env.action_space.high - self.env.action_space.low) / 2
 
         for itr in range(self.num_cem_iters):
             lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
-            constrained_var = tf.minimum(tf.minimum(tf.square(lb_dist / 2), tf.square(ub_dist / 2)), var)
-            std = tf.sqrt(constrained_var)
+            # constrained_var = tf.minimum(tf.minimum(tf.square(lb_dist / 2), tf.square(ub_dist / 2)), var)
+            constrained_var = var
+            std = tf.sqrt(constrained_var + 1e-6)
             act = mean + tf.random.normal(shape=[self.horizon, tf.shape(self.obs_ph)[0], self.n_candidates,
                                                  self.action_space_dims]) * std
             act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
