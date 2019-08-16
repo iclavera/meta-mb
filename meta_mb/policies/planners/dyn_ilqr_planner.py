@@ -140,24 +140,28 @@ class DyniLQRPlanner(object):
                     J_val, log_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
                     if log_info is None:
                         returns_dyn[env_idx] = -J_val
-                    else:
+                    else:  # u_array is updated, opt_J_val < J_val
                         returns_dyn[env_idx] = -log_info['opt_J_val']
+                        logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
+                        if log_info['u_clipped_pct'] > 0:
+                            logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
                         # success_counter += 1
 
-                    # logging
-                    if env_idx == 0:
-                        logger.logkv('iLQRItr', itr)
-                        logger.logkv('J_val', J_val)
-                        if log_info is not None:
-                            logger.logkv('J_val_new', log_info['opt_J_val'])
-                            if log_info['u_clipped_pct'] > 0:
-                                logger.logkv('u_clipped_pct', log_info['u_clipped_pct'])
-                            # logger.logkv(f'RetDyn-{itr}-e{0}', returns_dyn[0])
-                            # logger.logkv(f'RetEnv-{itr}-e{0}', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))
-                            # logger.logkv(f'{itr}-bw_fw_ctr', (log_info['backward'], log_info['forward']))
-                            # logger.logkv(f'{itr}-mu', log_info['mu'])
-                            # logger.logkv(f'ActDiff', log_info['J_val'] - log_info['opt_J_val'])
-                        logger.dumpkvs()
+
+                    # logging DEBUG
+                    # if env_idx == 0:
+                    #     logger.logkv('iLQRItr', itr)
+                    #     logger.logkv('J_val', J_val)
+                    #     if log_info is not None:
+                    #         logger.logkv('J_val_new', log_info['opt_J_val'])
+                    #         if log_info['u_clipped_pct'] > 0:
+                    #             logger.logkv('u_clipped_pct', log_info['u_clipped_pct'])
+                    #         # logger.logkv(f'RetDyn-{itr}-e{0}', returns_dyn[0])
+                    #         # logger.logkv(f'RetEnv-{itr}-e{0}', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))
+                    #         # logger.logkv(f'{itr}-bw_fw_ctr', (log_info['backward'], log_info['forward']))
+                    #         # logger.logkv(f'{itr}-mu', log_info['mu'])
+                    #         # logger.logkv(f'ActDiff', log_info['J_val'] - log_info['opt_J_val'])
+                    #     logger.dumpkvs()
 
                         # sanity check  # FIXME: assertion fails with ensemble or stochastic model
                         # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
@@ -166,7 +170,10 @@ class DyniLQRPlanner(object):
                         # logger.log(f'itr = {itr}, idx = {env_idx}, opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
                         # assert tf_opt_J_val == -returns_dyn[env_idx]
                 except OverflowError:
+                    logger.log(f'{env_idx}-th env is removed at iLQR_itr {itr}')
                     active_envs.remove(env_idx)
+
+            logger.dumpkvs()  # log every itr
             if len(active_envs) == 0:
                 break
 
@@ -176,22 +183,22 @@ class DyniLQRPlanner(object):
             #                         J_val=J_val, opt_J_val=opt_J_val, delta_J_alpha=delta_J_alpha)
 
         # logging
-        # sum_returns_diff = 0  # diff between predicted and real returns (sum over horizon)
-        # for idx in range(self.num_envs):
-        #     returns = self._run_open_loop(self.u_array_val[:, idx, :], obs[idx, :])
-        #     # if idx == 0:
-        #     #     logger.logkv(f'RetEnv', returns)
-        #     #     logger.logkv(f'RetDyn', returns_dyn[0])
-        #     sum_returns_diff += np.sum(returns - returns_dyn)
-        # # logger.logkv('SuccessRate', success_counter/(self.num_envs * self.num_ilqr_iters))
-        # # logger.dumpkvs()
+        sum_returns_diff = 0  # diff between predicted and real returns (sum over horizon and envs), scalar
+        for idx in range(self.num_envs):
+            returns = self._run_open_loop(self.u_array_val[:, idx, :], obs[idx, :])
+            if idx == 0:
+                logger.logkv(f'RetEnv', returns)
+                logger.logkv(f'RetDyn', returns_dyn[0]) # -opt_J_val at the last iteration
+            sum_returns_diff += np.sum(returns - returns_dyn[idx])
+        # logger.logkv('SuccessRate', success_counter/(self.num_envs * self.num_ilqr_iters))
+        # logger.dumpkvs()
 
         optimized_action = self.u_array_val[0, :, :]
 
         # shift
         self.shift_u_array(u_new=None)
 
-        return optimized_action, [], 0#sum_returns_diff/self.horizon
+        return optimized_action, [], sum_returns_diff/self.horizon
 
     def _run_open_loop(self, u_array, init_obs):
         returns = 0
@@ -311,9 +318,9 @@ class DyniLQRPlanner(object):
                 forward_pass_counter += 1
 
         if forward_accept:
-            if self.verbose and idx == 0:
-                # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed iterations, mu = {mu}')
-                logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
+            # if self.verbose and idx == 0:
+            #     # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed iterations, mu = {mu}')
+            #     logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
 
             self._decrease_mu(idx)
             return J_val, dict(mu=self.param_array[idx][0],

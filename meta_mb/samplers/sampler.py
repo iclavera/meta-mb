@@ -172,13 +172,16 @@ class Sampler(BaseSampler):
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
-            if sum_returns_diff != 0:
-                logger.logkv(log_prefix + 'AvgReturnDiff', sum_returns_diff/self.total_samples)
+            # if sum_returns_diff != 0:
+            logger.logkv(log_prefix + 'AvgReturnDiff', sum_returns_diff/self.total_samples)
 
+        # if hasattr(policy, 'warm_reset'):  # pick best env to initialize all envs
+        #     best_env = np.argmax(rewards_array)
+        #     u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
+        #     u_array = u_array[:, best_env: best_env+1, :]
+        #     policy.warm_reset(u_array)
         if hasattr(policy, 'warm_reset'):
-            best_env = np.argmax(rewards_array)
             u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
-            u_array = u_array[:, best_env: best_env+1, :]
             policy.warm_reset(u_array)
 
         return paths

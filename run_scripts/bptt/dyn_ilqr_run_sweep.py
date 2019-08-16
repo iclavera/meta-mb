@@ -22,17 +22,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    if config['method_str'] in ['cem', 'collocation', 'ddp']:
-        config['n_itr'] = 1
-        config['num_rollouts'] = 1
-        logger.log(f'n_itr = 1, num_rollouts = 1!!!')
-    if 'policy' in config['method_str']:
-        if config['policy_filter'] is True:
-            repr = f"{config['controller_str']}-{config['method_str']}_w_filter"
-        else:
-            repr = f"{config['controller_str']}-{config['method_str']}_wo_filter"
-    else:
-        repr = f"{config['controller_str']}-{config['method_str']}-"
+    repr = "dyn-ilqr-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = max_path_length = 100
@@ -50,6 +40,7 @@ def run_experiment(**config):
         config['n_itr'] = 1
 
     if config.get('model_path', None) is not None:
+        repr += 'pretrained-'
         # config['fit_model'] = False
         # config['max_path_length'] = 30
         config['initial_random_samples'] = False
@@ -166,7 +157,6 @@ def run_experiment(**config):
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
             fit_model=config['fit_model'],
-            plot_freq=config['plot_freq'],
             deterministic_policy=config['deterministic_policy'],
         )
         algo.train()
@@ -178,24 +168,20 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [True],
-        'plot_freq': [-1],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
-        'normalize': [False],
-        'n_itr': [50],  # only matters for opt_policy
+        'normalize': [False],  # UNUSED
+        'n_itr': [50],
         'discount': [1.0,],
-        'controller_str': ['dyn'],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
-        'method_str': ['ilqr'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'policy_filter': [False,],
-
         'deterministic_policy': [True],
 
         # cem
