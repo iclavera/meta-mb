@@ -39,7 +39,6 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                  loss_str='MSE',
                  q_loss_importance=0,
                  T=0,
-                 buffer_size=50000,
                  type=1,
                  ):
 

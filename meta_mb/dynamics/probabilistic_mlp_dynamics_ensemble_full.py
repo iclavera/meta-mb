@@ -269,11 +269,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                                                 for i in range(2)]
                     q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
 
-                    loss = [tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
-                                               + self.logvar_pred)
-                                               + 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
-                                               + self.q_loss_importance * q_losses[i]
-                                               for i in range(2)]
+                    loss = [tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar) + 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar) + self.q_loss_importance * q_losses[i] for i in range(2)]
                     self.loss_model_batches.append(loss)
 
                     self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]

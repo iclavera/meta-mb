@@ -196,12 +196,12 @@ class SAC_MB(Algo):
 
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
-    def step(self, obs, actions, shuffle = True, k = 0):
+    def step(self, obs, actions, shuffle = True, k = 1):
         assert self.dynamics_type == 0 or self.dynamics_type == 1
         assert self.step_type in [0, 1, 2, 3]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict_sym(obs, actions)
-            if k != 0:
+            if k != 1:
                 next_observation = tf.tile(next_observation, [k, 1])
             dist_info_sym = self.policy.distribution_info_sym(next_observation)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
@@ -209,7 +209,7 @@ class SAC_MB(Algo):
             dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
         elif self.dynamics_type == 1:
             next_observation, rewards, dones = self.dynamics_model.predict_sym(obs, actions, shuffle)
-            if k != 0:
+            if k != 1:
                 next_observation = tf.tile(next_observation, [k, 1])
             dist_info_sym = self.policy.distribution_info_sym(next_observation)
             if self.step_type == 0:
@@ -512,7 +512,9 @@ class SAC_MB(Algo):
             actions = actions_var
             for i in range(self.T+1):
                 next_observation, next_actions, rewards, dones_next, _ = self.step(obs, actions)
-                expanded_next_observations, next_actions_var, _, _, _ = self.step(obs, actions, k=self.num_actions_per_next_observation)
+                expanded_next_observations = tf.tile(next_observation, [self.num_actions_per_next_observation, 1])
+                dist_info_sym = self.policy.distribution_info_sym(expanded_next_observations)
+                next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
                 if self.prediction_type == 'mean':
                     next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
                     next_actions = tf.reduce_mean(next_actions, axis = 0)
@@ -528,6 +530,7 @@ class SAC_MB(Algo):
                 obs, actions = next_observation, next_actions
 
             input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
+            dones = tf.tile(dones, [self.num_actions_per_next_observation, 1])
             next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
             next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
