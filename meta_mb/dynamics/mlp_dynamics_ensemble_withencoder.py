@@ -588,8 +588,24 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
     def denormalize(self, data, mean, std):
         return data * std + mean
 
+    def openloop_rollout(self, initial_latents, actions):
+        """
+        :param initial_latents: N x obs_stack x latent_dim
+        :param actions: N x horizon x action_dim
+        :return: latents along the way: N x horizon x latent_dim
+        """
+        sess = tf.get_default_session()
+        batch_size, horizon = actions.shape[:2]
+        assert initial_latents.shape[0] == batch_size
+        assert initial_latents.shape[1] == self.num_stack
 
+        cur_states = initial_latents
+        ret = np.zeros(shape=(batch_size, horizon, self.latent_dim))
 
+        for i in range(horizon):
+            cur_states = sess.run(self.predict_sym(cur_states, actions[:, i]))
+            ret[:, i] = cur_states[:, -1]
 
+        return ret
 
 
