@@ -2,10 +2,10 @@ import keras
 import keras.backend as K
 import os
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
 import time
