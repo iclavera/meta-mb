@@ -3,12 +3,14 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym_test-Q3-hopper"
+EXP_NAME = "gym-Q3-hopper-2"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.envs.mujoco import *
+# from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -19,10 +21,8 @@ from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_full import ProbMLPDynamicsEnsembleFull
+# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_q import ProbMLPDynamicsEnsembleQ
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
-
-from meta_mb.envs.mujoco import *
-# from meta_mb.envs.mb_envs import *
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -110,8 +110,27 @@ def run_experiment(**kwargs):
                                                     buffer_size=kwargs['dynamics_buffer_size'],
     												rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                     )
-        else:
-            return
+        elif kwargs['model_type'] == 2:
+            dynamics_model = ProbMLPDynamicsEnsembleQ('dynamics-ensemble',
+                                                    env=env,
+                                                    num_models=kwargs['num_models'],
+                                                    hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                    hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                    output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                                    batch_size=kwargs['dynamics_batch_size'],
+                                                    learning_rate=kwargs['model_learning_rate'],
+                                                    buffer_size=kwargs['dynamics_buffer_size'],
+    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    q_loss_importance=kwargs['q_loss_importance'],
+                                                    Qs=Qs,
+                                                    Q_targets=Q_targets,
+                                                    policy=policy,
+                                                    T=kwargs['T'],
+                                                    reward_scale=kwargs['reward_scale'],
+                                                    discount=kwargs['discount'],
+                                                    normalize_input=kwargs['normalize_input'],
+                                                    )
+
         algo = SAC_MB(
             policy=policy,
             discount=kwargs['discount'],
@@ -182,8 +201,8 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_rollouts': [1],
-        'step_type': [2],
-        'model_type': [1],
+        'step_type': [3],
+        'model_type': [0],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -195,18 +214,18 @@ if __name__ == '__main__':
 		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200, 50],
+		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
 		'q_functioin_type':[3],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[1],
         'H': [0],
-        'T': [1,2,3],
+        'T': [1,2],
 		'reward_scale': [1],
-		'target_entropy': [0.5, 1],
+		'target_entropy': [1, 0.5],
 		'num_models': [4, 8],
 		'model_used_ratio': [1],
-        'done_bar': [1.0],
+        'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
 
         'policy_hidden_nonlinearity': ['relu'],

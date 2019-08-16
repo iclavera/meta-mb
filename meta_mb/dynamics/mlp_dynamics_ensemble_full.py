@@ -20,6 +20,11 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                  name,
                  env,
                  num_models=5,
+                 discount = 1,
+                 Qs=None,
+                 Q_targets=None,
+                 policy=None,
+                 reward_scale=1,
                  hidden_sizes=(512, 512),
                  hidden_nonlinearity='swish',
                  output_nonlinearity=None,
@@ -32,6 +37,10 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
+                 q_loss_importance=0,
+                 T=0,
+                 buffer_size=50000,
+                 type=1,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -64,6 +73,24 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
 
         self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
         self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
+
+        """added"""
+        if type == 2:
+            self.Qs = Qs
+            if Q_targets is None:
+                self.Q_targets = Qs
+            else:
+                self.Q_targets = Q_targets
+            self.policy = policy
+            self.reward_scale = reward_scale
+            self.discount = discount
+            self.T = T
+            self.discount=discount
+            self.q_loss_importance = q_loss_importance
+            log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+            alpha = tf.exp(log_alpha)
+            self.log_alpha = log_alpha
+            self.alpha = alpha
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -99,17 +126,64 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
 
             self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
+            if type == 2:
+                obs = self.obs_ph
+                dist_info_sym = self.policy.distribution_info_sym(obs)
+                actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                for i in range(self.T+1):
+                    next_observation, _, _ = self.predict_sym(obs, actions)
+                    dist_info_sym = self.policy.distribution_info_sym(next_observation)
+                    next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                    rewards = self.env.tf_reward(obs, actions, next_observation)
+                    rewards = tf.expand_dims(rewards, axis=-1)
+                    dones_next = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
+                    if i == 0 :
+                        reward_values = (self.discount**(i)) * self.reward_scale * rewards
+                    else:
+                        reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                    dones = dones_next
+                    obs, actions = next_observation, next_actions_var
+                input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+                next_q_values = [(self.discount ** (self.T + 1)) * (1- dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                q_values = [reward_values + next_q_values[j] for j in range(2)]
 
-            # define loss and train_op
-            if loss_str == 'L2':
-                self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
-            elif loss_str == 'MSE':
-                self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+                # define loss and train_op
+                input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph, (self.act_ph-self._mean_act_ph)/self._std_act_ph], axis=-1)
+                q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+
+                q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
+                                            for i in range(2)]
+                q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
+
+                if loss_str == 'L2':
+                    self.loss = [tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1)) + self.q_loss_importance * q_losses[i] for i in range(2)]
+                elif loss_str == 'MSE':
+                    self.loss = [tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2) + self.q_loss_importance * q_losses[i] for i in range(2)]
+
+
+                self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
+                current_scope = name
+                trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+                self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
+                keys = []
+                for key in self.vfun_params.keys():
+                    if key[:6] == "policy" or key[:5] == "q_fun":
+                        keys.append(key)
+                for key in keys:
+                    self.vfun_params.pop(key)
+                vars = list(self.vfun_params.values())
+                self.train_op = [self.optimizer[i].minimize(self.loss[i], var_list = vars) for i in range(2)]
+
             else:
-                raise NotImplementedError
-
-            self.optimizer = optimizer(learning_rate=self.learning_rate)
-            self.train_op = self.optimizer.minimize(self.loss)
+            # define loss and train_op
+                if loss_str == 'L2':
+                    self.loss = tf.reduce_mean(tf.linalg.norm(self.delta_ph[:, :, None] - self.delta_pred, axis=1))
+                elif loss_str == 'MSE':
+                    self.loss = tf.reduce_mean((self.delta_ph[:, :, None] - self.delta_pred)**2)
+                else:
+                    raise NotImplementedError
+                self.optimizer = optimizer(learning_rate=self.learning_rate)
+                self.train_op = self.optimizer.minimize(self.loss)
 
             # tensor_utils
             self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
@@ -145,14 +219,66 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                               weight_normalization=weight_normalization)
 
                 delta_preds.append(mlp.output_var)
-                if loss_str == 'L2':
-                    loss = tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1))
-                elif loss_str == 'MSE':
-                    loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+
+                if type == 2:
+                    obs = self.obs_ph
+                    dist_info_sym = self.policy.distribution_info_sym(obs)
+                    actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                    for i in range(self.T+1):
+                        next_observation, _, _ = self.predict_sym(obs, actions)
+                        dist_info_sym = self.policy.distribution_info_sym(next_observation)
+                        next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                        rewards = self.env.tf_reward(obs, actions, next_observation)
+                        rewards = tf.expand_dims(rewards, axis=-1)
+                        dones_next = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
+                        if i == 0 :
+                            reward_values = (self.discount**(i)) * self.reward_scale * rewards
+                        else:
+                            reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                        dones = dones_next
+                        obs, actions = next_observation, next_actions_var
+                    input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+                    next_q_values = [(self.discount ** (self.T + 1)) * (1- dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                    q_values = [reward_values + next_q_values[j] for j in range(2)]
+
+                    # define loss and train_op
+                    input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph, (self.act_ph-self._mean_act_ph)/self._std_act_ph], axis=-1)
+                    q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+
+                    q_losses = [tf.losses.mean_squared_error(labels=q_values[i], predictions=q_values_var[i], weights=0.5)
+                                                for i in range(2)]
+                    q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
+
+                    if loss_str == 'L2':
+                        loss = [tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1)) + self.q_loss_importance * q_losses[i] for i in range(2)]
+                    elif loss_str == 'MSE':
+                        loss = [tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2) + self.q_loss_importance * q_losses[i] for i in range(2)]
+
+                    self.loss_model_batches.append(loss)
+
+                    self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
+                    current_scope = name
+                    trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
+                    self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
+                    keys = []
+                    for key in self.vfun_params.keys():
+                        if key[:6] == "policy" or key[:5] == "q_fun":
+                            keys.append(key)
+                    for key in keys:
+                        self.vfun_params.pop(key)
+                    vars = list(self.vfun_params.values())
+                    train_op = [self.optimizer[i].minimize(self.loss[i], var_list = vars) for i in range(2)]
+                    self.train_op_model_batches.append(train_op)
+
                 else:
-                    raise  NotImplementedError
-                self.loss_model_batches.append(loss)
-                self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
+                    if loss_str == 'L2':
+                        loss = tf.reduce_mean(tf.linalg.norm(self.delta_model_batches[i] - mlp.output_var, axis=1))
+                    elif loss_str == 'MSE':
+                        loss = tf.reduce_mean((self.delta_model_batches[i] - mlp.output_var) ** 2)
+                    else:
+                        raise  NotImplementedError
+                    self.loss_model_batches.append(loss)
+                    self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
             self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
 
             # tensor_utils
@@ -235,124 +361,124 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
         logger.log('Model has dataset_train, dataset_test with size {}, {}'.format(len(self._dataset_train['obs'][0]),
                                                                                    len(self._dataset_test['obs'][0])))
 
-    def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
-                      compute_normalization=True, rolling_average_persitency=None,
-                      verbose=False, log_tabular=False, prefix=''):
-
-        if rolling_average_persitency is None:
-            rolling_average_persitency = self.rolling_average_persitency
-
-        sess = tf.get_default_session()
-
-        if with_new_data:
-            if compute_normalization and self.normalize_input:
-                self.compute_normalization(self._dataset_train['obs'],
-                                           self._dataset_train['act'],
-                                           self._dataset_train['delta'])
-
-        self.used_timesteps_counter += len(self._dataset_train['obs'][0])
-        if self.normalize_input:
-            # normalize data
-            obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
-                                                                     self._dataset_train['act'],
-                                                                     self._dataset_train['delta'])
-        else:
-            obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
-                                                self._dataset_train['delta']
-
-        valid_loss_rolling_average = valid_loss_rolling_average_prev
-        assert remaining_model_idx is not None
-        train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx in remaining_model_idx]
-
-        # initialize data queue
-        feed_dict = dict(
-            list(zip(self.obs_batches_dataset_ph, obs_train)) +
-            list(zip(self.act_batches_dataset_ph, act_train)) +
-            list(zip(self.delta_batches_dataset_ph, delta_train))
-        )
-        sess.run(self.iterator.initializer, feed_dict=feed_dict)
-
-        # preparations for recording training stats
-        batch_losses = []
-
-        """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
-        while True:
-            try:
-                obs_act_delta = sess.run(self.next_batch)
-                obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
-                act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
-                delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
-
-                # run train op
-                batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
-                                                feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
-                                                           self.act_model_batches_stack_ph: act_batch_stack,
-                                                           self.delta_model_batches_stack_ph: delta_batch_stack})
-
-                batch_loss = np.array(batch_loss_train_ops[:self.num_models])
-                batch_losses.append(batch_loss)
-
-            except tf.errors.OutOfRangeError:
-                if self.normalize_input:
-                    # TODO: if not with_new_data, don't recompute
-                    # normalize data
-                    obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
-                                                                          self._dataset_test['act'],
-                                                                          self._dataset_test['delta'])
-
-                else:
-                    obs_test, act_test, delta_test = self._dataset_test['obs'], self._dataset_test['act'], \
-                                                     self._dataset_test['delta']
-
-                obs_test_stack = np.concatenate(obs_test, axis=0)
-                act_test_stack = np.concatenate(act_test, axis=0)
-                delta_test_stack = np.concatenate(delta_test, axis=0)
-
-                # compute validation loss
-                valid_loss = sess.run(self.loss_model_batches,
-                                      feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
-                                                 self.act_model_batches_stack_ph: act_test_stack,
-                                                 self.delta_model_batches_stack_ph: delta_test_stack})
-                valid_loss = np.array(valid_loss)
-
-                if valid_loss_rolling_average is None:
-                    valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
-                    valid_loss_rolling_average_prev = 2.0 * valid_loss
-                    for i in range(len(valid_loss)):
-                        if valid_loss[i] < 0:
-                            valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
-                            valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
-
-                valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
-                                             + (1.0-rolling_average_persitency)*valid_loss
-
-                if verbose:
-                    str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
-                    str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
-                    str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
-                    logger.log(
-                        "Training NNDynamicsModel - finished one epoch\n"
-                        "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
-                        %(str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
-                    )
-                break
-
-        for i in remaining_model_idx:
-            if valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]:
-                remaining_model_idx.remove(i)
-                logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
-
-        """ ------- Tabular Logging ------- """
-        if log_tabular:
-            logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
-            logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
-            logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
-            logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
-            logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
-            logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
-            logger.logkv(prefix+'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
-
-        return remaining_model_idx, valid_loss_rolling_average
+    # def fit_one_epoch(self, remaining_model_idx, valid_loss_rolling_average_prev, with_new_data,
+    #                   compute_normalization=True, rolling_average_persitency=None,
+    #                   verbose=False, log_tabular=False, prefix=''):
+    #
+    #     if rolling_average_persitency is None:
+    #         rolling_average_persitency = self.rolling_average_persitency
+    #
+    #     sess = tf.get_default_session()
+    #
+    #     if with_new_data:
+    #         if compute_normalization and self.normalize_input:
+    #             self.compute_normalization(self._dataset_train['obs'],
+    #                                        self._dataset_train['act'],
+    #                                        self._dataset_train['delta'])
+    #
+    #     self.used_timesteps_counter += len(self._dataset_train['obs'][0])
+    #     if self.normalize_input:
+    #         # normalize data
+    #         obs_train, act_train, delta_train = self._normalize_data(self._dataset_train['obs'],
+    #                                                                  self._dataset_train['act'],
+    #                                                                  self._dataset_train['delta'])
+    #     else:
+    #         obs_train, act_train, delta_train = self._dataset_train['obs'], self._dataset_train['act'], \
+    #                                             self._dataset_train['delta']
+    #
+    #     valid_loss_rolling_average = valid_loss_rolling_average_prev
+    #     assert remaining_model_idx is not None
+    #     train_op_to_do = [op for idx, op in enumerate(self.train_op_model_batches) if idx in remaining_model_idx]
+    #
+    #     # initialize data queue
+    #     feed_dict = dict(
+    #         list(zip(self.obs_batches_dataset_ph, obs_train)) +
+    #         list(zip(self.act_batches_dataset_ph, act_train)) +
+    #         list(zip(self.delta_batches_dataset_ph, delta_train))
+    #     )
+    #     sess.run(self.iterator.initializer, feed_dict=feed_dict)
+    #
+    #     # preparations for recording training stats
+    #     batch_losses = []
+    #
+    #     """ ------- Looping through the shuffled and batched dataset for one epoch -------"""
+    #     while True:
+    #         try:
+    #             obs_act_delta = sess.run(self.next_batch)
+    #             obs_batch_stack = np.concatenate(obs_act_delta[:self.num_models], axis=0)
+    #             act_batch_stack = np.concatenate(obs_act_delta[self.num_models:2*self.num_models], axis=0)
+    #             delta_batch_stack = np.concatenate(obs_act_delta[2*self.num_models:], axis=0)
+    #
+    #             # run train op
+    #             batch_loss_train_ops = sess.run(self.loss_model_batches + train_op_to_do,
+    #                                             feed_dict={self.obs_model_batches_stack_ph: obs_batch_stack,
+    #                                                        self.act_model_batches_stack_ph: act_batch_stack,
+    #                                                        self.delta_model_batches_stack_ph: delta_batch_stack})
+    #
+    #             batch_loss = np.array(batch_loss_train_ops[:self.num_models])
+    #             batch_losses.append(batch_loss)
+    #
+    #         except tf.errors.OutOfRangeError:
+    #             if self.normalize_input:
+    #                 # TODO: if not with_new_data, don't recompute
+    #                 # normalize data
+    #                 obs_test, act_test, delta_test = self._normalize_data(self._dataset_test['obs'],
+    #                                                                       self._dataset_test['act'],
+    #                                                                       self._dataset_test['delta'])
+    #
+    #             else:
+    #                 obs_test, act_test, delta_test = self._dataset_test['obs'], self._dataset_test['act'], \
+    #                                                  self._dataset_test['delta']
+    #
+    #             obs_test_stack = np.concatenate(obs_test, axis=0)
+    #             act_test_stack = np.concatenate(act_test, axis=0)
+    #             delta_test_stack = np.concatenate(delta_test, axis=0)
+    #
+    #             # compute validation loss
+    #             valid_loss = sess.run(self.loss_model_batches,
+    #                                   feed_dict={self.obs_model_batches_stack_ph: obs_test_stack,
+    #                                              self.act_model_batches_stack_ph: act_test_stack,
+    #                                              self.delta_model_batches_stack_ph: delta_test_stack})
+    #             valid_loss = np.array(valid_loss)
+    #
+    #             if valid_loss_rolling_average is None:
+    #                 valid_loss_rolling_average = 1.5 * valid_loss  # set initial rolling to a higher value avoid too early stopping
+    #                 valid_loss_rolling_average_prev = 2.0 * valid_loss
+    #                 for i in range(len(valid_loss)):
+    #                     if valid_loss[i] < 0:
+    #                         valid_loss_rolling_average[i] = valid_loss[i]/1.5  # set initial rolling to a higher value avoid too early stopping
+    #                         valid_loss_rolling_average_prev[i] = valid_loss[i]/2.0
+    #
+    #             valid_loss_rolling_average = rolling_average_persitency*valid_loss_rolling_average \
+    #                                          + (1.0-rolling_average_persitency)*valid_loss
+    #
+    #             if verbose:
+    #                 str_mean_batch_losses = ' '.join(['%.4f'%x for x in np.mean(batch_losses, axis=0)])
+    #                 str_valid_loss = ' '.join(['%.4f'%x for x in valid_loss])
+    #                 str_valid_loss_rolling_averge = ' '.join(['%.4f'%x for x in valid_loss_rolling_average])
+    #                 logger.log(
+    #                     "Training NNDynamicsModel - finished one epoch\n"
+    #                     "train loss: %s\nvalid loss: %s\nvalid_loss_mov_avg: %s"
+    #                     %(str_mean_batch_losses, str_valid_loss, str_valid_loss_rolling_averge)
+    #                 )
+    #             break
+    #
+    #     for i in remaining_model_idx:
+    #         if valid_loss_rolling_average_prev[i] < valid_loss_rolling_average[i]:
+    #             remaining_model_idx.remove(i)
+    #             logger.log('Stop model {} since its valid_loss_rolling_average decreased'.format(i))
+    #
+    #     """ ------- Tabular Logging ------- """
+    #     if log_tabular:
+    #         logger.logkv(prefix+'TimeStepsCtr', self.timesteps_counter)
+    #         logger.logkv(prefix+'UsedTimeStepsCtr', self.used_timesteps_counter)
+    #         logger.logkv(prefix+'AvgSampleUsage', self.used_timesteps_counter/self.timesteps_counter)
+    #         logger.logkv(prefix+'NumModelRemaining', len(remaining_model_idx))
+    #         logger.logkv(prefix+'AvgTrainLoss', np.mean(batch_losses))
+    #         logger.logkv(prefix+'AvgValidLoss', np.mean(valid_loss))
+    #         logger.logkv(prefix+'AvgValidLossRoll', np.mean(valid_loss_rolling_average))
+    #
+    #     return remaining_model_idx, valid_loss_rolling_average
 
     def fit(self, obs, act, obs_next, epochs=1000, compute_normalization=True,
             valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):

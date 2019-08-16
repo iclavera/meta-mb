@@ -108,11 +108,15 @@ class SAC_MB(Algo):
         self.sampler_batch_size = sampler_batch_size
         self.session = session or tf.keras.backend.get_session()
         self._squash = squash
-        self.Qs = Qs
-        if Q_targets is None:
-            self.Q_targets = Qs
+        if self.dynamics_type == 2:
+            self.Qs = self.dynamics_model.Qs
+            self.Q_targets = self.dynamics_model.Q_targets
         else:
-            self.Q_targets = Q_targets
+            self.Qs = Qs
+            if Q_targets is None:
+                self.Q_targets = Qs
+            else:
+                self.Q_targets = Q_targets
         self.reward_scale = reward_scale
         self.prediction_type = prediction_type
         self.target_update_interval = target_update_interval
@@ -194,7 +198,7 @@ class SAC_MB(Algo):
 
     def step(self, obs, actions, shuffle = True, k = 0):
         assert self.dynamics_type == 0 or self.dynamics_type == 1
-        assert self.step_type in [0, 1, 2]
+        assert self.step_type in [0, 1, 2, 3]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict_sym(obs, actions)
             if k != 0:
@@ -202,7 +206,6 @@ class SAC_MB(Algo):
             dist_info_sym = self.policy.distribution_info_sym(next_observation)
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             rewards = self.training_environment.tf_reward(obs, actions, next_observation)
-            rewards = tf.expand_dims(rewards, axis=-1)
             dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
         elif self.dynamics_type == 1:
             next_observation, rewards, dones = self.dynamics_model.predict_sym(obs, actions, shuffle)
@@ -217,7 +220,12 @@ class SAC_MB(Algo):
             elif self.step_type == 2:
                 next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
                 dones = self.training_environment.tf_termination_fn(obs, actions, next_observation)
+            elif self.step_type == 3:
+                next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+                rewards = self.training_environment.tf_reward(obs, actions, next_observation)
         dones = tf.cast(dones, rewards.dtype)
+        dones = tf.reshape(dones, [-1, 1])
+        rewards = tf.reshape(rewards, [-1, 1])
         return next_observation, next_actions_var, rewards, dones, dist_info_sym
 
 
@@ -247,6 +255,7 @@ class SAC_MB(Algo):
                 next_value=(1 - dones_ph) * next_values_var)
             return tf.stop_gradient(target)
         elif self.q_target_type == 1:
+            # STEVE
             num_models = self.dynamics_model.num_models
             obs = self.op_phs_dict['next_observations']
             dist_info_sym = self.policy.distribution_info_sym(obs)
@@ -301,33 +310,33 @@ class SAC_MB(Algo):
             target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
             Q_target = self.q_target = tf.reduce_sum(target_means * target_confidence, 0)
 
-        elif self.q_target_type == 2:
-            # test MVE
-            num_models = self.dynamics_model.num_models
-            obs = self.op_phs_dict['next_observations']
-            dist_info_sym = self.policy.distribution_info_sym(obs)
-            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-            rewards_var = self.reward_scale * rewards_ph
-            rewards_var = tf.tile(rewards_var, [num_models, 1])
-            target = td_target(
-                reward=rewards_var,
-                discount=self.discount,
-                next_value=(1 - tf.tile(dones_ph, [num_models, 1])) * tf.tile(next_values_var, [num_models, 1]))
-            targets = [target]
-            for i in range(1, self.H + 1):
-                next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
-                expanded_obs = tf.tile(obs, [num_models, 1])
-                expanded_actions = tf.tile(actions, [num_models, 1])
-                next_observation, next_actions_var, rewards, dones, dist_info_sym = self.step(expanded_obs, expanded_actions, shuffle = False)
-                rewards_var = rewards_var + (1 - dones) * (self.discount ** i) * self.reward_scale * rewards
-                obs, actions = next_observation, next_actions_var
-            next_log_pis_var = self.policy.distribution.log_likelihood_sym(expanded_next_actions_var, dist_info_sym)
-            next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
-            input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
-            min_next_Q = tf.reduce_min(next_q_values, axis=0)
-            next_values_var = min_next_Q - self.alpha * next_log_pis_var
-            Q_target = self.q_target = rewards_var + (self.discount ** (i+1)) * (1 - dones) * next_values_var
+        # elif self.q_target_type == 2:
+        #     # test MVE
+        #     num_models = self.dynamics_model.num_models
+        #     obs = self.op_phs_dict['next_observations']
+        #     dist_info_sym = self.policy.distribution_info_sym(obs)
+        #     actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+        #     rewards_var = self.reward_scale * rewards_ph
+        #     rewards_var = tf.tile(rewards_var, [num_models, 1])
+        #     target = td_target(
+        #         reward=rewards_var,
+        #         discount=self.discount,
+        #         next_value=(1 - tf.tile(dones_ph, [num_models, 1])) * tf.tile(next_values_var, [num_models, 1]))
+        #     targets = [target]
+        #     for i in range(1, self.H + 1):
+        #         next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
+        #         expanded_obs = tf.tile(obs, [num_models, 1])
+        #         expanded_actions = tf.tile(actions, [num_models, 1])
+        #         next_observation, next_actions_var, rewards, dones, dist_info_sym = self.step(expanded_obs, expanded_actions, shuffle = False)
+        #         rewards_var = rewards_var + (1 - dones) * (self.discount ** i) * self.reward_scale * rewards
+        #         obs, actions = next_observation, next_actions_var
+        #     next_log_pis_var = self.policy.distribution.log_likelihood_sym(expanded_next_actions_var, dist_info_sym)
+        #     next_log_pis_var = tf.expand_dims(next_log_pis_var, axis=-1)
+        #     input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
+        #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Q_targets]
+        #     min_next_Q = tf.reduce_min(next_q_values, axis=0)
+        #     next_values_var = min_next_Q - self.alpha * next_log_pis_var
+        #     Q_target = self.q_target = rewards_var + (self.discount ** (i+1)) * (1 - dones) * next_values_var
 
 
         return tf.stop_gradient(Q_target)
@@ -382,8 +391,12 @@ class SAC_MB(Algo):
 
         assert log_pis_var.shape.as_list() == [None, 1]
 
-        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
-        alpha = tf.exp(log_alpha)
+        if self.dynamics_type == 2:
+            log_alpha = self.dynamics.log_alpha
+            alpha = self.dynamics.alpha
+        else:
+            log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+            alpha = tf.exp(log_alpha)
 
         if isinstance(self.target_entropy, Number):
             alpha_loss = -tf.reduce_mean(
@@ -408,26 +421,26 @@ class SAC_MB(Algo):
             input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             min_q_val_var = tf.reduce_min(next_q_values, axis=0)
-        elif self. q_functioin_type == 1:
-            next_observation, next_actions_var, rewards, dones, _ = self.step(observations_ph, actions_var)
-            input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            q_values_var = [td_target(
-                reward=self.reward_scale * rewards,
-                discount=self.discount,
-                next_value= (1-dones) * q) for q in next_q_values]
-            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-        elif self.q_functioin_type == 2:
-            expanded_next_observations, next_actions_var, rewards, dones, dist_info_sym= self.step(observations_ph, actions_var, k=self.num_actions_per_next_observation)
-            input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1])for value in next_q_values]
-            next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
-            q_values_var = [td_target(
-               reward=self.reward_scale * rewards,
-               discount=self.discount,
-               next_value= (1-dones)*q) for q in next_q_values]
-            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        # elif self. q_functioin_type == 1:
+        #     next_observation, next_actions_var, rewards, dones, _ = self.step(observations_ph, actions_var)
+        #     input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+        #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        #     q_values_var = [td_target(
+        #         reward=self.reward_scale * rewards,
+        #         discount=self.discount,
+        #         next_value= (1-dones) * q) for q in next_q_values]
+        #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        # elif self.q_functioin_type == 2:
+        #     expanded_next_observations, next_actions_var, rewards, dones, _= self.step(observations_ph, actions_var, k=self.num_actions_per_next_observation)
+        #     input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
+        #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        #     next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1])for value in next_q_values]
+        #     next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
+        #     q_values_var = [td_target(
+        #        reward=self.reward_scale * rewards,
+        #        discount=self.discount,
+        #        next_value= (1-dones)*q) for q in next_q_values]
+        #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
         elif self.q_functioin_type == 3:
             assert self.T >= 0
@@ -493,32 +506,33 @@ class SAC_MB(Algo):
         #     self.confidence = target_confidence
         #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
         #
-        # elif self.q_functioin_type == 5:
-        #     assert self.T >= 0
-        #     obs = observations_ph
-        #     actions = actions_var
-        #     for i in range(self.T+1):
-        #         next_observation, next_actions, rewards, dones, _ = self.step(obs, actions)
-        #         expanded_next_observations, next_actions_var, _, _, _ = self.step(obs, actions, k=self.num_actions_per_next_observation)
-        #         if self.prediction_type == 'mean':
-        #             next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
-        #             next_actions = tf.reduce_mean(next_actions, axis = 0)
-        #         elif self.prediction_type == 'rand':
-        #             next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
-        #             index = np.random.randint(self.num_actions_per_next_observation)
-        #             next_actions = next_actions[index]
-        #         if i == 0 :
-        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
-        #         else:
-        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
-        #         obs, actions = next_observation, next_actions
-        #
-        #     input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
-        #     next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        #     next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
-        #     next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
-        #     q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-        #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        elif self.q_functioin_type == 5:
+            assert self.T >= 0
+            obs = observations_ph
+            actions = actions_var
+            for i in range(self.T+1):
+                next_observation, next_actions, rewards, dones_next, _ = self.step(obs, actions)
+                expanded_next_observations, next_actions_var, _, _, _ = self.step(obs, actions, k=self.num_actions_per_next_observation)
+                if self.prediction_type == 'mean':
+                    next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
+                    next_actions = tf.reduce_mean(next_actions, axis = 0)
+                elif self.prediction_type == 'rand':
+                    next_actions = tf.reshape(next_actions_var, [self.num_actions_per_next_observation, -1, self.action_dim])
+                    index = np.random.randint(self.num_actions_per_next_observation)
+                    next_actions = next_actions[index]
+                if i == 0 :
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards
+                else:
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                dones = dones_next
+                obs, actions = next_observation, next_actions
+
+            input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
+            next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [tf.reshape(value, [self.num_actions_per_next_observation, -1, 1]) for value in next_q_values]
+            next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
+            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
             # too many predictions, way too slow
         # elif self.q_functioin_type == 6:

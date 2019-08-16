@@ -231,7 +231,7 @@ class Trainer(object):
 
     def step(self, obs, actions):
         assert self.dynamics_type in [0, 1]
-        assert self.step_type in [0, 1, 2]
+        assert self.step_type in [0, 1, 2, 3]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict(obs, actions)
             rewards = self.env.reward(obs, actions, next_observation)
@@ -242,6 +242,8 @@ class Trainer(object):
                 dones = (dones>=self.done_bar)
             elif self.step_type == 2:
                 dones = self.env.termination_fn(obs, actions, next_observation)
+            elif self.step_type == 3:
+                rewards = self.env.reward(obs, actions, next_observation)
             dones = dones.reshape((-1))
             rewards = rewards.reshape((-1))
         return next_observation, rewards, dones
