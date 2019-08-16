@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'cheetah_auxiliary'
+EXP_NAME = 'cheetah_statediagnostics'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -293,7 +293,8 @@ def run_experiment(**config):
             cpc_train_interval=config['cpc_train_interval'],
             cpc_batch_size=config['batch_size_model'],
 
-            path_checkpoint_interval=config['path_checkpoint_interval']
+            path_checkpoint_interval=config['path_checkpoint_interval'],
+            train_emb_to_state=True
         )
         algo.train()
 
@@ -310,7 +311,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config_withreward_l2 = {
-        'seed': [1],
+        'seed': [1, 2],
         'run_suffix': ['1'],
 
         # Problem
@@ -342,8 +343,8 @@ if __name__ == '__main__':
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'hidden_sizes_model': [(500, 500)],
-        'dynamic_model_epochs': [15],
-        'reward_model_epochs': [15],
+        'dynamic_model_epochs': [1],
+        'reward_model_epochs': [1],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [64],
@@ -374,8 +375,8 @@ if __name__ == '__main__':
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [300],
-        'rew_loss_weight': [0],
-        'action_loss_weight': [1.],
+        'rew_loss_weight': [0., 10],
+        'action_loss_weight': [0.],
         'cpc_lambd': [0],
         'grad_penalty': [False],
     }
@@ -411,4 +412,4 @@ if __name__ == '__main__':
     configs = [config_ac_l2, config_ac_contrastive]
 
     i = 0
-    run_sweep(run_experiment, configs[i], EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)

@@ -75,7 +75,9 @@ class Trainer(object):
             cpc_negative_same_traj=0,
             cpc_initial_sampler=None,
             cpc_train_interval=10,
+
             path_checkpoint_interval=1,
+            train_emb_to_state=False,
             ):
         self.env = env
         self.sampler = sampler
@@ -104,6 +106,11 @@ class Trainer(object):
         self.cpc_train_interval = cpc_train_interval
 
         self.path_checkpoint_interval = path_checkpoint_interval
+        self.train_emb_to_state = train_emb_to_state
+
+        self.env.reset()
+        self.state_dim = len(self.env.true_state)
+        self.latent_dim = self.cpc_model.latent_dim
 
         self.initial_random_samples = initial_random_samples
 
@@ -175,6 +182,17 @@ class Trainer(object):
             # K.set_learning_phase(0)
             # self.env._wrapped_env.encoder = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
 
+            if self.train_emb_to_state:
+                emb_input = keras.layers.Input(shape=(self.latent_dim, ))
+                hidden = keras.layers.Dense(256, activation='relu')(emb_input)
+                hidden = keras.layers.Dense(256, activation='relu')(hidden)
+                state_output = keras.layers.Dense(self.state_dim, activation='linear')(hidden)
+                emb2state_model = keras.Model(inputs=emb_input, outputs=state_output)
+
+
+                emb2state_model.save_weights(os.path.join(logger.get_dir(), 'emb2state_model.h5'))
+
+
             for itr in range(self.start_itr, self.n_itr):
                 # for point mass
 
@@ -215,7 +233,8 @@ class Trainer(object):
                     self.buffer.update_buffer(samples_data['observations'],
                                             samples_data['actions'],
                                             samples_data['next_observations'],
-                                            samples_data['rewards'])
+                                            samples_data['rewards'],
+                                            samples_data['env_infos']['true_state'])
 
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
@@ -268,6 +287,49 @@ class Trainer(object):
                                             prefix='Rew')
 
                     logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
+
+
+                """ --------------------Train embedding to true state -------------"""
+                if self.train_emb_to_state and itr % 1 == 0:
+                    # reinitialize weights
+                    emb2state_model.load_weights(os.path.join(logger.get_dir(), 'emb2state_model.h5'))
+                    test_traj = 3
+                    # save 3 trajectories to test on
+                    emb2state_model.compile(
+                        optimizer=keras.optimizers.Adam(lr=1e-3),
+                        loss='mean_squared_error',
+                        metrics=['mean_squared_error'], )
+
+                    callbacks = [
+                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
+                                                          verbose=1, min_delta=0.01),
+                        keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'emb2state.log'), append=True)]
+
+
+                    emb2state_model.fit\
+                        (x=self.buffer._embedding_dataset['obs'][:-test_traj].reshape((-1, self.latent_dim)),
+                         y=self.buffer._dataset['true_state'][:-test_traj].reshape((-1, self.state_dim)),
+                         epochs=30,
+                         validation_split=0.1,
+                         callbacks=callbacks
+                         )
+
+                    # plot the state predictions along time
+                    predicted_states = emb2state_model.predict(
+                        self.buffer._embedding_dataset['obs'][-test_traj:].reshape((-1, self.latent_dim)))
+                    predicted_states = predicted_states.reshape(test_traj, -1, self.state_dim)
+                    true_states = self.buffer._dataset['true_state'][-test_traj:]
+
+                    for counter, (true_traj, predicted_traj) in enumerate(zip(true_states, predicted_states)):
+                        num_plots = self.state_dim
+                        fig = plt.figure(figsize=(num_plots, 6))
+                        for i in range(num_plots):
+                            ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                            plt.plot(true_traj[:50, i], label='true state')
+                            plt.plot(predicted_traj[:50, i], label='predicted state')
+                            plt.legend()
+                        plt.savefig(os.path.join(logger.get_dir(), 'state_diagnostics_itr%d_%d.png' % (itr, counter)))
+
 
 
                 """ ------------------- Logging Stuff --------------------------"""

@@ -36,23 +36,25 @@ class ImageEmbeddingBuffer(Serializable):
 
         self._create_stats_vars()
 
-    def update_buffer(self, obs, act, obs_next, reward, check_init=True):
+    def update_buffer(self, obs, act, obs_next, reward, true_state, check_init=True):
         """
         :param obs: shape N x T x img_size
         :param act: shape N x T x ac_dim
         :param obs_next: shape N x T x img_size
+        :param true_state: shape N x T x obs_dim
         """
 
         assert obs.ndim == 5 and obs.shape[2:] == self.obs_space_dims
         assert obs_next.ndim == 5 and obs_next.shape[2:] == self.obs_space_dims
         assert act.ndim == 3 and act.shape[2] == self.action_space_dims
         assert reward.ndim == 2
+        assert true_state.ndim == 3
 
         self.timesteps_counter += obs.shape[0]
         obs_seq = np.concatenate([obs, obs_next[:, -1:, :]], axis=1)
         # If case should be entered exactly once
         if check_init and self._dataset is None:
-            self._dataset = dict(obs=obs_seq, act=act, reward=reward)
+            self._dataset = dict(obs=obs_seq, act=act, reward=reward, true_state=true_state)
             self.update_train_idx(self._valid_split_ratio)
 
         else:
@@ -62,6 +64,7 @@ class ImageEmbeddingBuffer(Serializable):
             self._dataset['obs'] = np.concatenate([self._dataset['obs'][-n_max:], obs_seq])
             self._dataset['act'] = np.concatenate([self._dataset['act'][-n_max:], act])
             self._dataset['reward'] = np.concatenate([self._dataset['reward'][-n_max:], reward])
+            self._dataset['true_state'] = np.concatenate([self._dataset['true_state'][-n_max:], true_state])
 
             self.update_train_idx(self._valid_split_ratio, n_new_samples=n_new_samples)
 

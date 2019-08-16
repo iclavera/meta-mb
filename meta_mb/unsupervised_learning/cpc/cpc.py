@@ -251,6 +251,7 @@ class CPC:
         cpc_model.summary()
 
         self.encoder = encoder_model
+        self.latent_dim = code_size
 
     def encode(self, imgs):
         if imgs.ndim == len(self.image_shape):
