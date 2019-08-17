@@ -11,7 +11,7 @@ from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 
@@ -73,6 +73,12 @@ def run_base(exp_dir, **kwargs):
         simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     else:
         raise NotImplementedError
+
+    try:
+        model_sleep = simulation_sleep / kwargs['rel_speed_model_to_data']
+        policy_sleep = simulation_sleep / kwargs['rel_speed_policy_to_data']
+    except (KeyError, ZeroDivisionError):
+        model_sleep, policy_sleep = 0, 0
 
     policy = GaussianMLPPolicy(
         name="meta-policy",
@@ -162,6 +168,8 @@ def run_base(exp_dir, **kwargs):
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
+        model_sleep=model_sleep,
+        policy_sleep=policy_sleep,
         sampler_str=kwargs['sampler'],
     )
 
@@ -176,18 +184,20 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.4, 0.9,
+            0.4,# 0.9,
         ],
 
         'seed': [1, 2],
-        'n_itr': [1250],
+        'n_itr': [401],
         'num_rollouts': [1],
         'sampler': ['bptt'],
 
         'simulation_sleep_frac': [1],
-        'env': ['Walker2d', 'Hopper'],
+        'rel_speed_model_to_data': [0, 0.06, 0.08, 0.10],
+        'rel_speed_policy_to_data': [0, 0.03, 0.04, 0.05],
 
         # Problem Conf
+        'env': ['HalfCheetah'],
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
@@ -221,11 +231,11 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3, 4e-5],
+        'learning_rate': [1e-3], #4e-5],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],
-        'exp_tag': ['timing-parallel-mbppo'],  # For changes besides hyperparams
+        'exp_tag': ['parallel-mbppo'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

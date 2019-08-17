@@ -4,13 +4,12 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerData(Worker):
-    def __init__(self, simulation_sleep, video=False):
+    def __init__(self, time_sleep, video=False):
         self.video = video
         if video:
-            super().__init__(snapshot_mode='gap', snapshot_gap=100)
+            super().__init__(time_sleep=time_sleep, snapshot_mode='gap', snapshot_gap=100)
         else:
-            super().__init__()
-        self.simulation_sleep = simulation_sleep
+            super().__init__(time_sleep=time_sleep)
         self.env = None
         self.env_sampler = None
         self.dynamics_sample_processor = None
@@ -70,7 +69,7 @@ class WorkerData(Worker):
         self.samples_data_arr.append(samples_data)
         time_step = time.time() - time_step
 
-        time_sleep = max(self.simulation_sleep - time_step, 0)
+        time_sleep = max(self.time_sleep - time_step, 0)
         time.sleep(time_sleep)
 
         logger.logkv('Data-TimeStep', time_step)

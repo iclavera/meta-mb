@@ -10,10 +10,12 @@ class Worker(object):
     """
     def __init__(
             self,
+            time_sleep=0,
             verbose=True,
             snapshot_mode='last',
             snapshot_gap=1,
     ):
+        self.time_sleep = time_sleep
         self.verbose = verbose
         self.snapshot_mode = snapshot_mode
         self.snapshot_gap = snapshot_gap

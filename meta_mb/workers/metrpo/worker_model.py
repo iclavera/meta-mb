@@ -6,8 +6,8 @@ import numpy as np
 
 
 class WorkerModel(Worker):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, time_sleep=0):
+        super().__init__(time_sleep=time_sleep)
         self.with_new_data = None
         self.remaining_model_idx = None
         self.valid_loss_rolling_average = None
@@ -85,7 +85,11 @@ class WorkerModel(Worker):
         self.with_new_data = False
         time_model_fit = time.time() - time_model_fit
 
+        time_sleep = max(self.time_sleep - time_model_fit, 0)
+        time.sleep(time_sleep)
+
         logger.logkv('Model-TimeStep', time_model_fit)
+        logger.logkv('Model-TimeSleep', self.time_sleep)
 
     def _synch(self, samples_data_arr, check_init=False):
         time_synch = time.time()

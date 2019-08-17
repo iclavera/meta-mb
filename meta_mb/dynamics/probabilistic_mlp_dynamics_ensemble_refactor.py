@@ -56,12 +56,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self.timesteps_counter = 0
         self.used_timesteps_counter = 0
 
-        hidden_nonlinearity = self._activations[hidden_nonlinearity]
-        output_nonlinearity = self._activations[output_nonlinearity]
-        self.hidden_nonlinearity = hidden_nonlinearity
-        self.output_nonlinearity = output_nonlinearity
 
-        self.networks = []
+        self.hidden_nonlinearity = hidden_nonlinearity = self._activations[hidden_nonlinearity]
+        self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
 
         # NO NORNALIZATION INVOLVED
         """ computation graph for training and simple inference """
@@ -86,6 +83,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             nn_input_split = tf.split(self.nn_input, self.num_models, axis=0)
 
             # create MLP
+            mlps = []
             delta_preds = []
             var_preds = []
             logvar_preds = []
@@ -101,7 +99,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                               input_var=nn_input_split[i],
                               input_dim=obs_space_dims+action_space_dims, # FIXME: input weight_normalization?
                               )
-                    self.networks.append(mlp)
+                    mlps.append(mlp)
 
                 mean, logvar = tf.split(mlp.output_var, 2,  axis=-1)
                 logvar = self.max_logvar - tf.nn.softplus(self.max_logvar - logvar)
@@ -188,6 +186,8 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             self.f_var_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
                                                                 self.act_model_batches_stack_ph],
                                                                 self.var_pred_model_batches_stack)
+
+        self._networks = mlps
 
     def predict_sym(self, obs_ph, act_ph, pred_type, deterministic):
         """
@@ -358,7 +358,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         assert delta.ndim == 3
 
         pred_obs = obs_original[:, :, None] + delta
-        pred_obs = np.clip(pred_obs, -1e2, 1e2)
 
         if pred_type == 'mean':
             pred_obs = np.mean(pred_obs, axis=2)
@@ -368,9 +367,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
         else:
-            NotImplementedError('pred_type must be one of [rand, mean, all]')
+            NotImplementedError('pred_type must be one of [rand, mean, all, (int)]')
 
-        return pred_obs
+        return np.clip(pred_obs, -1e2, 1e2)
 
     def predict_batches(self, obs_batches, act_batches, deterministic):
         """
@@ -411,10 +410,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         assert delta_batches.ndim == 2
 
         pred_obs_batches = obs_batches_original + delta_batches
-        pred_obs_batches = np.clip(pred_obs_batches, -1e2, 1e2)  # FIXME: remove it?
         assert pred_obs_batches.shape == obs_batches.shape
 
-        return pred_obs_batches
+        return np.clip(pred_obs_batches, -1e2, 1e2)
 
     def _create_assign_ph(self):
         self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims], name="min_logvar_ph")

@@ -5,8 +5,8 @@ from meta_mb.workers.base import Worker
 
 
 class WorkerPolicy(Worker):
-    def __init__(self, algo_str, sampler_str='metrpo'):
-        super().__init__()
+    def __init__(self, algo_str, time_sleep=0, sampler_str='bptt'):
+        super().__init__(time_sleep=time_sleep)
         self.policy = None
         self.baseline = None
         self.model_sampler = None
@@ -93,7 +93,11 @@ class WorkerPolicy(Worker):
         self.policy = self.model_sampler.policy
         time_step = time.time() - time_step
 
+        time_sleep = max(self.time_sleep - time_step, 0)
+        time.sleep(time_sleep)
+
         logger.logkv('Policy-TimeStep', time_step)
+        logger.logkv('Policy-TimeSleep', time_sleep)
 
     def _synch(self, dynamics_model_state_pickle):
         time_synch = time.time()

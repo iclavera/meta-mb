@@ -142,11 +142,11 @@ class DyniLQRPlanner(object):
                         returns_dyn[env_idx] = -J_val
                     else:  # u_array is updated, opt_J_val < J_val
                         returns_dyn[env_idx] = -log_info['opt_J_val']
-                        logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
-                        if log_info['u_clipped_pct'] > 0:
+                        if env_idx == 0:
+                            logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
                             logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
+                            logger.dumpkvs()
                         # success_counter += 1
-
 
                     # logging DEBUG
                     # if env_idx == 0:
@@ -173,7 +173,6 @@ class DyniLQRPlanner(object):
                     logger.log(f'{env_idx}-th env is removed at iLQR_itr {itr}')
                     active_envs.remove(env_idx)
 
-            logger.dumpkvs()  # log every itr
             if len(active_envs) == 0:
                 break
 

@@ -14,7 +14,7 @@ import tensorflow as tf
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sequential-mbmpc'
+EXP_NAME = 'pretrain-model-mb-mpc'
 
 
 def run_experiment(**config):
@@ -96,10 +96,10 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-                'seed': [5],
+                'seed': [1],
 
                 # Problem
-                'env': [AntEnv, HalfCheetahEnv], #AntEnv, Walker2dEnv, HopperEnv],  # 'HalfCheetahEnv'
+                'env': [HalfCheetahEnv], #AntEnv, Walker2dEnv, HopperEnv],  # 'HalfCheetahEnv'
                 'max_path_length': [200],
                 'normalize': [False],
                  'n_itr': [50],
@@ -113,14 +113,14 @@ if __name__ == '__main__':
 
                 # Training
                 'num_rollouts': [20],
-                'dynamics_learning_rate': [5e-4, 0.001],
+                'dynamics_learning_rate': [0.001],
                 'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.1, 0.4, 0.99],
+                'rolling_average_persitency': [0.99],
                 'initial_random_samples': [True],
                 'initial_sinusoid_samples': [False],
 
                 # Dynamics Model
-                'probabilistic_dynamics': [True, False],
+                'probabilistic_dynamics': [False],
                 'recurrent': [False],
                 'num_models': [5],
                 'dynamics_hidden_nonlinearity': ['swish'],

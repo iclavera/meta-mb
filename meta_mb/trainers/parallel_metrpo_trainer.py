@@ -35,6 +35,8 @@ class ParallelTrainer(object):
             flags_need_query,
             config,
             simulation_sleep,
+            model_sleep=0,
+            policy_sleep=0,
             initial_random_samples=True,
             start_itr=0,
             sampler_str='bptt',
@@ -43,9 +45,9 @@ class ParallelTrainer(object):
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
-            WorkerData(simulation_sleep=simulation_sleep, video=video),
-            WorkerModel(),
-            WorkerPolicy(algo_str=algo_str, sampler_str=sampler_str),
+            WorkerData(time_sleep=simulation_sleep, video=video),
+            WorkerModel(time_sleep=model_sleep),
+            WorkerPolicy(time_sleep=policy_sleep, algo_str=algo_str, sampler_str=sampler_str),
         ]
         names = ["Data", "Model", "Policy"]
         # one queue for each worker, tasks assigned by scheduler and previous worker
