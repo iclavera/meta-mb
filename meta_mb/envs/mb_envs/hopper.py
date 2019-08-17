@@ -78,6 +78,8 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 if __name__ == "__main__":
     env = HopperEnv()
     env.reset()
-    for _ in range(1000):
-        _ = env.render()
+
+    for _ in range(3):
+        # _ = env.render()
+        print(env.sim.derivative().shape)
         ob, rew, done, info = env.step(env.action_space.sample())  # take a random action

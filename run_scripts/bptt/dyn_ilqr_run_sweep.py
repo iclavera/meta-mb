@@ -1,9 +1,9 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.sampler_ilqr import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_refactor import ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics import ProbMLPDynamics
 from meta_mb.logger import logger
@@ -207,7 +207,7 @@ if __name__ == '__main__':
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'dyn_str': ['prob_ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
+        'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],

@@ -117,12 +117,12 @@ class Sampler(BaseSampler):
             next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
             env_time += time.time() - t
 
-            # # step using model
-            # if not random and not sinusoid:
-            #     logger.log('PathLength', itr_counter)
-            #     next_obses_fake = policy.dynamics_model.predict(obses, actions, pred_type='mean', deterministic=True)
-            #     rewards_fake = self.env.reward(obses, actions, next_obses_fake)
-            #     next_obses, rewards = next_obses_fake, rewards_fake # FIXME : CHANGE LATER!!
+            # step using model
+            if not random and not sinusoid:
+                logger.log('PathLength', itr_counter)
+                next_obses_fake = policy.dynamics_model.predict(obses, actions)
+                rewards_fake = self.env.reward(obses, actions, next_obses_fake)
+                next_obses, rewards = next_obses_fake, rewards_fake # FIXME : CHANGE LATER!!
 
             # prepare for warm reset
             rewards_array += rewards

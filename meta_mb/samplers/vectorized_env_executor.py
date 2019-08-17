@@ -1,7 +1,4 @@
 import numpy as np
-from meta_mb.logger import logger
-import time
-import scipy.linalg as sla
 from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.optimizers.gt_optimizer import GTOptimizer
 import pickle as pickle

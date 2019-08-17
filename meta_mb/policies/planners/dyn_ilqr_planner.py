@@ -51,13 +51,19 @@ class DyniLQRPlanner(object):
 
     def _build_deriv_graph(self):
         x_array, df_array, dl_array = [], [], []
+        perm_inv_array = []
 
         obs = self.obs_ph
         returns = tf.zeros((self.num_envs,))
         for i in range(self.horizon):
             acts = self.u_array_ph[i, :, :]
-            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='mean', deterministic=True)
+            perm = tf.range(0, limit=self.num_envs, dtype=tf.int32)
+            perm = tf.random.shuffle(perm)
+            perm_dict = dict(perm=perm)
 
+            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='rand', perm_dict=perm_dict)
+
+            perm_inv_array.append(perm_dict['perm_inv'])
             x_array.append(obs)
             df = self._df_sym(obs, acts, next_obs).values()
             df_array.append(df)
@@ -69,6 +75,8 @@ class DyniLQRPlanner(object):
             obs = next_obs
 
         # post process
+        model_idx = tf.stack(perm_inv_array, axis=0)  # (horizon, num_envs)  # u_array[i, j] is predicted with model perm_inv[i, j]
+        model_idx = tf.transpose(model_idx)
         x_array = tf.stack(x_array, axis=0)
         J_val = -returns
         # for each element of array, stack along horizon: (horizon, num_envs, *)
@@ -77,8 +85,9 @@ class DyniLQRPlanner(object):
         # store by env
         derivs_by_env = list(map(lambda arr: [arr[:, env_idx] for env_idx in range(self.num_envs)], f_array + l_array))
         x_array_by_env = [x_array[:, env_idx] for env_idx in range(self.num_envs)]
+        model_idx_by_env = [model_idx[env_idx] for env_idx in range(self.num_envs)]
         J_val_by_env = [J_val[env_idx] for env_idx in range(self.num_envs)]
-        utils_sym_by_env = list(zip(x_array_by_env, J_val_by_env, *derivs_by_env))
+        utils_sym_by_env = list(zip(model_idx_by_env, x_array_by_env, J_val_by_env, *derivs_by_env))
 
         return utils_sym_by_env
 
@@ -211,7 +220,7 @@ class DyniLQRPlanner(object):
 
     def update_u_per_env(self, idx, utils_list):
         u_array = self.u_array_val[:, idx, :]
-        x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        model_idx, x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
 
         """
         Backward Pass
@@ -296,7 +305,7 @@ class DyniLQRPlanner(object):
                 # store updated state/action
                 opt_x_array.append(x)
                 opt_u_array.append(u)
-                x_prime = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
+                x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=model_idx[i])[0]
                 # # sanity check
                 # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
                 # if not np.allclose(x_prime, x_prime_second_predict):

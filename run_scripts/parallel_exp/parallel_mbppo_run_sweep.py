@@ -10,6 +10,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
+from meta_mb.trainers.parallel_metrpo_trainer_multi_agents import ParallelTrainerMultiAgents
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
@@ -40,12 +41,23 @@ def run_experiment(**kwargs):
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.makedirs(exp_dir + '/Data/', exist_ok=True)
-    os.makedirs(exp_dir + '/Model/', exist_ok=True)
-    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
-    json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-    json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-    json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    if 'num_data_workers' in kwargs:
+        for idx in range(kwargs['num_data_workers']):
+            os.makedirs(exp_dir + f'/Data-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Data-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        for idx in range(kwargs['num_model_workers']):
+            os.makedirs(exp_dir + f'/Model-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Model-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        for idx in range(kwargs['num_policy_workers']):
+            os.makedirs(exp_dir + f'/Policy-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Policy-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    else:
+        os.makedirs(exp_dir + '/Data/', exist_ok=True)
+        os.makedirs(exp_dir + '/Model/', exist_ok=True)
+        os.makedirs(exp_dir + '/Policy/', exist_ok=True)
+        json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     run_base(exp_dir, **kwargs)
 
 
@@ -79,6 +91,9 @@ def run_base(exp_dir, **kwargs):
         policy_sleep = simulation_sleep / kwargs['rel_speed_policy_to_data']
     except (KeyError, ZeroDivisionError):
         model_sleep, policy_sleep = 0, 0
+
+    print(f"\n------------- simulation_sleep, model_sleep, policy_sleep = {simulation_sleep, model_sleep, policy_sleep} --------")
+    print(f"\n------------- num_workers = {kwargs['num_data_workers'], kwargs['num_model_workers'], kwargs['num_policy_workers']} ---------------")
 
     policy = GaussianMLPPolicy(
         name="meta-policy",
@@ -173,6 +188,26 @@ def run_base(exp_dir, **kwargs):
         sampler_str=kwargs['sampler'],
     )
 
+    trainer = ParallelTrainerMultiAgents(
+        exp_dir=exp_dir,
+        algo_str=kwargs['algo'],
+        policy_pickle=policy_pickle,
+        env_pickle=env_pickle,
+        baseline_pickle=baseline_pickle,
+        dynamics_model_pickle=dynamics_model_pickle,
+        feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
+        n_itr=kwargs['n_itr'],
+        flags_need_query=kwargs['flags_need_query'],
+        config=config,
+        num_data_workers=kwargs['num_data_workers'],
+        num_model_workers=kwargs['num_model_workers'],
+        num_policy_workers=kwargs['num_policy_workers'],
+        simulation_sleep=simulation_sleep,
+        model_sleep=model_sleep,
+        policy_sleep=policy_sleep,
+        sampler_str=kwargs['sampler'],
+    )
+
     trainer.train()
 
 
@@ -184,7 +219,7 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.4,# 0.9,
+            0.4, # 0.9,
         ],
 
         'seed': [1, 2],
@@ -193,8 +228,13 @@ if __name__ == '__main__':
         'sampler': ['bptt'],
 
         'simulation_sleep_frac': [1],
-        'rel_speed_model_to_data': [0, 0.06, 0.08, 0.10],
-        'rel_speed_policy_to_data': [0, 0.03, 0.04, 0.05],
+        # test sensitivity to relative worker speed
+        # 'rel_speed_model_to_data': [0, 0.06, 0.08, 0.10],
+        # 'rel_speed_policy_to_data': [0, 0.03, 0.04, 0.05],
+        # multi-agents implementation
+        'num_data_workers': [1],
+        'num_model_workers': [1],
+        'num_policy_workers': [2],
 
         # Problem Conf
         'env': ['HalfCheetah'],
@@ -231,7 +271,7 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [1e-3], #4e-5],
+        'learning_rate': [4e-5, 1e-3],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],

@@ -8,6 +8,7 @@ from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
+from meta_mb.dynamics.utils import tf_normalize, tf_denormalize
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
@@ -495,24 +496,62 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
 
-    def predict_sym(self, obs_ph, act_ph):
+    def predict_sym(self, obs_ph, act_ph, pred_type='rand', perm_dict=None):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.
         :param obs_ph: (batch_size, obs_space_dims)
         :param act_ph: (batch_size, act_space_dims)
         :return: (batch_size, obs_space_dims)
         """
-        # shuffle
-        perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
-        perm = tf.random.shuffle(perm)
-        obs_ph_perm, act_ph_perm = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
+        if pred_type == 'rand':
+            # shuffle
+            if perm_dict is not None:
+                perm = perm_dict['perm']
+            else:
+                perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
+                perm = tf.random.shuffle(perm)
+            obs_ph_perm, act_ph_perm = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
 
-        next_obs_perm = self.predict_batches_sym(obs_ph_perm, act_ph_perm)
+            next_obs_perm = self.predict_batches_sym(obs_ph_perm, act_ph_perm)
 
-        # unshuffle
-        perm_inv = tf.invert_permutation(perm)
-        next_obs = tf.gather(next_obs_perm, perm_inv)
-        return next_obs
+            # unshuffle
+            perm_inv = tf.invert_permutation(perm)
+            if perm_dict is not None:  # store perm_inv
+                perm_dict['perm_inv'] = perm_inv
+            next_obs = tf.gather(next_obs_perm, perm_inv)
+            return next_obs
+
+        delta_preds = []
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            for i in range(self.num_models):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                    assert self.normalize_input
+                    in_obs_var = tf_normalize(obs_ph, mean=self._mean_obs_var[i], std=self._std_obs_var[i])
+                    in_act_var = tf_normalize(act_ph, mean=self._mean_act_var[i], std=self._std_act_var[i])
+                    input_var = tf.concat([in_obs_var, in_act_var], axis=1)
+                    mlp = MLP(self.name+'/model_{}'.format(i),
+                              output_dim=self.obs_space_dims,
+                              hidden_sizes=self.hidden_sizes,
+                              hidden_nonlinearity=self.hidden_nonlinearity,
+                              output_nonlinearity=self.output_nonlinearity,
+                              input_var=input_var,
+                              input_dim=self.obs_space_dims + self.action_space_dims,
+                              )
+
+                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_preds.append(delta_pred)
+
+        delta_preds = tf.stack(delta_preds, axis=2)  # (batch_size, obs_dims, num_models)
+        next_obs = tf.expand_dims(obs_ph, axis=2) + delta_preds
+
+        if pred_type == 'all':
+            pass
+        elif pred_type == 'mean':
+            next_obs = tf.reduce_mean(next_obs, axis=2)
+        else:
+            NotImplementedError('[rand, mean, all]')
+
+        return tf.clip_by_value(next_obs, -1e2, 1e2)
 
     def predict_batches_sym(self, obs_ph, act_ph):
         """
@@ -545,14 +584,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-
-        # clip
         next_obs = original_obs + delta_preds
-        next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
 
-        return next_obs
+        return tf.clip_by_value(next_obs, -1e2, 1e2)
 
-    def predict(self, obs, act, pred_type='rand'):
+    def predict(self, obs, act, pred_type='rand', perm_dict=None):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -571,13 +607,19 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         if pred_type == 'rand':
             batch_size = obs.shape[0]
-            perm = np.random.permutation(batch_size)
+            if perm_dict is not None:
+                perm = perm_dict['perm']
+            else:
+                perm = np.random.permutation(batch_size)
             obs_perm, act_perm = obs[perm], act[perm]
 
             pred_obs_perm = self.predict_batches(obs_perm, act_perm)
 
-            perm_inv = np.empty(batch_size, dtype=int)
-            perm_inv[perm] = np.arange(batch_size)
+            if perm_dict is not None:
+                perm_inv = np.empty(batch_size, dtype=int)
+                perm_inv[perm] = np.arange(batch_size)
+            else:
+                perm_inv = perm_dict['perm_inv']
             pred_obs = pred_obs_perm[perm_inv]
 
             return pred_obs
@@ -605,6 +647,9 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':
             pass
+        elif type(pred_type) is int:
+            assert 0 <= pred_type < self.num_models
+            pred_obs = pred_obs[:, :, pred_type]
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
 

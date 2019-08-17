@@ -4,6 +4,7 @@ import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.utils import tf_normalize, tf_denormalize
 
 
 class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
@@ -239,7 +240,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         delta_preds = tf.stack(delta_preds, axis=2)  # (batch_size, obs_dims, num_models)
         pred_obs = tf.expand_dims(obs_ph, axis=2) + delta_preds
-        pred_obs = tf.clip_by_value(pred_obs, -1e2, 1e2)
 
         if pred_type == 'all':
             pass
@@ -251,7 +251,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all]')
 
-        return pred_obs
+        return tf.clip_by_value(pred_obs, -1e2, 1e2)
 
     def predict_batches_sym(self, obs_ph, act_ph, deterministic):
         """
@@ -293,12 +293,9 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
-
-        # clip
         pred_obs = original_obs + delta_preds
-        pred_obs = tf.clip_by_value(pred_obs, -1e2, 1e2)
 
-        return pred_obs
+        return tf.clip_by_value(pred_obs, -1e2, 1e2)
 
     def predict(self, obs, act, pred_type, deterministic):
         """
@@ -454,9 +451,3 @@ def denormalize(data_array, mean, std):
         return data_array * (std[None, :, None] + 1e-10) + mean[None, :, None]
     elif data_array.ndim == 2:
         return data_array * (std[None, :] + 1e-10) + mean[None, :]
-
-def tf_denormalize(data_array, mean, std):
-    return data_array * (std + 1e-10) + mean
-
-def tf_normalize(data_array, mean, std):
-    return (data_array - mean) / (std + 1e-10)
