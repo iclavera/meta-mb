@@ -315,7 +315,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
-        if pred_type == 'rand':
+        if pred_type == 'rand' and obs.shape[0] % self.num_models == 0:
             batch_size = obs.shape[0]
             perm = np.random.permutation(batch_size)
             obs_perm, act_perm = obs[perm], act[perm]
@@ -360,9 +360,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':
             pass
-        elif type(pred_type) is int:
-            assert 0 <= pred_type < self.num_models
-            pred_obs = pred_obs[:, :, pred_type]
+        elif pred_type == 'rand':
+            # randomly selecting the prediction of one model in each row
+            idx = np.random.randint(0, self.num_models, size=pred_obs.shape[0])
+            pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
         else:
             NotImplementedError('pred_type must be one of [rand, mean, all, (int)]')
 

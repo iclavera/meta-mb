@@ -515,9 +515,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             next_obs_perm = self.predict_batches_sym(obs_ph_perm, act_ph_perm)
 
             # unshuffle
-            perm_inv = tf.invert_permutation(perm)
-            if perm_dict is not None:  # store perm_inv
-                perm_dict['perm_inv'] = perm_inv
+            if perm_dict is not None:
+                perm_inv = perm_dict['perm_inv']
+            else:
+                perm_inv = tf.invert_permutation(perm)
             next_obs = tf.gather(next_obs_perm, perm_inv)
             return next_obs
 
@@ -538,7 +539,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               )
 
-                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_pred = tf_denormalize(mlp.output_var, mean=self._mean_delta_var[i], std=self._std_delta_var[i])
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.stack(delta_preds, axis=2)  # (batch_size, obs_dims, num_models)
@@ -568,8 +569,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             for i in range(self.num_models):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     assert self.normalize_input
-                    in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
+                    in_obs_var = tf_normalize(obs_ph[i], mean=self._mean_obs_var[i], std=self._std_obs_var[i])
+                    in_act_var = tf_normalize(act_ph[i], mean=self._mean_act_var[i], std=self._std_act_var[i])
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
                               output_dim=self.obs_space_dims,
@@ -580,7 +581,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                               input_dim=self.obs_space_dims + self.action_space_dims,
                               )
 
-                    delta_pred = mlp.output_var * self._std_delta_var[i] + self._mean_delta_var[i]
+                    delta_pred = tf_denormalize(mlp.output_var, mean=self._mean_delta_var[i], std=self._std_delta_var[i])
                     delta_preds.append(delta_pred)
 
         delta_preds = tf.concat(delta_preds, axis=0)
@@ -588,7 +589,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         return tf.clip_by_value(next_obs, -1e2, 1e2)
 
-    def predict(self, obs, act, pred_type='rand', perm_dict=None):
+    def predict(self, obs, act, pred_type='rand'):
         """
         Predict the batch of next observations given the batch of current observations and actions
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)
@@ -605,21 +606,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
-        if pred_type == 'rand':
+        if pred_type == 'rand' and obs.shape[0] % self.num_models == 0:
             batch_size = obs.shape[0]
-            if perm_dict is not None:
-                perm = perm_dict['perm']
-            else:
-                perm = np.random.permutation(batch_size)
+            perm = np.random.permutation(batch_size)
             obs_perm, act_perm = obs[perm], act[perm]
 
             pred_obs_perm = self.predict_batches(obs_perm, act_perm)
 
-            if perm_dict is not None:
-                perm_inv = np.empty(batch_size, dtype=int)
-                perm_inv[perm] = np.arange(batch_size)
-            else:
-                perm_inv = perm_dict['perm_inv']
+            perm_inv = np.empty(batch_size, dtype=int)
+            perm_inv[perm] = np.arange(batch_size)
             pred_obs = pred_obs_perm[perm_inv]
 
             return pred_obs
@@ -647,11 +642,13 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             pred_obs = np.mean(pred_obs, axis=2)
         elif pred_type == 'all':
             pass
-        elif type(pred_type) is int:
+        elif pred_type == 'rand':
+            # randomly selecting the prediction of one model in each row
+            idx = np.random.randint(0, self.num_models, size=pred_obs.shape[0])
+            pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
+        else: # elif type(pred_type) is int:  # TODO: not optimal implementation
             assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
-        else:
-            NotImplementedError('pred_type must be one of [rand, mean, all]')
 
         return np.clip(pred_obs, -1e2, 1e2)
 

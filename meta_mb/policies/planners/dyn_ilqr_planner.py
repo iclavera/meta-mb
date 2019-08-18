@@ -44,6 +44,11 @@ class DyniLQRPlanner(object):
             shape=(self.num_envs, self.obs_dim),
             name='obs',
         )
+        self.perm_ph = tf.placeholder(
+            dtype=tf.int32,
+            shape=(self.horizon, self.num_envs),
+            name='perm',
+        )
 
         build_time = time.time()
         self.utils_sym_by_env = self._build_deriv_graph()
@@ -51,20 +56,20 @@ class DyniLQRPlanner(object):
 
     def _build_deriv_graph(self):
         x_array, df_array, dl_array = [], [], []
-        perm_inv_array = []
+        model_idx_array = []
+        num_envs_per_model = self.num_envs // self.dynamics_model.num_models
 
         obs = self.obs_ph
         returns = tf.zeros((self.num_envs,))
         for i in range(self.horizon):
             acts = self.u_array_ph[i, :, :]
-            perm = tf.range(0, limit=self.num_envs, dtype=tf.int32)
-            perm = tf.random.shuffle(perm)
-            perm_dict = dict(perm=perm)
+            perm = self.perm_ph[i, :]
+            perm_inv = tf.invert_permutation(perm)
 
-            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='rand', perm_dict=perm_dict)
+            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='rand', perm_dict=dict(perm=perm, perm_inv=perm_inv))
 
-            perm_inv_array.append(perm_dict['perm_inv'])
             x_array.append(obs)
+            model_idx_array.append(tf.floordiv(perm_inv, num_envs_per_model))
             df = self._df_sym(obs, acts, next_obs).values()
             df_array.append(df)
             dl = self._env.tf_dl_dict(obs, acts, next_obs, self.num_envs).values()
@@ -75,9 +80,8 @@ class DyniLQRPlanner(object):
             obs = next_obs
 
         # post process
-        model_idx = tf.stack(perm_inv_array, axis=0)  # (horizon, num_envs)  # u_array[i, j] is predicted with model perm_inv[i, j]
-        model_idx = tf.transpose(model_idx)
         x_array = tf.stack(x_array, axis=0)
+        model_idx = tf.stack(model_idx_array, axis=0)  # (horizon, num_envs)
         J_val = -returns
         # for each element of array, stack along horizon: (horizon, num_envs, *)
         f_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*df_array)))
@@ -85,9 +89,9 @@ class DyniLQRPlanner(object):
         # store by env
         derivs_by_env = list(map(lambda arr: [arr[:, env_idx] for env_idx in range(self.num_envs)], f_array + l_array))
         x_array_by_env = [x_array[:, env_idx] for env_idx in range(self.num_envs)]
-        model_idx_by_env = [model_idx[env_idx] for env_idx in range(self.num_envs)]
+        model_idx_by_env = [model_idx[:, env_idx] for env_idx in range(self.num_envs)]
         J_val_by_env = [J_val[env_idx] for env_idx in range(self.num_envs)]
-        utils_sym_by_env = list(zip(model_idx_by_env, x_array_by_env, J_val_by_env, *derivs_by_env))
+        utils_sym_by_env = list(zip(x_array_by_env, model_idx_by_env, J_val_by_env, *derivs_by_env))
 
         return utils_sym_by_env
 
@@ -134,27 +138,29 @@ class DyniLQRPlanner(object):
 
     def get_actions(self, obs):
         self._reset_mu()
-        returns_dyn = np.zeros((self.num_envs,))
-        # success_counter = 0
         sess = tf.get_default_session()
-        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs}  # self.u_array_val is updated over iterations
+        # perm = [np.random.permutation(self.num_envs) for _ in range(self.horizon)]
+        perm = [np.arange(self.num_envs) for _ in range(self.horizon)]
+        perm = np.stack(perm, axis=0)
+        # success_counter = 0
+        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: perm}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
         for itr in range(self.num_ilqr_iters):
-            # compute: x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
+            # compute: x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
             for env_idx in active_envs.copy():
                 try:
                     assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
                     J_val, log_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
-                    if log_info is None:
-                        returns_dyn[env_idx] = -J_val
-                    else:  # u_array is updated, opt_J_val < J_val
-                        returns_dyn[env_idx] = -log_info['opt_J_val']
-                        if env_idx == 0:
+                    # self.u_array_val[:, env_idx, :] has J_val = J_val if log_info is None else log_info['opt_J_val']
+                    if env_idx == 0:
+                        if log_info is None:
+                            logger.logkv(f'RetDyn-{env_idx}', -J_val)
+                        else:
                             logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
                             logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
-                            logger.dumpkvs()
+                        logger.dumpkvs()
                         # success_counter += 1
 
                     # logging DEBUG
@@ -190,14 +196,8 @@ class DyniLQRPlanner(object):
             #                         u_clipped_pct=np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim),
             #                         J_val=J_val, opt_J_val=opt_J_val, delta_J_alpha=delta_J_alpha)
 
-        # logging
-        sum_returns_diff = 0  # diff between predicted and real returns (sum over horizon and envs), scalar
-        for idx in range(self.num_envs):
-            returns = self._run_open_loop(self.u_array_val[:, idx, :], obs[idx, :])
-            if idx == 0:
-                logger.logkv(f'RetEnv', returns)
-                logger.logkv(f'RetDyn', returns_dyn[0]) # -opt_J_val at the last iteration
-            sum_returns_diff += np.sum(returns - returns_dyn[idx])
+        # logging: RetEnv for env_idx = 0
+        logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
         # logger.logkv('SuccessRate', success_counter/(self.num_envs * self.num_ilqr_iters))
         # logger.dumpkvs()
 
@@ -206,7 +206,7 @@ class DyniLQRPlanner(object):
         # shift
         self.shift_u_array(u_new=None)
 
-        return optimized_action, [], sum_returns_diff/self.horizon
+        return optimized_action, []
 
     def _run_open_loop(self, u_array, init_obs):
         returns = 0
@@ -220,7 +220,7 @@ class DyniLQRPlanner(object):
 
     def update_u_per_env(self, idx, utils_list):
         u_array = self.u_array_val[:, idx, :]
-        model_idx, x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
 
         """
         Backward Pass
@@ -291,6 +291,7 @@ class DyniLQRPlanner(object):
         forward_accept = False
         alpha = 1.0
         forward_pass_counter = 0
+
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
             x = x_array[0]

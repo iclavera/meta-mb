@@ -9,14 +9,14 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
+# from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.trainers.parallel_metrpo_trainer_multi_agents import ParallelTrainerMultiAgents
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 
-INSTANCE_TYPE = 'c4.xlarge'
+INSTANCE_TYPE = 'c4.4xlarge'
 EXP_NAME = 'parallel-mbppo'
 
 
@@ -171,22 +171,22 @@ def run_base(exp_dir, **kwargs):
         }
     }
 
-    trainer = ParallelTrainer(
-        exp_dir=exp_dir,
-        algo_str=kwargs['algo'],
-        policy_pickle=policy_pickle,
-        env_pickle=env_pickle,
-        baseline_pickle=baseline_pickle,
-        dynamics_model_pickle=dynamics_model_pickle,
-        feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
-        n_itr=kwargs['n_itr'],
-        flags_need_query=kwargs['flags_need_query'],
-        config=config,
-        simulation_sleep=simulation_sleep,
-        model_sleep=model_sleep,
-        policy_sleep=policy_sleep,
-        sampler_str=kwargs['sampler'],
-    )
+    # trainer = ParallelTrainer(
+    #     exp_dir=exp_dir,
+    #     algo_str=kwargs['algo'],
+    #     policy_pickle=policy_pickle,
+    #     env_pickle=env_pickle,
+    #     baseline_pickle=baseline_pickle,
+    #     dynamics_model_pickle=dynamics_model_pickle,
+    #     feed_dicts=[worker_data_feed_dict, worker_model_feed_dict, worker_policy_feed_dict],
+    #     n_itr=kwargs['n_itr'],
+    #     flags_need_query=kwargs['flags_need_query'],
+    #     config=config,
+    #     simulation_sleep=simulation_sleep,
+    #     model_sleep=model_sleep,
+    #     policy_sleep=policy_sleep,
+    #     sampler_str=kwargs['sampler'],
+    # )
 
     trainer = ParallelTrainerMultiAgents(
         exp_dir=exp_dir,
@@ -222,7 +222,7 @@ if __name__ == '__main__':
             0.4, # 0.9,
         ],
 
-        'seed': [1, 2],
+        'seed': [1,],
         'n_itr': [401],
         'num_rollouts': [1],
         'sampler': ['bptt'],
@@ -233,8 +233,8 @@ if __name__ == '__main__':
         # 'rel_speed_policy_to_data': [0, 0.03, 0.04, 0.05],
         # multi-agents implementation
         'num_data_workers': [1],
-        'num_model_workers': [1],
-        'num_policy_workers': [2],
+        'num_model_workers': [1, 2],
+        'num_policy_workers': [1, 2],
 
         # Problem Conf
         'env': ['HalfCheetah'],
@@ -271,7 +271,7 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [4e-5, 1e-3],
+        'learning_rate': [5e-4], #[1e-5, 5e-5, 1e-4], #[4e-5, 1e-3],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],

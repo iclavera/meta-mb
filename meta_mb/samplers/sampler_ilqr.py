@@ -63,8 +63,6 @@ class Sampler(BaseSampler):
             (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
         """
 
-        assert deterministic is False
-
         # initial setup / preparation
         paths = []
 
@@ -81,7 +79,6 @@ class Sampler(BaseSampler):
         obses = np.asarray(self.vec_env.reset())
 
         # utils for ilqr method
-        sum_returns_diff = 0
         u_array = []
         rewards_array = np.zeros((self.num_envs,))
 
@@ -104,11 +101,7 @@ class Sampler(BaseSampler):
             else:
                 obses = np.array(obses)
                 outputs = policy.get_actions(obses)
-                if len(outputs) == 2:
-                    actions, agent_infos = outputs
-                else:
-                    actions, agent_infos, _sum_returns_diff = outputs
-                    sum_returns_diff += _sum_returns_diff
+                actions, agent_infos = outputs
                 assert len(actions) == len(obses)  # (num_rollouts, space_dims)
             policy_time += time.time() - t
 
@@ -171,8 +164,6 @@ class Sampler(BaseSampler):
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
-            if sum_returns_diff != 0:
-                logger.logkv(log_prefix + 'AvgReturnDiff', sum_returns_diff/self.total_samples)
 
         # if hasattr(policy, 'warm_reset'):  # pick best env to initialize all envs
         #     best_env = np.argmax(rewards_array)
