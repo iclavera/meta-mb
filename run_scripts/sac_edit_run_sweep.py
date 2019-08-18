@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym-Q3lu-hopper"
+EXP_NAME = "mb-Q5lu"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -193,7 +193,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [66, 55],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -212,14 +212,14 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 15]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [50, 200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[5, 10],
+		'num_actions_per_next_observation':[3, 5, 10],
         'H': [0],
         'T': [2, 3],
 		'reward_scale': [1],
@@ -228,12 +228,12 @@ if __name__ == '__main__':
 		'model_used_ratio': [1],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1],
+        'q_loss_importance': [1, 1e-4, 1e-3],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
 
 

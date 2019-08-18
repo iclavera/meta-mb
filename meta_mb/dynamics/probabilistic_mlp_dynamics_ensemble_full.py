@@ -169,13 +169,13 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                 q_values = [reward_values + value for value in next_q_values]
 
                 # define loss and train_op
-                input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph+ 1e-8, (self.act_ph-self._mean_act_ph)/self._std_act_ph+ 1e-8], axis=-1)
+                input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph+ 1e-8, (self.act_ph-self._mean_act_ph)/self._std_act_ph + 1e-8], axis=-1)
 
                 q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
 
                 q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k], predictions=q_values_var[k], weights=0.5)
                                             for k in range(2)]
-                # q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
+                # q_losses = [loss/tf.math.reduce_std(loss) + 1e-8 for loss in q_losses]
 
                 self.loss = [tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
                                            + self.logvar_pred)
