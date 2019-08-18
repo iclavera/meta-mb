@@ -232,12 +232,12 @@ if __name__ == '__main__':
         # 'rel_speed_model_to_data': [0, 0.06, 0.08, 0.10],
         # 'rel_speed_policy_to_data': [0, 0.03, 0.04, 0.05],
         # multi-agents implementation
-        'num_data_workers': [1],
+        'num_data_workers': [1, 2],
         'num_model_workers': [1, 2],
         'num_policy_workers': [1, 2],
 
         # Problem Conf
-        'env': ['HalfCheetah'],
+        'env': ['HalfCheetah', 'Hopper', 'Walker2d', 'Ant'],
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
         'max_path_length': [200],
@@ -271,7 +271,7 @@ if __name__ == '__main__':
 
         # Algo
         'clip_eps': [0.3],
-        'learning_rate': [5e-4], #[1e-5, 5e-5, 1e-4], #[4e-5, 1e-3],
+        'learning_rate': [1e-3, 5e-4, 1e-4,],
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [50,],
         'scope': [None],

@@ -151,15 +151,12 @@ class DyniLQRPlanner(object):
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
             for env_idx in active_envs.copy():
                 try:
-                    assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
+                    # assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
                     J_val, log_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
                     # self.u_array_val[:, env_idx, :] has J_val = J_val if log_info is None else log_info['opt_J_val']
-                    if env_idx == 0:
-                        if log_info is None:
-                            logger.logkv(f'RetDyn-{env_idx}', -J_val)
-                        else:
-                            logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
-                            logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
+                    if env_idx == 0 and log_info is not None:
+                        logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
+                        logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
                         logger.dumpkvs()
                         # success_counter += 1
 
@@ -291,7 +288,6 @@ class DyniLQRPlanner(object):
         forward_accept = False
         alpha = 1.0
         forward_pass_counter = 0
-
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
             x = x_array[0]
@@ -332,9 +328,9 @@ class DyniLQRPlanner(object):
             #     logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
 
             self._decrease_mu(idx)
-            return J_val, dict(mu=self.param_array[idx][0],
+            return J_val, dict(#mu=self.param_array[idx][0],
                                u_clipped_pct=np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim),
-                               opt_J_val=opt_J_val, delta_J_alpha=delta_J_alpha)
+                               opt_J_val=opt_J_val)  #, delta_J_alpha=delta_J_alpha)
         else:
             # if self.verbose:
                 # logger.log(f'bw, fw = {backward_pass_counter, forward_pass_counter}, mu = {mu}')
@@ -370,7 +366,8 @@ class DyniLQRPlanner(object):
     def shift_u_array(self, u_new):
        # self._reset_mu()
         if u_new is None:
-            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
+            # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
+            u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
 
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
 

@@ -41,8 +41,8 @@ class WorkerData(Worker):
     def prepare_start(self):
         initial_random_samples = self.queue.get()
         self.step(initial_random_samples)
-        if self.name in ['Data', 'Data-0']:
-            self.push()
+        # if self.name in ['Data', 'Data-0']:
+        self.push()
 
     def step(self, random=False):
         time_step = time.time()

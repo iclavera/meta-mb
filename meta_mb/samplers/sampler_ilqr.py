@@ -73,7 +73,8 @@ class Sampler(BaseSampler):
         policy_time, env_time = 0, 0
 
         policy = self.policy
-        policy.reset(dones=[True] * self.vec_env.num_envs)
+        if not hasattr(policy, 'warm_reset'):
+            policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
@@ -114,8 +115,8 @@ class Sampler(BaseSampler):
             if not random and not sinusoid:
                 logger.log('PathLength', itr_counter)
                 next_obses_fake = policy.dynamics_model.predict(obses, actions)
-                rewards_fake = self.env.reward(obses, actions, next_obses_fake)
-                next_obses, rewards = next_obses_fake, rewards_fake # FIXME : CHANGE LATER!!
+                # rewards_fake = self.env.reward(obses, actions, next_obses_fake)
+                next_obses = next_obses_fake  # FIXME : CHANGE LATER!!
 
             # prepare for warm reset
             rewards_array += rewards

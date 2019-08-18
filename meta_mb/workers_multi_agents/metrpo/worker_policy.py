@@ -104,7 +104,6 @@ class WorkerPolicy(Worker):
         if self.verbose:
             logger.log('Policy is synchronizing...')
         dynamics_model_state = pickle.loads(dynamics_model_state_pickle)
-
         assert isinstance(dynamics_model_state, dict)
         self.model_sampler.dynamics_model.set_shared_params(dynamics_model_state)
         if hasattr(self.model_sampler, 'vec_env'):
