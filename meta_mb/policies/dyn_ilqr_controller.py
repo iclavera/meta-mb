@@ -1,8 +1,6 @@
 from meta_mb.utils.serializable import Serializable
 import numpy as np
-from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.logger import logger
-import copy
 
 
 class DyniLQRController(Serializable):
@@ -11,14 +9,13 @@ class DyniLQRController(Serializable):
             name,
             env,
             dynamics_model,
+            planner,
             num_rollouts,
             discount,
             n_parallel,
             initializer_str,
             n_candidates,
             horizon,
-            max_path_length,
-            num_ddp_iters=100,
             percent_elites=0.1,
             alpha=0.25,
             verbose=True,
@@ -28,13 +25,9 @@ class DyniLQRController(Serializable):
         self.initializer_str = initializer_str
         self.n_candidates = n_candidates
         self.horizon = horizon
-        self.max_path_length = max_path_length
-        self.num_ddp_iters = num_ddp_iters
         self.num_envs = num_rollouts
         self.num_elites = max(int(percent_elites * n_candidates), 1)
-        self.env = env
         self.alpha = alpha
-        self.dynamics_model = dynamics_model
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -44,11 +37,12 @@ class DyniLQRController(Serializable):
         assert len(env.action_space.shape) == 1
         self.obs_space_dims = env.observation_space.shape[0]
         self.action_space_dims = env.action_space.shape[0]
+        self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
-        self._env = copy.deepcopy(env)
-        self.planner = DyniLQRPlanner(env, dynamics_model, num_rollouts, horizon, self._init_u_array(), num_ddp_iters, verbose=verbose)
+        self.planner = planner
+        self.planner.reset_u_array(self._init_u_array())
 
     @property
     def vectorized(self):
@@ -67,30 +61,36 @@ class DyniLQRController(Serializable):
         if self.initializer_str == 'cem':
             init_u_array = self._init_u_array_cem()
         elif self.initializer_str == 'uniform':
-            init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+            init_u_array = np.random.uniform(low=self.act_low, high=self.act_high,
                                              size=(self.horizon, self.num_envs, self.action_space_dims))
         elif self.initializer_str == 'zeros':
             init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.action_space_dims))
-            init_u_array = np.clip(init_u_array, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
+            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
         else:
             raise NotImplementedError
         return init_u_array
 
     def _init_u_array_cem(self):
+
+        """
+        This function assumes ground truth.
+        :return:
+        """
+        raise NotImplementedError
         assert self.num_envs == 1
         # _env = IterativeEnvExecutor(self._env, self.num_envs*self.n_candidates, self.max_path_length)
         mean = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-               * (self.env.action_space.high + self.env.action_space.low) / 2
+               * (self.act_high + self.act_low) / 2
         std = np.ones(shape=(self.horizon, self.num_envs, 1, self.action_space_dims)) \
-              * (self.env.action_space.high - self.env.action_space.low) / 4
+              * (self.act_high - self.act_low) / 4
 
         for itr in range(10):
-            lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+            lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
             # constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
             # std = np.sqrt(constrained_var)
             std = np.minimum(lb_dist/2, ub_dist/2, std)
             act = mean + np.random.normal(size=(self.horizon, self.num_envs, self.n_candidates, self.action_space_dims)) * std
-            act = np.clip(act, self.env.action_space.low, self.env.action_space.high)
+            act = np.clip(act, self.act_low, self.act_high)
             act = np.reshape(act, (self.horizon, self.num_envs*self.n_candidates, self.action_space_dims))
 
             returns = np.zeros((self.num_envs*self.n_candidates,))

@@ -1,5 +1,6 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
+from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.samplers.sampler_ilqr import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
@@ -122,17 +123,34 @@ def run_experiment(**config):
 
         sample_processor = ModelSampleProcessor()
 
+        planner = DyniLQRPlanner(
+            env=env,
+            dynamics_model=dynamics_model,
+            num_envs=config['num_rollouts'],
+            horizon=config['horizon'],
+            num_ilqr_iters=config['num_ilqr_iters'],
+            discount=config['discount'],
+            mu_min=config['mu_min'],
+            mu_max=config['mu_max'],
+            mu_init=config['mu_init'],
+            delta_0=config['delta_0'],
+            delta_init=config['delta_init'],
+            alpha_decay_factor=config['alpha_decay_factor'],
+            c_1=config['c_1'],
+            max_forward_iters=config['max_forward_iters'],
+            max_backward_iters=config['max_backward_iters'],
+        )
+
         policy = DyniLQRController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
+            planner=planner,
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
-            max_path_length= max_path_length, # config['max_path_length'],
             n_parallel=config['n_parallel'],
             initializer_str=config['initializer_str'],
-            num_ddp_iters=config['num_ddp_iters'],
             num_rollouts=config['num_rollouts'],
             alpha=config['alpha'],
             percent_elites=config['percent_elites'],
@@ -196,8 +214,17 @@ if __name__ == '__main__':
         'num_collocation_iters': [500*30],
         'persistency': [0.9],
 
-        # DDP
-        'num_ddp_iters': [20],
+        # iLQR
+        'num_ilqr_iters': [20],
+        'mu_min': [1e-6],
+        'mu_max': [1e10],
+        'mu_init': [1e-5],
+        'delta_0': [2],
+        'delta_init': [1.0],
+        'alpha_decay_factor': [3.0],
+        'c_1': [1e-7],
+        'max_forward_iters': [10],
+        'max_backward_iters': [10],
 
         # Training
         'num_rollouts': [5],
