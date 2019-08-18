@@ -149,7 +149,7 @@ class Trainer(object):
                     self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
-                elif self.dynamics_type == 1:
+                elif self.dynamics_type == 1 or self.dynamics_type == 2:
                     expanded_rewards, expanded_dones = np.expand_dims(all_samples[3], axis = -1), np.expand_dims(all_samples[4], axis = -1)
                     self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], expanded_rewards, expanded_dones], axis = -1),
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
@@ -230,19 +230,22 @@ class Trainer(object):
         self.rollout_length = int(y)
 
     def step(self, obs, actions):
-        assert self.dynamics_type in [0, 1]
-        assert self.step_type in [0, 1, 2, 3]
+        assert self.dynamics_type in [0, 1, 2]
+        assert self.step_type in [0, 1, 2, 3, 4]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict(obs, actions)
             rewards = self.env.reward(obs, actions, next_observation)
             dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
-        elif self.dynamics_type == 1:
+        elif self.dynamics_type == 1 or self.dynamics_type == 2:
             next_observation, rewards, dones = self.dynamics_model.predict(obs, actions)
             if self.step_type == 1:
                 dones = (dones>=self.done_bar)
             elif self.step_type == 2:
                 dones = self.env.termination_fn(obs, actions, next_observation)
             elif self.step_type == 3:
+                rewards = self.env.reward(obs, actions, next_observation)
+            elif self.step_type == 4:
+                dones = self.env.termination_fn(obs, actions, next_observation)
                 rewards = self.env.reward(obs, actions, next_observation)
             dones = dones.reshape((-1))
             rewards = rewards.reshape((-1))

@@ -102,7 +102,7 @@ class ValueFunction(Serializable):
                                                hidden_nonlinearity=self.hidden_nonlinearity,
                                                output_nonlinearity=self.output_nonlinearity,
                                                input_var=input_var,
-                                               reuse=True,
+                                               reuse=tf.AUTO_REUSE,
                                                )
         else:
             input_var, output_var = forward_mlp(output_dim=1,

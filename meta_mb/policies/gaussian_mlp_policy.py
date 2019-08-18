@@ -164,7 +164,7 @@ class GaussianMLPPolicy(Policy):
                                                hidden_nonlinearity=self.hidden_nonlinearity,
                                                output_nonlinearity=self.output_nonlinearity,
                                                input_var=obs_var,
-                                               reuse=True,
+                                               reuse=tf.AUTO_REUSE,
                                                )
 
                 mean_var, log_std_var = tf.split(output_var, 2, axis=-1)

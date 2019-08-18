@@ -51,7 +51,7 @@ class SAC_MB(Algo):
             num_actions_per_next_observation=1,
             prediction_type = 'none',
             T = 0,
-            q_functioin_type=0,
+            q_function_type=0,
             q_target_type=0,
             H=0,
             model_used_ratio=1.0,
@@ -123,7 +123,7 @@ class SAC_MB(Algo):
         self.num_actions_per_next_observation = num_actions_per_next_observation
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self.q_functioin_type = q_functioin_type
+        self.q_function_type = q_function_type
         self.model_used_ratio = model_used_ratio
         self.T = T
         self.H = H
@@ -197,8 +197,8 @@ class SAC_MB(Algo):
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle = True, k = 1):
-        assert self.dynamics_type == 0 or self.dynamics_type == 1
-        assert self.step_type in [0, 1, 2, 3]
+        assert self.dynamics_type in [0, 1, 2]
+        assert self.step_type in [0, 1, 2, 3, 4]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict_sym(obs, actions)
             if k != 1:
@@ -207,7 +207,7 @@ class SAC_MB(Algo):
             next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
             rewards = self.training_environment.tf_reward(obs, actions, next_observation)
             dones = tf.cast(self.training_environment.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
-        elif self.dynamics_type == 1:
+        elif self.dynamics_type == 1 or self.dynamics_type == 2:
             next_observation, rewards, dones = self.dynamics_model.predict_sym(obs, actions, shuffle)
             if k != 1:
                 next_observation = tf.tile(next_observation, [k, 1])
@@ -223,6 +223,10 @@ class SAC_MB(Algo):
             elif self.step_type == 3:
                 next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
                 rewards = self.training_environment.tf_reward(obs, actions, next_observation)
+            elif self.step_type == 4:
+                next_actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+                rewards = self.training_environment.tf_reward(obs, actions, next_observation)
+                dones = self.training_environment.tf_termination_fn(obs, actions, next_observation)
         dones = tf.cast(dones, rewards.dtype)
         dones = tf.reshape(dones, [-1, 1])
         rewards = tf.reshape(rewards, [-1, 1])
@@ -392,8 +396,8 @@ class SAC_MB(Algo):
         assert log_pis_var.shape.as_list() == [None, 1]
 
         if self.dynamics_type == 2:
-            log_alpha = self.dynamics.log_alpha
-            alpha = self.dynamics.alpha
+            log_alpha = self.dynamics_model.log_alpha
+            alpha = self.dynamics_model.alpha
         else:
             log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
             alpha = tf.exp(log_alpha)
@@ -417,11 +421,11 @@ class SAC_MB(Algo):
         elif self.action_prior == 'uniform':
             policy_prior_log_probs = 0.0
 
-        if self.q_functioin_type == 0:
+        if self.q_function_type == 0:
             input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             min_q_val_var = tf.reduce_min(next_q_values, axis=0)
-        # elif self. q_functioin_type == 1:
+        # elif self. q_function_type == 1:
         #     next_observation, next_actions_var, rewards, dones, _ = self.step(observations_ph, actions_var)
         #     input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
         #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
@@ -430,7 +434,7 @@ class SAC_MB(Algo):
         #         discount=self.discount,
         #         next_value= (1-dones) * q) for q in next_q_values]
         #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-        # elif self.q_functioin_type == 2:
+        # elif self.q_function_type == 2:
         #     expanded_next_observations, next_actions_var, rewards, dones, _= self.step(observations_ph, actions_var, k=self.num_actions_per_next_observation)
         #     input_q_fun = tf.concat([expanded_next_observations, next_actions_var], axis=-1)
         #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
@@ -442,7 +446,7 @@ class SAC_MB(Algo):
         #        next_value= (1-dones)*q) for q in next_q_values]
         #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
-        elif self.q_functioin_type == 3:
+        elif self.q_function_type == 3:
             assert self.T >= 0
             obs = observations_ph
             actions = actions_var
@@ -459,7 +463,7 @@ class SAC_MB(Algo):
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
-        # elif self.q_functioin_type == 4:
+        # elif self.q_function_type == 4:
         #     assert self.T >= 0
         #     obs = observations_ph
         #     actions = actions_var
@@ -506,7 +510,7 @@ class SAC_MB(Algo):
         #     self.confidence = target_confidence
         #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
         #
-        elif self.q_functioin_type == 5:
+        elif self.q_function_type == 5:
             assert self.T >= 0
             obs = observations_ph
             actions = actions_var
@@ -538,7 +542,7 @@ class SAC_MB(Algo):
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
             # too many predictions, way too slow
-        # elif self.q_functioin_type == 6:
+        # elif self.q_function_type == 6:
         #     assert self.T >= 0
         #     obs = observations_ph
         #     actions = actions_var
@@ -612,7 +616,7 @@ class SAC_MB(Algo):
         #     self.confidence = target_confidence
         #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
 
-        # elif self.q_functioin_type == 7:
+        # elif self.q_function_type == 7:
         #     self.policy_optimizer = tf.train.AdamOptimizer(
         #         learning_rate=self.policy_lr,
         #         name="policy_optimizer")
