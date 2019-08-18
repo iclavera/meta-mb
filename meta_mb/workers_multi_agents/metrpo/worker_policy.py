@@ -1,7 +1,7 @@
 import time, pickle
 from queue import Empty
 from meta_mb.logger import logger
-from meta_mb.workers.base import Worker
+from meta_mb.workers_multi_agents.base import Worker
 
 
 class WorkerPolicy(Worker):
@@ -116,14 +116,15 @@ class WorkerPolicy(Worker):
         time_push = time.time()
         policy_state_pickle = pickle.dumps(self.policy.get_shared_param_values())
         assert policy_state_pickle is not None
-        while self.queue_next.qsize() > 5:
-            try:
-                logger.log('Policy is off loading data from queue_next...')
-                _ = self.queue_next.get_nowait()
-            except Empty:
-                # very rare chance to reach here
-                break
-        self.queue_next.put(policy_state_pickle)
+        for queue_next in self.queues_next:
+            while queue_next.qsize() > 5:
+                try:
+                    logger.log('Policy is off loading data from queue_next...')
+                    _ = queue_next.get_nowait()
+                except Empty:
+                    # very rare chance to reach here
+                    break
+            queue_next.put(policy_state_pickle)
         time_push = time.time() - time_push
 
         logger.logkv('Policy-TimePush', time_push)

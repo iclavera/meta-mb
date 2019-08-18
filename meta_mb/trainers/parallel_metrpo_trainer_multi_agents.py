@@ -1,12 +1,15 @@
 import time
 from meta_mb.logger import logger
 from multiprocessing import Process, Pipe, Queue, Event
-from meta_mb.workers.metrpo.worker_data import WorkerData
-from meta_mb.workers.metrpo.worker_model import WorkerModel
-from meta_mb.workers.metrpo.worker_policy import WorkerPolicy
+from meta_mb.workers_multi_agents.metrpo.worker_data import WorkerData
+from meta_mb.workers_multi_agents.metrpo.worker_model import WorkerModel
+from meta_mb.workers_multi_agents.metrpo.worker_policy import WorkerPolicy
 
 
-class ParallelTrainer(object):
+NAME_TO_IDX = dict(Data=0, Model=1, Policy=2)
+
+
+class ParallelTrainerMultiAgents(object):
     """
     Performs steps for MAML
 
@@ -34,6 +37,9 @@ class ParallelTrainer(object):
             n_itr,
             flags_need_query,
             config,
+            num_data_workers,
+            num_model_workers,
+            num_policy_workers,
             simulation_sleep,
             model_sleep=0,
             policy_sleep=0,
@@ -45,20 +51,26 @@ class ParallelTrainer(object):
         self.initial_random_samples = initial_random_samples
 
         worker_instances = [
-            WorkerData(time_sleep=simulation_sleep, video=video),
-            WorkerModel(time_sleep=model_sleep),
-            WorkerPolicy(time_sleep=policy_sleep, algo_str=algo_str, sampler_str=sampler_str),
+            *[WorkerData(time_sleep=simulation_sleep, video=video) for _ in range(num_data_workers)],
+            *[WorkerModel(time_sleep=model_sleep) for _ in range(num_model_workers)],
+            *[WorkerPolicy(time_sleep=policy_sleep, algo_str=algo_str, sampler_str=sampler_str) for _ in range(num_policy_workers)],
         ]
-        names = ["Data", "Model", "Policy"]
+        names = [
+            *[f"Data-{idx}" for idx in range(num_data_workers)],
+            *[f"Model-{idx}" for idx in range(num_model_workers)],
+            *[f"Policy-{idx}" for idx in range(num_policy_workers)],
+        ]
         # one queue for each worker, tasks assigned by scheduler and previous worker
-        queues = [Queue(-1) for _ in range(3)]
+        queues_by_cat = [[Queue(-1) for _ in range(n)] for n in (num_data_workers, num_model_workers, num_policy_workers)]
+        queues = sum(queues_by_cat, [])
+        name_to_idx = lambda name: NAME_TO_IDX[name.split('-')[0]]
+        get_queues_prev = lambda name: queues_by_cat[name_to_idx(name)-1]
+        get_queues_next = lambda name: queues_by_cat[(name_to_idx(name)+1)%3]
+
         # worker sends task-completed notification and time info to scheduler
-        worker_remotes, remotes = zip(*[Pipe() for _ in range(3)])
+        worker_remotes, remotes = zip(*[Pipe() for _ in range(num_data_workers+num_model_workers+num_policy_workers)])
         # stop condition
         stop_cond = Event()
-        # current worker needs query means previous workers does not auto push
-        # skipped checking here
-        flags_auto_push = [not flags_need_query[1], not flags_need_query[2], not flags_need_query[0]]
 
         self.ps = [
             Process(
@@ -70,38 +82,35 @@ class ParallelTrainer(object):
                     env_pickle,
                     baseline_pickle,
                     dynamics_model_pickle,
-                    feed_dict,
-                    queue_prev,
+                    feed_dicts[name_to_idx(name)],
+                    get_queues_prev(name),
                     queue,
-                    queue_next,
+                    get_queues_next(name),
                     worker_remote,
                     start_itr,
                     n_itr,
                     stop_cond,
-                    need_query,
-                    auto_push,
+                    False, # need_query,  # all workers don't need query
+                    True, # auto_push,  # do auto_push for all workers
                     config,
                 ),
-            ) for (worker_instance, name, feed_dict,
-                   queue_prev, queue, queue_next,
-                   worker_remote, need_query, auto_push) in zip(
-                worker_instances, names, feed_dicts,
-                queues[2:] + queues[:2], queues, queues[1:] + queues[:1],
-                worker_remotes, flags_need_query, flags_auto_push,
-                )
+            ) for (worker_instance, name, queue, worker_remote) in zip(
+                worker_instances, names, queues, worker_remotes
+            )
         ]
 
         # central scheduler sends command and receives receipts
         self.names = names
-        self.queues = queues
+        self.queues_by_cat = queues_by_cat
         self.remotes = remotes
+        self.remotes_by_cat = [remotes[:num_data_workers], remotes[num_data_workers:num_data_workers+num_model_workers], remotes[num_data_workers+num_model_workers:]]
 
     def train(self):
         """
         Trains policy on env using algo
         """
-        worker_data_queue, worker_model_queue, worker_policy_queue = self.queues
-        worker_data_remote, worker_model_remote, worker_policy_remote = self.remotes
+        worker_data_remotes, worker_model_remotes, worker_policy_remotes = self.remotes_by_cat
+        worker_data_queues, worker_model_queues, worker_policy_queues = self.queues_by_cat
 
         for p in self.ps:
             p.start()
@@ -110,15 +119,18 @@ class ParallelTrainer(object):
 
         logger.log('Prepare start...')
 
-        worker_data_remote.send('prepare start')
-        worker_data_queue.put(self.initial_random_samples)
-        assert worker_data_remote.recv() == 'loop ready'
+        for (remote, queue) in zip(worker_data_remotes, worker_data_queues):
+            remote.send('prepare start')
+            queue.put(self.initial_random_samples)
+            assert remote.recv() == 'loop ready'
 
-        worker_model_remote.send('prepare start')
-        assert worker_model_remote.recv() == 'loop ready'
+        for remote in worker_model_remotes:
+            remote.send('prepare start')
+            assert remote.recv() == 'loop ready'
 
-        worker_policy_remote.send('prepare start')
-        assert worker_policy_remote.recv() == 'loop ready'
+        for remote in worker_policy_remotes:
+            remote.send('prepare start')
+            assert remote.recv() == 'loop ready'
 
         time_total = time.time()
 

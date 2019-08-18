@@ -31,9 +31,9 @@ class Worker(object):
             baseline_pickle,
             dynamics_model_pickle,
             feed_dict,
-            queue_prev,
+            queues_prev,
             queue,
-            queue_next,
+            queues_next,
             remote,
             start_itr,
             n_itr,
@@ -49,9 +49,9 @@ class Worker(object):
                          snapshot_mode=self.snapshot_mode, snapshot_gap=self.snapshot_gap)
 
         self.n_itr = n_itr
-        self.queue_prev = queue_prev
+        self.queues_prev = queues_prev
         self.queue = queue
-        self.queue_next = queue_next
+        self.queues_next = queues_next
         self.stop_cond = stop_cond
 
         # FIXME: specify CPU/GPU usage here
@@ -91,7 +91,8 @@ class Worker(object):
                     logger.log("\n------------------------- {} starting new loop ------------------".format(self.name))
                 if need_query: # poll
                     time_poll = time.time()
-                    queue_prev.put('push')
+                    for queue_prev in queues_prev:
+                        queue_prev.put('push')
                     time_poll = time.time() - time_poll
                     logger.logkv('{}-TimePoll'.format(self.name), time_poll)
                 do_push, do_synch, do_step = self.process_queue()

@@ -58,11 +58,21 @@ class PolicyOnlyTrainer(object):
 
 
     def train(self):
+        logger.log('training starts...')
         with self.sess.as_default() as sess:
 
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            try:
+                if self.fit_model:
+                    sess.run(tf.initializers.global_variables())
+                else:
+                    # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+                    global_vars = tf.global_variables()
+                    is_var_initialized = sess.run([tf.is_variable_initialized(var) for var in global_vars])
+                    uninit_vars = [var for idx, var in enumerate(global_vars) if not is_var_initialized[idx]]
+                    sess.run(tf.variables_initializer(uninit_vars))
+            except RuntimeError:
+                pass  # hack for ground truth where sess has empty graph
 
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
@@ -84,17 +94,17 @@ class PolicyOnlyTrainer(object):
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
 
+                logger.log("Processing environment samples...")
+
+                # first processing just for logging purposes
+                time_env_samp_proc = time.time()
+                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
+                                                                              log=True, log_prefix='EnvTrajs-')
+                logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
+
                 if self.fit_model:
 
                     ''' --------------- fit dynamics model --------------- '''
-
-                    logger.log("Processing environment samples...")
-
-                    # first processing just for logging purposes
-                    time_env_samp_proc = time.time()
-                    samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                                  log=True, log_prefix='EnvTrajs-')
-                    logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                     time_fit_start = time.time()
 

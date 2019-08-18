@@ -1,6 +1,6 @@
 import time, pickle
 from meta_mb.logger import logger
-from meta_mb.workers.base import Worker
+from meta_mb.workers_multi_agents.base import Worker
 from queue import Empty
 import numpy as np
 
@@ -27,7 +27,9 @@ class WorkerModel(Worker):
         samples_data_arr = pickle.loads(self.queue.get())
         self._synch(samples_data_arr, check_init=True)
         self.step()
-        self.queue_next.put(pickle.dumps(self.dynamics_model))
+        if self.name in ['Model', 'Model-0']:
+            for queue_next in self.queues_next:
+                queue_next.put(pickle.dumps(self.dynamics_model))
 
     def process_queue(self):
         do_push = 0
@@ -117,13 +119,14 @@ class WorkerModel(Worker):
         time_push = time.time()
         state_pickle = pickle.dumps(self.dynamics_model.get_shared_param_values())
         assert state_pickle is not None
-        while self.queue_next.qsize() > 5:
-            try:
-                logger.log('Model is off loading data from queue_next...')
-                _ = self.queue_next.get_nowait()
-            except Empty:
-                break
-        self.queue_next.put(state_pickle)
+        for queue_next in self.queues_next:
+            while queue_next.qsize() > 5:
+                try:
+                    logger.log('Model is off loading data from queue_next...')
+                    _ = queue_next.get_nowait()
+                except Empty:
+                    break
+            queue_next.put(state_pickle)
         time_push = time.time() - time_push
 
         logger.logkv('Model-TimePush', time_push)

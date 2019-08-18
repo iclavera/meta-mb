@@ -63,8 +63,6 @@ class Sampler(BaseSampler):
             (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
         """
 
-        assert deterministic is False
-
         # initial setup / preparation
         paths = []
 
@@ -75,11 +73,17 @@ class Sampler(BaseSampler):
         policy_time, env_time = 0, 0
 
         policy = self.policy
-        policy.reset(dones=[True] * self.vec_env.num_envs)
+        if not hasattr(policy, 'warm_reset'):
+            policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
 
+        # utils for ilqr method
+        u_array = []
+        rewards_array = np.zeros((self.num_envs,))
+
+        itr_counter = 0
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
@@ -97,7 +101,8 @@ class Sampler(BaseSampler):
                 agent_infos = []
             else:
                 obses = np.array(obses)
-                actions, agent_infos = policy.get_actions(obses)
+                outputs = policy.get_actions(obses)
+                actions, agent_infos = outputs
                 assert len(actions) == len(obses)  # (num_rollouts, space_dims)
             policy_time += time.time() - t
 
@@ -105,6 +110,17 @@ class Sampler(BaseSampler):
             t = time.time()
             next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
             env_time += time.time() - t
+
+            # step using model
+            if not random and not sinusoid:
+                logger.log('PathLength', itr_counter)
+                next_obses_fake = policy.dynamics_model.predict(obses, actions)
+                # rewards_fake = self.env.reward(obses, actions, next_obses_fake)
+                next_obses = next_obses_fake  # FIXME : CHANGE LATER!!
+
+            # prepare for warm reset
+            rewards_array += rewards
+            u_array.append(actions)
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
@@ -139,6 +155,7 @@ class Sampler(BaseSampler):
             if verbose: pbar.update(self.vec_env.num_envs)
             n_samples += new_samples
             obses = next_obses
+            itr_counter += 1
 
         if verbose: pbar.stop()
 
@@ -148,6 +165,15 @@ class Sampler(BaseSampler):
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
+
+        # if hasattr(policy, 'warm_reset'):  # pick best env to initialize all envs
+        #     best_env = np.argmax(rewards_array)
+        #     u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
+        #     u_array = u_array[:, best_env: best_env+1, :]
+        #     policy.warm_reset(u_array)
+        if hasattr(policy, 'warm_reset'):
+            u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
+            policy.warm_reset(u_array)
 
         return paths
 

@@ -1,6 +1,6 @@
 import time, pickle
 from meta_mb.logger import logger
-from meta_mb.workers.base import Worker
+from meta_mb.workers_multi_agents.base import Worker
 
 
 class WorkerData(Worker):
@@ -41,6 +41,7 @@ class WorkerData(Worker):
     def prepare_start(self):
         initial_random_samples = self.queue.get()
         self.step(initial_random_samples)
+        # if self.name in ['Data', 'Data-0']:
         self.push()
 
     def step(self, random=False):
@@ -93,7 +94,8 @@ class WorkerData(Worker):
 
     def push(self):
         time_push = time.time()
-        self.queue_next.put(pickle.dumps(self.samples_data_arr))
+        for queue_next in self.queues_next:
+            queue_next.put(pickle.dumps(self.samples_data_arr))
         self.samples_data_arr = []
         time_push = time.time() - time_push
 

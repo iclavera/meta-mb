@@ -1,5 +1,4 @@
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import MLPDynamicsEnsemble as ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.trainers.mb_trainer import Trainer
 from meta_mb.policies.mpc_controller import MPCController
@@ -8,21 +7,19 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.envs.mujoco.half_cheetah_env import HalfCheetahEnv
-from meta_mb.envs.blue.real_blue_env import BlueReacherEnv
-from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+from meta_mb.envs.mb_envs import HalfCheetahEnv, InvertedPendulumEnv, HopperEnv, AntEnv, Walker2dEnv, ReacherEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
 import tensorflow as tf
 
-EXP_NAME = 'mb-mpc-blue-train'
-
+EXP_NAME = 'bptt-mb-mpc-baseline'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
+    print(f'=====================================exp_dir = {exp_dir}=====================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(config, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
@@ -55,7 +52,7 @@ def run_experiment(**config):
                 discount=config['discount'],
                 n_candidates=config['n_candidates'],
                 horizon=config['horizon'],
-                use_cem=config['use_cem'],
+                method_str=config['method_str'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model']
             )
@@ -81,8 +78,11 @@ def run_experiment(**config):
                 discount=config['discount'],
                 n_candidates=config['n_candidates'],
                 horizon=config['horizon'],
-                use_cem=config['use_cem'],
+                method_str=config['method_str'],
                 num_cem_iters=config['num_cem_iters'],
+                num_opt_iters=config['num_opt_iters'],
+                opt_learning_rate=config['opt_learning_rate'],
+                num_rollouts=config['num_rollouts'],
             )
 
         sampler = Sampler(
@@ -114,43 +114,44 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-                'seed': [5],
+        'seed': [5],
 
-                # Problem
-                'env': [BlueReacherEnv],  # 'HalfCheetahEnv'
-                'max_path_length': [100],
-                'normalize': [False],
-                 'n_itr': [50],
-                'discount': [1.],
+        # Problem
+        'env': [ReacherEnv], #InvertedPendulumEnv],
+        'max_path_length': [100],
+        'normalize': [False],
+         'n_itr': [50],
+        'discount': [1.],
 
-                # Policy
-                'n_candidates': [1000], # K
-                'horizon': [10], # Tau
-                'use_cem': [False],
-                'num_cem_iters': [5],
+        # Policy
+        'n_candidates': [1000], # K
+        'horizon': [20], # Tau
+        'method_str': ['cem'],
+        'num_cem_iters': [5],
+        'num_opt_iters': [10],
+        'opt_learning_rate': [1e-3],
 
-                # Training
-                'num_rollouts': [5],
-                'learning_rate': [0.001],
-                'valid_split_ratio': [0.1],
-                'rolling_average_persitency': [0.99],
-                'initial_random_samples': [False],
-                'initial_sinusoid_samples': [True],
+        # Training
+        'num_rollouts': [20],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.99],
+        'initial_random_samples': [False],
+        'initial_sinusoid_samples': [True],
 
-                # Dynamics Model
-                'recurrent': [False],
-                'num_models': [5],
-                'hidden_nonlinearity_model': ['relu'],
-                'hidden_sizes_model': [(500, 500,)],
-                'dynamic_model_epochs': [15],
-                'backprop_steps': [100],
-                'weight_normalization_model': [False],  # FIXME: Doesn't work
-                'batch_size_model': [64],
-                'cell_type': ['lstm'],
+        # Dynamics Model
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [15],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
 
-                #  Other
-                'n_parallel': [1],
-
+        #  Other
+        'n_parallel': [1],
     }
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

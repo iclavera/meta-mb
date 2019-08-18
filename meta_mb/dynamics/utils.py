@@ -2,6 +2,12 @@ import tensorflow as tf
 import numpy as np
 
 
+def tf_denormalize(data_array, mean, std):
+    return data_array * (std + 1e-10) + mean
+
+def tf_normalize(data_array, mean, std):
+    return (data_array - mean) / (std + 1e-10)
+
 def normalize(data_array, mean, std):
     return (data_array - mean) / (std + 1e-10)
 

@@ -70,6 +70,7 @@ class AntEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 if __name__ == "__main__":
     env = AntEnv()
     env.reset()
-    for _ in range(1000):
-        _ = env.render()
-        ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
+    print(env.sim.derivative().shape)
+    # for _ in range(1000):
+    #     _ = env.render()
+    #     ob, rew, done, info = env.step(env.action_space.sample())  # take a random action
