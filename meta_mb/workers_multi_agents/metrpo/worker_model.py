@@ -91,7 +91,7 @@ class WorkerModel(Worker):
         time.sleep(time_sleep)
 
         logger.logkv('Model-TimeStep', time_model_fit)
-        logger.logkv('Model-TimeSleep', self.time_sleep)
+        logger.logkv('Model-TimeSleep', time_sleep)
 
     def _synch(self, samples_data_arr, check_init=False):
         time_synch = time.time()

@@ -4,6 +4,24 @@ import scipy.signal
 import json
 import tensorflow as tf
 
+
+def run_open_loop(u_array, vec_env, init_obs=None, discount=1, ignore_dones=True):
+    if not ignore_dones:
+        raise NotImplementedError
+
+    returns = np.zeros((vec_env.num_envs,))
+    if init_obs is None:
+        buffer = None
+    else:
+        buffer = dict(observations=init_obs)
+    _ = vec_env.reset(buffer=buffer, shuffle=False)
+
+    for i in range(len(u_array)):  # horizon
+        _, reward, _, _ = vec_env.step(u_array[i, :, :])
+        returns += discount**i * reward
+
+    return returns
+
 def compile_function(inputs, outputs, log_name=None):
     def run(*input_vals):
         sess = tf.get_default_session()

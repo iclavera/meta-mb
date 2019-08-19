@@ -64,7 +64,7 @@ class IterativeEnvExecutor(object):
             idx = np.random.randint(len(self._buffer['observations']))
             return self.envs[i].reset_from_obs(self._buffer['observations'][idx])
 
-    def reset(self, buffer=None):
+    def reset(self, buffer=None, shuffle=True):
         """
         Resets the environments
 
@@ -74,9 +74,11 @@ class IterativeEnvExecutor(object):
         self._buffer = buffer
         if self._buffer is None:
             obses = [env.reset() for env in self.envs]
-        else:
+        elif shuffle:
             idxs = np.random.randint(0, len(self._buffer['observations']), size=self.num_envs)
             obses = [env.reset_from_obs(self._buffer['observations'][idx]) for idx, env in zip(idxs, self.envs)]
+        else:
+            obses = [env.reset_from_obs(obs) for obs, env in zip(self._buffer['observations'], self.envs)]
         self.ts[:] = 0
         return obses
 

@@ -28,6 +28,7 @@ class Sampler(BaseSampler):
             policy,
             num_rollouts,
             max_path_length,
+            max_path_length_eval,
             n_parallel=1,
             vae=None,
     ):
@@ -35,6 +36,7 @@ class Sampler(BaseSampler):
         super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
         self.total_samples = num_rollouts * max_path_length
+        self.max_path_length_eval = max_path_length_eval
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
         self.vae = vae
@@ -43,21 +45,33 @@ class Sampler(BaseSampler):
 
         if self.n_parallel > 1:
             self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            self.vec_env_eval = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
         else:
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
+            self.vec_env_eval = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
 
     def update_tasks(self):
         pass
 
-    def evaluate_performance(self):
-        obses = np.asarray(self.vec_env.reset())
-        for t in range(self.max_path_length):
-            actions = self.policy.get_actions(obses)
-            next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
+    def _closed_loop_performance(self, verbose):
+        policy = self.policy
+        obses = self.vec_env.reset()
+        returns = np.zeros((self.num_envs,))
+        if verbose: pbar = ProgBar(self.max_path_length_eval)
+        for path_length in range(self.max_path_length_eval):
+            actions_array, _, _ = policy.get_actions(np.asarray(obses), verbose=False)
+            if path_length + len(actions_array) < self.max_path_length_eval:
+                actions_array = actions_array[0:1, :, :]
 
+            for actions in actions_array:
+                obses, rewards, _, _ = self.vec_env_eval.step(actions)  # FIXME: use self.vec_env is fine?
+                returns += rewards
+                if verbose: pbar.update(1)
+        if verbose: pbar.stop()
 
-    def obtain_samples(self, log=False, log_prefix='', random=False, sinusoid=False, deterministic=False,
-                       verbose=True, plot_first_rollout=False):
+        return returns
+
+    def obtain_samples(self, log_open_loop_performance=False, log_closed_loop_performance=False, log=False, log_prefix='', random=False, sinusoid=False, verbose=True):
         """
         Collect batch_size trajectories from each task
 
@@ -84,96 +98,112 @@ class Sampler(BaseSampler):
             policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
-        obses = np.asarray(self.vec_env.reset())
+        obses_fake = obses = np.asarray(self.vec_env.reset())
 
         # utils for ilqr method
         u_array = []
+        open_loop_returns = np.zeros((self.num_envs,))
 
-        itr_counter = 0
+        path_length = 0
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
             if self.vae is not None:
+                obses_fake = np.array(obses_fake)
+                obses_fake = self.vae.encode(obses_fake)
                 obses = np.array(obses)
                 obses = self.vae.encode(obses)
 
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
+                actions_array = actions[None]
                 agent_infos = []
             elif sinusoid:
                 action_space = self.env.action_space.shape[0]
                 num_envs = self.vec_env.num_envs
                 actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
+                actions_array = actions[None]
                 agent_infos = []
             else:
-                obses = np.array(obses)
-                actions, agent_infos, next_obses_fake = policy.get_actions(obses)
-                assert len(actions) == len(obses)  # (num_rollouts, space_dims)
+                obses_fake = np.array(obses_fake)
+                actions_array, agent_infos, next_obses_fake = policy.get_actions(obses_fake)
+                # assert len(actions) == len(obses_fake)  # (num_rollouts, space_dims)
+                if path_length + len(actions_array) < self.max_path_length:
+                    actions_array = actions_array[0:1, :, :]
             policy_time += time.time() - t
 
-            # step environments
-            t = time.time()
-            next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
-            env_time += time.time() - t
+            for actions in actions_array:
+                # step environments
+                t = time.time()
+                next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
+                env_time += time.time() - t
 
-            #  stack agent_infos and if no infos were provided (--> None) create empty dicts
-            agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
+                #  stack agent_infos and if no infos were provided (--> None) create empty dicts
+                agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
+                open_loop_returns += rewards
+                u_array.append(actions)
 
-            new_samples = 0
-            for idx, observation, next_observation, action, reward, env_info, agent_info, done in zip(
-                    itertools.count(), obses, next_obses, actions, rewards, env_infos, agent_infos, dones,
-            ):
-                # append new samples to running paths
-                if isinstance(reward, np.ndarray):
-                    reward = reward[0]
-                running_paths[idx]["observations"].append(observation)
-                running_paths[idx]["next_observations"].append(next_observation)
-                running_paths[idx]["actions"].append(action)
-                running_paths[idx]["rewards"].append(reward)
-                running_paths[idx]["dones"].append(done)
-                running_paths[idx]["env_infos"].append(env_info)
-                running_paths[idx]["agent_infos"].append(agent_info)
+                new_samples = 0
+                for idx, observation, next_observation, action, reward, env_info, agent_info, done in zip(
+                        itertools.count(), obses, next_obses, actions, rewards, env_infos, agent_infos, dones,
+                ):
+                    # append new samples to running paths
+                    if isinstance(reward, np.ndarray):
+                        reward = reward[0]
+                    running_paths[idx]["observations"].append(observation)
+                    running_paths[idx]["next_observations"].append(next_observation)
+                    running_paths[idx]["actions"].append(action)
+                    running_paths[idx]["rewards"].append(reward)
+                    running_paths[idx]["dones"].append(done)
+                    running_paths[idx]["env_infos"].append(env_info)
+                    running_paths[idx]["agent_infos"].append(agent_info)
 
-                # if running path is done, add it to paths and empty the running path
-                if done:
-                    paths.append(dict(
-                        observations=np.asarray(running_paths[idx]["observations"]),
-                        next_observations=np.asarray(running_paths[idx]["next_observations"]),
-                        actions=np.asarray(running_paths[idx]["actions"]),
-                        rewards=np.asarray(running_paths[idx]["rewards"]),
-                        dones=np.asarray(running_paths[idx]["dones"]),
-                        env_infos=utils.stack_tensor_dict_list(running_paths[idx]["env_infos"]),
-                        agent_infos=utils.stack_tensor_dict_list(running_paths[idx]["agent_infos"]),
-                    ))
-                    new_samples += len(running_paths[idx]["rewards"])
-                    running_paths[idx] = _get_empty_running_paths_dict()
+                    # if running path is done, add it to paths and empty the running path
+                    if done:
+                        paths.append(dict(
+                            observations=np.asarray(running_paths[idx]["observations"]),
+                            next_observations=np.asarray(running_paths[idx]["next_observations"]),
+                            actions=np.asarray(running_paths[idx]["actions"]),
+                            rewards=np.asarray(running_paths[idx]["rewards"]),
+                            dones=np.asarray(running_paths[idx]["dones"]),
+                            env_infos=utils.stack_tensor_dict_list(running_paths[idx]["env_infos"]),
+                            agent_infos=utils.stack_tensor_dict_list(running_paths[idx]["agent_infos"]),
+                        ))
+                        new_samples += len(running_paths[idx]["rewards"])
+                        running_paths[idx] = _get_empty_running_paths_dict()
+
+                if verbose: pbar.update(self.vec_env.num_envs)
+                n_samples += new_samples
+                path_length += 1
 
             # step using model
             if not random and not sinusoid:
-                logger.log('PathLength', itr_counter)
-                obses = next_obses_fake
-            else:
-                obses = next_obses
-
-            # prepare for warm reset
-            u_array.append(actions)
-
-            if verbose: pbar.update(self.vec_env.num_envs)
-            n_samples += new_samples
-            itr_counter += 1
+                logger.log('PathLength', path_length)
+                obses_fake = next_obses_fake  # TODO: alternatively, obses_fake = next_obses
+            obses = next_obses
 
         if verbose: pbar.stop()
-
         self.total_timesteps_sampled += self.total_samples
+        u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
 
         if log:
             logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 
-        if hasattr(policy, 'warm_reset'):
-            u_array = np.stack(u_array, axis=0)  # (max_path_length, num_envs, act_dim)
-            policy.warm_reset(u_array)
+        if log_open_loop_performance:  # path_length = max_path_length
+            # vec_env is reset within run_open_loop
+            for idx, ret_env in enumerate(open_loop_returns):
+                logger.logkv(log_prefix + f"RetEnvOpen-{idx}", ret_env)
+
+        if log_closed_loop_performance:  # evaluation for dynamics model, path_length = max_path_length_eval
+            closed_loop_returns = self._closed_loop_performance(verbose=verbose)
+
+            for idx, ret_env in enumerate(closed_loop_returns):
+                logger.logkv(log_prefix + f"RetEnvClosed-{idx}", ret_env)
+        # max_path_length_eval > max_path_length for vec_env causes early termination (dones = True at 30)
+
+        policy.warm_reset(u_array)  # TODO: warm_reset(None)?? Shuffle?? CEM?
 
         return paths
 

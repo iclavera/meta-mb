@@ -54,8 +54,8 @@ class DyniLQRController(Serializable):
             actions = np.append(actions, 0.5 * np.sin(i * t))
         return actions
 
-    def get_actions(self, obs):
-        return self.planner.get_actions(obs)
+    def get_actions(self, obs, verbose=True):
+        return self.planner.get_actions(obs, verbose=verbose)
 
     def _init_u_array(self):
         if self.initializer_str == 'cem':
@@ -127,6 +127,12 @@ class DyniLQRController(Serializable):
 
     def warm_reset(self, u_array):
         logger.log('planner resets with collected samples...')
+        if u_array is None:
+            u_array = self._init_u_array()
+        else:
+            u_array = u_array[:self.horizon, :, :]
+            if np.sum(np.abs(u_array) == np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):  # too many actions on boundary
+                u_array = self._init_u_array()
         self.planner.reset_u_array(u_array[:self.horizon, :, :])
 
     def log_diagnostics(*args):

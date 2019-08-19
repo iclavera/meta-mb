@@ -10,8 +10,7 @@ import copy
 class DyniLQRPlanner(object):
     def __init__(self, env, dynamics_model, num_envs, horizon, num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
-                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
-                 verbose=False):
+                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
         self.num_envs = num_envs
@@ -30,7 +29,6 @@ class DyniLQRPlanner(object):
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
-        self.verbose = verbose
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self.param_array = None
@@ -139,7 +137,7 @@ class DyniLQRPlanner(object):
 
         return OrderedDict(f_x=jac_f_x, f_u=jac_f_u)
 
-    def get_actions(self, obs):
+    def get_actions(self, obs, verbose=True):
         self._reset_mu()
         next_obs = np.empty((self.num_envs, self.obs_dim))
         # perm = [np.random.permutation(self.num_envs) for _ in range(self.horizon)]
@@ -158,9 +156,12 @@ class DyniLQRPlanner(object):
                     success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
                     next_obs[env_idx, :] = agent_info['next_obs']
                     if success:
-                        logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
-                        logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
-                        logger.dumpkvs()
+                        if verbose:
+                            logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
+                            logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
+                            logger.dumpkvs()
+                        if agent_info['u_clipped_pct'] > 0.95:  # actions all on boundary
+                            self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
 
                     # # sanity check  # FIXME: assertion fails with ensemble or stochastic model
                     # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][2], feed_dict=feed_dict)
@@ -176,15 +177,16 @@ class DyniLQRPlanner(object):
                 break
 
         # logging: RetEnv for env_idx = 0
-        logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
-        # logger.dumpkvs()
+        if np.random.rand() < 0.5 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
+            logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
+            logger.dumpkvs()
 
-        optimized_action = self.u_array_val[0, :, :]
+        optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
 
         # shift
         self.shift_u_array(u_new=None)
 
-        return optimized_action, [], next_obs
+        return optimized_actions, [], next_obs
 
     def _run_open_loop(self, u_array, init_obs):
         returns = 0
