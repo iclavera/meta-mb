@@ -360,7 +360,7 @@ if __name__ == '__main__':
 
         'use_image': [True],
         'encoder': ['cpc'],
-        'latent_dim': [16, 32],
+        'latent_dim': [16],
         'negative': [10],
         'history': [3],
         'future': [3],

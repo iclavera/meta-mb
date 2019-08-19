@@ -290,7 +290,7 @@ class Trainer(object):
 
 
                 """ --------------------Train embedding to true state -------------"""
-                if self.train_emb_to_state and itr % 10 == 0 and itr > 0:
+                if self.train_emb_to_state and itr % 10 == 1:
                     # reinitialize weights
                     emb2state_model.load_weights(os.path.join(logger.get_dir(), 'emb2state_model.h5'))
                     test_traj = 5
@@ -304,7 +304,7 @@ class Trainer(object):
                         keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
                                                           verbose=1, min_delta=0.01),
                         keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'emb2state.log'), append=True),
-                        keras.callbacks.EarlyStopping(monitor='val_loss', patience=2, restore_best_weights=True)]
+                        keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)]
 
 
                     emb2state_model.fit\
@@ -339,10 +339,11 @@ class Trainer(object):
                             plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
                         plt.savefig(os.path.join(logger.get_dir(), 'diag_itr%d_%d.png' % (itr, counter)))
 
+                        plt.clf()
                         for i in range(num_plots):
                             ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                            plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
                             plt.plot(predicte_openloop_traj[:, i], label='openloop')
-                            plt.legend()
                         plt.savefig(os.path.join(logger.get_dir(), 'diag_openloop_itr%d_%d.png' % (itr, counter)))
 
 
