@@ -1,5 +1,6 @@
 from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
 from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
+from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.samplers.sampler_ilqr import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
@@ -25,16 +26,16 @@ def run_experiment(**config):
     repr = "dyn-ilqr-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = max_path_length = 100
+        config['max_path_length'] = 50  # 100
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
-        config['max_path_length'] = max_path_length = 100
+        config['max_path_length'] = 100
     elif config['env'] is InvertedPendulumSwingUpEnv:
         repr += 'ipup'
-        config['max_path_length'] = max_path_length = 100
+        config['max_path_length'] = 100
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
-        config['max_path_length'] = max_path_length = 50
+        config['max_path_length'] = 50
 
     if not config['fit_model']:
         config['n_itr'] = 1
@@ -42,9 +43,10 @@ def run_experiment(**config):
     if config.get('model_path', None) is not None:
         repr += 'pretrained-'
         # config['fit_model'] = False
-        # config['max_path_length'] = 30
         config['initial_random_samples'] = False
         config['initial_sinusoid_samples'] = False
+
+    print(f"horizon, max_path_length, max_path_length_eval = {config['horizon']}, {config['max_path_length_eval']}, {config['max_path_length']}")
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -122,17 +124,34 @@ def run_experiment(**config):
 
         sample_processor = ModelSampleProcessor()
 
+        planner = DyniLQRPlanner(
+            env=env,
+            dynamics_model=dynamics_model,
+            num_envs=config['num_rollouts'],
+            horizon=config['horizon'],
+            num_ilqr_iters=config['num_ilqr_iters'],
+            discount=config['discount'],
+            mu_min=config['mu_min'],
+            mu_max=config['mu_max'],
+            mu_init=config['mu_init'],
+            delta_0=config['delta_0'],
+            delta_init=config['delta_init'],
+            alpha_decay_factor=config['alpha_decay_factor'],
+            c_1=config['c_1'],
+            max_forward_iters=config['max_forward_iters'],
+            max_backward_iters=config['max_backward_iters'],
+        )
+
         policy = DyniLQRController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
+            planner=planner,
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
-            max_path_length= max_path_length, # config['max_path_length'],
             n_parallel=config['n_parallel'],
             initializer_str=config['initializer_str'],
-            num_ddp_iters=config['num_ddp_iters'],
             num_rollouts=config['num_rollouts'],
             alpha=config['alpha'],
             percent_elites=config['percent_elites'],
@@ -142,7 +161,8 @@ def run_experiment(**config):
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
-            max_path_length=max_path_length, # config['max_path_length'],
+            max_path_length=config['max_path_length'],
+            max_path_length_eval=config['max_path_length_eval'],
         )
 
         algo = PolicyOnlyTrainer(
@@ -178,6 +198,8 @@ if __name__ == '__main__':
         'normalize': [False],  # UNUSED
         'n_itr': [50],
         'discount': [1.0,],
+        'max_path_length_eval': [20],  # FIXME
+        'horizon': [20],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
@@ -185,7 +207,6 @@ if __name__ == '__main__':
         'deterministic_policy': [True],
 
         # cem
-        'horizon': [10],  # only matters for cem/rs/collocation
         'n_candidates': [1000],
         'num_cem_iters': [50],
         'alpha': [0.15],
@@ -196,8 +217,17 @@ if __name__ == '__main__':
         'num_collocation_iters': [500*30],
         'persistency': [0.9],
 
-        # DDP
-        'num_ddp_iters': [20],
+        # iLQR
+        'num_ilqr_iters': [20],
+        'mu_min': [1e-6],
+        'mu_max': [1e10],
+        'mu_init': [1e-5],
+        'delta_0': [2],
+        'delta_init': [1.0],
+        'alpha_decay_factor': [3.0],
+        'c_1': [1e-6],
+        'max_forward_iters': [10],
+        'max_backward_iters': [10],
 
         # Training
         'num_rollouts': [5],
@@ -220,16 +250,10 @@ if __name__ == '__main__':
         'n_parallel': [1],
     }
 
-    # assert config['horizon'] == config['max_path_length']
-
-    config_debug = config.copy()
-    config_debug['max_path_length'] = [7]
-    config_debug['horizon'] = [4]
-    config_debug['num_models'] = [3]
-    config_debug['num_rollouts'] = [2]
-    config_debug['plot_freq'] = [1]
-    config_debug['n_parallel'] = 4
+    #
+    # config_debug = config.copy()
+    # print('================ runnning toy example ================')
+    # run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)
+    # exit()
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
-    # print('================ runnning toy example ================')
-    #run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)

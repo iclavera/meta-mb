@@ -81,16 +81,15 @@ class PolicyOnlyTrainer(object):
 
                 time_env_sampling_start = time.time()
 
-                if self.initial_random_samples and itr == 0:
+                if self.initial_random_samples and itr < 3:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                elif self.initial_sinusoid_samples and itr == 0:
+                elif self.initial_sinusoid_samples and itr < 3:
                     logger.log("Obtaining sinusoidal samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', deterministic=self.deterministic_policy,
-                                                            plot_first_rollout=(self.plot_freq > 0) and (itr % self.plot_freq == 0))
+                    env_paths = self.sampler.obtain_samples(log_open_loop_performance=True, log_closed_loop_performance=(itr % 5 == 0), log=True, log_prefix='')
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
 

@@ -194,6 +194,21 @@ if __name__ == "__main__":
             print(x, new_x)
 
     print(fail_ctr/100, ' percentage of failure')
+
+    u_array = np.random.uniform(low=env.action_space.low, high=env.action_space.high, size=(4, env.act_dim))
+    obs = env.reset()
+
+    for _ in range(10):
+        x_array = [env.reset_from_obs(obs)]
+        reward_array = []
+        for i in range(4):
+            x, reward, _, _ = env.step(u_array[i])
+            x_array.append(x)
+            reward_array.append(reward)
+
+        print(f'x_array[0], reward_array = {x_array[0]}, {reward_array}')
+        print(f'sum of rewards = {np.sum(reward_array)}')
+
     # print(env.sim.derivative().shape)
     # print(env.sim.data.qpos)
 

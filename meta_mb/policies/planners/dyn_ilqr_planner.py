@@ -4,18 +4,17 @@ import numpy as np
 from collections import OrderedDict
 import tensorflow as tf
 import time
+import copy
 
 
 class DyniLQRPlanner(object):
-    def __init__(self, env, dynamics_model, num_envs, horizon, u_array, num_ilqr_iters ,reg_str='V', discount=1,
+    def __init__(self, env, dynamics_model, num_envs, horizon, num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
-                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
-                 verbose=False):
-        self._env = env
+                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10):
+        self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
         self.num_envs = num_envs
         self.horizon = horizon
-        self.u_array_val = u_array
         self.num_ilqr_iters = num_ilqr_iters
         self.reg_str = reg_str
         self.discount = discount
@@ -30,10 +29,12 @@ class DyniLQRPlanner(object):
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
-        self.verbose = verbose
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self.param_array = None
+        self.u_array_val = np.empty(
+            shape=(self.horizon, self.num_envs, self.act_dim)
+        )
         self.u_array_ph = tf.placeholder(
             dtype=tf.float32,
             shape=(self.horizon, self.num_envs, self.act_dim),
@@ -136,13 +137,13 @@ class DyniLQRPlanner(object):
 
         return OrderedDict(f_x=jac_f_x, f_u=jac_f_u)
 
-    def get_actions(self, obs):
+    def get_actions(self, obs, verbose=True):
         self._reset_mu()
-        sess = tf.get_default_session()
+        next_obs = np.empty((self.num_envs, self.obs_dim))
         # perm = [np.random.permutation(self.num_envs) for _ in range(self.horizon)]
         perm = [np.arange(self.num_envs) for _ in range(self.horizon)]
         perm = np.stack(perm, axis=0)
-        # success_counter = 0
+        sess = tf.get_default_session()
         feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: perm}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
@@ -151,36 +152,23 @@ class DyniLQRPlanner(object):
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
             for env_idx in active_envs.copy():
                 try:
-                    # assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
-                    J_val, log_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
-                    # self.u_array_val[:, env_idx, :] has J_val = J_val if log_info is None else log_info['opt_J_val']
-                    if env_idx == 0 and log_info is not None:
-                        logger.logkv(f'RetDyn-{env_idx}', -log_info['opt_J_val'])
-                        logger.logkv(f'u_clipped_pct-{env_idx}', log_info['u_clipped_pct'])
-                        logger.dumpkvs()
-                        # success_counter += 1
+                    assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
+                    success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
+                    next_obs[env_idx, :] = agent_info['next_obs']
+                    if success:
+                        if verbose:
+                            logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
+                            logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
+                            logger.dumpkvs()
+                        if agent_info['u_clipped_pct'] > 0.95:  # actions all on boundary
+                            self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
 
-                    # logging DEBUG
-                    # if env_idx == 0:
-                    #     logger.logkv('iLQRItr', itr)
-                    #     logger.logkv('J_val', J_val)
-                    #     if log_info is not None:
-                    #         logger.logkv('J_val_new', log_info['opt_J_val'])
-                    #         if log_info['u_clipped_pct'] > 0:
-                    #             logger.logkv('u_clipped_pct', log_info['u_clipped_pct'])
-                    #         # logger.logkv(f'RetDyn-{itr}-e{0}', returns_dyn[0])
-                    #         # logger.logkv(f'RetEnv-{itr}-e{0}', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))
-                    #         # logger.logkv(f'{itr}-bw_fw_ctr', (log_info['backward'], log_info['forward']))
-                    #         # logger.logkv(f'{itr}-mu', log_info['mu'])
-                    #         # logger.logkv(f'ActDiff', log_info['J_val'] - log_info['opt_J_val'])
-                    #     logger.dumpkvs()
-
-                        # sanity check  # FIXME: assertion fails with ensemble or stochastic model
-                        # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
-                        # logger.log(f'itr = {itr}, idx = {env_idx}, opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
-                        # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][1], feed_dict={self.u_array_ph: self.u_array_val, self.obs_ph: obs})
-                        # logger.log(f'itr = {itr}, idx = {env_idx}, opt_J_val = {-returns_dyn[env_idx]}, tf_opt_J_val = {tf_opt_J_val}')
-                        # assert tf_opt_J_val == -returns_dyn[env_idx]
+                    # # sanity check  # FIXME: assertion fails with ensemble or stochastic model
+                    # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][2], feed_dict=feed_dict)
+                    # logger.log(f"itr = {itr}, idx = {env_idx}, opt_J_val = {-agent_info['returns']}, tf_opt_J_val = {tf_opt_J_val}")
+                    # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][2], feed_dict=feed_dict)
+                    # logger.log(f"itr = {itr}, idx = {env_idx}, opt_J_val = {-agent_info['returns']}, tf_opt_J_val = {tf_opt_J_val}")
+                    # assert tf_opt_J_val == -agent_info['returns']
                 except OverflowError:
                     logger.log(f'{env_idx}-th env is removed at iLQR_itr {itr}')
                     active_envs.remove(env_idx)
@@ -188,22 +176,17 @@ class DyniLQRPlanner(object):
             if len(active_envs) == 0:
                 break
 
-            # return -opt_J_val, dict(backward=backward_pass_counter, forward=forward_pass_counter,
-            #                         mu=self.param_array[idx][0],
-            #                         u_clipped_pct=np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim),
-            #                         J_val=J_val, opt_J_val=opt_J_val, delta_J_alpha=delta_J_alpha)
-
         # logging: RetEnv for env_idx = 0
-        logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
-        # logger.logkv('SuccessRate', success_counter/(self.num_envs * self.num_ilqr_iters))
-        # logger.dumpkvs()
+        if np.random.rand() < 0.5 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
+            logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
+            logger.dumpkvs()
 
-        optimized_action = self.u_array_val[0, :, :]
+        optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
 
         # shift
         self.shift_u_array(u_new=None)
 
-        return optimized_action, []
+        return optimized_actions, [], next_obs
 
     def _run_open_loop(self, u_array, init_obs):
         returns = 0
@@ -218,6 +201,7 @@ class DyniLQRPlanner(object):
     def update_u_per_env(self, idx, utils_list):
         u_array = self.u_array_val[:, idx, :]
         x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        agent_info = dict(next_obs=x_array[1, :], returns=-J_val)
 
         """
         Backward Pass
@@ -280,7 +264,7 @@ class DyniLQRPlanner(object):
                 backward_pass_counter += 1
 
         if not backward_accept:
-            return J_val, None
+            return False, agent_info
 
         """
         Forward Pass (break if 0 < c_1 < z)
@@ -303,6 +287,8 @@ class DyniLQRPlanner(object):
                 opt_x_array.append(x)
                 opt_u_array.append(u)
                 x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=model_idx[i])[0]
+                if i == 0:  # store next_obs
+                    opt_next_obs = x_prime
                 # # sanity check
                 # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
                 # if not np.allclose(x_prime, x_prime_second_predict):
@@ -316,7 +302,12 @@ class DyniLQRPlanner(object):
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 opt_u_array = np.stack(opt_u_array, axis=0)
                 self.u_array_val[:, idx, :] = opt_u_array
+
                 forward_accept = True
+
+                agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim)
+                agent_info['returns'] = -opt_J_val
+                agent_info['next_obs'] = opt_next_obs
             else:
                 # continue line search
                 alpha /= self.alpha_decay_factor
@@ -328,15 +319,14 @@ class DyniLQRPlanner(object):
             #     logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
 
             self._decrease_mu(idx)
-            return J_val, dict(#mu=self.param_array[idx][0],
-                               u_clipped_pct=np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim),
-                               opt_J_val=opt_J_val)  #, delta_J_alpha=delta_J_alpha)
+            return True, agent_info
+
         else:
             # if self.verbose:
                 # logger.log(f'bw, fw = {backward_pass_counter, forward_pass_counter}, mu = {mu}')
                 # logger.log(f'J_val = {J_val}')
             self._increase_mu(idx)
-            return J_val, None
+            return False, agent_info
 
     def _decrease_mu(self, idx):
         mu, delta = self.param_array[idx]
@@ -366,8 +356,8 @@ class DyniLQRPlanner(object):
     def shift_u_array(self, u_new):
        # self._reset_mu()
         if u_new is None:
-            # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
-            u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
+            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
+            # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
 
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
 

@@ -11,11 +11,10 @@ from meta_mb.envs.mb_envs import HalfCheetahEnv, Walker2dEnv, AntEnv, HopperEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.parallel_metrpo_trainer import ParallelTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
-INSTANCE_TYPE = 'c4.2xlarge'
+INSTANCE_TYPE = 'c4.4xlarge'
 EXP_NAME = 'parallel-metrpo'
 
 
@@ -73,6 +72,11 @@ def run_base(exp_dir, **kwargs):
         simulation_sleep = 0.008 * kwargs['num_rollouts'] * kwargs['max_path_length'] * kwargs['simulation_sleep_frac']
     else:
         raise NotImplementedError
+
+    model_sleep = simulation_sleep / kwargs['rel_speed_model_to_data']
+    policy_sleep = simulation_sleep / kwargs['rel_speed_policy_to_data']
+
+    print(f"\n------------- simulation_sleep, model_sleep, policy_sleep = {simulation_sleep, model_sleep, policy_sleep} --------")
 
     policy = GaussianMLPPolicy(
         name="meta-policy",
@@ -160,6 +164,8 @@ def run_base(exp_dir, **kwargs):
         flags_need_query=kwargs['flags_need_query'],
         config=config,
         simulation_sleep=simulation_sleep,
+        model_sleep=model_sleep,
+        policy_sleep=policy_sleep,
     )
 
     trainer.train()
@@ -173,15 +179,18 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.99,
+            0.4, 0.99,
         ],
 
-        'seed': [1, 2,],
-        'n_itr': [1250],
+        'seed': [1,],
+        'n_itr': [401],
         'num_rollouts': [1],
 
-        'simulation_sleep_frac': [1],
-        'env': ['HalfCheetah', 'Ant', 'Walker2d', 'Hopper'],
+        'simulation_sleep_frac': [1,],
+        # test sensitivity to relative worker speed
+        'rel_speed_model_to_data': [10, 20],
+        'rel_speed_policy_to_data': [10, 20],
+        'env': ['HalfCheetah'],
 
         # Problem Conf
 
@@ -204,7 +213,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [5e-4],
+        'dynamics_learning_rate': [1e-4,],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
