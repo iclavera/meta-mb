@@ -3,14 +3,14 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5lu-1"
+EXP_NAME = "gym-Q5-done-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-# from meta_mb.envs.mujoco import *
-from meta_mb.envs.mb_envs import *
+from meta_mb.envs.mujoco import *
+# from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -207,7 +207,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66, 55],
+        'seed': [66],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -235,7 +235,7 @@ if __name__ == '__main__':
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
-		'q_target_type': [1],
+		'q_target_type': [0],
 		'num_actions_per_next_observation':[10],
         'H': [2],
         'T': [3],
