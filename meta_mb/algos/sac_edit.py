@@ -202,7 +202,7 @@ class SAC_MB(Algo):
 
     def step(self, obs, actions, shuffle = True, k = 1):
         assert self.dynamics_type in [0, 1, 2]
-        assert self.step_type in [0, 1, 2, 3, 4]
+        assert self.step_type in [0, 1]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict_sym(obs, actions)
             if k != 1:

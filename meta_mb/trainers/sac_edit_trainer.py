@@ -236,7 +236,7 @@ class Trainer(object):
 
     def step(self, obs, actions):
         assert self.dynamics_type in [0, 1, 2]
-        assert self.step_type in [0, 1, 2, 3, 4]
+        assert self.step_type in [0, 1]
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict(obs, actions)
             rewards = self.env.reward(obs, actions, next_observation)
