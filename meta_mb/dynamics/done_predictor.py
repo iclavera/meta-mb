@@ -57,13 +57,12 @@ class DonePredictor(CoreModel):
             else:
                 self.done_predictor = nn.FeedForwardNet('done_predictor', self.obs_dim + self.obs_dim + self.action_dim, [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
-            self.input = tf.placeholder(tf.float32, shape=(None, self.obs_dim + self.obs_dim + self.action_dim))
             self.done_prediction = tf.placeholder(tf.float32, shape=(None))
             self.input = tf.placeholder(tf.float32, shape=(None, self.obs_dim + self.obs_dim + self.action_dim))
         self.build_graph()
 
     def build_graph(self):
-        self.done_prediction = self.done_predictor(self.input, is_eval=False, reduce_mode="random")
+        self.done_prediction = tf.nn.sigmoid(self.done_predictor(self.input, is_eval=False, reduce_mode="random"))
 
     def fit(self, input, output):
         prediction = self.done_predictor(input, is_eval=False, reduce_mode="random")
@@ -75,18 +74,13 @@ class DonePredictor(CoreModel):
         traininig_op = self.optimizer.minimize(self.loss)
 
 
-    def tf_predict(self, obs, actions, next_obs):
-        info = tf.concat([obs, actions], -1)
-        next_info = tf.concat([next_obs, info], -1)
-        return self.done_predictor(next_info, is_eval=False, reduce_mode="random")
-
     def predict(self, obs, actions, next_obs):
         info = np.concatenate([obs, actions], -1)
         next_info = np.concatenate([next_obs, info], -1)
         sess = tf.get_default_session()
         return sess.run(self.done_prediction, feed_dict=dict({self.input: next_info}))
 
-    def transition(self, obs, action, next_obs):
+    def tf_predict(self, obs, action, next_obs):
         info = tf.concat([obs, action], -1)
         next_info = tf.concat([next_obs, info], -1)
         done = tf.nn.sigmoid(self.done_predictor(next_info, reduce_mode="none", pre_expanded=True))
