@@ -188,8 +188,8 @@ if __name__ == '__main__':
 
         'simulation_sleep_frac': [1,],
         # test sensitivity to relative worker speed
-        'rel_speed_model_to_data': [2, 4],
-        'rel_speed_policy_to_data': [2, 4],
+        'rel_speed_model_to_data': [10, 20],
+        'rel_speed_policy_to_data': [10, 20],
         'env': ['HalfCheetah'],
 
         # Problem Conf
