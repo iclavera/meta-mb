@@ -67,7 +67,7 @@ class MLPDynamicsModelFull(Serializable):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, self.action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims+2))
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, self.obs_space_dims+1))
 
             self._create_stats_vars()
 
@@ -76,7 +76,7 @@ class MLPDynamicsModelFull(Serializable):
 
             # create MLP
             mlp = MLP(name,
-                      output_dim=self.obs_space_dims+2,
+                      output_dim=self.obs_space_dims+1,
                       hidden_sizes=hidden_sizes,
                       hidden_nonlinearity=hidden_nonlinearity,
                       output_nonlinearity=output_nonlinearity,
@@ -241,8 +241,7 @@ class MLPDynamicsModelFull(Serializable):
 
         pred_obs = obs_original + delta[:, :self.obs_space_dims]
         reward = delta[:, self.obs_space_dims:self.obs_space_dims+1]
-        dones = delta[:, self.obs_space_dims+1:]
-        return pred_obs, reward, dones
+        return pred_obs, reward
 
     def distribution_info_sym(self, obs_var, act_var):
         with tf.variable_scope(self.name + '/dynamics_model', reuse=True):
@@ -250,7 +249,7 @@ class MLPDynamicsModelFull(Serializable):
             in_act_var = (act_var - self._mean_act_var) / (self._std_act_var + 1e-8)
             input_var = tf.concat([in_obs_var, in_act_var], axis=1)
             mlp = MLP(self.name,
-                      output_dim=self.obs_space_dims+2,
+                      output_dim=self.obs_space_dims+1,
                       hidden_sizes=self.hidden_sizes,
                       hidden_nonlinearity=self.hidden_nonlinearity,
                       output_nonlinearity=self.output_nonlinearity,
@@ -301,17 +300,17 @@ class MLPDynamicsModelFull(Serializable):
                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
         self._std_act_var = tf.get_variable('std_act', shape=(self.action_space_dims,),
                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims+2,),
+        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self.obs_space_dims+1,),
                                                 dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims+2,),
+        self._std_delta_var = tf.get_variable('std_delta', shape=(self.obs_space_dims+1,),
                                                dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
 
         self._mean_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._std_obs_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims,))
         self._mean_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
         self._std_act_ph = tf.placeholder(tf.float32, shape=(self.action_space_dims,))
-        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,))
-        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,))
+        self._mean_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
+        self._std_delta_ph = tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,))
 
         self._assignations = [tf.assign(self._mean_obs_var, self._mean_obs_ph),
                               tf.assign(self._std_obs_var, self._std_obs_ph),

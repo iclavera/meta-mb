@@ -4,6 +4,8 @@ import tensorflow as tf
 import numpy as np
 from itertools import product
 
+from pdb import set_trace as st
+
 class FeedForwardNet(object):
     """Custom feed-forward network layer."""
     def __init__(self, name, in_size, out_shape, layers=1, hidden_dim=32, final_nonlinearity=None, get_uncertainty=False):
@@ -19,45 +21,43 @@ class FeedForwardNet(object):
         self.weights = [None] * layers
         self.biases = [None] * layers
 
-        self.input = tf.placeholder(tf.float32, shape=(None, self.in_size))
-        self.prediction = self.__call__(self.input, stop_params_gradient=False, is_eval=True, ensemble_idxs=None, pre_expanded=None, reduce_mode="none")
-
         self.params_list = []
 
         with tf.variable_scope(name):
             for layer_i in range(self.layers):
                 in_size = self.hidden_dim
                 out_size = self.hidden_dim
-                if layer_i == 0: in_size = self.in_size
-                if layer_i == self.layers - 1: out_size = self.out_size
-                self.weights[layer_i] = tf.get_variable("weights%d" % layer_i, [in_size, out_size], initializer=tf.contrib.layers.xavier_initializer())
-                self.biases[layer_i] = tf.get_variable("bias%d" % layer_i, [1, out_size], initializer=tf.constant_initializer(0.0))
+                if layer_i == 0:
+                    in_size = self.in_size
+                if layer_i == self.layers - 1:
+                    out_size = self.out_size
+                self.weights[layer_i] = tf.get_variable("weights%d" % layer_i, [in_size, out_size], dtype = tf.float32, initializer=tf.contrib.layers.xavier_initializer())
+                self.biases[layer_i] = tf.get_variable("bias%d" % layer_i, [1, out_size],  dtype = tf.float32, initializer=tf.constant_initializer(0.0))
                 self.params_list += [self.weights[layer_i], self.biases[layer_i]]
 
     def __call__(self, x, stop_params_gradient=False, is_eval=True, ensemble_idxs=None, pre_expanded=None, reduce_mode="none"):
         original_shape = tf.shape(x)
         h = tf.reshape(x, [-1, self.in_size])
+        h= tf.cast(h, tf.float32)
         for layer_i in range(self.layers):
             nonlinearity = tf.nn.relu if layer_i + 1 < self.layers else self.final_nonlinearity
-            if stop_params_gradient: h = nonlinearity(tf.matmul(h, tf.stop_gradient(self.weights[layer_i])) + tf.stop_gradient(self.biases[layer_i]))
-            else:             h = nonlinearity(tf.matmul(h, self.weights[layer_i]) + self.biases[layer_i])
-        if len(self.out_shape) > 0: h = tf.reshape(h, tf.concat([original_shape[:-1], tf.constant(self.out_shape)], -1))
-        else:                       h = tf.reshape(h, original_shape[:-1])
-        if pre_expanded is None: pre_expanded = ensemble_idxs is not None
+            if stop_params_gradient:
+                h = nonlinearity(tf.matmul(h, tf.stop_gradient(self.weights[layer_i])) + tf.stop_gradient(self.biases[layer_i]))
+            else:
+                h = nonlinearity(tf.matmul(h, self.weights[layer_i]) + self.biases[layer_i])
+        if len(self.out_shape) > 0:
+            h = tf.reshape(h, tf.concat([original_shape[:-1], tf.constant(self.out_shape)], -1))
+        else:
+            h = tf.reshape(h, original_shape[:-1])
+        if pre_expanded is None:
+            pre_expanded = ensemble_idxs is not None
         if reduce_mode == "none" and not pre_expanded and self.get_uncertainty:
-            if len(self.out_shape) > 0: h = tf.expand_dims(h, -2)
-            else:                       h = tf.expand_dims(h, -1)
+            if len(self.out_shape) > 0:
+                h = tf.expand_dims(h, -2)
+            else:
+                h = tf.expand_dims(h, -1)
         return h
 
-    def compile_function(self, inputs, outputs, log_name=None):
-        def run(*input_vals):
-            sess = tf.get_default_session()
-            return sess.run(outputs, feed_dict=dict(list(zip(inputs, input_vals))))
-        return run
-
-    def np_pred(x, stop_params_gradient=False, is_eval=True, ensemble_idxs=None, pre_expanded=None, reduce_mode="none"):
-        sess = tf.get_default_session()
-        return sess.run(self.prediction, feed_dict=dict(list(x)))
 
     def l2_loss(self):
         return tf.add_n([tf.reduce_sum(.5 * tf.square(mu)) for mu in self.params_list])

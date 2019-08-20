@@ -35,6 +35,7 @@ class Trainer(object):
             env_sampler,
             env_sample_processor,
             dynamics_model,
+            done_predictor,
             policy,
             n_itr,
             rollout_length_params,
@@ -55,6 +56,8 @@ class Trainer(object):
             done_bar=1.0,
             dynamics_type=0,
             step_type=0,
+            aux_hidden_dim=256,
+            predict_done=False,
             ):
         self.algo = algo
         self.env = env
@@ -84,11 +87,9 @@ class Trainer(object):
         self.done_bar = done_bar
         self.dynamics_type = dynamics_type
         self.step_type = step_type
+        self.done_predictor = done_predictor
         # check the hyperparameters
-        # self.done_predictor = nn.FeedForwardNet('done_predictor',
-        #                       self.obs_dim + self.obs_dim + self.action_dim,
-        #                       [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
-        #
+        self.predict_done = predict_done
 
         if sess is None:
             sess = tf.Session()
@@ -130,7 +131,7 @@ class Trainer(object):
                                                        samples_data['dones'], samples_data['next_observations'])
 
             if self.algo.obs_dim > 50:
-                self.deal_with_oom = 10
+                self.deal_with_oom = 16
             else:
                 self.deal_with_oom = 1
 
@@ -150,10 +151,14 @@ class Trainer(object):
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
                 elif self.dynamics_type == 1 or self.dynamics_type == 2:
-                    expanded_rewards, expanded_dones = np.expand_dims(all_samples[3], axis = -1), np.expand_dims(all_samples[4], axis = -1)
-                    self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], expanded_rewards, expanded_dones], axis = -1),
+                    expanded_rewards = np.expand_dims(all_samples[3], axis = -1)
+                    self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], expanded_rewards], axis = -1),
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
+                if self.predict_done:
+                    input = np.concatenate([all_samples[0], all_samples[1], all_samples[2]], -1)
+                    output = all_samples[4]
+                    self.done_predictor.fit(input, output)
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
@@ -185,7 +190,7 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            self.algo.do_training(time_step, batch)
+                            self.algo.do_training(time_step, batch, log=True)
                             time_step += 1
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -212,8 +217,8 @@ class Trainer(object):
                 logger.log("Saved")
 
                 logger.dumpkvs()
-                if itr == 0:
-                    sess.graph.finalize()
+                # if itr == 0:
+                #     sess.graph.finalize()
 
         logger.log("Training finished")
         self.sess.close()
@@ -235,20 +240,20 @@ class Trainer(object):
         if self.dynamics_type == 0:
             next_observation = self.dynamics_model.predict(obs, actions)
             rewards = self.env.reward(obs, actions, next_observation)
-            dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
+            if self.predict_done:
+                dones = self.done_predictor.predict(obs, actions, next_observation)
+            else:
+                dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
         elif self.dynamics_type == 1 or self.dynamics_type == 2:
-            next_observation, rewards, dones = self.dynamics_model.predict(obs, actions)
+            next_observation, rewards = self.dynamics_model.predict(obs, actions)
+            if self.predict_done:
+                dones = self.done_predictor.predict(obs, actions, next_observation)
+            else:
+                dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
             if self.step_type == 1:
-                dones = (dones>=self.done_bar)
-            elif self.step_type == 2:
-                dones = self.env.termination_fn(obs, actions, next_observation)
-            elif self.step_type == 3:
                 rewards = self.env.reward(obs, actions, next_observation)
-            elif self.step_type == 4:
-                dones = self.env.termination_fn(obs, actions, next_observation)
-                rewards = self.env.reward(obs, actions, next_observation)
-            dones = dones.reshape((-1))
-            rewards = rewards.reshape((-1))
+        dones = dones.reshape((-1))
+        rewards = rewards.reshape((-1))
         return next_observation, rewards, dones
 
     def get_itr_snapshot(self, itr):

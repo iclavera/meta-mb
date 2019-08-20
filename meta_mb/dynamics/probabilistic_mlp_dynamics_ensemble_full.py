@@ -95,10 +95,10 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             self._create_stats_vars()
 
-            self.max_logvar = tf.Variable(np.ones([1, obs_space_dims+2]) * max_logvar, dtype=tf.float32,
+            self.max_logvar = tf.Variable(np.ones([1, obs_space_dims+1]) * max_logvar, dtype=tf.float32,
                                           trainable=True,
                                           name="max_logvar")
-            self.min_logvar = tf.Variable(np.ones([1, obs_space_dims+2]) * min_logvar, dtype=tf.float32,
+            self.min_logvar = tf.Variable(np.ones([1, obs_space_dims+1]) * min_logvar, dtype=tf.float32,
                                           trainable=True,
                                           name="min_logvar")
             self._create_assign_ph()
@@ -106,7 +106,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             # placeholders
             self.obs_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+2))
+            self.delta_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
 
             # concatenate action and observation --> NN input
             self.nn_input = tf.concat([self.obs_ph, self.act_ph], axis=1)
@@ -123,7 +123,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             for i in range(num_models):
                 with tf.variable_scope('model_{}'.format(i)):
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=2 * (obs_space_dims+2),
+                              output_dim=2 * (obs_space_dims+1),
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -152,7 +152,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 for t in range(self.T+1):
-                    next_observation, _, _ = self.predict_sym(obs, actions)
+                    next_observation, _ = self.predict_sym(obs, actions)
                     dist_info_sym = self.policy.distribution_info_sym(next_observation)
                     next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                     rewards = self.env.tf_reward(obs, actions, next_observation)
@@ -212,7 +212,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             # placeholders
             self.obs_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims))
             self.act_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, action_space_dims))
-            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+2))
+            self.delta_model_batches_stack_ph = tf.placeholder(tf.float32, shape=(None, obs_space_dims+1))
 
             # split stack into the batches for each model --> assume each model receives a batch of the same size
             self.obs_model_batches = tf.split(self.obs_model_batches_stack_ph, self.num_models, axis=0)
@@ -230,7 +230,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 for t in range(self.T+1):
-                    next_observation, _, _ = self.predict_sym(obs, actions)
+                    next_observation, _ = self.predict_sym(obs, actions)
                     dist_info_sym = self.policy.distribution_info_sym(next_observation)
                     next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                     rewards = self.env.tf_reward(obs, actions, next_observation)
@@ -251,7 +251,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
                     mlp = MLP(name+'/model_{}'.format(i),
-                              output_dim=2 * (obs_space_dims+2),
+                              output_dim=2 * (obs_space_dims+1),
                               hidden_sizes=hidden_sizes,
                               hidden_nonlinearity=hidden_nonlinearity,
                               output_nonlinearity=output_nonlinearity,
@@ -275,6 +275,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
 
                     q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k][i], predictions=q_values_var[k], weights=0.5)
                                                 for k in range(2)]
+
                     # q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
 
                     current_scope = name
@@ -345,7 +346,7 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=2 * (self.obs_space_dims+2),
+                              output_dim=2 * (self.obs_space_dims+1),
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
                               output_nonlinearity=self.output_nonlinearity,
@@ -368,14 +369,12 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             perm_inv = tf.invert_permutation(perm)
             original = tf.gather(delta_preds, perm_inv)
             pred_obs = tf.clip_by_value(original_obs + original[:, :self.obs_space_dims], -1e2, 1e2)
-            pred_rewards = original[:, self.obs_space_dims:self.obs_space_dims+1]
-            pred_dones = tf.nn.sigmoid(original[:, self.obs_space_dims+1:])
+            pred_rewards = original[:, self.obs_space_dims:]
         else:
-            next_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
-            pred_rewards = delta_preds[:, self.obs_space_dims:self.obs_space_dims+1]
-            pred_dones = tf.nn.sigmoid(delta_preds[:, self.obs_space_dims+1:])
+            pred_obs = tf.clip_by_value(original_obs + delta_preds[:, :self.obs_space_dims], -1e2, 1e2)
+            pred_rewards = delta_preds[:, self.obs_space_dims:]
 
-        return pred_obs, pred_rewards, pred_dones
+        return pred_obs, pred_rewards
 
 
 
@@ -441,16 +440,15 @@ class ProbMLPDynamicsEnsembleFull(MLPDynamicsEnsembleFull):
             NotImplementedError('pred_type must be one of [rand, mean, all]')
 
         pred_obs = predictions[:, :self.obs_space_dims]
-        rewards = predictions[:, self.obs_space_dims:self.obs_space_dims+1]
-        dones = predictions[:, self.obs_space_dims+1:]
+        rewards = predictions[:, self.obs_space_dims:]
         if return_infos:
-            return pred_obs, rewards, dones, agent_infos
-        return pred_obs, rewards, dones
+            return pred_obs, rewards, agent_infos
+        return pred_obs, rewards
 
 
     def _create_assign_ph(self):
-        self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims+2], name="min_logvar_ph")
-        self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims+2], name="max_logvar_ph")
+        self._min_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims+1], name="min_logvar_ph")
+        self._max_log_var_ph = tf.placeholder(tf.float32, shape=[1, self.obs_space_dims+1], name="max_logvar_ph")
         self._assign_ops_var = [tf.assign(self.min_logvar, self._min_log_var_ph), tf.assign(self.max_logvar,
                                                                                             self._max_log_var_ph)]
 

@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mb-Q5lu"
+EXP_NAME = "mb-Q5lu-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -22,6 +22,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_full import ProbMLPDynamicsEnsembleFull
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.done_predictor import DonePredictor
 
 
 save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
@@ -131,6 +132,17 @@ def run_experiment(**kwargs):
                                                     normalize_input=kwargs['normalize_input'],
                                                     type=2,
                                                     )
+        if kwargs['predict_done']:
+            done_predictor = DonePredictor(name='done_predictor',
+                                           aux_hidden_dim=kwargs['done_predictor_aux_hidden_dim'],
+                                           obs_dim=obs_dim,
+                                           action_dim=action_dim,
+                                           transition_hidden_dim=kwargs['done_predictor_transition_hidden_dim'],
+                                           learning_rate=kwargs['done_predictor_learning_rate'],
+                                           ensemble_num=kwargs['done_predictor_ensemble_num'],
+                                           )
+        else:
+            done_predictor = None
 
         algo = SAC_MB(
             policy=policy,
@@ -138,6 +150,7 @@ def run_experiment(**kwargs):
             learning_rate=kwargs['learning_rate'],
             target_entropy=kwargs['target_entropy'],
             env=env,
+            done_predictor=done_predictor,
             dynamics_model=dynamics_model,
             obs_dim = obs_dim,
             action_dim = action_dim,
@@ -157,6 +170,7 @@ def run_experiment(**kwargs):
             target_update_interval=kwargs['n_train_repeats'],
             step_type=kwargs['step_type'],
             dynamics_type=kwargs['model_type'],
+            predict_done=kwargs['predict_done'],
         )
 
         trainer = Trainer(
@@ -165,6 +179,7 @@ def run_experiment(**kwargs):
             env_sampler=env_sampler,
             env_sample_processor=env_sample_processor,
             dynamics_model=dynamics_model,
+            done_predictor=done_predictor,
             policy=policy,
             n_itr=kwargs['n_itr'],
             num_model_rollouts=kwargs['num_model_rollouts'],
@@ -183,6 +198,7 @@ def run_experiment(**kwargs):
 			sampler_batch_size=kwargs['sampler_batch_size'],
             dynamics_type=kwargs['model_type'],
             step_type=kwargs['step_type'],
+            predict_done=kwargs['predict_done'],
         )
 
         trainer.train()
@@ -203,7 +219,8 @@ if __name__ == '__main__':
         # Env Sampling
         'num_rollouts': [1],
         'step_type': [4],
-        'model_type': [2],
+        'predict_done': [True],
+        'model_type': [0],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -211,30 +228,35 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [101],
 		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [50, 200],
+		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
-		'q_target_type': [0],
-		'num_actions_per_next_observation':[3, 5, 10],
-        'H': [0],
-        'T': [2, 3],
+		'q_target_type': [1],
+		'num_actions_per_next_observation':[10, 20],
+        'H': [2, 3],
+        'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [4, 8],
-		'model_used_ratio': [1],
+		'num_models': [2],
+		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1, 1e-4, 1e-3],
+        'q_loss_importance': [1, 1e-2],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
+
+        'done_predictor_aux_hidden_dim':[256],
+        'done_predictor_transition_hidden_dim': [200],
+        'done_predictor_learning_rate': [1e-3],
+        'done_predictor_ensemble_num': [1],
 
 
         # Problem Conf

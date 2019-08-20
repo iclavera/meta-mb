@@ -294,7 +294,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
     def update_buffer(self, obs, act, obs_next, valid_split_ratio=None, check_init=True):
 
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
-        assert obs_next.ndim == 2 and obs_next.shape[1]-2 == self.obs_space_dims
+        assert obs_next.ndim == 2 and obs_next.shape[1]-1 == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims
 
         self.timesteps_counter += obs.shape[0]
@@ -526,8 +526,6 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
 
         """ ------- Looping over training epochs ------- """
         for epoch in range(epochs):
-
-
             # initialize data queue
             feed_dict = dict(
                 list(zip(self.obs_batches_dataset_ph, obs_train)) +
@@ -653,7 +651,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
                     input_var = tf.concat([in_obs_var, in_act_var], axis=1)
                     mlp = MLP(self.name+'/model_{}'.format(i),
-                              output_dim=(self.obs_space_dims+2),
+                              output_dim=(self.obs_space_dims+1),
                               hidden_sizes=self.hidden_sizes,
                               hidden_nonlinearity=self.hidden_nonlinearity,
                               output_nonlinearity=self.output_nonlinearity,
@@ -671,9 +669,8 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
         results_dones = tf.gather(delta_preds, perm_inv)
         next_obs = original_obs + results[:, :self.obs_space_dims]
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
-        rewards = results[:, self.obs_space_dims:self.obs_space_dims+1]
-        dones = tf.nn.sigmoid(results[:, self.obs_space_dims+1:])
-        return next_obs, rewards, dones
+        rewards = results[:, self.obs_space_dims:]
+        return next_obs, rewards
 
 
     def predict(self, obs, act, pred_type='rand', **kwargs):
@@ -726,9 +723,8 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
 
         pred_obs = predictions[:, :self.obs_space_dims]
         rewards = predictions[:, self.obs_space_dims:self.obs_space_dims+1]
-        dones = predictions[:, self.obs_space_dims+1:]
         pred_obs = np.clip(pred_obs, -1e2, 1e2)
-        return pred_obs, rewards, dones
+        return pred_obs, rewards
 
     def predict_std(self, obs, act):
         """
@@ -757,7 +753,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
         obs, act, delta = obs_batches[0], act_batches[0], delta_batches[0]
         assert obs.ndim == act.ndim == delta.ndim, "inputs must have 2 dims"
         assert obs.shape[0] == act.shape[0] == delta.shape[0], "inputs must have same length along axis 0"
-        assert obs.shape[1] == delta.shape[1]-2, "obs and obs_next must have same length along axis 1 "
+        assert obs.shape[1] == delta.shape[1]-1, "obs and obs_next must have same length along axis 1 "
 
         self.obs_batches_dataset_ph = [tf.placeholder(tf.float32, (None, obs.shape[1])) for _ in range(self.num_models)]
         self.act_batches_dataset_ph = [tf.placeholder(tf.float32, (None, act.shape[1])) for _ in range(self.num_models)]
@@ -812,17 +808,17 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
                                                  dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
             self._std_act_var.append(tf.get_variable('std_act_%d' % i, shape=(self.action_space_dims,),
                                                 dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
-            self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims+2,),
+            self._mean_delta_var.append(tf.get_variable('mean_delta_%d' % i, shape=(self.obs_space_dims+1,),
                                                    dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False))
-            self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims+2,),
+            self._std_delta_var.append(tf.get_variable('std_delta_%d' % i, shape=(self.obs_space_dims+1,),
                                                   dtype=tf.float32, initializer=tf.ones_initializer, trainable=False))
 
             self._mean_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._std_obs_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims,)))
             self._mean_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
             self._std_act_ph.append(tf.placeholder(tf.float32, shape=(self.action_space_dims,)))
-            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,)))
-            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+2,)))
+            self._mean_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,)))
+            self._std_delta_ph.append(tf.placeholder(tf.float32, shape=(self.obs_space_dims+1,)))
 
             self._assignations.extend([tf.assign(self._mean_obs_var[i], self._mean_obs_ph[i]),
                                       tf.assign(self._std_obs_var[i], self._std_obs_ph[i]),
