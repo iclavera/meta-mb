@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'cheetah_rnn_downsampled'
+EXP_NAME = 'cheetah_noisereg'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -299,7 +299,7 @@ def run_experiment(**config):
             cpc_batch_size=config['batch_size_model'],
 
             path_checkpoint_interval=config['path_checkpoint_interval'],
-            train_emb_to_state=False
+            train_emb_to_state= config['train_emb_to_state']
         )
         algo.train()
 
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config_withreward_l2 = {
-        'seed': [1, 2],
+        'seed': [1],
         'run_suffix': ['1'],
 
         # Problem
@@ -360,6 +360,7 @@ if __name__ == '__main__':
         'prob_dyn': [False],
         #  Other
         'n_parallel': [1],
+        'train_emb_to_state': [True],
 
         # representation learning
 
@@ -380,7 +381,7 @@ if __name__ == '__main__':
         'cpc_num_initial_rollouts': [64],
         'cpc_train_interval': [1],
         'cpc_loss_weight': [300],
-        'rew_loss_weight': [0., 10],
+        'rew_loss_weight': [0.],
         'action_loss_weight': [0.],
         'cpc_lambd': [0],
         'grad_penalty': [False],
@@ -431,6 +432,7 @@ if __name__ == '__main__':
         'prob_dyn': [False],
         #  Other
         'n_parallel': [1],
+        'train_emb_to_state': [False],
 
         # representation learning
 
@@ -458,4 +460,4 @@ if __name__ == '__main__':
     }
 
     i = 0
-    run_sweep(run_experiment, config_rnn, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_withreward_l2, EXP_NAME, INSTANCE_TYPE)

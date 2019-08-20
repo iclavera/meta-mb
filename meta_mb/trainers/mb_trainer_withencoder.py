@@ -291,64 +291,67 @@ class Trainer(object):
 
                 """ --------------------Train embedding to true state -------------"""
                 if self.train_emb_to_state and itr % 10 == 1:
-                    # reinitialize weights
-                    emb2state_model.load_weights(os.path.join(logger.get_dir(), 'emb2state_model.h5'))
-                    test_traj = 5
-                    # save 3 trajectories to test on
-                    emb2state_model.compile(
-                        optimizer=keras.optimizers.Adam(lr=1e-3),
-                        loss='mean_squared_error',
-                        metrics=['mean_squared_error'], )
+                    latent_noises = [0., 0.3, 1., 3.]
 
-                    callbacks = [
-                        keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
-                                                          verbose=1, min_delta=0.01),
-                        keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'emb2state.log'), append=True),
-                        keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)]
+                    for noise in latent_noises:
+                        # reinitialize weights
+                        emb2state_model.load_weights(os.path.join(logger.get_dir(), 'emb2state_model.h5'))
+                        test_traj = 5
+                        # save 3 trajectories to test on
+                        emb2state_model.compile(
+                            optimizer=keras.optimizers.Adam(lr=1e-3),
+                            loss='mean_squared_error',
+                            metrics=['mean_squared_error'], )
 
+                        callbacks = [
+                            keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=1 / 3, patience=2, min_lr=1e-5,
+                                                              verbose=1, min_delta=0.01),
+                            keras.callbacks.CSVLogger(os.path.join(logger.get_dir(), 'emb2state.log'), append=True),
+                            keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)]
 
-                    emb2state_model.fit\
-                        (x=self.buffer._embedding_dataset['obs'][:-test_traj].reshape((-1, self.latent_dim)),
-                         y=self.buffer._dataset['true_state'][:-test_traj].reshape((-1, self.state_dim)),
-                         epochs=30,
-                         validation_split=0.1,
-                         callbacks=callbacks
-                         )
+                        latent_x = self.buffer._embedding_dataset['obs'][:-test_traj].reshape((-1, self.latent_dim))
+                        latent_x += np.random.normal(scale = noise, size=latent_x.shape)
 
-                    num_stack = self.dynamics_model.num_stack
-                    # plot the state predictions along time
-                    predicted_states = emb2state_model.predict(
-                        self.buffer._embedding_dataset['obs'][-test_traj:].reshape((-1, self.latent_dim)))
-                    predicted_states = predicted_states.reshape(test_traj, -1, self.state_dim)
-                    true_states = self.buffer._dataset['true_state'][-test_traj:]
+                        emb2state_model.fit\
+                            (x=latent_x,
+                             y=self.buffer._dataset['true_state'][:-test_traj].reshape((-1, self.state_dim)),
+                             epochs=30,
+                             validation_split=0.1,
+                             callbacks=callbacks
+                             )
 
-                    initial_latent = self.buffer._embedding_dataset['obs'][-test_traj:, :num_stack]
-                    actions_to_take = self.buffer._dataset['act'][-test_traj:, num_stack - 1 : num_stack + 49]
+                        num_stack = self.dynamics_model.num_stack
+                        # plot the state predictions along time
+                        predicted_states = emb2state_model.predict(
+                            self.buffer._embedding_dataset['obs'][-test_traj:].reshape((-1, self.latent_dim)))
+                        predicted_states = predicted_states.reshape(test_traj, -1, self.state_dim)
+                        true_states = self.buffer._dataset['true_state'][-test_traj:]
 
-                    openloop_predicted_latents = self.dynamics_model.openloop_rollout(initial_latent, actions_to_take)
-                    openloop_predicted_states = emb2state_model.predict\
-                        (openloop_predicted_latents.reshape(-1, self.latent_dim)).reshape(test_traj, -1, self.state_dim)
+                        initial_latent = self.buffer._embedding_dataset['obs'][-test_traj:, :num_stack]
+                        actions_to_take = self.buffer._dataset['act'][-test_traj:, num_stack - 1 : num_stack + 49]
 
-                    for counter, (true_traj, predicted_traj, predicte_openloop_traj) in \
-                            enumerate(zip(true_states, predicted_states, openloop_predicted_states)):
-                        num_plots = self.state_dim
-                        fig = plt.figure(figsize=(num_plots, 6))
-                        for i in range(num_plots):
-                            ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
-                            plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
-                            plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
-                        plt.savefig(os.path.join(logger.get_dir(), 'diag_itr%d_%d.png' % (itr, counter)))
+                        openloop_predicted_latents = self.dynamics_model.openloop_rollout(initial_latent, actions_to_take)
+                        openloop_predicted_states = emb2state_model.predict\
+                            (openloop_predicted_latents.reshape(-1, self.latent_dim)).reshape(test_traj, -1, self.state_dim)
 
-                        plt.clf()
-                        for i in range(num_plots):
-                            ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
-                            plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
-                            plt.plot(predicte_openloop_traj[:, i], label='openloop')
-                        plt.savefig(os.path.join(logger.get_dir(), 'diag_openloop_itr%d_%d.png' % (itr, counter)))
+                        for counter, (true_traj, predicted_traj, predicte_openloop_traj) in \
+                                enumerate(zip(true_states[:2], predicted_states[:2], openloop_predicted_states[:2])):
+                            num_plots = self.state_dim
+                            fig = plt.figure(figsize=(num_plots, 6))
+                            for i in range(num_plots):
+                                ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                                plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
+                                plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
+                            plt.savefig(os.path.join(logger.get_dir(), 'itr%d_noise=% 3.1f_%d.png' \
+                                                     % (noise, itr, counter)))
 
-
-
-
+                            plt.clf()
+                            for i in range(num_plots):
+                                ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                                plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
+                                plt.plot(predicte_openloop_traj[:, i], label='openloop')
+                            plt.savefig(os.path.join(logger.get_dir(), 'openloop_itr%d_noise=% 3.1f_%d.png' \
+                                                     % (noise, itr, counter)))
 
 
                 """ ------------------- Logging Stuff --------------------------"""
