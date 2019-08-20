@@ -31,7 +31,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cheetah_walker_state'
+EXP_NAME = 'cheetah_state_openloop'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -198,6 +198,8 @@ def run_experiment(**config):
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             reward_model_max_epochs=config['reward_model_epochs'],
             sess=sess,
+
+			plot_open_loop=True
         )
         algo.train()
 
@@ -225,7 +227,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': [ 'walker'],
+        'env': [ 'cheetah_run'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -234,7 +236,7 @@ if __name__ == '__main__':
         # Policy
         'n_candidates': [1000],  # K
         'horizon': [20],  # Tau
-        'use_cem': [True, False],
+        'use_cem': [True],
         'num_cem_iters': [10],
         'use_graph': [True],
 

@@ -181,7 +181,8 @@ class RNNDynamicsEnsemble(RNNDynamicsModel):
 
         self._networks = rnns
 
-    def fit(self, obs, act, obs_next, reward=None, epochs=1000, compute_normalization=True, valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix=''):
+    def fit(self, obs, act, obs_next, reward=None, epochs=1000, compute_normalization=True,
+            valid_split_ratio=None, rolling_average_persitency=None, verbose=False, log_tabular=False, prefix='', **kwargs):
         """
         Fits the NN dynamics model
         :param obs: observations - numpy array of shape (n_samples, ndim_obs)

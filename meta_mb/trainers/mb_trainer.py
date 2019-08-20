@@ -3,6 +3,11 @@ import numpy as np
 import time
 from meta_mb.logger import logger
 
+import matplotlib
+# Force matplotlib to not use any Xwindows backend.
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import os
 
 class Trainer(object):
     """
@@ -34,7 +39,8 @@ class Trainer(object):
             dynamics_model_max_epochs=200,
             reward_model_max_epochs=200,
             reward_model=None,
-            reward_sample_processor=None
+            reward_sample_processor=None,
+            plot_open_loop= False,
             ):
         self.env = env
         self.sampler = sampler
@@ -47,6 +53,7 @@ class Trainer(object):
         self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.reward_model_max_epochs = reward_model_max_epochs
+        self.plot_open_loop = plot_open_loop
 
         self.initial_random_samples = initial_random_samples
 
@@ -128,6 +135,27 @@ class Trainer(object):
                                             prefix='Rew')
 
                     logger.record_tabular('Time-RewardModelFit', time.time() - time_fitrew_start)
+
+                """ -------------------- Plot open loop rollout -------------"""
+                if self.plot_open_loop and itr % 10 == 0:
+                    h = 50
+                    env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
+                    actions = np.stack([path['actions'][:h] for path in env_paths])
+                    true_states = np.stack([path['observations'][:h + 1] for path in env_paths])
+
+                    openloop_predicted_states = self.dynamics_model.openloop_rollout(true_states[:, 0], actions)
+
+                    for counter, (true_traj, predicte_openloop_traj) in \
+                            enumerate(zip(true_states[:, 1:h + 1], openloop_predicted_states)):
+                        assert len(self.env.observation_space.shape) == 1
+                        num_plots = self.env.observation_space.shape[0]
+                        fig = plt.figure(figsize=(num_plots, 6))
+
+                        for i in range(num_plots):
+                            ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                            plt.plot(true_traj[:, i], label='true state')
+                            plt.plot(predicte_openloop_traj[:, i], label='openloop')
+                        plt.savefig(os.path.join(logger.get_dir(), 'diag_openloop_itr%d_%d.png' % (itr, counter)))
 
 
                 """ ------------------- Logging Stuff --------------------------"""

@@ -890,7 +890,22 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             self._networks[i].set_params(state['networks_params'][i])
 
 
+    def openloop_rollout(self, initial_state, actions):
+        """
+        :param initial_latents: N x state_dim
+        :param actions: N x horizon x action_dim
+        :return: latents along the way: N x horizon x latent_dim
+        """
+        sess = tf.get_default_session()
+        batch_size, horizon = actions.shape[:2]
+        assert initial_state.shape[0] == batch_size
+        assert initial_state.shape[1] == self.obs_space_dims
 
+        cur_states = initial_state
+        ret = np.zeros(shape=(batch_size, horizon, self.obs_space_dims))
 
+        for i in range(horizon):
+            cur_states = sess.run(self.predict_sym(cur_states.astype('float32'), actions[:, i]))
+            ret[:, i] = cur_states
 
-
+        return ret
