@@ -60,15 +60,15 @@ class DonePredictor(CoreModel):
             self.input = tf.placeholder(tf.float32, shape=(None, self.obs_dim + self.obs_dim + self.action_dim))
             self.done_prediction = tf.placeholder(tf.float32, shape=(None))
             self.input = tf.placeholder(tf.float32, shape=(None, self.obs_dim + self.obs_dim + self.action_dim))
-            self.dones = tf.placeholder(tf.float32, shape=(None))
-        self.fit(self.input, self.dones)
+        self.build_graph()
+
+    def build_graph(self):
+        self.done_prediction = self.done_predictor(self.input, is_eval=False, reduce_mode="random")
 
     def fit(self, input, output):
-        # info = tf.concat([obs, actions], -1)
-        # next_info = tf.concat([next_obs, info], -1)
-        self.done_prediction = self.done_predictor(input, is_eval=False, reduce_mode="random")
+        prediction = self.done_predictor(input, is_eval=False, reduce_mode="random")
         output = tf.cast(output, tf.float32)
-        done_losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=output, logits=self.done_prediction)
+        done_losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=output, logits=prediction)
         done_loss = tf.reduce_mean(done_losses)
         reg_loss = .0001 * (self.done_predictor.l2_loss())
         self.loss = reg_loss+done_loss

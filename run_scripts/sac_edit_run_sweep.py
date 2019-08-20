@@ -218,7 +218,7 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_rollouts': [1],
-        'step_type': [4],
+        'step_type': [0],
         'predict_done': [True],
         'model_type': [0],
 
@@ -228,7 +228,7 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [101],
+        'max_path_length': [1001],
 		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
@@ -236,8 +236,8 @@ if __name__ == '__main__':
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
 		'q_target_type': [1],
-		'num_actions_per_next_observation':[10, 20],
-        'H': [2, 3],
+		'num_actions_per_next_observation':[10],
+        'H': [2],
         'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
@@ -245,7 +245,7 @@ if __name__ == '__main__':
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1, 1e-2],
+        'q_loss_importance': [1],
 
         'policy_hidden_nonlinearity': ['relu'],
 
