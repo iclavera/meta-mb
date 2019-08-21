@@ -4,7 +4,7 @@ import time
 from meta_mb.logger import logger
 
 
-class PolicyOnlyTrainer(object):
+class BPTTTrainer(object):
     """
     Performs steps for MAML
 

@@ -4,7 +4,7 @@ from meta_mb.workers_multi_machines.base import Worker
 import ray
 
 
-@ray.remote
+@ray.remote(num_cpus=1)
 class WorkerData(Worker):
     def __init__(self, policy_ps, data_buffers, time_sleep, name, exp_dir, n_itr, stop_cond):
         super().__init__(name, exp_dir, n_itr, stop_cond)
@@ -88,13 +88,15 @@ class WorkerData(Worker):
         policy_params = ray.get(self.policy_ps.pull.remote())
         assert isinstance(policy_params, dict)
         self.env_sampler.policy.set_shared_params(policy_params)
-        logger.logkv('Data-TimeSynch', time.time() - time_synch)
+        logger.logkv('Data-TimePull', time.time() - time_synch)
 
     def push(self, samples_data):
         time_push = time.time()
         # broadcast samples to all data buffers
+        samples_data_id = ray.put(samples_data)
         for data_buffer in self.data_buffers:
-            ray.get(data_buffer.push.remote(samples_data))
+            # ray.get(data_buffer.push.remote(samples_data))
+            data_buffer.push.remote(samples_data_id)
         logger.logkv('Data-TimePush', time.time() - time_push)
 
     def set_stop_cond(self):

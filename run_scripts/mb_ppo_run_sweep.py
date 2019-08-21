@@ -13,16 +13,16 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'bptt-mb-mpc-baseline'
+EXP_NAME = 'pretrain-mb-ppo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + 'me-ppo-' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + 'hc-100' + kwargs.get('exp_name', '')
     print(f'================ starting exp {exp_dir} ==================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
         # Problem Conf
         'n_itr': [201],
-        'max_path_length': [90, 120, 200],
+        'max_path_length': [100],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
@@ -165,7 +165,7 @@ if __name__ == '__main__':
         'num_ppo_steps': [5],
         'imagined_num_rollouts': [20], #50],
         'scope': [None],
-        'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
+        'exp_tag': ['me_ppo'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

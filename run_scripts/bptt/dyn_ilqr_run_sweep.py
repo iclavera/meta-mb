@@ -1,4 +1,4 @@
-from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
+from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
 from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.samplers.sampler_ilqr import Sampler
@@ -165,7 +165,7 @@ def run_experiment(**config):
             max_path_length_eval=config['max_path_length_eval'],
         )
 
-        algo = PolicyOnlyTrainer(
+        algo = BPTTTrainer(
             env=env,
             policy=policy,
             dynamics_model=dynamics_model,
@@ -194,12 +194,12 @@ if __name__ == '__main__':
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
         # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
+        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
         'normalize': [False],  # UNUSED
         'n_itr': [50],
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME
-        'horizon': [20],
+        'horizon': [10, 30],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
@@ -225,7 +225,7 @@ if __name__ == '__main__':
         'delta_0': [2],
         'delta_init': [1.0],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-6],
+        'c_1': [1e-6, 1e-4],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
 

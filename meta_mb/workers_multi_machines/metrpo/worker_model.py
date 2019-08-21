@@ -6,7 +6,7 @@ import pickle
 import ray
 
 
-@ray.remote
+@ray.remote(num_cpus=3)
 class WorkerModel(Worker):
     def __init__(self, data_buffer, model_ps, name, exp_dir, n_itr, stop_cond):
         super().__init__(name, exp_dir, n_itr, stop_cond)
@@ -92,7 +92,7 @@ class WorkerModel(Worker):
             self.with_new_data = True
             self.remaining_model_idx = list(range(self.dynamics_model.num_models))
             self.valid_loss_rolling_average = None
-            logger.logkv('Model-TimeSynch', time.time() - time_synch)
+            logger.logkv('Model-TimePull', time.time() - time_synch)
 
         return len(samples_data_arr)
 

@@ -4,7 +4,7 @@ from meta_mb.workers_multi_machines.base import Worker
 import ray
 
 
-@ray.remote
+@ray.remote(num_cpus=3)
 class WorkerPolicy(Worker):
     def __init__(self, model_ps, policy_ps, name, exp_dir, n_itr, stop_cond):
         super().__init__(name, exp_dir, n_itr, stop_cond)
@@ -107,7 +107,7 @@ class WorkerPolicy(Worker):
         self.model_sampler.dynamics_model.set_shared_params(model_params)
         if hasattr(self.model_sampler, 'vec_env'):
             self.model_sampler.vec_env.dynamics_model.set_shared_params(model_params)
-        logger.logkv('Policy-TimeSynch', time.time() - time_synch)
+        logger.logkv('Policy-TimePull', time.time() - time_synch)
 
     def push(self):
         time_push = time.time()

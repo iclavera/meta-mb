@@ -35,16 +35,27 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', 'tmp')
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    os.makedirs(exp_dir + '/Data/', exist_ok=True)
-    os.makedirs(exp_dir + '/Model/', exist_ok=True)
-    os.makedirs(exp_dir + '/Policy/', exist_ok=True)
-    json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-    json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-    json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    if 'num_data_workers' in kwargs:
+        for idx in range(kwargs['num_data_workers']):
+            os.makedirs(exp_dir + f'/Data-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Data-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        for idx in range(kwargs['num_model_workers']):
+            os.makedirs(exp_dir + f'/Model-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Model-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        for idx in range(kwargs['num_policy_workers']):
+            os.makedirs(exp_dir + f'/Policy-{idx}/', exist_ok=True)
+            json.dump(kwargs, open(exp_dir + f'/Policy-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    else:
+        os.makedirs(exp_dir + '/Data/', exist_ok=True)
+        os.makedirs(exp_dir + '/Model/', exist_ok=True)
+        os.makedirs(exp_dir + '/Policy/', exist_ok=True)
+        json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+        json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
     run_base(exp_dir, **kwargs)
 
 
@@ -174,7 +185,7 @@ if __name__ == '__main__':
             [False, False, False],
         ],
         'rolling_average_persitency': [
-            0.4, 0.99,
+            0.1, 0.4, 0.99,
         ],
 
         'seed': [1,],
@@ -208,7 +219,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-4,],
+        'dynamics_learning_rate': [1e-4, 5e-4,],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
