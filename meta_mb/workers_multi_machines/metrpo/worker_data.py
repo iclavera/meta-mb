@@ -42,10 +42,13 @@ class WorkerData(Worker):
             samples_data = self.step(random=initial_random_samples)
             self.push(samples_data)
 
+        return 1
+
     def step_wrapper(self):
         self.pull()
         samples_data = self.step()
         self.push(samples_data)
+        return 1, 1
 
     def step(self, random=False):
         time_step = time.time()
@@ -91,7 +94,7 @@ class WorkerData(Worker):
         time_push = time.time()
         # broadcast samples to all data buffers
         for data_buffer in self.data_buffers:
-            data_buffer.push.remote(samples_data)
+            ray.get(data_buffer.push.remote(samples_data))
         logger.logkv('Data-TimePush', time.time() - time_push)
 
     def set_stop_cond(self):

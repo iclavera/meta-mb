@@ -56,6 +56,7 @@ class WorkerPolicy(Worker):
             self.push()
 
         logger.dumpkvs()
+        return 1
 
     def step(self):
         time_step = time.time()
@@ -85,7 +86,7 @@ class WorkerPolicy(Worker):
         if self.verbose:
             logger.log("Policy optimization...")
         # This needs to take all samples_data so that it can construct graph for meta-optimization.
-        self.algo.optimize_policy(samples_data, log=True, verbose=self.verbose, prefix='Policy-')
+        self.algo.optimize_policy(samples_data, log=True, verbose=False, prefix='Policy-')
 
         self.policy = self.model_sampler.policy
 
@@ -95,6 +96,7 @@ class WorkerPolicy(Worker):
         self.pull()
         self.step()
         self.push()
+        return 1, 1
 
     def pull(self):
         time_synch = time.time()

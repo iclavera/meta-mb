@@ -3,9 +3,7 @@ from meta_mb.logger import logger
 import ray
 
 
-NAME_TO_IDX = dict(Data=0, Model=1, Policy=2)
-
-ray.init(num_cpus=14, num_gpus=2,)
+print(ray.init(num_cpus=13, num_gpus=2))
 
 from meta_mb.workers_multi_machines.utils import *
 from meta_mb.workers_multi_machines.metrpo.worker_data import WorkerData
@@ -71,13 +69,13 @@ class RayTrainer(object):
                                     feed_dict=feed_dicts[2], algo_str=algo_str, config=config)
 
         futures = [worker.prepare_start.remote(**data_worker_kwargs) for worker in data_workers]
-        ray.get(futures)
+        assert all(ray.get(futures))
 
         futures = [worker.prepare_start.remote(**model_worker_kwargs) for worker in model_workers]
         dynamics_model_pickle = ray.get(futures)[0]
 
         futures = [worker.prepare_start.remote(dynamics_model_pickle=dynamics_model_pickle, **policy_worker_kwargs) for worker in policy_workers]
-        ray.get(futures)
+        assert all(ray.get(futures))
 
         self.workers = data_workers + model_workers + policy_workers
         self.other_actor_handles = [stop_cond, *data_buffers, model_ps, policy_ps]

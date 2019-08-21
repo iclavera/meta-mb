@@ -37,12 +37,13 @@ class WorkerModel(Worker):
 
     def step_wrapper(self):
         do_synch = self.pull()
-        if not self.remaining_model_idx and not do_synch:
-            # block wait until new samples arrive
-            time_wait = time.time()
-            while not do_synch:
-                do_synch = self.pull()
-            logger.logkv('Model-TimeBlockWait', time.time() - time_wait)
+        # do_synch = self.pull()
+        # if not self.remaining_model_idx and not do_synch:
+        #     # block wait until new samples arrive
+        #     time_wait = time.time()
+        #     while not do_synch:
+        #         do_synch = self.pull()
+        #     logger.logkv('Model-TimeBlockWait', time.time() - time_wait)
 
         self.step()
         self.push()
@@ -69,11 +70,13 @@ class WorkerModel(Worker):
 
     def pull(self, check_init=False):
         time_synch = time.time()
-        if self.verbose:
-            logger.log('Model at {} is synchronizing...'.format(self.step_counter))
         samples_data_arr = ray.get(self.data_buffer.pull.remote())
-        if check_init:
-            assert samples_data_arr
+        if check_init or not self.remaining_model_idx:
+            # block wait until some data comes
+            time_wait = time.time()
+            while not samples_data_arr:
+                samples_data_arr = ray.get(self.data_buffer.pull.remote())
+            logger.logkv('Model-TimeBlockWait', time.time() - time_wait)
         if samples_data_arr:
             obs = np.concatenate([samples_data['observations'] for samples_data in samples_data_arr])
             act = np.concatenate([samples_data['actions'] for samples_data in samples_data_arr])
@@ -97,6 +100,6 @@ class WorkerModel(Worker):
         time_push = time.time()
         params = self.dynamics_model.get_shared_param_values()
         assert params is not None
-        self.model_ps.push.remote(params)  # FIXME: wait here until push succees?
+        ray.get(self.model_ps.push.remote(params))  # FIXME: wait here until push succees?
         logger.logkv('Model-TimePush', time.time() - time_push)
 
