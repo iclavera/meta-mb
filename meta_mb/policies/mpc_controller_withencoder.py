@@ -22,7 +22,7 @@ class MPCController(Serializable):
             alpha=0.1,
             num_particles=20,
             use_graph=True,
-            use_image=False,
+            use_image=True,
             latent_dim=None,
     ):
         Serializable.quick_init(self, locals())
@@ -84,7 +84,8 @@ class MPCController(Serializable):
         return self.get_actions(observation)
 
     def get_actions(self, observations):
-        observations = self.encoder.predict(observations)
+        if self.use_image:
+            observations = self.encoder.encode(observations)
         if self.use_graph:
             sess = tf.get_default_session()
             actions = sess.run(self.optimal_action, feed_dict=\

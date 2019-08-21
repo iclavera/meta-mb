@@ -73,7 +73,7 @@ class VAE(Serializable):
         net = tf.reshape(net, [-1, 1, 1, 256])
         net = tf.layers.conv2d_transpose(net, filters=64, kernel_size=4, strides=1, activation=tf.nn.relu, padding='valid')
         net = tf.layers.conv2d_transpose(net, filters=64, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
-        net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
+        # net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d_transpose(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d_transpose(net, filters=self.n_channels, kernel_size=4, strides=2, padding='same')
         net = tf.contrib.layers.flatten(net)
@@ -87,7 +87,7 @@ class VAE(Serializable):
     def encode_sym(self, inputs):
         net = tf.reshape(inputs, self.batch_shape)
         net = tf.layers.conv2d(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
-        net = tf.layers.conv2d(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
+        # net = tf.layers.conv2d(net, filters=32, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d(net, filters=64, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d(net, filters=64, kernel_size=4, strides=2, activation=tf.nn.relu, padding='same')
         net = tf.layers.conv2d(net, filters=256, kernel_size=4, activation=tf.nn.relu, padding='valid')
@@ -142,6 +142,12 @@ class VAE(Serializable):
         })
         self.writer.add_summary(summary, self.global_step)
         self.global_step += 1
+
+    def train(self, data, epoch=50, beta=1):
+        n_train = data.shape[0]
+        for i in range(epoch * n_train // self.batch_size):
+            x_train = data[np.random.choice(n_train, size=self.batch_size, replace=False)].astype(np.float32)
+            self.train_step(x_train, beta=beta)
 
     def encode(self, imgs):
         flat_imgs = np.reshape(imgs, (-1, self.do))

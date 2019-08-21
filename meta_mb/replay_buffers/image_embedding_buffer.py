@@ -54,7 +54,12 @@ class ImageEmbeddingBuffer(Serializable):
         obs_seq = np.concatenate([obs, obs_next[:, -1:, :]], axis=1)
         # If case should be entered exactly once
         if check_init and self._dataset is None:
+            n_max = self._buffer_size
             self._dataset = dict(obs=obs_seq, act=act, reward=reward, true_state=true_state)
+            self._dataset['obs'] = self._dataset['obs'][-n_max:]
+            self._dataset['act'] = self._dataset['act'][-n_max:]
+            self._dataset['reward'] = self._dataset['reward'][-n_max:]
+            self._dataset['true_state'] = self._dataset['true_state'][-n_max:]
             self.update_train_idx(self._valid_split_ratio)
 
         else:
@@ -75,7 +80,7 @@ class ImageEmbeddingBuffer(Serializable):
             self._embedding_dataset = {}
             assert self._normalization is None
 
-        self._embedding_dataset['obs'] = self.encoder.predict(self._dataset['obs'].reshape(-1, *self.obs_space_dims))
+        self._embedding_dataset['obs'] = self.encoder.encode(self._dataset['obs'].reshape(-1, *self.obs_space_dims))
         self._embedding_dataset['obs'] = np.reshape(self._embedding_dataset['obs'],
                                                     self._dataset['obs'].shape[:2] + (self._latent_dim,))
         self._embedding_dataset['act'] = self._dataset['act']

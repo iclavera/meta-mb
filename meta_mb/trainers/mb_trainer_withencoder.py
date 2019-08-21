@@ -56,6 +56,7 @@ class Trainer(object):
             dynamics_model,
             n_itr,
             cpc_model,
+            vae=None,
             start_itr=0,
             initial_random_samples=True,
             sess=None,
@@ -104,6 +105,8 @@ class Trainer(object):
         self.cpc_negative_same_traj = cpc_negative_same_traj
         self.cpc_initial_sampler = cpc_initial_sampler
         self.cpc_train_interval = cpc_train_interval
+
+        self.vae = vae
 
         self.path_checkpoint_interval = path_checkpoint_interval
         self.train_emb_to_state = train_emb_to_state
@@ -159,28 +162,36 @@ class Trainer(object):
                                                predict_terms=self.cpc_predict_terms,
                                                negative_same_traj=self.cpc_negative_same_traj,)
             if self.cpc_initial_epoch > 0:
-                # for (x, a, y), labels in train_data:
-                #     plot_seq(x[0], y, labels, name='reacher-seq')q
-                #     break
-                # import pdb; pdb.set_trace()
-                #
                 env_paths = self.cpc_initial_sampler.obtain_samples(log=True, random=True, log_prefix='')
-                train_img, val_img, train_action, val_action, train_rew, val_rew = self.get_seqs(env_paths)
-                train_data.update_dataset(train_img, train_action, train_rew)
-                validation_data.update_dataset(val_img, val_action, val_rew)
+                samples_data = self.dynamics_sample_processor.process_samples(env_paths,
+                                                                              log=True, log_prefix='EnvTrajs-')
 
-                # Train the model
-                self.cpc_model.fit_generator(
-                    generator=train_data,
-                    steps_per_epoch=len(train_data),
-                    validation_data=validation_data,
-                    validation_steps=len(validation_data),
-                    epochs=self.cpc_initial_epoch,
-                    patience=2
-                )
+                self.buffer.update_buffer(samples_data['observations'],
+                                          samples_data['actions'],
+                                          samples_data['next_observations'],
+                                          samples_data['rewards'],
+                                          samples_data['env_infos']['true_state'])
+                self.buffer.update_embedding_buffer()
 
-            # K.set_learning_phase(0)
-            # self.env._wrapped_env.encoder = CPCEncoder(path=os.path.join(logger.get_dir(), 'encoder.h5'))
+                if self.vae is None:
+                    train_img, val_img, train_action, val_action, train_rew, val_rew = self.get_seqs(env_paths)
+                    train_data.update_dataset(train_img, train_action, train_rew)
+                    validation_data.update_dataset(val_img, val_action, val_rew)
+
+                    # Train the model
+                    self.cpc_model.fit_generator(
+                        generator=train_data,
+                        steps_per_epoch=len(train_data),
+                        validation_data=validation_data,
+                        validation_steps=len(validation_data),
+                        epochs=self.cpc_initial_epoch,
+                        patience=2
+                    )
+
+                else:
+                    # train VAE instead of CPC
+                    train_img = np.concatenate([path['observations'] for path in env_paths])
+                    self.vae.train(train_img, epoch=self.cpc_initial_epoch)
 
             if self.train_emb_to_state:
                 emb_input = keras.layers.Input(shape=(self.latent_dim, ))
@@ -291,7 +302,7 @@ class Trainer(object):
 
                 """ --------------------Train embedding to true state -------------"""
                 if self.train_emb_to_state and itr % 10 == 1:
-                    latent_noises = [0., 0.3, 1., 3.]
+                    latent_noises = [0., 0.1, 0.3, 0.5, 1., 2.]
 
                     for noise in latent_noises:
                         # reinitialize weights
@@ -343,7 +354,7 @@ class Trainer(object):
                                 plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
                                 plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
                             plt.savefig(os.path.join(logger.get_dir(), 'itr%d_noise=% 3.1f_%d.png' \
-                                                     % (noise, itr, counter)))
+                                                     % (itr, noise, counter)))
 
                             plt.clf()
                             for i in range(num_plots):
@@ -351,7 +362,7 @@ class Trainer(object):
                                 plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
                                 plt.plot(predicte_openloop_traj[:, i], label='openloop')
                             plt.savefig(os.path.join(logger.get_dir(), 'openloop_itr%d_noise=% 3.1f_%d.png' \
-                                                     % (noise, itr, counter)))
+                                                     % (itr, noise, counter)))
 
 
                 """ ------------------- Logging Stuff --------------------------"""
@@ -361,7 +372,9 @@ class Trainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
-                logger.logkv('ActionAvgMagnitude', np.mean([np.mean(np.absolute(path['actions'])) for path in env_paths]))
+                logger.logkv('ActionMean', np.mean([np.mean(np.absolute(path['actions'])) for path in env_paths]))
+                logger.logkv('LatentMean', np.mean(self.buffer._embedding_dataset['obs']))
+                logger.logkv('LatentStd', np.mean(np.std(self.buffer._embedding_dataset['obs'], axis=-1)))
 
                 # logger.log("Saving snapshot...")
                 # params = self.get_itr_snapshot(itr)
