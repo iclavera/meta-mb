@@ -29,12 +29,15 @@ class DyniLQRPlanner(object):
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
-        self.act_low, self.act_high = env.action_space.low, env.action_space.high
+        self.act_low, self.act_high = env.action_space.low + 5e-2, env.action_space.high - 5e-2
 
         self.param_array = None
         self.u_array_val = np.empty(
             shape=(self.horizon, self.num_envs, self.act_dim)
         )
+        self.perm_val = np.stack([np.arange(self.num_envs) for _ in range(self.horizon)], axis=0)
+        # self.perm_val = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
+
         self.u_array_ph = tf.placeholder(
             dtype=tf.float32,
             shape=(self.horizon, self.num_envs, self.act_dim),
@@ -141,10 +144,10 @@ class DyniLQRPlanner(object):
         self._reset_mu()
         next_obs = np.empty((self.num_envs, self.obs_dim))
         # perm = [np.random.permutation(self.num_envs) for _ in range(self.horizon)]
-        perm = [np.arange(self.num_envs) for _ in range(self.horizon)]
-        perm = np.stack(perm, axis=0)
+        # perm = [np.arange(self.num_envs) for _ in range(self.horizon)]
+        # perm = np.stack(perm, axis=0)
         sess = tf.get_default_session()
-        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: perm}  # self.u_array_val is updated over iterations
+        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: self.perm_val}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
         for itr in range(self.num_ilqr_iters):
@@ -165,8 +168,8 @@ class DyniLQRPlanner(object):
                         logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
                         if success:
                             logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
-                    if success and agent_info['u_clipped_pct'] > 0.95:  # actions all on boundary
-                            self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
+                    # if success and agent_info['u_clipped_pct'] > 0.85:  # actions all on boundary
+                    #     self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
 
                     # # sanity check  # FIXME: assertion fails with ensemble or stochastic model
                     # tf_opt_J_val = sess.run(self.utils_sym_by_env[env_idx][2], feed_dict=feed_dict)
@@ -185,24 +188,33 @@ class DyniLQRPlanner(object):
             logger.dumpkvs()
 
         # logging: RetEnv for env_idx = 0
-        if np.random.rand() < 0.5 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
-            logger.logkv(f'RetEnv', self._run_open_loop(self.u_array_val[:, 0, :], obs[0, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
+        if np.random.rand() < 0.3 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
+            for env_idx in range(self.num_envs):
+                logger.logkv(f'RetEnv-{env_idx}', self._run_open_loop(self.u_array_val[:, env_idx, :], obs[env_idx, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
             logger.dumpkvs()
 
         optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
 
-        # shift
+        # shift u_array and perm
         self.shift_u_array(u_new=None)
 
         return optimized_actions, [], next_obs
 
     def _run_open_loop(self, u_array, init_obs):
+        # logger.log('Act100%', np.percentile(u_array, q=100, axis=None))
+        # logger.log('Act75%', np.percentile(u_array, q=75, axis=None))
+        # logger.log('Act25%', np.percentile(u_array, q=25, axis=None))
+        # logger.log('Act0%', np.percentile(u_array, q=0, axis=None))
+
         returns = 0
         _ = self._env.reset_from_obs(init_obs)
 
         for i in range(self.horizon):
+            logger.log("------ ", u_array[i])
             x, reward, _, _ = self._env.step(u_array[i])
             returns += self.discount**i * reward
+
+        logger.log(returns)
 
         return returns
 
@@ -313,7 +325,7 @@ class DyniLQRPlanner(object):
 
                 forward_accept = True
 
-                agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) == np.mean(self.act_high))/(self.horizon*self.act_dim)
+                agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
                 agent_info['returns'] = -opt_J_val
                 agent_info['next_obs'] = opt_next_obs
             else:
@@ -356,17 +368,21 @@ class DyniLQRPlanner(object):
         self.param_array = [(self.mu_init, self.delta_init) for _ in range(self.num_envs)]
 
     def reset_u_array(self, u_array=None):
-        # self._reset_mu()
         if u_array is None:
             u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.num_envs, self.act_dim))
         self.u_array_val[:, :, :] = u_array  # broadcast
 
-    def shift_u_array(self, u_new):
-       # self._reset_mu()
-        if u_new is None:
-            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
-            # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
+    def _sample_u(self):
+        return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
 
+    def shift_u_array(self, u_new):
+        #  shift perm
+        # self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
+        #  shift u_array
+        if u_new is None:
+            # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
+            # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
+            u_new = self._sample_u()
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
 
 

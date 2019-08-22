@@ -77,6 +77,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
+        acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
         reward_run = obs[:, 8]  # changed from next_obs to obs
         reward = reward_run + reward_ctrl

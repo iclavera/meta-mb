@@ -41,7 +41,7 @@ def run_experiment(**config):
         config['n_itr'] = 1
 
     if config.get('model_path', None) is not None:
-        repr += 'pretrained-'
+        repr += '-pretrain'
         # config['fit_model'] = False
         config['initial_random_samples'] = False
         config['initial_sinusoid_samples'] = False
@@ -192,9 +192,7 @@ if __name__ == '__main__':
         # Problem
         'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-model-me-ppo/2019_07_15_18_34_37_0/params.pkl'],
-        # HalfCheetah
-        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrained-mb-ppo/hc-100/params.pkl'],
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'normalize': [False],  # UNUSED
         'n_itr': [50],
         'discount': [1.0,],

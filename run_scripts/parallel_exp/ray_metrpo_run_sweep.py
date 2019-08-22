@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'parallel-metrpo'
+EXP_NAME = 'ray-metrpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -196,7 +196,7 @@ if __name__ == '__main__':
         'num_data_workers': [1,],
         'num_model_workers': [1,],
         'num_policy_workers': [1,],
-        'env': ['HalfCheetah'],
+        'env': ['Ant'],
 
         # Problem Conf
 
