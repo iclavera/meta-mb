@@ -3,7 +3,7 @@ from meta_mb.logger import logger
 import ray
 
 
-print(ray.init(num_cpus=13, num_gpus=2))
+print(ray.init(redis_address="10.142.33.222:42733"))
 
 from meta_mb.workers_multi_machines.utils import *
 from meta_mb.workers_multi_machines.metrpo.worker_data import WorkerData
