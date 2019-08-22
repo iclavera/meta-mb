@@ -150,17 +150,22 @@ class DyniLQRPlanner(object):
         for itr in range(self.num_ilqr_iters):
             # compute: x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
+
+            if itr == 0 and verbose:
+                for env_idx in range(self.num_envs):
+                    logger.logkv(f'RetDyn-{env_idx}', -utils_by_env[env_idx][2])
+                logger.dumpkvs()
+
             for env_idx in active_envs.copy():
                 try:
-                    assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
+                    # assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
                     success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
                     next_obs[env_idx, :] = agent_info['next_obs']
-                    if success:
-                        if verbose:
-                            logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
+                    if verbose:
+                        logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
+                        if success:
                             logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
-                            logger.dumpkvs()
-                        if agent_info['u_clipped_pct'] > 0.95:  # actions all on boundary
+                    if success and agent_info['u_clipped_pct'] > 0.95:  # actions all on boundary
                             self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
 
                     # # sanity check  # FIXME: assertion fails with ensemble or stochastic model
@@ -175,6 +180,9 @@ class DyniLQRPlanner(object):
 
             if len(active_envs) == 0:
                 break
+
+        if verbose:
+            logger.dumpkvs()
 
         # logging: RetEnv for env_idx = 0
         if np.random.rand() < 0.5 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.

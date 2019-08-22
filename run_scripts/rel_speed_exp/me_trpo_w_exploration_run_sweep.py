@@ -5,25 +5,29 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv, InvertedPendulumEnv, ReacherEnv
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
-from meta_mb.trainers.metrpo_trainer import Trainer
+from meta_mb.algos.trpo import TRPO
+from meta_mb.trainers.metrpo_w_exploration_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.base import SampleProcessor
 from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
-INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'pretrain-mb-ppo'
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'exploration-me-trpo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + 'hc-100' + kwargs.get('exp_name', '')
-    print(f'================ starting exp {exp_dir} ==================')
+    if kwargs['num_rollouts'] > kwargs['n_parallel']:
+        kwargs['n_parallel'] = kwargs['num_rollouts']
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -57,22 +61,23 @@ def run_experiment(**kwargs):
                                              learning_rate=kwargs['dynamics_learning_rate'],
                                              batch_size=kwargs['dynamics_batch_size'],
                                              buffer_size=kwargs['dynamics_buffer_size'],
+                                             rolling_average_persitency=kwargs['rolling_average_persitency']
                                              )
 
         env_sampler = Sampler(
             env=env,
             policy=policy,
-            num_rollouts=kwargs['num_rollouts'],
+            num_rollouts=1,
             max_path_length=kwargs['max_path_length'],
             n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = METRPOSampler(
+        model_sampler = BPTTSampler(  # METRPOSampler
             env=env,
             policy=policy,
+            dynamics_model=dynamics_model,
             num_rollouts=kwargs['imagined_num_rollouts'],
             max_path_length=kwargs['max_path_length'],
-            dynamics_model=dynamics_model,
             deterministic=kwargs['deterministic'],
         )
 
@@ -92,11 +97,9 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        algo = PPO(
+        algo = TRPO(
             policy=policy,
-            learning_rate=kwargs['learning_rate'],
-            clip_eps=kwargs['clip_eps'],
-            max_epochs=kwargs['num_ppo_steps'],
+            step_size=kwargs['step_size'],
         )
 
         trainer = Trainer(
@@ -109,10 +112,12 @@ def run_experiment(**kwargs):
             dynamics_sample_processor=dynamics_sample_processor,
             dynamics_model=dynamics_model,
             n_itr=kwargs['n_itr'],
+            num_rollouts_per_iter=kwargs['num_rollouts'],
             dynamics_model_max_epochs=kwargs['dynamics_max_epochs'],
             log_real_performance=kwargs['log_real_performance'],
-            steps_per_iter=kwargs['steps_per_iter'],
-            sample_from_buffer=True,
+            grad_steps_per_rollout=kwargs['grad_steps_per_rollouts'],
+            # steps_per_iter=kwargs['steps_per_iter'],
+            sample_from_buffer=kwargs['sample_from_buffer'],
             sess=sess,
         )
 
@@ -124,34 +129,36 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [1,],
 
-        'algo': ['meppo'],
+        'algo': ['me-trpo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv], #[InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv],
+        'env': [HalfCheetahEnv, Walker2dEnv,],
 
         # Problem Conf
-        'n_itr': [201],
-        'max_path_length': [100],
+        'n_itr': [200],
+        'max_path_length': [200],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
         'positive_adv': [False],
         'log_real_performance': [True],
-        'steps_per_iter': [(10, 10), ],#(50, 50)],
+        # 'steps_per_iter': [(100, 100), (200, 200)],
+        'grad_steps_per_rollouts': [5, 10, 40, 80],
 
         # Real Env Sampling
-        'num_rollouts': [5],
+        'num_rollouts': [1, 2, 5, 10],
         'n_parallel': [5],
 
         # Dynamics Model
         'num_models': [5],
-        'dynamics_hidden_sizes': [(512, 512)],
+        'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
-        'dynamics_max_epochs': [50],
+        'dynamics_max_epochs': [200],
         'dynamics_learning_rate': [1e-3],
         'dynamics_batch_size': [256],
-        'dynamics_buffer_size': [10000],
-        'deterministic': [True],
+        'dynamics_buffer_size': [25000],
+        'rolling_average_persitency': [0.4, 0.9],
+        'deterministic': [False],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
@@ -160,12 +167,11 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2,],# 0.3, 0.1],
-        'learning_rate': [1e-3],# 5e-4],
-        'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20], #50],
+        'step_size': [0.01],
+        'imagined_num_rollouts': [50],
+        'sample_from_buffer': [True],
         'scope': [None],
-        'exp_tag': ['me_ppo'],  # For changes besides hyperparams
+        'exp_tag': ['exploration'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

@@ -1,4 +1,4 @@
-from meta_mb.trainers.policy_only_trainer import PolicyOnlyTrainer
+from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.policies.gt_ilqr_controller import GTiLQRController
 from meta_mb.policies.gt_ipopt_controller import GTIpoptController
@@ -153,7 +153,7 @@ def run_experiment(**config):
             dyn_pred_str=config['dyn_pred_str'],
         )
 
-        algo = PolicyOnlyTrainer(
+        algo = BPTTTrainer(
             env=env,
             policy=policy,
             dynamics_model=dynamics_model,
