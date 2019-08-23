@@ -5,6 +5,7 @@ from collections import OrderedDict
 import tensorflow as tf
 import time
 import copy
+from meta_mb.policies import utils
 
 
 class DyniLQRPlanner(object):
@@ -35,8 +36,9 @@ class DyniLQRPlanner(object):
         self.u_array_val = np.empty(
             shape=(self.horizon, self.num_envs, self.act_dim)
         )
-        self.perm_val = np.stack([np.arange(self.num_envs) for _ in range(self.horizon)], axis=0)
-        # self.perm_val = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
+        self.perm_val = None
+        # self.perm_val = np.stack([np.arange(self.num_envs) for _ in range(self.horizon)], axis=0)
+        self.perm_val_init = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
 
         self.u_array_ph = tf.placeholder(
             dtype=tf.float32,
@@ -99,32 +101,6 @@ class DyniLQRPlanner(object):
 
         return utils_sym_by_env
 
-    def _gradients_wrapper(self, y, x, dim_y, dim_x, stop_gradients=None):
-        """
-
-        :param y: (num_envs, dim_y)
-        :param x: (num_envs, dim_x)
-        :param dim_y:
-        :param dim_x:
-        :return: (num_envs, dim_y, dim_x)
-        """
-        # jac_array = []
-        # mask = np.zeros((self.num_envs, dim_x))
-        # for j in range(dim_y):
-        #     jac_per_dim = tf.zeros((self.num_envs, dim_x))
-        #     for i in range(self.num_envs):
-        #         jac, = tf.gradients(ys=y[i, j], xs=[x], stop_gradients=stop_gradients)
-        #         mask[i, :] = 1
-        #         jac_per_dim += jac * tf.constant(mask, dtype=tf.float32)  # only take ith row (ith env)
-        #         mask[i, :] = 0
-        #     jac_array.append(jac_per_dim)
-        # return tf.stack(jac_array, axis=1)
-        jac_array = []
-        for i in range(dim_y):
-            jac, = tf.gradients(ys=y[:, i], xs=[x], stop_gradients=stop_gradients)  # FIXME: stop_gradients?
-            jac_array.append(jac)
-        return tf.stack(jac_array, axis=1)  # FIXME: is it safe not to separate envs?
-
     def _df_sym(self, obs, acts, next_obs):
         """
 
@@ -133,10 +109,10 @@ class DyniLQRPlanner(object):
         :param next_obs: (num_envs, obs_dim)
         """
         # jac_f_x: (num_envs, obs_dim, obs_dim)
-        jac_f_x = self._gradients_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
+        jac_f_x = utils.gradients_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
 
         # jac_f_u: (num_envs, obs_dim, act_dim)
-        jac_f_u = self._gradients_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
+        jac_f_u = utils.gradients_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
 
         return OrderedDict(f_x=jac_f_x, f_u=jac_f_u)
 
@@ -371,19 +347,20 @@ class DyniLQRPlanner(object):
         if u_array is None:
             u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.num_envs, self.act_dim))
         self.u_array_val[:, :, :] = u_array  # broadcast
+        self.perm_val = self.perm_val_init
 
     def _sample_u(self):
         return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
 
     def shift_u_array(self, u_new):
-        #  shift perm
-        # self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
         #  shift u_array
         if u_new is None:
             # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
             # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
             u_new = self._sample_u()
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
+        #  shift perm
+        self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
 
 
 def chol_inv(matrix):

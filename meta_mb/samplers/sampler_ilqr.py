@@ -94,13 +94,11 @@ class Sampler(BaseSampler):
         policy_time, env_time = 0, 0
 
         policy = self.policy
-        if not hasattr(policy, 'warm_reset'):
-            policy.reset(dones=[True] * self.vec_env.num_envs)
 
         # initial reset of meta_envs
         obses_fake = obses = np.asarray(self.vec_env.reset())
 
-        # utils for ilqr method
+        # utils
         u_array = []
         open_loop_returns = np.zeros((self.num_envs,))
 
@@ -113,7 +111,6 @@ class Sampler(BaseSampler):
                 obses_fake = self.vae.encode(obses_fake)
                 obses = np.array(obses)
                 obses = self.vae.encode(obses)
-
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
                 actions_array = actions[None]
@@ -176,7 +173,6 @@ class Sampler(BaseSampler):
                 n_samples += new_samples
                 path_length += 1
 
-            # step using model
             if not random and not sinusoid:
                 logger.log('PathLength', path_length)
                 obses_fake = next_obses_fake  # TODO: alternatively, obses_fake = next_obses

@@ -86,7 +86,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def tf_deriv_reward_obs(self, obs, acts, batch_size):
         deriv = np.zeros((batch_size, self.obs_dim))
         deriv[:, 8] = 1
-        return tf.constant(deriv)
+        return tf.constant(deriv, dtype=tf.float32)
 
     def tf_deriv_reward_act(self, obs, acts, batch_size):
         return -0.2*acts

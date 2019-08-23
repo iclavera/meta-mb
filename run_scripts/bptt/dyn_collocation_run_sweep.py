@@ -1,7 +1,6 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.dyn_ilqr_controller import DyniLQRController
-from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
-from meta_mb.samplers.sampler_ilqr import Sampler
+from meta_mb.policies.dyn_collocation_controller import DynCollocationController
+from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -124,29 +123,10 @@ def run_experiment(**config):
 
         sample_processor = ModelSampleProcessor()
 
-        planner = DyniLQRPlanner(
-            env=env,
-            dynamics_model=dynamics_model,
-            num_envs=config['num_rollouts'],
-            horizon=config['horizon'],
-            num_ilqr_iters=config['num_ilqr_iters'],
-            discount=config['discount'],
-            mu_min=config['mu_min'],
-            mu_max=config['mu_max'],
-            mu_init=config['mu_init'],
-            delta_0=config['delta_0'],
-            delta_init=config['delta_init'],
-            alpha_decay_factor=config['alpha_decay_factor'],
-            c_1=config['c_1'],
-            max_forward_iters=config['max_forward_iters'],
-            max_backward_iters=config['max_backward_iters'],
-        )
-
-        policy = DyniLQRController(
+        policy = DynCollocationController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
-            planner=planner,
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
@@ -162,7 +142,6 @@ def run_experiment(**config):
             policy=policy,
             num_rollouts=config['num_rollouts'],
             max_path_length=config['max_path_length'],
-            max_path_length_eval=config['max_path_length_eval'],
         )
 
         algo = BPTTTrainer(
@@ -215,20 +194,8 @@ if __name__ == '__main__':
         'num_collocation_iters': [500*30],
         'persistency': [0.9],
 
-        # iLQR
-        'num_ilqr_iters': [20],
-        'mu_min': [1e-6],
-        'mu_max': [1e10],
-        'mu_init': [1e-5],
-        'delta_0': [2],
-        'delta_init': [1.0],
-        'alpha_decay_factor': [3.0],
-        'c_1': [1e-6, 1e-4],
-        'max_forward_iters': [10],
-        'max_backward_iters': [10],
-
         # Training
-        'num_rollouts': [5],
+        'num_rollouts': [1],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
@@ -236,7 +203,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
-        'num_models': [5],
+        'num_models': [1],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work

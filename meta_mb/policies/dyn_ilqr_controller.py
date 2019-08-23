@@ -41,8 +41,8 @@ class DyniLQRController(Serializable):
 
         # make sure that enc has reward function
         assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
+        planner.reset_u_array(self._init_u_array())
         self.planner = planner
-        self.planner.reset_u_array(self._init_u_array())
 
     @property
     def vectorized(self):
@@ -127,12 +127,10 @@ class DyniLQRController(Serializable):
 
     def warm_reset(self, u_array):
         logger.log('planner resets with collected samples...')
-        if u_array is None:
+        if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):
             u_array = self._init_u_array()
         else:
             u_array = u_array[:self.horizon, :, :]
-            if np.sum(np.abs(u_array) == np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):  # too many actions on boundary
-                u_array = self._init_u_array()
         self.planner.reset_u_array(u_array[:self.horizon, :, :])
 
     def log_diagnostics(*args):
