@@ -10,7 +10,7 @@ from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 
 class ImageEmbeddingBuffer(Serializable):
     def __init__(self, batch_size, env, encoder, return_image, latent_dim, num_stack, num_models, valid_split_ratio, buffer_size=500,
-                 normalize_input=True):
+                 normalize_input=True, name='buffer'):
         self._dataset = None
         self._embedding_dataset = None
         self._train_idx = None
@@ -33,6 +33,8 @@ class ImageEmbeddingBuffer(Serializable):
 
         self._normalize_input = normalize_input
         self._normalization = None
+
+        self.name = name
 
         self._create_stats_vars()
 
@@ -232,21 +234,21 @@ class ImageEmbeddingBuffer(Serializable):
     def _create_stats_vars(self):
         self._assignations = []
 
-        self._mean_obs_var = tf.get_variable('mean_obs', shape=(self._latent_dim,),
+        self._mean_obs_var = tf.get_variable(self.name + 'mean_obs', shape=(self._latent_dim,),
                                              dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_obs_var = tf.get_variable('std_obs', shape=(self._latent_dim,),
+        self._std_obs_var = tf.get_variable(self.name + 'std_obs', shape=(self._latent_dim,),
                                             dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_act_var = tf.get_variable('mean_act', shape=(self.action_space_dims,),
+        self._mean_act_var = tf.get_variable(self.name + 'mean_act', shape=(self.action_space_dims,),
                                              dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_act_var = tf.get_variable('std_act', shape=(self.action_space_dims,),
+        self._std_act_var = tf.get_variable(self.name + 'std_act', shape=(self.action_space_dims,),
                                             dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_delta_var = tf.get_variable('mean_delta', shape=(self._latent_dim,),
+        self._mean_delta_var = tf.get_variable(self.name + 'mean_delta', shape=(self._latent_dim,),
                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_delta_var = tf.get_variable('std_delta', shape=(self._latent_dim,),
+        self._std_delta_var = tf.get_variable(self.name + 'std_delta', shape=(self._latent_dim,),
                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
-        self._mean_reward_var = tf.get_variable('mean_reward', shape=(),
+        self._mean_reward_var = tf.get_variable(self.name + 'mean_reward', shape=(),
                                                dtype=tf.float32, initializer=tf.zeros_initializer, trainable=False)
-        self._std_reward_var = tf.get_variable('std_reward', shape=(),
+        self._std_reward_var = tf.get_variable(self.name + 'std_reward', shape=(),
                                               dtype=tf.float32, initializer=tf.ones_initializer, trainable=False)
 
         self._mean_obs_ph = tf.placeholder(tf.float32, shape=(self._latent_dim,))

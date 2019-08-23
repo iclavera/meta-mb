@@ -27,7 +27,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-EXP_NAME = 'cheetah_vae'
+EXP_NAME = 'cheetah_error'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -272,7 +272,13 @@ def run_experiment(**config):
             max_path_length=max_path_length,
         )
 
-
+        random_buffer = ImageEmbeddingBuffer(config['batch_size_model'], env,
+                                      encoder if config['encoder'] == 'vae' else cpc_model,
+                                      config['input_is_img'],
+                                      config['latent_dim'], config['obs_stack'], config['num_models'],
+                                      config['valid_split_ratio'], normalize_input=True,
+                                      buffer_size=config['cpc_num_initial_rollouts'],
+                                      name='random_buffer')
 
         algo = Trainer(
             env=env,
@@ -303,7 +309,8 @@ def run_experiment(**config):
             path_checkpoint_interval=config['path_checkpoint_interval'],
             train_emb_to_state= config['train_emb_to_state'],
 
-            vae=encoder if config['encoder'] == 'vae' else None
+            vae=encoder if config['encoder'] == 'vae' else None,
+            random_buffer=random_buffer if config['train_emb_to_state'] else None,
         )
         algo.train()
 

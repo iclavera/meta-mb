@@ -16,6 +16,10 @@ def make_env(env, render_size=(64, 64), distractor=False, ptsize=2):
     elif env == 'ip':
         raw_env = InvertedPendulumEnv()
         max_path_length = 16
+    elif env == 'cheetah_gym':
+        from meta_mb.envs.mb_envs.half_cheetah_dm import HalfCheetahEnv
+        raw_env = HalfCheetahEnv()
+        max_path_length = 20
     elif env == 'cartpole_balance':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat

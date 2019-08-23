@@ -113,10 +113,11 @@ class Trainer(object):
                 time_fit_start = time.time()
 
                 logger.log("Training dynamics model for %i epochs ..." % (self.dynamics_model_max_epochs))
-                self.dynamics_model.fit(samples_data['observations'],
-                                        samples_data['actions'],
-                                        samples_data['next_observations'],
-                                        epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
+                if self.dynamics_model_max_epochs > 0:
+                    self.dynamics_model.fit(samples_data['observations'],
+                                            samples_data['actions'],
+                                            samples_data['next_observations'],
+                                            epochs=self.dynamics_model_max_epochs, verbose=False, log_tabular=True)
 
                 logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
@@ -138,24 +139,33 @@ class Trainer(object):
 
                 """ -------------------- Plot open loop rollout -------------"""
                 if self.plot_open_loop and itr % 10 == 0:
-                    h = 50
+                    # h = 249
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                    actions = np.stack([path['actions'][:h] for path in env_paths])
-                    true_states = np.stack([path['observations'][:h + 1] for path in env_paths])
+                    actions = np.stack([path['actions'] for path in env_paths])
+                    true_states = np.stack([path['observations'] for path in env_paths])
 
-                    openloop_predicted_states = self.dynamics_model.openloop_rollout(true_states[:, 0], actions)
+                    states = true_states[:, :-1].reshape((-1, true_states.shape[-1]))
+                    actions = actions.reshape((-1, actions.shape[-1]))
+                    next_states = true_states[:, 1:].reshape((-1, true_states.shape[-1]))
+                    predicted_next_states = sess.run(self.dynamics_model.predict_sym(states.astype(np.float32),
+                                                                                     actions.astype(np.float32)))
+                    error = next_states - predicted_next_states
+                    logger.logkv('OneStepError', np.mean(np.absolute(error)))
 
-                    for counter, (true_traj, predicte_openloop_traj) in \
-                            enumerate(zip(true_states[:, 1:h + 1], openloop_predicted_states)):
-                        assert len(self.env.observation_space.shape) == 1
-                        num_plots = self.env.observation_space.shape[0]
-                        fig = plt.figure(figsize=(num_plots, 6))
 
-                        for i in range(num_plots):
-                            ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
-                            plt.plot(true_traj[:, i], label='true state')
-                            plt.plot(predicte_openloop_traj[:, i], label='openloop')
-                        plt.savefig(os.path.join(logger.get_dir(), 'diag_openloop_itr%d_%d.png' % (itr, counter)))
+                    # openloop_predicted_states = self.dynamics_model.openloop_rollout(true_states[:, 0], actions)
+                    #
+                    # for counter, (true_traj, predicte_openloop_traj) in \
+                    #         enumerate(zip(true_states[:, 1:h + 1], openloop_predicted_states)):
+                    #     assert len(self.env.observation_space.shape) == 1
+                    #     num_plots = self.env.observation_space.shape[0]
+                    #     fig = plt.figure(figsize=(num_plots, 6))
+                    #
+                    #     for i in range(num_plots):
+                    #         ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                    #         plt.plot(true_traj[:, i], label='true state')
+                    #         plt.plot(predicte_openloop_traj[:, i], label='openloop')
+                    #     plt.savefig(os.path.join(logger.get_dir(), 'diag_openloop_itr%d_%d.png' % (itr, counter)))
 
 
                 """ ------------------- Logging Stuff --------------------------"""

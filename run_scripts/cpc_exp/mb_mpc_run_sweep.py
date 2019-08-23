@@ -31,7 +31,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cheetah_state_openloop'
+EXP_NAME = 'cheetah_stateerror'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -124,32 +124,38 @@ def run_experiment(**config):
             )
 
         else:
-            if not config['prob_model']:
-                dynamics_model = MLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
+            if config['ground_truth_dynamics']:
+                from meta_mb.dynamics.ground_truth_dynamics import GroundTruthDynamics
+                raw_envs_dynamics, _ = zip(*[make_env(config['env']) for _ in range(1000)])
+                dynamics_model = GroundTruthDynamics(raw_envs_dynamics)
+
             else:
-                dynamics_model = ProbMLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
+                if not config['prob_model']:
+                    dynamics_model = MLPDynamicsEnsemble(
+                        name="dyn_model",
+                        env=env,
+                        learning_rate=config['learning_rate'],
+                        hidden_sizes=config['hidden_sizes_model'],
+                        weight_normalization=config['weight_normalization_model'],
+                        num_models=config['num_models'],
+                        valid_split_ratio=config['valid_split_ratio'],
+                        rolling_average_persitency=config['rolling_average_persitency'],
+                        hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                        batch_size=config['batch_size_model'],
+                    )
+                else:
+                    dynamics_model = ProbMLPDynamicsEnsemble(
+                        name="dyn_model",
+                        env=env,
+                        learning_rate=config['learning_rate'],
+                        hidden_sizes=config['hidden_sizes_model'],
+                        weight_normalization=config['weight_normalization_model'],
+                        num_models=config['num_models'],
+                        valid_split_ratio=config['valid_split_ratio'],
+                        rolling_average_persitency=config['rolling_average_persitency'],
+                        hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                        batch_size=config['batch_size_model'],
+                    )
 
 
             reward_model = MLPRewardEnsemble(
@@ -175,7 +181,8 @@ def run_experiment(**config):
                 use_cem=config['use_cem'],
                 num_cem_iters=config['num_cem_iters'],
                 use_reward_model=config['use_reward_model'],
-                reward_model= reward_model if config['use_reward_model'] else None
+                reward_model= reward_model if config['use_reward_model'] else None,
+                use_graph=config['use_graph'],
             )
 
         sampler = BaseSampler(
@@ -199,7 +206,7 @@ def run_experiment(**config):
             reward_model_max_epochs=config['reward_model_epochs'],
             sess=sess,
 
-			plot_open_loop=True
+			plot_open_loop=config['plot_open_loop']
         )
         algo.train()
 
@@ -221,13 +228,13 @@ if __name__ == '__main__':
 
 
 
-    config_envs = {
+    config_gym = {
         'seed': [1],
         'run_suffix': ['1'],
 
         # Problem
 
-        'env': [ 'cheetah_run'],
+        'env': [ 'cheetah_gym'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -235,7 +242,7 @@ if __name__ == '__main__':
 
         # Policy
         'n_candidates': [1000],  # K
-        'horizon': [20],  # Tau
+        'horizon': [12],  # Tau
         'use_cem': [True],
         'num_cem_iters': [10],
         'use_graph': [True],
@@ -268,7 +275,6 @@ if __name__ == '__main__':
         # representation learning
 
         'use_image': [False],
-        # 'model_path': ['ip-neg-15'],
         'encoder': ['cpc'],
         'latent_dim': [8],
         'negative': [10],
@@ -277,9 +283,137 @@ if __name__ == '__main__':
         'use_context_net': [False],
         'include_action': [True],
         'cpc_model_epoch': [0],
-        'cpc_model_lr': [1e-3]
+        'cpc_model_lr': [1e-3],
+
+        #debugging
+        'ground_truth_dynamics': [False],
+        'plot_open_loop': [False],
 
     }
 
+    config_truedyn = {
+        'seed': [1],
+        'run_suffix': ['1'],
 
-    run_sweep(run_experiment, config_envs, EXP_NAME, INSTANCE_TYPE)
+        # Problem
+
+        'env': ['cheetah_gym'],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [1],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [10],
+        'use_graph': [False],
+
+        # Training
+        'num_rollouts': [1],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.95],
+
+        # Dynamics Model
+        'prob_model': [False],
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [0],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [False],
+
+        # Reward Model
+        'reward_model_epochs': [100],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [False],
+        'encoder': ['cpc'],
+        'latent_dim': [8],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'cpc_model_epoch': [0],
+        'cpc_model_lr': [1e-3],
+
+        'ground_truth_dynamics': [True],
+        'plot_open_loop': [False],
+
+    }
+
+    config_error = {
+        'seed': [1],
+        'run_suffix': ['1'],
+
+        # Problem
+
+        'env': ['cheetah_run'],
+        'normalize': [True],
+        'n_itr': [150],
+        'discount': [1.],
+        'obs_stack': [1],
+
+        # Policy
+        'n_candidates': [1000],  # K
+        'horizon': [12],  # Tau
+        'use_cem': [True],
+        'num_cem_iters': [10],
+        'use_graph': [True],
+
+        # Training
+        'num_rollouts': [5],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.95],
+
+        # Dynamics Model
+        'prob_model': [False],
+        'recurrent': [False],
+        'num_models': [5],
+        'hidden_nonlinearity_model': ['relu'],
+        'hidden_sizes_model': [(500, 500)],
+        'dynamic_model_epochs': [100],
+        'backprop_steps': [100],
+        'weight_normalization_model': [False],  # FIXME: Doesn't work
+        'batch_size_model': [64],
+        'cell_type': ['lstm'],
+        'use_reward_model': [True],
+
+        # Reward Model
+        'reward_model_epochs': [100],
+
+        #  Other
+        'n_parallel': [1],
+
+        # representation learning
+
+        'use_image': [False],
+        'encoder': ['cpc'],
+        'latent_dim': [8],
+        'negative': [10],
+        'history': [3],
+        'future': [3],
+        'use_context_net': [False],
+        'include_action': [True],
+        'cpc_model_epoch': [0],
+        'cpc_model_lr': [1e-3],
+
+        # debugging
+        'ground_truth_dynamics': [False],
+        'plot_open_loop': [True],
+
+    }
+
+    run_sweep(run_experiment, config_error, EXP_NAME, INSTANCE_TYPE)
