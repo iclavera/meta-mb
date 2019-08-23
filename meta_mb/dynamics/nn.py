@@ -139,6 +139,7 @@ class EnsembleFeedForwardNet(FeedForwardNet):
         original_shape = tf.shape(x)
         if pre_expanded: h = tf.reshape(x, [-1, ensemble_sample_n, self.in_size])
         else:            h = tf.tile(tf.reshape(x, [-1, 1, self.in_size]), [1, ensemble_sample_n, 1])
+        h = tf.cast(h, tf.float32)
         for layer_i in range(self.layers):
             nonlinearity = tf.nn.relu if layer_i + 1 < self.layers else self.final_nonlinearity
             if stop_params_gradient: h = nonlinearity(tf.einsum('bri,rij->brj', h, tf.stop_gradient(weights[layer_i])) + tf.stop_gradient(biases[layer_i]))

@@ -57,22 +57,22 @@ class DonePredictor(CoreModel):
             else:
                 self.done_predictor = nn.FeedForwardNet('done_predictor', self.obs_dim + self.obs_dim + self.action_dim, [], layers=4, hidden_dim=self.aux_hidden_dim, get_uncertainty=True)
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
-            self.done_prediction = tf.placeholder(tf.float32, shape=(None))
             self.input = tf.placeholder(tf.float32, shape=(None, self.obs_dim + self.obs_dim + self.action_dim))
+            self.dones = tf.placeholder(tf.float32, shape=(None))
         self.build_graph()
 
     def build_graph(self):
         self.done_prediction = tf.nn.sigmoid(self.done_predictor(self.input, is_eval=False, reduce_mode="random"))
-
-    def fit(self, input, output):
-        prediction = self.done_predictor(input, is_eval=False, reduce_mode="random")
-        output = tf.cast(output, tf.float32)
-        done_losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=output, logits=prediction)
+        done_losses = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.dones, logits=self.done_prediction)
         done_loss = tf.reduce_mean(done_losses)
         reg_loss = .0001 * (self.done_predictor.l2_loss())
         self.loss = reg_loss+done_loss
-        traininig_op = self.optimizer.minimize(self.loss)
+        self.traininig_op = self.optimizer.minimize(self.loss)
 
+    def fit(self, input, output):
+        sess = tf.get_default_session()
+        batch_loss = sess.run(self.traininig_op, feed_dict={self.input: input,
+                                                 self.dones: output})
 
     def predict(self, obs, actions, next_obs):
         info = np.concatenate([obs, actions], -1)

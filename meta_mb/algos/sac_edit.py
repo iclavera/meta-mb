@@ -589,70 +589,71 @@ class SAC_MB(Algo):
         #     self.confidence = target_confidence
         #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
 
-        # elif self.q_function_type == 7:
-        #     self.policy_optimizer = tf.train.AdamOptimizer(
-        #         learning_rate=self.policy_lr,
-        #         name="policy_optimizer")
-        #     var_list = list(self.policy.policy_params.values())
-        #     assert self.T >= 0
-        #     obs = observations_ph
-        #     actions = actions_var
-        #     grads = []
-        #     for i in range(self.T+1):
-        #         next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
-        #         expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
-        #         expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
-        #         expanded_next_observation, expanded_next_actions_var, rewards, dones, _ = self.step(expanded_obs, expanded_actions, shuffle = False)
-        #         if i == 0 :
-        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones)
-        #         else:
-        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
-        #         input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-        #         next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        #         q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-        #         min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-        #         min_q_val_var = tf.reshape(min_q_val_var, [self.dynamics_model.num_models, -1, 1])
-        #         m = self.dynamics_model.num_models
-        #         grad = [self.policy_optimizer.compute_gradients(tf.reduce_mean(min_q_val_var[idx]), var_list=var_list) for idx in range(m)]
-        #         grads.append(grad)
-        #         obs, actions = next_observation, next_actions_var
-        #     temps = []
-        #     for v in range(len(var_list)):
-        #         grad = [[grads[t][idx][v][0] for idx in range(m)] for t in range(self.T + 1)]
-        #         temps.append(tf.stack(grad))
-        #
-        #     grad_stacks = []
-        #     rollout_frames = self.T+1
-        #     for i in range(len(var_list)):
-        #         grad = temps[i]
-        #         target_means, target_variances = tf.nn.moments(grad, 1)
-        #         target_confidence = 1./(target_variances + 1e-8)
-        #         dim = len(grad.get_shape().as_list())
-        #         lst = [rollout_frames]
-        #         for _ in range(dim-2):
-        #             lst.append(1)
-        #         target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
-        #         target_confidence = tf.stop_gradient(target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True))
-        #         grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
-        #         grad_stacks.append(grad)
-        #     if self.reparameterize:
-        #         policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
-        #     else:
-        #         raise NotImplementedError
-        #
-        #     assert policy_kl_losses.shape.as_list() == [None, 1]
-        #
-        #     self.policy_losses = policy_kl_losses
-        #     policy_loss = tf.reduce_mean(policy_kl_losses)
-        #     grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
-        #     real_list = []
-        #     for i in range(len(var_list)):
-        #         value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
-        #         real_list.append(value)
-        #     policy_train_op = self.policy_optimizer.apply_gradients(real_list)
-        #
-        #     self.training_ops.update({'policy_train_op': policy_train_op})
-        #     return
+        elif self.q_function_type == 7:
+            self.policy_optimizer = tf.train.AdamOptimizer(
+                learning_rate=self.policy_lr,
+                name="policy_optimizer")
+            var_list = list(self.policy.policy_params.values())
+            assert self.T >= 0
+            obs = observations_ph
+            actions = actions_var
+            grads = []
+            for i in range(self.T+1):
+                next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
+                expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
+                expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
+                expanded_next_observation, expanded_next_actions_var, rewards, next_dones, _ = self.step(expanded_obs, expanded_actions, shuffle = False)
+                if i == 0 :
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards
+                else:
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                dones = next_dones
+                input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
+                next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+                min_q_val_var = tf.reshape(min_q_val_var, [self.dynamics_model.num_models, -1, 1])
+                m = self.dynamics_model.num_models
+                grad = [self.policy_optimizer.compute_gradients(tf.reduce_mean(min_q_val_var[idx]), var_list=var_list) for idx in range(m)]
+                grads.append(grad)
+                obs, actions = next_observation, next_actions_var
+            temps = []
+            for v in range(len(var_list)):
+                grad = [[grads[t][idx][v][0] for idx in range(m)] for t in range(self.T + 1)]
+                temps.append(tf.stack(grad))
+
+            grad_stacks = []
+            rollout_frames = self.T+1
+            for i in range(len(var_list)):
+                grad = temps[i]
+                target_means, target_variances = tf.nn.moments(grad, 1)
+                target_confidence = 1./(target_variances + 1e-8)
+                dim = len(grad.get_shape().as_list())
+                lst = [rollout_frames]
+                for _ in range(dim-2):
+                    lst.append(1)
+                target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
+                target_confidence = tf.stop_gradient(target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True))
+                grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
+                grad_stacks.append(grad)
+            if self.reparameterize:
+                policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
+            else:
+                raise NotImplementedError
+
+            assert policy_kl_losses.shape.as_list() == [None, 1]
+
+            self.policy_losses = policy_kl_losses
+            policy_loss = tf.reduce_mean(policy_kl_losses)
+            grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
+            real_list = []
+            for i in range(len(var_list)):
+                value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
+                real_list.append(value)
+            policy_train_op = self.policy_optimizer.apply_gradients(real_list)
+
+            self.training_ops.update({'policy_train_op': policy_train_op})
+            return
 
         if self.reparameterize:
             policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)

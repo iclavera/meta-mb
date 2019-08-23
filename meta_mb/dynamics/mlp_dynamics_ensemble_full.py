@@ -772,7 +772,7 @@ class MLPDynamicsEnsembleFull(MLPDynamicsModelFull):
     def compute_normalization(self, obs, act, delta):
         assert len(obs) == len(act) == len(delta) == self.num_models
         assert all([o.shape[0] == d.shape[0] == a.shape[0] for o, a, d in zip(obs, act, delta)])
-        assert all([d.shape[1]-2 == o.shape[1] for o,d in zip(obs, delta)])
+        assert all([d.shape[1]-1 == o.shape[1] for o,d in zip(obs, delta)])
 
         # store means and std in dict
         self.normalization = []

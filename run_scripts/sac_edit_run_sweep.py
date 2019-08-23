@@ -3,14 +3,14 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "gym-Q5-done-1"
+EXP_NAME = "try"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mujoco import *
-# from meta_mb.envs.mb_envs import *
+# from meta_mb.envs.mujoco import *
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -207,7 +207,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66],
+        'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -234,14 +234,14 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[5],
+		'q_function_type':[3],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[10],
+		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [3],
+        'T': [2],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [2],
+		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
@@ -256,7 +256,7 @@ if __name__ == '__main__':
         'done_predictor_aux_hidden_dim':[256],
         'done_predictor_transition_hidden_dim': [200],
         'done_predictor_learning_rate': [1e-3],
-        'done_predictor_ensemble_num': [1],
+        'done_predictor_ensemble_num': [4],
 
 
         # Problem Conf
