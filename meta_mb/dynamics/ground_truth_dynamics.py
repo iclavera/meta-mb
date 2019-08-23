@@ -1,7 +1,6 @@
 import numpy as np
 import time
 
-
 class GroundTruthDynamics:
 	def __init__(self, envs):
 		self.envs = envs
@@ -14,12 +13,13 @@ class GroundTruthDynamics:
 
 
 	def serial_predict(self, obs, act):
-		start = time.time()
+		# obs = tf.get_default_session().run(obs)
+		# act = tf.get_default_session().run(act)
 		ret = np.zeros_like(obs)
+
 		for i, o in enumerate(obs):
-			self.envs[i].reset_from_obs(o)
-			ret[i] = self.envs[i].step(act[i])[0]
-		# print(time.time() - start)
+			self.envs[0].reset_from_obs(o)
+			ret[i] = self.envs[0].step(act[i])[0]
 		return ret
 
 	def reset_from_obs(self, observations):

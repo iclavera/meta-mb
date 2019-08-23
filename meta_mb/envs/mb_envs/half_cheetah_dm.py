@@ -59,13 +59,13 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         assert obs.shape[0] == acts.shape[0]
         reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
         reward_run = obs[:, 8]
-        reward = np.maximum(0, np.minimum(reward_run / 10., 1)) # + reward_ctrl
+        reward = np.maximum(0., np.minimum(reward_run / 10., 1.)) # + reward_ctrl
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
         reward_run = next_obs[:, 8]
-        reward = tf.maximum(0, tf.minimum(reward_run / 10., 1)) #+ reward_ctrl
+        reward = tf.maximum(0., tf.minimum(reward_run / 10., 1.)) #+ reward_ctrl
         return reward
 
     def reset_from_obs(self, obs):

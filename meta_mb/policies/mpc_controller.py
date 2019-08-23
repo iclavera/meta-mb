@@ -204,6 +204,9 @@ class MPCController(Serializable):
             )
             act = tf.reshape(act, shape=[self.horizon, tf.shape(observations)[0] * self.n_candidates,
                                          self.action_space_dims])
+            observation = tf.get_default_session().run(observation)
+            act = tf.get_default_session().run(act)
+
             for t in range(self.horizon):
                 next_observation = self.dynamics_model.predict(observation, act[t])
                 if not self.use_reward_model:

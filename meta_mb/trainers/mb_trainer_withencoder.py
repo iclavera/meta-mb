@@ -346,27 +346,32 @@ class Trainer(object):
 
 
                         if noise == 0.:
-                            # record the one step prediction error in state space
-                            data_act, data_obs = self.random_buffer._embedding_dataset['act'][:-test_traj], \
-                                                             self.random_buffer._embedding_dataset['obs'][:-test_traj]
+                            self.random_buffer.update_embedding_buffer()
+                            one_step_error = []
 
-                            data_nextstate = self.random_buffer._dataset['true_state'][:-test_traj, 1:]
-                            data_obs = np.concatenate(
-                                [np.zeros((data_obs.shape[0], num_stack - 1, *data_obs.shape[2:])), data_obs],
-                                axis=1)
-                            obs_stack = np.stack([data_obs[:, offset: data_obs.shape[1] + offset - num_stack + 1]
-                                                  for offset in range(num_stack)], axis=2)[:, :-1]
-                            states = obs_stack.reshape(-1, num_stack, self.latent_dim)
-                            actions = data_act.reshape(-1, data_act.shape[-1])
-                            predicted_next_latent = sess.run(self.dynamics_model.predict_sym(states.astype(np.float32),
-                                                                                             actions.astype(np.float32))[:, -1])
-                            predicted_next_states = emb2state_model.predict(predicted_next_latent)
+                            for buffer in [self.random_buffer, self.buffer]:
+                                # record the one step prediction error in state space
+                                data_act, data_obs = buffer._embedding_dataset['act'][-test_traj:], \
+                                                                 buffer._embedding_dataset['obs'][-test_traj:]
 
-                            actual_next_states = data_nextstate.reshape(-1, data_nextstate.shape[-1])
-                            error = predicted_next_states - actual_next_states
+                                data_nextstate = buffer._dataset['true_state'][-test_traj:, 1:]
+                                data_obs = np.concatenate(
+                                    [np.zeros((data_obs.shape[0], num_stack - 1, *data_obs.shape[2:])), data_obs],
+                                    axis=1)
+                                obs_stack = np.stack([data_obs[:, offset: data_obs.shape[1] + offset - num_stack + 1]
+                                                      for offset in range(num_stack)], axis=2)[:, :-1]
+                                states = obs_stack.reshape(-1, num_stack, self.latent_dim)
+                                actions = data_act.reshape(-1, data_act.shape[-1])
+                                predicted_next_latent = sess.run(self.dynamics_model.predict_sym(states.astype(np.float32),
+                                                                                                 actions.astype(np.float32))[:, -1])
+                                predicted_next_states = emb2state_model.predict(predicted_next_latent)
 
-                            logger.logkv('OneStepError', np.mean(np.absolute(error)))
+                                actual_next_states = data_nextstate.reshape(-1, data_nextstate.shape[-1])
+                                error = predicted_next_states - actual_next_states
+                                one_step_error.append(error)
 
+                            logger.logkv('OneStepErrorRandomTraj', np.mean(np.linalg.norm(one_step_error[0], axis=1)))
+                            logger.logkv('OneStepErrorMPCTraj', np.mean(np.linalg.norm(one_step_error[1], axis=1)))
 
 
 

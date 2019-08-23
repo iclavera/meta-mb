@@ -126,7 +126,7 @@ def run_experiment(**config):
         else:
             if config['ground_truth_dynamics']:
                 from meta_mb.dynamics.ground_truth_dynamics import GroundTruthDynamics
-                raw_envs_dynamics, _ = zip(*[make_env(config['env']) for _ in range(1000)])
+                raw_envs_dynamics, _ = zip(*[make_env(config['env']) for _ in range(1)])
                 dynamics_model = GroundTruthDynamics(raw_envs_dynamics)
 
             else:

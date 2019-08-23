@@ -140,17 +140,23 @@ class Trainer(object):
                 """ -------------------- Plot open loop rollout -------------"""
                 if self.plot_open_loop and itr % 10 == 0:
                     # h = 249
-                    env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                    actions = np.stack([path['actions'] for path in env_paths])
-                    true_states = np.stack([path['observations'] for path in env_paths])
+                    env_paths_random = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
+                    env_paths_mpc = self.sampler.obtain_samples(log=True, log_prefix='')
+                    one_step_error = []
+                    for env_paths in [env_paths_random, env_paths_mpc]:
+                        actions = np.stack([path['actions'] for path in env_paths])
+                        true_states = np.stack([path['observations'] for path in env_paths])
 
-                    states = true_states[:, :-1].reshape((-1, true_states.shape[-1]))
-                    actions = actions.reshape((-1, actions.shape[-1]))
-                    next_states = true_states[:, 1:].reshape((-1, true_states.shape[-1]))
-                    predicted_next_states = sess.run(self.dynamics_model.predict_sym(states.astype(np.float32),
-                                                                                     actions.astype(np.float32)))
-                    error = next_states - predicted_next_states
-                    logger.logkv('OneStepError', np.mean(np.absolute(error)))
+                        states = true_states[:, :-1].reshape((-1, true_states.shape[-1]))
+                        actions = actions.reshape((-1, actions.shape[-1]))
+                        next_states = true_states[:, 1:].reshape((-1, true_states.shape[-1]))
+                        predicted_next_states = sess.run(self.dynamics_model.predict_sym(states.astype(np.float32),
+                                                                                         actions.astype(np.float32)))
+                        error = next_states - predicted_next_states
+                        one_step_error.append(error)
+
+                    logger.logkv('OneStepErrorRandomTraj', np.mean(np.linalg.norm(one_step_error[0], axis=1)))
+                    logger.logkv('OneStepErrorMPCTraj', np.mean(np.linalg.norm(one_step_error[1], axis=1)))
 
 
                     # openloop_predicted_states = self.dynamics_model.openloop_rollout(true_states[:, 0], actions)
