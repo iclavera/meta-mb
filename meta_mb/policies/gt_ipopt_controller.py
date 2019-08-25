@@ -104,7 +104,7 @@ class GTIpoptController(Serializable):
             nlp.addOption('mu_strategy', 'adaptive')
             nlp.addOption('tol', 1e-5)
             nlp.addOption('max_iter', 100)
-            # nlp.addOption('derivative_test', 'first-order')  # SLOW
+            nlp.addOption('derivative_test', 'first-order')  # SLOW
 
         elif self.method_str == 'ipopt_shooting':
             self.executor = copy.deepcopy(env)

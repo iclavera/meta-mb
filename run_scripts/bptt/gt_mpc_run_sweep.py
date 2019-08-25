@@ -180,7 +180,7 @@ if __name__ == '__main__':
         'plot_freq': [-1],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # 'max_path_length': [50],  # [40, 80, 200]  # hardcoded in run_experiments
         'normalize': [False],
         'n_itr': [1],  # only matters for opt_policy
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
         'reg_coef': [0], #[0.05, 0.1, 0.2], #[1, 0],
         'reg_str': ['tanh'], #['scale', 'poly', 'tanh'],
-        'method_str': ['ilqr'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
+        'method_str': ['ipopt_collocation'], #'ipopt_shooting'], #['opt_policy', 'opt_act'],  # ['opt_policy', 'opt_act', 'cem', 'rs']
         'policy_filter': [False,],
         'dyn_pred_str': ['all'],  # UNUSED
 

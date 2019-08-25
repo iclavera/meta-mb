@@ -1,17 +1,5 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import ParallelEnvExecutor, IterativeEnvExecutor
-from meta_mb.logger import logger
-from meta_mb.utils import utils
-
-from pyprind import ProgBar
-import numpy as np
-import time
-import os
-import itertools
-import matplotlib.pyplot as plt
-from math import ceil
-from itertools import accumulate
 
 
 class GTSampler(BaseSampler):
@@ -47,10 +35,10 @@ class GTSampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
+    def obtain_samples(self, log, log_prefix='', log_open_loop_performance=False, log_closed_loop_performance=False):
         self.policy.reset()  # do not reset
         self.policy.get_rollouts(
-            deterministic=deterministic, plot_first_rollout=plot_first_rollout
+            deterministic=False, plot_first_rollout=False
         )
 
         # logger.logkv(log_prefix + 'AverageReturn', np.mean(returns_array))

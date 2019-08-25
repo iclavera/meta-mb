@@ -1,6 +1,6 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.dyn_collocation_controller import DynCollocationController
-from meta_mb.samplers.sampler import Sampler
+from meta_mb.policies.dyn_ipopt_controller import DynIpoptController
+from meta_mb.samplers.sampler_ipopt import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -10,6 +10,7 @@ from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
+from meta_mb.envs.mb_envs.toy import FirstOrderEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import joblib
@@ -17,12 +18,12 @@ import os
 import tensorflow as tf
 
 
-EXP_NAME = 'dyn-ilqr'
+EXP_NAME = 'dyn-ipopt'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = "dyn-ilqr-"
+    repr = f"dyn-{config['method_str'].split('_')[-1]}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = 50  # 100
@@ -35,6 +36,9 @@ def run_experiment(**config):
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = 50
+    elif config['env'] is FirstOrderEnv:
+        repr += 'fo'
+        config['max_path_length'] = 30
 
     if not config['fit_model']:
         config['n_itr'] = 1
@@ -123,7 +127,7 @@ def run_experiment(**config):
 
         sample_processor = ModelSampleProcessor()
 
-        policy = DynCollocationController(
+        policy = DynIpoptController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
@@ -132,6 +136,7 @@ def run_experiment(**config):
             horizon=config['horizon'],
             n_parallel=config['n_parallel'],
             initializer_str=config['initializer_str'],
+            method_str=config['method_str'],
             num_rollouts=config['num_rollouts'],
             alpha=config['alpha'],
             percent_elites=config['percent_elites'],
@@ -157,6 +162,7 @@ def run_experiment(**config):
             sess=sess,
             fit_model=config['fit_model'],
             deterministic_policy=config['deterministic_policy'],
+            num_random_iters=config['num_random_iters'],
         )
         algo.train()
 
@@ -169,17 +175,18 @@ if __name__ == '__main__':
         'fit_model': [True],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [FirstOrderEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'normalize': [False],  # UNUSED
         'n_itr': [50],
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME
-        'horizon': [10, 30],
+        'horizon': [20],
+        'method_str': ['ipopt_shooting'],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],
+        'initializer_str': ['uniform'], #['zeros', 'uniform'],
         'policy_filter': [False,],
         'deterministic_policy': [True],
 
@@ -200,6 +207,7 @@ if __name__ == '__main__':
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
+        'num_random_iters': [0],
 
         # Dynamics Model
         'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],

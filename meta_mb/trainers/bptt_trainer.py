@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 import time
 from meta_mb.logger import logger
 
@@ -36,6 +35,7 @@ class BPTTTrainer(object):
             fit_model = True,
             plot_freq=-1,
             deterministic_policy=False,
+            num_random_iters=1,
     ):
         self.env = env
         self.sampler = sampler
@@ -51,6 +51,7 @@ class BPTTTrainer(object):
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
+        self.num_random_iters = num_random_iters
 
         if sess is None:
             sess = tf.Session()
@@ -81,10 +82,10 @@ class BPTTTrainer(object):
 
                 time_env_sampling_start = time.time()
 
-                if self.initial_random_samples and itr < 3:
+                if self.initial_random_samples and itr < self.num_random_iters:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                elif self.initial_sinusoid_samples and itr < 3:
+                elif self.initial_sinusoid_samples and itr < self.num_random_iters:
                     logger.log("Obtaining sinusoidal samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:

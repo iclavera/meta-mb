@@ -109,10 +109,10 @@ class DyniLQRPlanner(object):
         :param next_obs: (num_envs, obs_dim)
         """
         # jac_f_x: (num_envs, obs_dim, obs_dim)
-        jac_f_x = utils.gradients_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
+        jac_f_x = utils.jacobian_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
 
         # jac_f_u: (num_envs, obs_dim, act_dim)
-        jac_f_u = utils.gradients_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
+        jac_f_u = utils.jacobian_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
 
         return OrderedDict(f_x=jac_f_x, f_u=jac_f_u)
 
