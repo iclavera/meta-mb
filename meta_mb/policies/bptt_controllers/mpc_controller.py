@@ -6,18 +6,17 @@ import numpy as np
 class MPCController(Serializable):
     def __init__(
             self,
-            name,
             env,
             dynamics_model,
+            num_rollouts,
             method_str='cem',
-            num_rollouts=None,
             discount=1,
             n_candidates=1024,
             horizon=10,
             num_cem_iters=8,
             percent_elites=0.1,
             alpha=0.1,
-            num_particles=20,
+            deterministic_policy=True,
     ):
         Serializable.quick_init(self, locals())
         self.dynamics_model = dynamics_model
@@ -30,7 +29,7 @@ class MPCController(Serializable):
         self.num_elites = int(percent_elites * n_candidates)
         self.env = env
         self.alpha = alpha
-        self.num_particles = num_particles
+        self.deterministic_policy = deterministic_policy
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -117,20 +116,21 @@ class MPCController(Serializable):
         mean = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high + self.act_low) / 2
         var = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high - self.act_low) / 16
 
+        init_obs = tf.reshape(
+            tf.tile(tf.expand_dims(self.obs_ph, axis=1), [1, n_candidates, 1]),
+            shape=(num_envs*n_candidates, obs_dim),
+        )
+
         for itr in range(self.num_cem_iters):
             lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
             constrained_var = tf.minimum(tf.minimum(tf.square(lb_dist / 2), tf.square(ub_dist / 2)), var)
             std = tf.sqrt(constrained_var)
             act = mean + tf.random.normal(shape=[horizon, num_envs, n_candidates, act_dim]) * std
             act = tf.clip_by_value(act, self.act_low, self.act_high)
-            returns = 0
-
-            # (num_envs, obs_dim) => (num_envs, obs_dim, 1) => (num_envs, obs
-            obs = tf.reshape(
-                tf.tile(tf.expand_dims(self.obs_ph, axis=1), [1, n_candidates, 1]),
-                shape=(num_envs*n_candidates, obs_dim),
-            )
             act = tf.reshape(act, shape=(horizon, num_envs*n_candidates, act_dim))
+            returns = tf.zeros((num_envs*n_candidates,))
+
+            obs = init_obs
             for t in range(horizon):
                 next_obs = self.dynamics_model.predict_sym(obs, act[t])
                 rewards = self.unwrapped_env.tf_reward(obs, act[t], next_obs)
@@ -148,47 +148,13 @@ class MPCController(Serializable):
             mean = mean * self.alpha + elite_mean * (1 - self.alpha)
             var = var * self.alpha + elite_var * (1 - self.alpha)
 
-        self.optimized_actions = mean[0, :, 0, :]
-
-    def get_cem_action(self, observations):
-        n = self.n_candidates
-        m = len(observations)
-        h = self.horizon
-        act_dim = self.env.action_space.shape[0]
-
-        num_elites = max(int(self.n_candidates * self.percent_elites), 1)
-        mean = np.ones((m, h * act_dim)) * (self.act_high + self.act_low) / 2
-        std = np.ones((m, h * act_dim)) * (self.act_high - self.act_low) / 16
-        clip_low = np.concatenate([self.act_low] * h)
-        clip_high = np.concatenate([self.act_high] * h)
-
-        for i in range(self.num_cem_iters):
-            z = np.random.normal(size=(n, m, h * act_dim))
-            a = mean + z * std
-            a = np.clip(a, clip_low, clip_high)
-            a_stacked = a.copy()
-            a = a.reshape((n * m, h, act_dim))
-            a = np.transpose(a, (1, 0, 2))
-            returns = np.zeros((n * m * self.num_particles,))
-
-            cand_a = a[0].reshape((m, n, -1))
-            observation = np.repeat(observations, n * self.num_particles, axis=0)
-            for t in range(h):
-                a_t = np.repeat(a[t], self.num_particles, axis=0)
-                next_observation = self.dynamics_model.predict(observation, a_t, deterministic=False)
-                rewards = self.unwrapped_env.reward(observation, a_t, next_observation)
-                returns += self.discount ** t * rewards
-                observation = next_observation
-            returns = np.mean(np.split(returns.reshape(m, n * self.num_particles),
-                                       self.num_particles, axis=-1), axis=0)  # TODO: Make sure this reshaping works
-            elites_idx = ((-returns).argsort(axis=-1) < num_elites).T
-            elites = a_stacked[elites_idx]
-            mean = mean * self.alpha + (1 - self.alpha) * np.mean(elites, axis=0)
-            std = np.std(elites, axis=0)
-            lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
-            std = np.minimum(np.minimum(lb_dist / 2, ub_dist / 2), std)
-
-        return cand_a[range(m), np.argmax(returns, axis=1)]
+        optimized_actions_mean = mean[0, :, 0, :]  # TODO: stochastic
+        if self.deterministic_policy:
+            self.optimized_actions = optimized_actions_mean
+        else:
+            optimized_actions_var = var[0, :, 0, :]
+            self.optimized_actions = optimized_actions_mean + \
+                                     tf.random.normal(shape=tf.shape(optimized_actions_mean)) * tf.sqrt(optimized_actions_var)
 
     def get_rs_action(self, observations):
         n = self.n_candidates

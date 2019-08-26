@@ -3,7 +3,7 @@ import numpy as np
 from meta_mb.logger import logger
 
 
-class DyniLQRController(Serializable):
+class iLQRController(Serializable):
     def __init__(
             self,
             name,

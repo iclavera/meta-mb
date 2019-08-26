@@ -1,5 +1,5 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.dyn_ilqr_controller import DyniLQRController
+from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
 from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
 from meta_mb.samplers.sampler_ilqr import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -142,7 +142,7 @@ def run_experiment(**config):
             max_backward_iters=config['max_backward_iters'],
         )
 
-        policy = DyniLQRController(
+        policy = iLQRController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,

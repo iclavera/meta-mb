@@ -31,7 +31,7 @@ class BPTTTrainer(object):
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
-            fit_model = True,
+            fit_model=True,
             num_random_iters=1,
     ):
         self.env = env
