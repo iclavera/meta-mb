@@ -139,6 +139,7 @@ class SAC_MB(Algo):
 
     def build_graph(self):
         self.training_ops = {}
+        self.actor_ops = {}
         self._init_global_step()
         self.confidence_lst = []
         self.graph_step = 0
@@ -201,9 +202,9 @@ class SAC_MB(Algo):
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle = True, k = 1):
-        assert self.dynamics_type in [0, 1, 2]
+        assert self.dynamics_type in [0, 1, 2, 3]
         assert self.step_type in [0, 1]
-        if self.dynamics_type == 0:
+        if self.dynamics_type == 0 or self.dynamics_type == 3:
             next_observation = self.dynamics_model.predict_sym(obs, actions)
             if k != 1:
                 next_observation = tf.tile(next_observation, [k, 1])
@@ -673,7 +674,8 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
-        self.training_ops.update({'policy_train_op': policy_train_op})
+        # self.training_ops.update({'policy_train_op': policy_train_op})
+        self.actor_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):
         diagnosables = OrderedDict((
@@ -707,7 +709,7 @@ class SAC_MB(Algo):
             ]))
 
 
-    def do_training(self, timestep, batch, log=False):
+    def train_critic(self, timestep, batch, log=False):
         """Runs the operations for updating training and target ops."""
         sess = tf.get_default_session()
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
@@ -719,3 +721,10 @@ class SAC_MB(Algo):
                 logger.logkv(k, v)
         if timestep % self.target_update_interval == 0:
             self._update_target()
+
+    def train_actor(self, timestep, batch, log=False):
+        """Runs the operations for updating training and target ops."""
+        sess = tf.get_default_session()
+        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
+                                     value_dict=batch)
+        sess.run(self.actor_ops, feed_dict)

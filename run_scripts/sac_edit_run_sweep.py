@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "try"
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = "actor-hc"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -22,6 +22,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_full import ProbMLPDynamicsEnsembleFull
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 from meta_mb.dynamics.done_predictor import DonePredictor
 
 
@@ -85,7 +86,7 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        assert kwargs['model_type'] in [0, 1, 2]
+        assert kwargs['model_type'] in [0, 1, 2, 3]
         if kwargs['model_type'] == 0:
             dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
                                                     env=env,
@@ -132,6 +133,28 @@ def run_experiment(**kwargs):
                                                     normalize_input=kwargs['normalize_input'],
                                                     type=2,
                                                     )
+        elif kwargs['model_type'] == 3:
+            dynamics_model = ProbMLPDynamicsEnsembleTry('dynamics-ensemble',
+                                                    env=env,
+                                                    num_models=kwargs['num_models'],
+                                                    hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                                    hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                                    output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                                    batch_size=kwargs['dynamics_batch_size'],
+                                                    learning_rate=kwargs['model_learning_rate'],
+                                                    buffer_size=kwargs['dynamics_buffer_size'],
+    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    q_loss_importance=kwargs['q_loss_importance'],
+                                                    Qs=Qs,
+                                                    Q_targets=Q_targets,
+                                                    policy=policy,
+                                                    T=kwargs['T'],
+                                                    reward_scale=kwargs['reward_scale'],
+                                                    discount=kwargs['discount'],
+                                                    normalize_input=kwargs['normalize_input'],
+                                                    type=3,
+                                                    )
+
         if kwargs['predict_done']:
             done_predictor = DonePredictor(name='done_predictor',
                                            aux_hidden_dim=kwargs['done_predictor_aux_hidden_dim'],
@@ -199,6 +222,7 @@ def run_experiment(**kwargs):
             dynamics_type=kwargs['model_type'],
             step_type=kwargs['step_type'],
             predict_done=kwargs['predict_done'],
+            actorH=kwargs['actorH'],
         )
 
         trainer.train()
@@ -234,11 +258,11 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[3],
+		'q_function_type':[5],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [2],
+        'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [8],
@@ -246,6 +270,7 @@ if __name__ == '__main__':
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
+        'actorH': [5, 2, 1],
 
         'policy_hidden_nonlinearity': ['relu'],
 
@@ -253,8 +278,8 @@ if __name__ == '__main__':
         'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
 
-        'done_predictor_aux_hidden_dim':[256],
-        'done_predictor_transition_hidden_dim': [200],
+        'done_predictor_aux_hidden_dim':[512],
+        'done_predictor_transition_hidden_dim': [256],
         'done_predictor_learning_rate': [1e-3],
         'done_predictor_ensemble_num': [4],
 
