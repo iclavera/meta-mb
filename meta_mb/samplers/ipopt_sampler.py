@@ -9,13 +9,13 @@ import time
 import itertools
 
 
-class Sampler(BaseSampler):
+class IpoptSampler(BaseSampler):
     """
     Sampler for Meta-RL
 
     Args:
         env (meta_mb.meta_envs.base.MetaEnv) : environment object
-        policy (meta_mb.policies.base.Policy) : policy object
+        policy (meta_mb.policies.*) : policy object
         batch_size (int) : number of trajectories per task
         meta_batch_size (int) : number of meta tasks
         max_path_length (int) : max number of steps per trajectory
@@ -29,19 +29,11 @@ class Sampler(BaseSampler):
             num_rollouts,
             max_path_length,
             n_parallel=1,
-            vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
+        super(IpoptSampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
-        self.total_samples = num_rollouts * max_path_length
-        self.n_parallel = n_parallel
-        self.total_timesteps_sampled = 0
-        self.vae = vae
-
-        # setup vectorized environment
-
-        if self.n_parallel > 1:
+        if n_parallel > 1:
             self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
         else:
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
@@ -67,13 +59,13 @@ class Sampler(BaseSampler):
         paths = []
 
         n_samples = 0
-        running_paths = [_get_empty_running_paths_dict() for _ in range(self.vec_env.num_envs)]
+        running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_envs)]
 
         if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
         policy = self.policy
-        policy.reset(dones=[True] * self.vec_env.num_envs)
+        policy.reset(dones=[True] * self.num_envs)
 
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
@@ -86,24 +78,21 @@ class Sampler(BaseSampler):
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
-            if self.vae is not None:
-                obses = np.array(obses)
-                obses = self.vae.encode(obses)
 
             if random:
-                actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
+                actions = np.stack([self.env.action_space.sample() for _ in range(self.num_envs)], axis=0)
                 actions_array = actions[None]
                 agent_infos = []
             elif sinusoid:
                 action_space = self.env.action_space.shape[0]
-                num_envs = self.vec_env.num_envs
+                num_envs = self.num_envs
                 actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
                 actions_array = actions[None]
                 agent_infos = []
             else:
                 obses = np.array(obses)
                 actions, agent_infos = policy.get_actions(obses)
-                if actions.ndim == 2:
+                if actions.ndim == 2:  # (num_envs, act_dim)
                     actions_array = actions[None]
                 elif path_length + len(actions) < self.max_path_length:
                     actions_array = actions[0:1, :, :]
@@ -149,7 +138,7 @@ class Sampler(BaseSampler):
                         new_samples += len(running_paths[idx]["rewards"])
                         running_paths[idx] = _get_empty_running_paths_dict()
 
-                if verbose: pbar.update(self.vec_env.num_envs)
+                if verbose: pbar.update(self.num_envs)
                 n_samples += new_samples
                 path_length += 1
 
@@ -178,9 +167,9 @@ class Sampler(BaseSampler):
 
     def _handle_info_dicts(self, agent_infos, env_infos):
         if not env_infos:
-            env_infos = [dict() for _ in range(self.vec_env.num_envs)]
+            env_infos = [dict() for _ in range(self.num_envs)]
         if not agent_infos:
-            agent_infos = [dict() for _ in range(self.vec_env.num_envs)]
+            agent_infos = [dict() for _ in range(self.num_envs)]
         return agent_infos, env_infos
 
     def __getstate__(self):

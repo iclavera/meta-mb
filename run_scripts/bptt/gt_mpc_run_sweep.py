@@ -16,18 +16,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    print(config['opt_learning_rate'], config['eps'], config['lmbda'])
-    if config['method_str'] in ['cem', 'collocation', 'ddp']:
-        config['n_itr'] = 1
-        config['num_rollouts'] = 1
-        logger.log(f'n_itr = 1, num_rollouts = 1!!!')
-    if 'policy' in config['method_str']:
-        if config['policy_filter'] is True:
-            repr = f"{config['controller_str']}-{config['method_str']}_w_filter"
-        else:
-            repr = f"{config['controller_str']}-{config['method_str']}_wo_filter"
-    else:
-        repr = f"{config['controller_str']}-{config['method_str']}-"
+    repr = f"gt-{config['method_str']}-"
 
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
@@ -84,9 +73,9 @@ def run_experiment(**config):
             sampler=sampler,
             dynamics_sample_processor=sample_processor,
             n_itr=1,
-            initial_random_samples=config['initial_random_samples'],
-            initial_sinusoid_samples=config['initial_sinusoid_samples'],
-            dynamics_model_max_epochs=config['dynamic_model_epochs'],
+            initial_random_samples=False,
+            initial_sinusoid_samples=False,
+            dynamics_model_max_epochs=None,
             sess=sess,
             fit_model=False,
         )
@@ -100,7 +89,7 @@ if __name__ == '__main__':
         'seed': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'normalize': [False],
         'discount': [1.0,],
 
@@ -109,20 +98,14 @@ if __name__ == '__main__':
         'deterministic_policy': [True],
 
         # cem
-        'horizon': [30],
-        'n_candidates': [1000],
+        'horizon': [20],
+        'n_candidates': [500],
         'num_cem_iters': [50],
         'alpha': [0.15],
         'percent_elites': [0.1],
 
         # Training
         'num_rollouts': [1],  # number of experts
-        'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.99],
-        'initial_random_samples': [False],
-        'initial_sinusoid_samples': [False],
     }
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)
-    # print('================ runnning toy example ================')
-    #run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)

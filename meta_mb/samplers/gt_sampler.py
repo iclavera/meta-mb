@@ -1,6 +1,7 @@
 from meta_mb.utils.serializable import Serializable
 import copy
 from meta_mb.logger import logger
+import time
 
 
 class GTSampler(Serializable):
@@ -9,7 +10,7 @@ class GTSampler(Serializable):
 
     Args:
         env (meta_mb.meta_envs.base.MetaEnv) : environment object
-        policy (meta_mb.policies.bptt_controllers.gt_mpc_controller.GTMPCController) : policy object
+        policy (meta_mb.policies.bptt_controllers.gt_mpc_controller.*) : policy object
         max_path_length (int): maximum path length
     """
     def __init__(
@@ -34,13 +35,18 @@ class GTSampler(Serializable):
         obs = self.env.reset()
         returns = 0
         for t in range(self.max_path_length):
+            policy_time = time.time()
             act, _ = self.policy.get_action(obs)
+            policy_time = time.time() - policy_time
             obs, reward, _, _ = self.env.step(act)
             returns += reward
 
             if log:
+                logger.logkv(log_prefix + 'PathLengthSoFar', t)
                 logger.logkv(log_prefix + 'Reward', reward)
                 logger.logkv(log_prefix + 'SumReward', returns)
+                logger.logkv(log_prefix + 'PolicyExecTime', policy_time)
+                logger.dumpkvs()
 
     def __getstate__(self):
         state = dict()

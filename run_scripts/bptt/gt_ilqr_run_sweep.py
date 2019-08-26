@@ -13,12 +13,13 @@ import os
 import tensorflow as tf
 
 
-EXP_NAME = 'gt-mpc'
+EXP_NAME = 'bptt-gt-ilqr'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    print(config['opt_learning_rate'], config['eps'], config['lmbda'])
+    repr = f"gt-{config['method_str']}-"
+
     if config['method_str'] in ['cem', 'collocation', 'ddp']:
         config['n_itr'] = 1
         config['num_rollouts'] = 1

@@ -9,7 +9,7 @@ import time
 import itertools
 
 
-class Sampler(BaseSampler):
+class iLQRSampler(BaseSampler):
     """
     Sampler for Meta-RL
 
@@ -33,7 +33,7 @@ class Sampler(BaseSampler):
             vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
+        super(iLQRSampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
         self.total_samples = num_rollouts * max_path_length
         self.max_path_length_eval = max_path_length_eval

@@ -1,11 +1,10 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.dyn_ipopt_controller import DynIpoptController
-from meta_mb.samplers.sampler_ipopt import Sampler
+from meta_mb.policies.bptt_controllers.ipopt_controller import IpoptController
+from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
+from meta_mb.samplers.ipopt_sampler import IpoptSampler
+from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_refactor import ProbMLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics import ProbMLPDynamics
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
@@ -23,10 +22,10 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"dyn-{config['method_str'].split('_')[-1]}-"
+    repr = f"dyn-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 50  # 100
+        config['max_path_length'] = 100  # 50
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -40,14 +39,8 @@ def run_experiment(**config):
         repr += 'fo'
         config['max_path_length'] = 30
 
-    if not config['fit_model']:
-        config['n_itr'] = 1
-
-    if config.get('model_path', None) is not None:
+    if config['use_pretrained_model']:
         repr += '-pretrain'
-        # config['fit_model'] = False
-        config['initial_random_samples'] = False
-        config['initial_sinusoid_samples'] = False
 
     print(f"horizon, max_path_length, max_path_length_eval = {config['horizon']}, {config['max_path_length']}, {config['max_path_length_eval']}")
 
@@ -64,85 +57,58 @@ def run_experiment(**config):
 
         env = config['env']()
 
-        if config.get('model_path', None) is not None:
+        if config['use_pretrained_model']:
             data = joblib.load(config['model_path'])
             dynamics_model = data['dynamics_model']
             assert dynamics_model.obs_space_dims == env.observation_space.shape[0]
             assert dynamics_model.action_space_dims == env.action_space.shape[0]
 
         else:
-            if config['dyn_str'] == 'model':
-                dynamics_model = MLPDynamicsModel(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-
-            elif config['dyn_str'] == 'ensemble':
-                dynamics_model = MLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-            elif config['dyn_str'] == 'prob_model':
-                dynamics_model = ProbMLPDynamics(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-            elif config['dyn_str'] == 'prob_ensemble':
-                dynamics_model = ProbMLPDynamicsEnsemble(
-                    name="dyn_model",
-                    env=env,
-                    learning_rate=config['learning_rate'],
-                    hidden_sizes=config['hidden_sizes_model'],
-                    weight_normalization=config['weight_normalization_model'],
-                    num_models=config['num_models'],
-                    valid_split_ratio=config['valid_split_ratio'],
-                    rolling_average_persitency=config['rolling_average_persitency'],
-                    hidden_nonlinearity=config['hidden_nonlinearity_model'],
-                    batch_size=config['batch_size_model'],
-                )
-            else:
-                raise NotImplementedError
+            dynamics_model = MLPDynamicsEnsemble(
+                name="dyn_model",
+                env=env,
+                learning_rate=config['learning_rate'],
+                hidden_sizes=config['hidden_sizes_model'],
+                weight_normalization=config['weight_normalization_model'],
+                num_models=config['num_models'],
+                valid_split_ratio=config['valid_split_ratio'],
+                rolling_average_persitency=config['rolling_average_persitency'],
+                hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                batch_size=config['batch_size_model'],
+            )
 
         sample_processor = ModelSampleProcessor()
 
-        policy = DynIpoptController(
-            name="policy",
+        cem_policy = MPCController(
             env=env,
             dynamics_model=dynamics_model,
+            method_str='cem',
+            num_rollouts=config['cem_num_rollouts'],
             discount=config['discount'],
             n_candidates=config['n_candidates'],
             horizon=config['horizon'],
-            n_parallel=config['n_parallel'],
+            num_cem_iters=config['num_cem_iters'],
+            deterministic_policy=config['cem_deterministic_policy'],
+        )
+
+        cem_sampler = Sampler(
+            env=env,
+            policy=cem_policy,
+            num_rollouts=config['cem_num_rollouts'],
+            max_path_length=config['max_path_length'],
+        )
+
+        policy = IpoptController(
+            env=env,
+            dynamics_model=dynamics_model,
+            discount=config['discount'],
+            horizon=config['horizon'],
             initializer_str=config['initializer_str'],
             method_str=config['method_str'],
             num_rollouts=config['num_rollouts'],
-            alpha=config['alpha'],
-            percent_elites=config['percent_elites'],
         )
 
-        sampler = Sampler(
+        sampler = IpoptSampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
@@ -154,6 +120,7 @@ def run_experiment(**config):
             policy=policy,
             dynamics_model=dynamics_model,
             sampler=sampler,
+            cem_sampler=cem_sampler,
             dynamics_sample_processor=sample_processor,
             n_itr=config['n_itr'],
             initial_random_samples=config['initial_random_samples'],
@@ -161,9 +128,11 @@ def run_experiment(**config):
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
             fit_model=config['fit_model'],
-            deterministic_policy=config['deterministic_policy'],
+            on_policy_freq=config['on_policy_freq'],
+            use_pretrained_model=config['use_pretrained_model'],
             num_random_iters=config['num_random_iters'],
         )
+
         algo.train()
 
 
@@ -175,40 +144,38 @@ if __name__ == '__main__':
         'fit_model': [True],
 
         # Problem
-        'env': [FirstOrderEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [ReacherEnv], #[FirstOrderEnv, ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'use_pretrained_model': [False],
         # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
-        'normalize': [False],  # UNUSED
+        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'n_itr': [50],
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME
         'horizon': [20],
-        'method_str': ['ipopt_shooting_w_policy'],
+        'method_str': ['collocation'],
 
         # Policy
         'initializer_str': ['uniform'], #['zeros', 'uniform'],
-        'policy_filter': [False,],
-        'deterministic_policy': [True],
 
-        # cem
-        'n_candidates': [1000],
-        'num_cem_iters': [50],
-        'alpha': [0.15],
-        'percent_elites': [0.1],
+        # CEM
+        'n_candidates': [100],
+        'num_cem_iters': [10],
+        'cem_deterministic_policy': [True],
+        'cem_num_rollouts': [20],
 
         # Training
         'num_rollouts': [1],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
-        'num_random_iters': [0],
+        'num_random_iters': [1],
+        'on_policy_freq': [5],
 
         # Dynamics Model
-        'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [1],
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [15],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'hidden_sizes_model': [(512, 512)],
+        'hidden_sizes_model': [(512,)],  # FIXME: need to agree with pretrained model
         'batch_size_model': [64],
         'learning_rate': [0.001],
         'valid_split_ratio': [0.1],
@@ -217,11 +184,5 @@ if __name__ == '__main__':
         #  Other
         'n_parallel': [1],
     }
-
-    #
-    # config_debug = config.copy()
-    # print('================ runnning toy example ================')
-    # run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)
-    # exit()
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

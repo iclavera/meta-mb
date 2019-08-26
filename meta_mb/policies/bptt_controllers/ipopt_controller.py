@@ -10,50 +10,37 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 import tensorflow as tf
 
 
-class DynIpoptController(Serializable):
+class IpoptController(Serializable):
     def __init__(
             self,
-            name,
             env,
             dynamics_model,
             num_rollouts,
             discount,
-            n_parallel,
             initializer_str,
             method_str,
-            n_candidates,
             horizon,
-            percent_elites=0.1,
-            alpha=0.25,
-            verbose=True,
     ):
         Serializable.quick_init(self, locals())
         self.env = env
-        self.env_eval = IterativeEnvExecutor(env, num_rollouts, horizon+1)  # hack to have dones = False
+        self.env_eval = IterativeEnvExecutor(env, num_rollouts, horizon)  # have dones = False
         self.dynamics_model = dynamics_model
         self.discount = discount
         self.initializer_str = initializer_str
         self.method_str = method_str
-        self.n_candidates = n_candidates
         self.horizon = horizon
         self.num_envs = num_rollouts
-        self.num_elites = max(int(percent_elites * n_candidates), 1)
-        self.alpha = alpha
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
             self.unwrapped_env = self.unwrapped_env._wrapped_env
+        assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
 
-        assert len(env.observation_space.shape) == 1
-        assert len(env.action_space.shape) == 1
         self.obs_dim = env.observation_space.shape[0]
         self.act_dim = env.action_space.shape[0]
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
-        # make sure that enc has reward function
-        assert hasattr(self.unwrapped_env, 'reward'), "env must have a reward function"
-
-        if self.method_str == 'ipopt_collocation':
+        if self.method_str == 'collocation':
             self.u_array_val = self._init_u_array()
             self.problem_obj = CollocationProblem(env=env, dynamics_model=dynamics_model, horizon=horizon)
             problem_config=dict(
@@ -67,7 +54,7 @@ class DynIpoptController(Serializable):
                 lb=np.concatenate([-np.ones(((horizon-1)*self.obs_dim,)) * 1e2]
                                   + [self.act_low]*horizon),
             )
-        elif self.method_str == 'ipopt_shooting':
+        elif self.method_str == 'shooting':
             self.u_array_val = self._init_u_array()
             self.problem_obj = ShootingProblem(env=env, dynamics_model=dynamics_model, horizon=horizon)
             problem_config = dict(
@@ -77,8 +64,9 @@ class DynIpoptController(Serializable):
                 lb=np.concatenate([self.act_low]*horizon),
                 ub=np.concatenate([self.act_high]*horizon),
             )
-        elif self.method_str == 'ipopt_shooting_w_policy':
-            policy_config = dict(
+        elif self.method_str == 'shooting_w_policy':
+            self.stateless_policy = GaussianMLPPolicy(
+                name='policy-network',
                 obs_dim=self.obs_dim,
                 action_dim=self.act_dim,
                 hidden_sizes=(8,),
@@ -86,7 +74,6 @@ class DynIpoptController(Serializable):
                 hidden_nonlinearity=tf.tanh,  # FIXME: relu?
                 output_nonlinearity=tf.tanh,  # FIXME
             )
-            self.stateless_policy = GaussianMLPPolicy(name='policy-network', **policy_config,)
             self.problem_obj = ShootingWPolicyProblem(env=env, num_envs=num_rollouts, dynamics_model=dynamics_model,
                                                       policy=self.stateless_policy, horizon=horizon)
             n = self.stateless_policy._raveled_params_size
@@ -107,7 +94,7 @@ class DynIpoptController(Serializable):
         nlp.addOption('tol', 1e-4)
         nlp.addOption('acceptable_tol', 1e-3)
         nlp.addOption('acceptable_iter', 5)
-        nlp.addOption('max_iter', 30)
+        nlp.addOption('max_iter', 20)
         # nlp.addOption('derivative_test', 'first-order')  # TEST FAILS
 
     @property
@@ -133,7 +120,7 @@ class DynIpoptController(Serializable):
         for i in range(self.horizon):
             x_array.append(obs)
             next_obs = self.dynamics_model.predict(obs=obs, act=u_array[i, :, :])
-            reward = self.env.reward(obs=obs, acts=u_array[i, :, :], next_obs=next_obs)
+            reward = self.unwrapped_env.reward(obs=obs, acts=u_array[i, :, :], next_obs=next_obs)
             returns += self.discount**i * reward
             obs = next_obs
 
@@ -172,17 +159,17 @@ class DynIpoptController(Serializable):
         :param verbose:
         :return: u_array with shape (horizon, num_envs, obs_dim) or None when using policy
         """
-        if self.method_str == 'ipopt_collocation':
+        if self.method_str == 'collocation':
             self._update_u_array_collocation(obs, verbose=verbose)
             optimized_actions = self.u_array_val  # (horizon, num_envs, obs_dim)
             returns = self._eval_open_loop(optimized_actions, obs)
             self._shift_u_array(u_new=None)
-        elif self.method_str == 'ipopt_shooting':
+        elif self.method_str == 'shooting':
             self._update_u_array_shooting(obs, verbose=verbose)
             optimized_actions = self.u_array_val
             returns = self._eval_open_loop(optimized_actions, obs)
             self._shift_u_array(u_new=None)
-        elif self.method_str == 'ipopt_shooting_w_policy':
+        elif self.method_str == 'shooting_w_policy':
             self._update_policy_shooting(obs, verbose=verbose)
             optimized_actions, _ = self.stateless_policy.get_actions(obs)  # (num_envs, obs_dim)
             returns = self._eval_open_loop(None, obs)

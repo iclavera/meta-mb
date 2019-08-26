@@ -1,7 +1,7 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
 from meta_mb.policies.planners.dyn_ilqr_planner import DyniLQRPlanner
-from meta_mb.samplers.sampler_ilqr import Sampler
+from meta_mb.samplers.ilqr_sampler import iLQRSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -157,7 +157,7 @@ def run_experiment(**config):
             percent_elites=config['percent_elites'],
         )
 
-        sampler = Sampler(
+        sampler = iLQRSampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],

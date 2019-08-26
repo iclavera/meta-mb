@@ -1,5 +1,5 @@
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import *
+import copy
 import numpy as np
 
 
@@ -29,7 +29,6 @@ class GTMPCController(Serializable):
         self.num_cem_iters = num_cem_iters
         self.num_envs = num_rollouts
         self.num_elites = max(int(percent_elites * n_candidates), 1)
-        self.env = env
         self.alpha = alpha
         self.num_particles = num_particles
         self.deterministic_policy = deterministic_policy
@@ -43,23 +42,23 @@ class GTMPCController(Serializable):
         self.act_dim = env.action_space.shape[0]
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
-        self.vec_env = IterativeEnvExecutor(env, num_rollouts*n_candidates, horizon)
+        self._env = copy.deepcopy(env)
 
     @property
     def vectorized(self):
         return True
 
     def get_action(self, observation, verbose=True):
-        actions, _ = self.get_actions(observation[None])
+        actions, _ = self.get_actions(observation[None], verbose=verbose)
         return actions[0], []
 
     def get_actions(self, observations, verbose=True):
         if self.method_str == "cem":
-            return self.get_actions_cem(observations)
+            return self._get_actions_cem(observations, verbose)
         if self.method_str == "rs":
-            return self.get_actions_rs(observations)
+            return self._get_actions_rs(observations, verbose)
 
-    def get_actions_cem(self, observations):
+    def _get_actions_cem(self, observations, verbose):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
         n_candidates = self.n_candidates
@@ -68,8 +67,6 @@ class GTMPCController(Serializable):
         mean = np.ones(shape=(horizon, num_envs, 1, act_dim)) * (self.act_high + self.act_low) / 2
         var = np.ones(shape=(horizon, num_envs, 1, act_dim)) * (self.act_high - self.act_low) / 16
 
-        init_obs = np.repeat(observations, n_candidates, axis=0)
-
         for itr in range(self.num_cem_iters):
             lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
             constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
@@ -77,16 +74,17 @@ class GTMPCController(Serializable):
             act = mean + np.random.normal(size=(horizon, num_envs, n_candidates, act_dim)) * std
             act = np.clip(act, self.act_low, self.act_high)
             act = np.reshape(act, (horizon, num_envs*n_candidates, act_dim))
-            returns = np.zeros((self.num_envs*self.n_candidates,))
+            returns = np.zeros((num_envs*n_candidates,))
 
-            _ = self.vec_env.reset(buffer={"observations": init_obs}, shuffle=False)
-            for t in range(self.horizon):
-                _, rewards, _, _ = self.vec_env.step(act[t])
-                returns += self.discount**t * rewards  # np.asarray(rewards)
+            for i in range(num_envs*n_candidates):
+                _ = self._env.reset_from_obs(observations[i // n_candidates, :])
+                for t in range(horizon):
+                    _, reward, _, _ = self._env.step(act[t, i, :])
+                    returns[i] += self.discount**t * reward
 
             # Re-fit belief to the best ones
             returns = np.reshape(returns, (num_envs, n_candidates))
-            act = np.reshape(act, shape=(horizon, num_envs, n_candidates, act_dim))
+            act = np.reshape(act, (horizon, num_envs, n_candidates, act_dim))
             act = np.transpose(act, (1, 2, 0, 3))  # (num_envs, n_candidates, horizon, act_dim)
             indices = np.argsort(-returns, axis=1)[:, :self.num_elites]  # (num_envs, num_elites)
             elite_actions = np.stack([act[env_idx, indices[env_idx]] for env_idx in range(self.num_envs)], axis=0)
@@ -105,7 +103,7 @@ class GTMPCController(Serializable):
 
         return optimized_actions, []
 
-    def get_actions_rs(self, observations):
+    def _get_actions_rs(self, observations, verbose):
         num_envs = self.num_envs
         n_candidates = self.n_candidates
         horizon = self.horizon
@@ -117,19 +115,15 @@ class GTMPCController(Serializable):
             size=((horizon, num_envs*n_candidates, self.act_dim))
         )
 
-        _ = self.vec_env.reset(buffer={"observations": np.repeat(observations, n_candidates, axis=0)}, shuffle=False)
-        for t in range(horizon):
-            _, rewards, _, _ = self.vec_env.step(act[t])
-            returns += self.discount**t * np.asarray(rewards)
+        for i in range(num_envs*n_candidates):
+            _ = self._env.reset_from_obs(observations[i // n_candidates, :])
+            for t in range(horizon):
+                _, reward, _, _ = self._env.step(act[t, i, :])
+                returns[i] += self.discount**t * reward
 
         returns = np.reshape(returns, (num_envs, n_candidates))
         cand_a = np.reshape(act[0], newshape=(num_envs, n_candidates, self.act_dim))
         return cand_a[range(self.num_envs), np.argmax(returns, axis=1)], []
-
-    def get_random_action(self, n):
-        return np.random.uniform(low=self.env.action_space.low,
-                                 high=self.env.action_space.high,
-                                 size=(n,) + self.env.action_space.low.shape)
 
     def get_params_internal(self, **tags):
         return []
