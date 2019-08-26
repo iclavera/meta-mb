@@ -1,5 +1,5 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.cem_controller import CEMController
+from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
@@ -52,7 +52,7 @@ def run_experiment(**config):
         )
         sample_processor = ModelSampleProcessor()
 
-        policy = CEMController(
+        policy = MPCController(
             name="policy",
             env=env,
             dynamics_model=dynamics_model,
@@ -93,35 +93,35 @@ if __name__ == '__main__':
     config = {
         'env': [HalfCheetahEnv],
         'max_path_length': [100],
-        'horizon': [25,],
+        'horizon': [20,],
         'num_rollouts': [20],
-        'method_str': ['cem'],  # ['cem', 'rs']
+        'method_str': ['rs', 'cem'],
 
         # Problem
         'seed': [1],
         'normalize': [False],
-         'n_itr': [101],
+         'n_itr': [401],
         'discount': [1.0],
 
         # Policy
         'n_candidates': [1000],
-        'num_cem_iters': [5],
+        'num_cem_iters': [10],
 
         # Training
-        'learning_rate': [0.001],
-        'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(512,)],  # (500, 500)
+        'hidden_sizes_model': [(512,)],
         'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'batch_size_model': [64],
+        'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.99],
 
         #  Other
         'n_parallel': [1],

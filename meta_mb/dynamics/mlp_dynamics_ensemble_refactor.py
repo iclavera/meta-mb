@@ -11,10 +11,6 @@ from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
 from meta_mb.dynamics.utils import tf_normalize, tf_denormalize
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
-    """
-    Class for MLP continous dynamics model
-    """
-
     def __init__(self,
                  name,
                  env,

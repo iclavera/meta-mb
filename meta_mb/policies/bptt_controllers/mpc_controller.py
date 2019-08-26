@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 
-class CEMController(Serializable):
+class MPCController(Serializable):
     def __init__(
             self,
             name,
@@ -85,16 +85,16 @@ class CEMController(Serializable):
         n_candidates = self.n_candidates
         num_envs = self.num_envs
         horizon = self.horizon
-        returns = tf.zeros((num_envs*n_candidates,))
-        act = tf.random.uniform(
-            shape=(horizon, num_envs*n_candidates, self.act_dim),
-            minval=self.act_low, maxval=self.act_high,
-        )
 
+        returns = tf.zeros((num_envs*n_candidates,))
         # (num_envs, obs_dim) => (num_envs, 1, obs_dim) => (num_envs, n_candidates, obs_dim) => (num_envs*n_candidates, obs_dim)
         obs = tf.reshape(
             tf.tile(tf.expand_dims(self.obs_ph, 1), [1, n_candidates, 1]),
             shape=(num_envs*n_candidates, self.obs_dim)
+        )
+        act = tf.random.uniform(
+            shape=(horizon, num_envs*n_candidates, self.act_dim),
+            minval=self.act_low, maxval=self.act_high,
         )
 
         for t in range(horizon):
@@ -103,49 +103,17 @@ class CEMController(Serializable):
             returns += self.discount**t * rewards
             obs = next_obs
 
-        returns = tf.reshape((num_envs, n_candidates))
-        # indices = tf.reshape(tf.argmax(returns, axis=1), shape=(num_envs))
+        returns = tf.reshape(returns, (num_envs, n_candidates))
         _, indices = tf.nn.top_k(returns, k=1, sorted=False)
         cand_a = tf.reshape(act[0], shape=(num_envs, n_candidates, self.act_dim))
         self.optimized_actions = tf.squeeze(tf.batch_gather(cand_a, indices), axis=1)
-
-
-        # # FIXME: not sure if it workers for batch_size > 1 (num_rollouts > 1)
-        # returns = 0  # (batch_size * n_candidates,)
-        # act = tf.random.uniform(
-        #     shape=[self.horizon, tf.shape(self.obs_ph)[0] * self.n_candidates, self.act_dim],
-        #     minval=self.act_low,
-        #     maxval=self.act_high)
-        #
-        # # Equivalent to np.repeat
-        # observation = tf.reshape(
-        #     tf.tile(tf.expand_dims(self.obs_ph, -1), [1, self.n_candidates, 1]),
-        #     [-1, self.obs_dim]
-        # )
-        # # observation = tf.concat([self.obs_ph for _ in range(self.n_candidates)], axis=0)
-        #
-        # for t in range(self.horizon):
-        #     next_observation = self.dynamics_model.predict_sym(observation, act[t])
-        #     rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
-        #     returns += self.discount ** t * rewards
-        #     observation = next_observation
-        # """
-        # returns = tf.reshape(returns, (self.n_candidates, -1))
-        # idx = tf.reshape(tf.argmax(returns, axis=0), [-1, 1])  # (batch_size, 1)
-        # cand_a = tf.reshape(act[0], [self.n_candidates, -1, self.action_space_dims])  # (n_candidates, batch_size, act_dims)
-        # cand_a = tf.transpose(cand_a, perm=[1, 0, 2])  # (batch_size, n_candidates, act_dims)
-        # self.optimal_action = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
-        # """
-        # returns = tf.reshape(returns, (-1, self.n_candidates))  # (batch_size, n_candidates)
-        # cand_a = tf.reshape(act[0], [-1, self.n_candidates, self.act_dim])  # (batch_size, n_candidates, act_dims)
-        # idx = tf.reshape(tf.argmax(returns, axis=1), [-1, 1])  # (batch_size, 1)
-        # self.optimized_actions = tf.squeeze(tf.batch_gather(cand_a, idx), axis=1)
 
     def build_cem_graph(self):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
         n_candidates = self.n_candidates
         num_envs = self.num_envs
+
         mean = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high + self.act_low) / 2
         var = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high - self.act_low) / 16
 
@@ -181,33 +149,6 @@ class CEMController(Serializable):
             var = var * self.alpha + elite_var * (1 - self.alpha)
 
         self.optimized_actions = mean[0, :, 0, :]
-        #
-        #     observation = tf.reshape(
-        #         tf.tile(tf.expand_dims(self.obs_ph, -1), [1, n_candidates, 1]),
-        #         [-1, obs_dim],
-        #     )
-        #     act = tf.reshape(act, shape=[horizon, num_envs * n_candidates, act_dim])
-        #     for t in range(horizon):
-        #         next_observation = self.dynamics_model.predict_sym(observation, act[t])
-        #         assert self.reward_model is None
-        #         rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
-        #         returns += self.discount ** t * rewards
-        #         observation = next_observation
-        #
-        #     # Re-fit belief to the best ones.
-        #     returns = tf.reshape(returns, (num_envs, n_candidates))  # (batch_size, n_candidates)
-        #     act = tf.reshape(act, shape=[horizon, num_envs, n_candidates,
-        #                                  act_dim])
-        #     _, indices = tf.nn.top_k(returns, self.num_elites, sorted=False)
-        #     act = tf.transpose(act, (1, 2, 3, 0))  # (batch_size, n_candidates, obs_dim, horizon)
-        #     elite_actions = tf.batch_gather(act, indices)
-        #     elite_actions = tf.transpose(elite_actions, (3, 0, 1, 2))  # (horizon, batch_size, n_candidates, obs_dim)
-        #     elite_mean, elite_var = tf.nn.moments(elite_actions, axes=[2])
-        #     elite_mean, elite_var = tf.expand_dims(elite_mean, axis=2), tf.expand_dims(elite_var, axis=2)
-        #     mean = mean * self.alpha + (1 - self.alpha) * elite_mean
-        #     var = var * self.alpha + (1 - self.alpha) * elite_var
-        #
-        # self.optimized_actions = tf.squeeze(mean[0], axis=1)
 
     def get_cem_action(self, observations):
         n = self.n_candidates

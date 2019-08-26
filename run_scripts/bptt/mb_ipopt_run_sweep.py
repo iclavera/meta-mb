@@ -196,15 +196,8 @@ if __name__ == '__main__':
         'alpha': [0.15],
         'percent_elites': [0.1],
 
-        # collocation
-        'lmbda': [1e0],
-        'num_collocation_iters': [500*30],
-        'persistency': [0.9],
-
         # Training
         'num_rollouts': [1],
-        'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
         'num_random_iters': [0],
@@ -213,11 +206,13 @@ if __name__ == '__main__':
         'dyn_str': ['ensemble'], #['prob_ensemble', 'ensemble', 'prob_model', 'model'],
         'num_models': [1],
         'hidden_nonlinearity_model': ['relu'],
-        'dynamic_model_epochs': [50],
+        'dynamic_model_epochs': [15],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
         'hidden_sizes_model': [(512, 512)],
         'batch_size_model': [64],
         'learning_rate': [0.001],
+        'valid_split_ratio': [0.1],
+        'rolling_average_persitency': [0.99],
 
         #  Other
         'n_parallel': [1],
