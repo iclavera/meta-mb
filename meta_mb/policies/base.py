@@ -177,7 +177,7 @@ class Policy(Serializable):
         Gets a list of all the current weights in the network (in original code it is flattened, why?)
 
         Returns:
-            (list) : list of values for parameters
+            (dict) : list of values for parameters
         """
         param_values = tf.get_default_session().run(self.policy_params)
         return param_values

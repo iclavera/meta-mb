@@ -10,6 +10,15 @@ def jacobian_wrapper(y, x, dim_y, dim_x=None, stop_gradients=None):
     :param dim_x:
     :return: (batch_size, dim_y, dim_x)
     """
+    if isinstance(x, list):
+        assert y.get_shape().ndims == 1
+        jac_array_by_dim = []  # list with length dim_y
+        for i in range(dim_y):
+            jac_i_array = tf.gradients(ys=y[i], xs=x, stop_gradients=stop_gradients)
+            jac_array_by_dim.append(jac_i_array)
+        jac_array = list(zip(*jac_array_by_dim))
+        return list(map(lambda jac_i: tf.stack(jac_i, axis=0), jac_array))
+
     if y.get_shape().ndims == 1:
         jac_array = []
         for i in range(dim_y):

@@ -1,7 +1,6 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-
 import os
 from collections import OrderedDict
 import tensorflow as tf
@@ -9,7 +8,6 @@ import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
-
 
 
 class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
@@ -76,10 +74,26 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             raise ValueError
         return reward
 
+    def get_goal_x_array(self, x_array):
+        """
+
+        :param x_array: (path_length, num_envs, obs_dim)
+        :return:
+        """
+        goal_x_array = x_array.copy()
+        goal_x_array[:, :, 8] *= 2
+        return goal_x_array
+
     def tf_reward(self, obs, acts, next_obs):
         acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
-        reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = obs[:, 8]  # changed from next_obs to obs
+        if obs.get_shape().ndims == 1:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)
+            reward_run = obs[8]
+        elif obs.get_shape().ndims == 2:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
+            reward_run = obs[:, 8]  # changed from next_obs to obs
+        else:
+            raise NotImplementedError
         reward = reward_run + reward_ctrl
         return reward
 

@@ -1,5 +1,5 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.dyn_ipopt_controller import DynIpoptController
+from meta_mb.policies.bptt_controllers.dyn_ipopt_controller import DynIpoptController
 from meta_mb.samplers.sampler_ipopt import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
@@ -183,7 +183,7 @@ if __name__ == '__main__':
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME
         'horizon': [20],
-        'method_str': ['ipopt_shooting'],
+        'method_str': ['ipopt_shooting_w_policy'],
 
         # Policy
         'initializer_str': ['uniform'], #['zeros', 'uniform'],

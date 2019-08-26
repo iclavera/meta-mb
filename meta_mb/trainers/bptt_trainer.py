@@ -27,14 +27,11 @@ class BPTTTrainer(object):
             policy,
             dynamics_model,
             n_itr,
-            start_itr=0,
             initial_random_samples=True,
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
             fit_model = True,
-            plot_freq=-1,
-            deterministic_policy=False,
             num_random_iters=1,
     ):
         self.env = env
@@ -43,11 +40,8 @@ class BPTTTrainer(object):
         self.dynamics_model = dynamics_model
         self.policy = policy
         self.n_itr = n_itr
-        self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
-        self.plot_freq = plot_freq
-        self.deterministic_policy = deterministic_policy
 
         self.initial_random_samples = initial_random_samples
         self.initial_sinusoid_samples = initial_sinusoid_samples
@@ -76,7 +70,7 @@ class BPTTTrainer(object):
                 pass  # hack for ground truth where sess has empty graph
 
             start_time = time.time()
-            for itr in range(self.start_itr, self.n_itr):
+            for itr in range(self.n_itr):
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
 
@@ -90,7 +84,7 @@ class BPTTTrainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 else:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log_open_loop_performance=True, log_closed_loop_performance=(itr % 5 == 0), log=True, log_prefix='')
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
 

@@ -102,9 +102,13 @@ class Sampler(BaseSampler):
                 agent_infos = []
             else:
                 obses = np.array(obses)
-                actions_array, agent_infos = policy.get_actions(obses)
-                if path_length + len(actions_array) < self.max_path_length:
-                    actions_array = actions_array[0:1, :, :]
+                actions, agent_infos = policy.get_actions(obses)
+                if actions.ndim == 2:
+                    actions_array = actions[None]
+                elif path_length + len(actions) < self.max_path_length:
+                    actions_array = actions[0:1, :, :]
+                else:
+                    actions_array = actions
             policy_time += time.time() - t
 
             for actions in actions_array:

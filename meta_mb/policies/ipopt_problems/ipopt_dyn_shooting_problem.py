@@ -25,15 +25,15 @@ class ShootingProblem(object):
     def _build_graph(self):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
-        # init_obs_ph, inputs_ph = tf.stop_gradient(self.init_obs_ph), tf.stop_gradient(self.inputs_ph)
-        init_obs_ph, inputs_ph = self.init_obs_ph, self.inputs_ph
+        init_obs_ph, inputs_ph = tf.stop_gradient(self.init_obs_ph), tf.stop_gradient(self.inputs_ph)
+        # init_obs_ph, inputs_ph = self.init_obs_ph, self.inputs_ph
 
         u_array = tf.reshape(inputs_ph, shape=(horizon, act_dim))
 
         # build objective
         returns = tf.zeros(())
         obs = init_obs_ph
-        for i in range(self.horizon):
+        for i in range(horizon):
             act = u_array[i]
             next_obs = self.dynamics_model.predict_sym(obs_ph=obs[None], act_ph=act[None])[0]
             reward = self.env.tf_reward(obs=obs, acts=act, next_obs=next_obs)

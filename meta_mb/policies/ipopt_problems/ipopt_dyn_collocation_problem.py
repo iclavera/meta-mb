@@ -25,21 +25,6 @@ class CollocationProblem(object):
         self.sess = tf.get_default_session()
         self._build_graph()
 
-    # def _df_sym(self, obs, acts, next_obs):
-    #     """
-    #
-    #     :param obs: (horizon, obs_dim)
-    #     :param acts: (horizon, act_dim)
-    #     :param next_obs: (horizon, obs_dim)
-    #     """
-    #     # jac_f_x: (horizon, obs_dim, obs_dim)
-    #     jac_f_x = utils.gradients_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
-    #
-    #     # jac_f_u: (horizon, obs_dim, act_dim)
-    #     jac_f_u = utils.gradients_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
-    #
-    #     return jac_f_x, jac_f_u
-
     def _build_graph(self):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
@@ -62,31 +47,6 @@ class CollocationProblem(object):
         # build constraints, (horizon-1, obs_dim) => ((horizon-1) * obs_dim,)
         x_target_array = self.dynamics_model.predict_sym(obs_ph=x_array, act_ph=u_array)
         self.tf_constraints = tf.reshape(x_array_drop_first - x_target_array[:-1], (-1,))
-
-        # self.debugger_array = [x_target_array, x_array_drop_first]
-
-        # # build gradient for objective
-        # dr_dx = self.env.tf_deriv_reward_obs(obs=x_array, acts=u_array, batch_size=horizon)
-        # dr_du = self.env.tf_deriv_reward_act(obs=x_array, acts=u_array, batch_size=horizon)
-        # self.tf_gradient = tf.concat([tf.reshape(-dr_dx[1:], (-1,)), tf.reshape(-dr_du, (-1,))], axis=0)
-        #
-        # # build jacobian matrix for constraints
-        # jac_f_x, jac_f_u = self._df_sym(obs=x_array, acts=u_array, next_obs=x_target_array)
-        # jac_c_x = tf.eye(num_rows=(horizon-1)*obs_dim, num_columns=(horizon-1)*obs_dim)
-        # for i in range(1, horizon-1):
-        #     jac_c_x += tf.pad(
-        #         -jac_f_x[i],
-        #         paddings=tf.constant([[i*obs_dim, (horizon-i-2)*obs_dim], [(i-1)*obs_dim, (horizon-i-1)*obs_dim]]),
-        #     )
-        # jac_c_u = tf.zeros(((horizon-1)*obs_dim, horizon*act_dim,))
-        # for i in range(horizon-1):
-        #     jac_c_u += tf.pad(
-        #         -jac_f_u[i],
-        #         paddings=tf.constant([[i*obs_dim, (horizon-i-2)*obs_dim], [i*act_dim, (horizon-i-1)*act_dim]]),
-        #     )
-        # jac_c_inputs = tf.concat([jac_c_x, jac_c_u], axis=1)
-        # assert jac_c_inputs.get_shape().as_list() == [(horizon-1)*obs_dim, (horizon-1)*obs_dim+horizon*act_dim]
-        # self.tf_jacobian = jac_c_inputs
 
         # build gradient for objective
         t = time.time()

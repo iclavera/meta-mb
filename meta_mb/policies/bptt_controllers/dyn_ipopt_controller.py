@@ -3,8 +3,11 @@ import numpy as np
 from meta_mb.logger import logger
 from meta_mb.policies.ipopt_problems.ipopt_dyn_collocation_problem import CollocationProblem
 from meta_mb.policies.ipopt_problems.ipopt_dyn_shooting_problem import ShootingProblem
+from meta_mb.policies.ipopt_problems.ipopt_dyn_shooting_w_policy_problem import ShootingWPolicyProblem
 import ipopt
 from meta_mb.samplers.vectorized_env_executor import IterativeEnvExecutor
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+import tensorflow as tf
 
 
 class DynIpoptController(Serializable):
@@ -20,7 +23,6 @@ class DynIpoptController(Serializable):
             method_str,
             n_candidates,
             horizon,
-            policy=None,
             percent_elites=0.1,
             alpha=0.25,
             verbose=True,
@@ -76,9 +78,27 @@ class DynIpoptController(Serializable):
                 ub=np.concatenate([self.act_high]*horizon),
             )
         elif self.method_str == 'ipopt_shooting_w_policy':
-            self.policy = policy
-            # self.problem_obj = CollocationPolicyProblem(env=env, dynamics_model=dynamics_model, horizon=horizon)
-
+            policy_config = dict(
+                obs_dim=self.obs_dim,
+                action_dim=self.act_dim,
+                hidden_sizes=(8,),
+                learn_std=False,
+                hidden_nonlinearity=tf.tanh,  # FIXME: relu?
+                output_nonlinearity=tf.tanh,  # FIXME
+            )
+            self.stateless_policy = GaussianMLPPolicy(name='policy-network', **policy_config,)
+            self.problem_obj = ShootingWPolicyProblem(env=env, num_envs=num_rollouts, dynamics_model=dynamics_model,
+                                                      policy=self.stateless_policy, horizon=horizon)
+            n = self.stateless_policy._raveled_params_size
+            problem_config = dict(
+                n=n,
+                m=horizon*self.act_dim,
+                problem_obj=self.problem_obj,
+                lb=np.ones((n,))*(-1e10),
+                ub=np.ones((n,))*(1e10),
+                cl=np.concatenate([self.act_low]*horizon*num_rollouts),
+                cu=np.concatenate([self.act_high]*horizon*num_rollouts),
+            )
         else:
             raise NotImplementedError
 
@@ -121,13 +141,19 @@ class DynIpoptController(Serializable):
         return x_array, returns
 
     def _eval_open_loop(self, u_array, init_obs):
-        if np.random.randn() < 0.01:
-            return self.dubugger(u_array, init_obs)
         returns = np.zeros((self.num_envs,))
-        _ = self.env_eval.reset(buffer={'observations': init_obs}, shuffle=False)
-        for i in range(self.horizon):
-            _, rewards, _, _ = self.env_eval.step(u_array[i, :, :])
-            returns += rewards
+        obs = self.env_eval.reset(buffer={'observations': init_obs}, shuffle=False)
+        if u_array is not None:
+            if np.random.randn() < 0.01:
+                return self.dubugger(u_array, init_obs)
+            for i in range(self.horizon):
+                _, rewards, _, _ = self.env_eval.step(u_array[i, :, :])
+                returns += rewards
+        else:
+            for i in range(self.horizon):
+                acts, _ = self.stateless_policy.get_actions(obs)
+                obs, rewards, _, _ = self.env_eval.step(acts)
+                returns += rewards
         return returns
 
     def dubugger(self, u_array, init_obs):
@@ -144,40 +170,45 @@ class DynIpoptController(Serializable):
 
         :param obs: (num_envs, obs_dim)
         :param verbose:
-        :return:
+        :return: u_array with shape (horizon, num_envs, obs_dim) or None when using policy
         """
-        if verbose:
-            logger.logkv(f'ActNormBefore', np.square(self.u_array_val).sum())
         if self.method_str == 'ipopt_collocation':
-            self.update_u_array_collocation(obs, verbose=verbose)
+            self._update_u_array_collocation(obs, verbose=verbose)
+            optimized_actions = self.u_array_val  # (horizon, num_envs, obs_dim)
+            returns = self._eval_open_loop(optimized_actions, obs)
+            self._shift_u_array(u_new=None)
         elif self.method_str == 'ipopt_shooting':
-            self.update_u_array_shooting(obs, verbose=verbose)
-
-        optimized_actions = self.u_array_val
-        self.shift_u_array(u_new=None)
+            self._update_u_array_shooting(obs, verbose=verbose)
+            optimized_actions = self.u_array_val
+            returns = self._eval_open_loop(optimized_actions, obs)
+            self._shift_u_array(u_new=None)
+        elif self.method_str == 'ipopt_shooting_w_policy':
+            self._update_policy_shooting(obs, verbose=verbose)
+            optimized_actions, _ = self.stateless_policy.get_actions(obs)  # (num_envs, obs_dim)
+            returns = self._eval_open_loop(None, obs)
+        else:
+            raise NotImplementedError
 
         if verbose:
-            logger.logkv(f'ActNormAfter', np.square(self.u_array_val).sum())
-            returns = self._eval_open_loop(optimized_actions, obs)
             for env_idx in range(self.num_envs):
                 logger.logkv(f'RetEnv-{env_idx}', returns[env_idx])
             logger.dumpkvs()
 
         return optimized_actions, []
 
-    def update_u_array_shooting(self, obs, verbose=True):
+    def _update_u_array_shooting(self, obs, verbose=True):
         u_array = self.u_array_val
         for env_idx in range(self.num_envs):
             self.problem_obj.set_init_obs(obs[env_idx, :])
             inputs = self.problem_obj.get_inputs(u=u_array[:, env_idx, :])
-            outputs, info = self.nlp.solve(inputs)
+            outputs, _ = self.nlp.solve(inputs)
             outputs_u_array = self.problem_obj.get_u(outputs)
             u_clipped_pct = np.sum(np.abs(outputs_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
             self.u_array_val[:, env_idx, :] = outputs_u_array
             if verbose and u_clipped_pct > 0:
                 logger.logkv(f'u_clipped_pct-{env_idx}', u_clipped_pct)
 
-    def update_u_array_collocation(self, obs, verbose=True):
+    def _update_u_array_collocation(self, obs, verbose=True):
         u_array = self.u_array_val
         x_array, returns = self._run_open_loop(u_array, obs)
         if hasattr(self.env, "get_goal_x_array"):
@@ -187,7 +218,7 @@ class DynIpoptController(Serializable):
             # Feed in trajectory s[2:T], a[1:T], with s[1] == obs
             self.problem_obj.set_init_obs(obs[env_idx, :])
             inputs = self.problem_obj.get_inputs(x=x_array[1:, env_idx, :], u=u_array[:, env_idx, :])
-            outputs, info = self.nlp.solve(inputs)
+            outputs, _ = self.nlp.solve(inputs)
             outputs_x_array, outputs_u_array = self.problem_obj.get_x_u(outputs)
             outputs_u_array = np.clip(outputs_u_array, self.act_low, self.act_high)
             self.u_array_val[:, env_idx, :] = outputs_u_array
@@ -197,10 +228,16 @@ class DynIpoptController(Serializable):
                 logger.logkv(f'ReturnBefore-{env_idx}', returns[env_idx])
                 logger.logkv(f'u_clipped_pct-{env_idx}', u_clipped_pct)
 
+    def _update_policy_shooting(self, obs, verbose=True):
+        self.problem_obj.set_init_obs(obs)
+        inputs = self.stateless_policy.get_raveled_param_values()
+        outputs, _ = self.nlp.solve(inputs)
+        self.stateless_policy.set_raveled_params(outputs)
+
     def _sample_u(self):
         return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
     
-    def shift_u_array(self, u_new):
+    def _shift_u_array(self, u_new):
         if u_new is None:
             u_new = self._sample_u()
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
@@ -221,19 +258,18 @@ class DynIpoptController(Serializable):
 
     def reset(self, dones=None):
         """
-        This funciton is called by sampler at the start of each trainer iteration.
+        This function is called by sampler at the start of each trainer iteration.
         :param dones:
         :return:
         """
-        self.u_array_val = self._init_u_array()
+        if "policy" not in self.method_str:
+            self.u_array_val = self._init_u_array()
 
     def warm_reset(self, u_array):
-        logger.log('planner resets with collected samples...')
-        # if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.act_dim):
-        #     u_array = self._init_u_array()
-        # else:
-        u_array = u_array[:self.horizon, :, :]
-        self.u_array_val = u_array
+        if "policy" not in self.method_str:
+            logger.log('planner resets with collected samples...')
+            u_array = u_array[:self.horizon, :, :]
+            self.u_array_val = u_array
 
     def log_diagnostics(*args):
         pass
