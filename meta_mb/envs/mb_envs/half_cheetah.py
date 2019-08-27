@@ -8,6 +8,7 @@ import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
+from pdb import set_trace as st
 
 
 
@@ -35,6 +36,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_run + reward_ctrl
         done = False
         return ob, reward, done, {}
+
 
     def _get_obs(self):
         return np.concatenate([
@@ -76,6 +78,28 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         qvel = obs[nq-1:]
         self.set_state(qpos, qvel)
         return self._get_obs()
+
+    def step_batch(self, obs_batch, action_batch, t, rewards):
+        assert obs_batch.shape[0] == action_batch.shape[0]
+        batch_size = obs_batch.shape[0]
+        result = dict([])
+        next_obs, dones = [], []
+        result['observations'+str(t)] = obs_batch
+        result['actions'+str(t)] = action_batch
+        for i in range(batch_size):
+            obs, action = obs_batch[i], action_batch[i]
+            self.reset_from_obs(obs)
+            ob, reward, done, _ = self.step(action)
+            next_obs.append(ob)
+            if t == 0:
+                rewards.append(reward)
+            else:
+                rewards[i] += reward
+            dones.append(done)
+        result['rewards'+str(t+1)] = rewards
+        result['next_observations'+str(t+1)] = next_obs
+        result['dones'+str(t+1)] = dones
+        return result
 
     def tf_termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2

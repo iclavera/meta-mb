@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "actor-hc"
+EXP_NAME = "test"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -194,6 +194,7 @@ def run_experiment(**kwargs):
             step_type=kwargs['step_type'],
             dynamics_type=kwargs['model_type'],
             predict_done=kwargs['predict_done'],
+            ground_truth=kwargs['ground_truth'],
         )
 
         trainer = Trainer(
@@ -223,6 +224,7 @@ def run_experiment(**kwargs):
             step_type=kwargs['step_type'],
             predict_done=kwargs['predict_done'],
             actorH=kwargs['actorH'],
+            T=kwargs['T'],
         )
 
         trainer.train()
@@ -231,7 +233,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66, 77],
+        'seed': [66],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -243,7 +245,7 @@ if __name__ == '__main__':
         # Env Sampling
         'num_rollouts': [1],
         'step_type': [0],
-        'predict_done': [True],
+        'predict_done': [False],
         'model_type': [0],
 
         # replay_buffer
@@ -252,31 +254,32 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [101],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [250],
+        'model_train_freq': [25],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [20],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[5],
+		'q_function_type':[4      ],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
         'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [2],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'actorH': [5, 2, 1],
+        'actorH': [1],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
+        'ground_truth': [True],
 
         'done_predictor_aux_hidden_dim':[512],
         'done_predictor_transition_hidden_dim': [256],

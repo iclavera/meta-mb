@@ -8,6 +8,7 @@ from meta_mb.logger import logger
 import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
+from pdb import set_trace as st
 
 
 LOG_SIG_MAX = 2
@@ -184,11 +185,13 @@ class GaussianMLPPolicy(Policy):
 
             mean_var, log_std_var = tf.split(output_var, 2, axis=-1)
 
-            # log_std_var = tf.clip_by_value(log_std_var,
-            #                                LOG_SIG_MIN,
-            #                                LOG_SIG_MAX)
+            log_std_var = tf.clip_by_value(log_std_var,
+                                           LOG_SIG_MIN,
+                                           LOG_SIG_MAX)
 
         return dict(mean=mean_var, log_std=log_std_var)
+
+
 
     def distribution_info_keys(self, obs, state_infos):
         """

@@ -11,6 +11,7 @@ from meta_mb.logger import logger
 from tensorflow.python.training import training_util
 from random import randint
 import time
+import copy
 
 
 def td_target(reward, discount, next_value):
@@ -63,6 +64,7 @@ class SAC_MB(Algo):
             step_type=0,
             dynamics_type=0,
             predict_done=False,
+            ground_truth=False,
             **kwargs
     ):
         """
@@ -134,6 +136,7 @@ class SAC_MB(Algo):
         self.q_target_type = q_target_type
         self.experiment_name = experiment_name
         self.exp_dir = exp_dir
+        self.ground_truth = ground_truth
 
         self.build_graph()
 
@@ -148,7 +151,8 @@ class SAC_MB(Algo):
         self.rgb_lst = tf.stack(self.rgb_lst)
         obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
                                                                                                   recurrent=False,
-                                                                                                  next_obs=True)
+                                                                                                  next_obs=True,
+                                                                                                  ground_truth = self.ground_truth)
         self.op_phs_dict = all_phs_dict
         self._init_actor_update()
         self._init_critic_update()
@@ -161,7 +165,7 @@ class SAC_MB(Algo):
             'increment_global_step': training_util._increment_global_step(1)
         })
 
-    def _make_input_placeholders(self, prefix='', recurrent=False, next_obs=False):
+    def _make_input_placeholders(self, prefix='', recurrent=False, next_obs=False, ground_truth = False):
         """
         Args:
             prefix (str) : a string to prepend to the name of each variable
@@ -169,37 +173,90 @@ class SAC_MB(Algo):
             (tuple) : a tuple containing lists of placeholders for each input type and meta task,
             and for convenience, a list containing all placeholders created
         """
-        dist_info_specs = self.policy.distribution.dist_info_specs
-        all_phs_dict = OrderedDict()
+        if not self.ground_truth:
+            dist_info_specs = self.policy.distribution.dist_info_specs
+            all_phs_dict = OrderedDict()
 
-        # observation ph
-        obs_shape = [None, self.policy.obs_dim]
-        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
-        all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+            # observation ph
+            obs_shape = [None, self.policy.obs_dim]
+            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
 
-        # action ph
-        action_shape = [None, self.policy.action_dim]
-        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
-        all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
+            # action ph
+            action_shape = [None, self.policy.action_dim]
+            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+            all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
 
-        """add the placeholder for terminal here"""
-        terminal_shape = [None] if not recurrent else [None, None]
-        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
-        all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
+            """add the placeholder for terminal here"""
+            terminal_shape = [None] if not recurrent else [None, None]
+            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+            all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
 
-        rewards_shape = [None] if not recurrent else [None, None]
-        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
-        all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
+            rewards_shape = [None] if not recurrent else [None, None]
+            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+            all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
 
-        if not next_obs:
-            return obs_ph, action_ph, all_phs_dict
+            if not next_obs:
+                return obs_ph, action_ph, all_phs_dict
+
+            else:
+                obs_shape = [None, self.policy.obs_dim]
+                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+                all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
+
+            return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
         else:
-            obs_shape = [None, self.policy.obs_dim]
-            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
-            all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
+            dist_info_specs = self.policy.distribution.dist_info_specs
+            all_phs_dict = OrderedDict()
 
-        return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
+            # observation ph
+            obs_shape = [None, self.policy.obs_dim]
+            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+
+            # action ph
+            action_shape = [None, self.policy.action_dim]
+            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+            all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
+
+            """add the placeholder for terminal here"""
+            terminal_shape = [None] if not recurrent else [None, None]
+            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+            all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
+
+            rewards_shape = [None] if not recurrent else [None, None]
+            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+            all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
+
+            # for i in range(self.T - 2, self.T):
+            i = self.T
+            obs_shape = [None, self.policy.obs_dim]
+            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s%s' % (prefix, 'observations', str(i))] = obs_ph
+
+            # action ph
+            action_shape = [None, self.policy.action_dim]
+            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+            all_phs_dict['%s%s%s' % (prefix, 'actions', str(i))] = action_ph
+
+            """add the placeholder for terminal here"""
+            terminal_shape = [None] if not recurrent else [None, None]
+            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+            all_phs_dict['%s%s%s' % (prefix, 'dones', str(i))] = terminal_ph
+
+            rewards_shape = [None] if not recurrent else [None, None]
+            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+            all_phs_dict['%s%s%s' % (prefix, 'rewards', str(i))] = rewards_ph
+
+            if not next_obs:
+                return obs_ph, action_ph, all_phs_dict
+            else:
+                obs_shape = [None, self.policy.obs_dim]
+                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+                all_phs_dict['%s%s%s' % (prefix, 'next_observations', str(i))] = next_obs_ph
+
+            return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle = True, k = 1):
         assert self.dynamics_type in [0, 1, 2, 3]
@@ -436,53 +493,53 @@ class SAC_MB(Algo):
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
-        elif self.q_function_type == 4:
-            assert self.T >= 0
-            obs = observations_ph
-            actions = actions_var
-            q_values = []
-            for i in range(self.T+1):
-                next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
-                expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
-                expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
-                expanded_next_observation, expanded_next_actions_var, rewards, next_dones, dist_info_sym = self.step(expanded_obs, expanded_actions, shuffle = False)
-                if i == 0 :
-                    reward_values = (self.discount**(i)) * self.reward_scale * rewards
-                else:
-                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
-                dones = next_dones
-                input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-                next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-                obs, actions = next_observation, next_actions_var
-                q_values.append(min_q_val_var)
-            q_values = tf.stack(q_values)
-            rollout_frames = self.T+1
-            q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
-            num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
-
-            if self.model_used_ratio < 1:
-                """randomly choose a partion of the models. """
-                indices_lst = []
-                for _ in range(rollout_frames):
-                    indices = tf.range(self.dynamics_model.num_models)
-                    indices = tf.random.shuffle(indices)
-                    indices_lst.append(indices[:num_models])
-                indices = tf.stack(indices_lst)
-                indices = tf.reshape(indices, [-1])
-                rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
-                indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
-                indices = tf.concat([rollout_len_indices, indices], axis = 1)
-                q_values = tf.gather_nd(q_values, indices)
-                q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
-
-            target_means, target_variances = tf.nn.moments(q_values, 1)
-            target_confidence = 1./(target_variances + 1e-8)
-            target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
-            target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
-            self.confidence = target_confidence
-            min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
+        # elif self.q_function_type == 4:
+        #     assert self.T >= 0
+        #     obs = observations_ph
+        #     actions = actions_var
+        #     q_values = []
+        #     for i in range(self.T+1):
+        #         next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
+        #         expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
+        #         expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
+        #         expanded_next_observation, expanded_next_actions_var, rewards, next_dones, dist_info_sym = self.step(expanded_obs, expanded_actions, shuffle = False)
+        #         if i == 0 :
+        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards
+        #         else:
+        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+        #         dones = next_dones
+        #         input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
+        #         next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        #         q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+        #         min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        #         obs, actions = next_observation, next_actions_var
+        #         q_values.append(min_q_val_var)
+        #     q_values = tf.stack(q_values)
+        #     rollout_frames = self.T+1
+        #     q_values = tf.reshape(q_values, [rollout_frames, self.dynamics_model.num_models, -1, 1])
+        #     num_models = int(self.model_used_ratio * self.dynamics_model.num_models)
+        #
+        #     if self.model_used_ratio < 1:
+        #         """randomly choose a partion of the models. """
+        #         indices_lst = []
+        #         for _ in range(rollout_frames):
+        #             indices = tf.range(self.dynamics_model.num_models)
+        #             indices = tf.random.shuffle(indices)
+        #             indices_lst.append(indices[:num_models])
+        #         indices = tf.stack(indices_lst)
+        #         indices = tf.reshape(indices, [-1])
+        #         rollout_len_indices = tf.reshape(tf.tile(tf.expand_dims(tf.range(rollout_frames), axis = 1),[1,num_models]), [-1])
+        #         indices, rollout_len_indices = tf.expand_dims(indices, 1), tf.expand_dims(rollout_len_indices, 1)
+        #         indices = tf.concat([rollout_len_indices, indices], axis = 1)
+        #         q_values = tf.gather_nd(q_values, indices)
+        #         q_values = tf.reshape(q_values, [rollout_frames, num_models, -1, 1])
+        #
+        #     target_means, target_variances = tf.nn.moments(q_values, 1)
+        #     target_confidence = 1./(target_variances + 1e-8)
+        #     target_confidence *= tf.matrix_band_part(tf.ones([rollout_frames, 1, 1]), 0, -1)
+        #     target_confidence = target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True)
+        #     self.confidence = target_confidence
+        #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
 
         elif self.q_function_type == 5:
             assert self.T >= 0
@@ -590,55 +647,93 @@ class SAC_MB(Algo):
         #     self.confidence = target_confidence
         #     min_q_val_var = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
 
-        elif self.q_function_type == 7:
-            self.policy_optimizer = tf.train.AdamOptimizer(
-                learning_rate=self.policy_lr,
-                name="policy_optimizer")
-            var_list = list(self.policy.policy_params.values())
+        # elif self.q_function_type == 7:
+        #     self.policy_optimizer = tf.train.AdamOptimizer(
+        #         learning_rate=self.policy_lr,
+        #         name="policy_optimizer")
+        #     var_list = list(self.policy.policy_params.values())
+        #     assert self.T >= 0
+        #     obs = observations_ph
+        #     actions = actions_var
+        #     grads = []
+        #     for i in range(self.T+1):
+        #         next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
+        #         expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
+        #         expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
+        #         expanded_next_observation, expanded_next_actions_var, rewards, next_dones, _ = self.step(expanded_obs, expanded_actions, shuffle = False)
+        #         if i == 0 :
+        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards
+        #         else:
+        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
+        #         dones = next_dones
+        #         input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
+        #         next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        #         q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+        #         min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        #         min_q_val_var = tf.reshape(min_q_val_var, [self.dynamics_model.num_models, -1, 1])
+        #         m = self.dynamics_model.num_models
+        #         grad = [self.policy_optimizer.compute_gradients(tf.reduce_mean(min_q_val_var[idx]), var_list=var_list) for idx in range(m)]
+        #         grads.append(grad)
+        #         obs, actions = next_observation, next_actions_var
+        #     temps = []
+        #     for v in range(len(var_list)):
+        #         grad = [[grads[t][idx][v][0] for idx in range(m)] for t in range(self.T + 1)]
+        #         temps.append(tf.stack(grad))
+        #
+        #     grad_stacks = []
+        #     rollout_frames = self.T+1
+        #     for i in range(len(var_list)):
+        #         grad = temps[i]
+        #         target_means, target_variances = tf.nn.moments(grad, 1)
+        #         target_confidence = 1./(target_variances + 1e-8)
+        #         dim = len(grad.get_shape().as_list())
+        #         lst = [rollout_frames]
+        #         for _ in range(dim-2):
+        #             lst.append(1)
+        #         target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
+        #         target_confidence = tf.stop_gradient(target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True))
+        #         grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
+        #         grad_stacks.append(grad)
+        #     if self.reparameterize:
+        #         policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
+        #     else:
+        #         raise NotImplementedError
+        #
+        #     assert policy_kl_losses.shape.as_list() == [None, 1]
+        #
+        #     self.policy_losses = policy_kl_losses
+        #     policy_loss = tf.reduce_mean(policy_kl_losses)
+        #     grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
+        #     real_list = []
+        #     for i in range(len(var_list)):
+        #         value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
+        #         real_list.append(value)
+        #     policy_train_op = self.policy_optimizer.apply_gradients(real_list)
+        #
+        #     self.training_ops.update({'policy_train_op': policy_train_op})
+        #     return
+
+        # ground truth
+        elif self.q_function_type == 4:
             assert self.T >= 0
             obs = observations_ph
             actions = actions_var
-            grads = []
             for i in range(self.T+1):
-                next_observation, next_actions_var, _, _, _ = self.step(obs, actions)
-                expanded_obs = tf.tile(obs, [self.dynamics_model.num_models, 1])
-                expanded_actions = tf.tile(actions, [self.dynamics_model.num_models, 1])
-                expanded_next_observation, expanded_next_actions_var, rewards, next_dones, _ = self.step(expanded_obs, expanded_actions, shuffle = False)
+                next_observation, next_actions_var, rewards, dones_next, dist_info_sym = self.step(obs, actions)
                 if i == 0 :
                     reward_values = (self.discount**(i)) * self.reward_scale * rewards
                 else:
-                    reward_values = (self.discount**(i)) * self.reward_scale * rewards * (1 - dones) + reward_values
-                dones = next_dones
-                input_q_fun = tf.concat([expanded_next_observation, expanded_next_actions_var], axis=-1)
-                next_q_values = [(self.discount ** (i + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-                min_q_val_var = tf.reshape(min_q_val_var, [self.dynamics_model.num_models, -1, 1])
-                m = self.dynamics_model.num_models
-                grad = [self.policy_optimizer.compute_gradients(tf.reduce_mean(min_q_val_var[idx]), var_list=var_list) for idx in range(m)]
-                grads.append(grad)
+                    reward_values = (self.discount**(i)) * self.reward_scale * (1 - dones) * rewards + reward_values
+                dones = dones_next
                 obs, actions = next_observation, next_actions_var
-            temps = []
-            for v in range(len(var_list)):
-                grad = [[grads[t][idx][v][0] for idx in range(m)] for t in range(self.T + 1)]
-                temps.append(tf.stack(grad))
 
-            grad_stacks = []
-            rollout_frames = self.T+1
-            for i in range(len(var_list)):
-                grad = temps[i]
-                target_means, target_variances = tf.nn.moments(grad, 1)
-                target_confidence = 1./(target_variances + 1e-8)
-                dim = len(grad.get_shape().as_list())
-                lst = [rollout_frames]
-                for _ in range(dim-2):
-                    lst.append(1)
-                target_confidence *= tf.matrix_band_part(tf.ones(lst), 0, -1)
-                target_confidence = tf.stop_gradient(target_confidence / tf.reduce_sum(target_confidence, axis=0, keepdims=True))
-                grad = tf.reduce_sum(target_means * target_confidence, 0, keepdims=False)
-                grad_stacks.append(grad)
+            input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+            next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+
             if self.reparameterize:
-                policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
+                policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
             else:
                 raise NotImplementedError
 
@@ -646,36 +741,55 @@ class SAC_MB(Algo):
 
             self.policy_losses = policy_kl_losses
             policy_loss = tf.reduce_mean(policy_kl_losses)
-            grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
-            real_list = []
-            for i in range(len(var_list)):
-                value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
-                real_list.append(value)
-            policy_train_op = self.policy_optimizer.apply_gradients(real_list)
 
-            self.training_ops.update({'policy_train_op': policy_train_op})
-            return
+            self.policy_optimizer = tf.train.AdamOptimizer(
+                learning_rate=self.policy_lr,
+                name="policy_optimizer")
 
-        if self.reparameterize:
-            policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
+            gt_next_observation = self.op_phs_dict['next_observations'+str(self.T)]
+            gt_observation = self.op_phs_dict['observations'+str(self.T)]
+            gt_action = self.op_phs_dict['actions'+str(self.T)]
+
+            dist_info_sym = self.policy.distribution_info_sym(gt_next_observation)
+            gt_next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+            gt_rewards = tf.reshape(self.op_phs_dict['rewards'+str(self.T)], [-1, 1])
+            gt_dones = tf.cast(tf.reshape(self.op_phs_dict['dones'+str(self.T)], [-1, 1]), gt_rewards.dtype)
+
+            gt_input_q_fun = tf.concat([gt_next_observation, gt_next_actions_var], axis=-1)
+            gt_q_values = [(self.discount ** (self.T + 1)) * (1-gt_dones) * Q.value_sym(input_var=gt_input_q_fun) for Q in self.Qs]
+            gt_q_values_var = [gt_rewards + gt_q_values[j] for j in range(2)]
+            gt_min_q_val_var = tf.reduce_min(gt_q_values_var, axis=0)
+            vars = self.policy.policy_params
+            epsilon = 1e-8
+            gradients = []
+            for key in vars:
+                temp_vars = {}
+                for k in vars:
+                    temp_vars[k] = tf.identity(vars[k])
+                temp_vars[key] += epsilon
+                dist_info_sym = self.policy.distribution_info_sym(gt_next_observation, params = temp_vars)
+                gt_next_actions_var1, _ = self.policy.distribution.sample_sym(dist_info_sym)
+
+                gt_input_q_fun1 = tf.concat([gt_next_observation, gt_next_actions_var1], axis=-1)
+                gt_next_q_values1 = [(self.discount ** (self.T + 1)) * (1-gt_dones) * Q.value_sym(input_var=gt_input_q_fun1) for Q in self.Qs]
+                gt_q_values_var1 = [gt_rewards + gt_next_q_values1[j] for j in range(2)]
+                gt_min_q_val_var1 = tf.reduce_min(gt_q_values_var1, axis=0)
+                policy_kl_losses = (self.alpha * log_pis_var - gt_min_q_val_var1 - policy_prior_log_probs)
+                policy_loss1 = tf.reduce_mean(policy_kl_losses)
+                gradient = (policy_loss1 - policy_loss)/epsilon
+                gradients.append(gradient)
+
+
+        if self.ground_truth:
+            grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=list(self.policy.policy_params.values()))
+            policy_train_op = self.policy_optimizer.apply_gradients(grads_and_vars)
         else:
-            raise NotImplementedError
+            policy_train_op = self.policy_optimizer.minimize(
+                loss=policy_loss,
+                var_list=list(self.policy.policy_params.values()))
 
-        assert policy_kl_losses.shape.as_list() == [None, 1]
-
-        self.policy_losses = policy_kl_losses
-        policy_loss = tf.reduce_mean(policy_kl_losses)
-
-        self.policy_optimizer = tf.train.AdamOptimizer(
-            learning_rate=self.policy_lr,
-            name="policy_optimizer")
-
-        policy_train_op = self.policy_optimizer.minimize(
-            loss=policy_loss,
-            var_list=list(self.policy.policy_params.values()))
-
-        # self.training_ops.update({'policy_train_op': policy_train_op})
-        self.actor_ops.update({'policy_train_op': policy_train_op})
+        self.training_ops.update({'policy_train_op': policy_train_op})
+        # self.actor_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):
         diagnosables = OrderedDict((
@@ -707,6 +821,18 @@ class SAC_MB(Algo):
                 (param_name, tau * source + (1.0 - tau) * target_params[param_name])
                 for param_name, source in source_params.items()
             ]))
+
+    def do_training(self, timestep, batch, log=False):
+        sess = tf.get_default_session()
+        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
+                                     value_dict=batch)
+        sess.run(self.training_ops, feed_dict)
+        if log:
+            diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv(k, v)
+        if timestep % self.target_update_interval == 0:
+            self._update_target()
 
 
     def train_critic(self, timestep, batch, log=False):

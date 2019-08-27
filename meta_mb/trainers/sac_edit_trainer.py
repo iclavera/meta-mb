@@ -59,6 +59,8 @@ class Trainer(object):
             aux_hidden_dim=256,
             predict_done=False,
             actorH=1,
+            T=1,
+            ground_truth=False,
             ):
         self.algo = algo
         self.env = env
@@ -91,6 +93,8 @@ class Trainer(object):
         self.done_predictor = done_predictor
         self.predict_done = predict_done
         self.actorH = actorH
+        self.T = T
+        self.ground_truth = ground_truth
 
         if sess is None:
             sess = tf.Session()
@@ -165,38 +169,41 @@ class Trainer(object):
                 expand_model_replay_buffer_time = []
                 sac_time = []
 
-                for h in range(self.actorH):
-                    for _ in range(self.epoch_length // self.model_train_freq):
-                        expand_model_replay_buffer_start = time.time()
-                        for _ in range(self.rollout_length):
-                            for _ in range(self.deal_with_oom):
-                                samples_num = int(self.rollout_batch_size)//(self.actorH * self.deal_with_oom)
-                                random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
-                                actions_from_policy = self.policy.get_actions(random_states)[0]
-                                next_obs, rewards, term = self.step(random_states, actions_from_policy)
-                                self.model_replay_buffer.add_samples(random_states,
-                                                                     actions_from_policy,
-                                                                     rewards,
-                                                                     term,
-                                                                     next_obs)
-                        self.set_rollout_length(itr)
-                        expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
+                # for h in range(self.actorH):
+                for _ in range(self.epoch_length // self.model_train_freq):
+                    expand_model_replay_buffer_start = time.time()
+                    for _ in range(self.rollout_length):
+                        for _ in range(self.deal_with_oom):
+                            samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
+                            random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
+                            actions_from_policy = self.policy.get_actions(random_states)[0]
+                            next_obs, rewards, term = self.step(random_states, actions_from_policy)
+                            self.model_replay_buffer.add_samples(random_states,
+                                                                 actions_from_policy,
+                                                                 rewards,
+                                                                 term,
+                                                                 next_obs)
+                    self.set_rollout_length(itr)
+                    expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
 
-                        sac_start = time.time()
-                        for _ in range(self.model_train_freq):
-                            for _ in range(self.n_train_repeats):
-                                batch_size = self.sampler_batch_size
-                                env_batch_size = int(batch_size * self.real_ratio)
-                                model_batch_size = batch_size - env_batch_size
-                                env_batch = self.env_replay_buffer.random_batch(env_batch_size)
-                                model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
-                                keys = env_batch.keys()
-                                batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                                if h == 0:
-                                    self.algo.train_critic(time_step, batch, log=True)
-                                    time_step += 1
-                                self.algo.train_actor(time_step, batch)
-                        sac_time.append(time.time() - sac_start)
+                    sac_start = time.time()
+                    for _ in range(self.model_train_freq):
+                        for _ in range(self.n_train_repeats):
+                            batch_size = self.sampler_batch_size
+                            env_batch_size = int(batch_size * self.real_ratio)
+                            model_batch_size = batch_size - env_batch_size
+                            env_batch = self.env_replay_buffer.random_batch(env_batch_size)
+                            model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
+                            keys = env_batch.keys()
+                            batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+                            reward = []
+                            for t in range(self.T):
+                                next_obs = batch['next_observations']
+                                next_actions = self.policy.get_actions(next_obs)[0]
+                                result = self.env.step_batch(next_obs, next_actions, t, reward)
+                            batch.update(result)
+                            self.algo.do_training(time_step, batch, log=True)
+                    sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
                                                    samples_data['actions'],
                                                    samples_data['rewards'],
