@@ -148,11 +148,8 @@ class GTiLQRPlanner(object):
                         raise NotImplementedError
 
                     # compute control matrices
-                    # Q_uu_inv = np.linalg.inv(Q_uu)
                     k = - Q_uu_reg_inv @ Q_u
                     K = - Q_uu_reg_inv @ Q_ux_reg
-                    # k = - np.linalg.solve(Q_uu_reg, Q_u)
-                    # K = - np.linalg.solve(Q_uu_reg, Q_ux_reg)
                     open_k_array.append(k)
                     closed_K_array.append(K)
                     delta_J_1 += k.T @ Q_u
@@ -176,57 +173,6 @@ class GTiLQRPlanner(object):
         if not backward_accept:
             logger.log(f'backward not accepted with mu = {self.mu}')
             return None, backward_accept, forward_accept, None, None
-
-        # self._decrease_mu()
-        # logger.log(f'backward accepted after {backward_pass_counter} failed iterations, mu = {self.mu}')
-
-        # """
-        # Forward Pass (pick the best alpha after trying all)
-        # This chunk is not executed.
-        # """
-        # if self.forward_stop_cond == 'abs':
-        #     inputs_dict = dict(
-        #         open_k_array=open_k_array,
-        #         closed_K_array=closed_K_array,
-        #         # delta_J_1=delta_J_1,
-        #         # delta_J_2=delta_J_2,
-        #         J_val=J_val,
-        #         u_array=u_array,
-        #         x_array=x_array,
-        #     )
-        #     alpha_array = 0.91**(np.arange(self.max_forward_iters)**2)
-        #     for idx, alpha in enumerate(alpha_array):
-        #         self.remotes[i%self.n_parallel].send(('forward_pass', alpha, inputs_dict))
-        #
-        #     results = [self.remotes[i%self.n_parallel].recv() for i in range(self.max_forward_iters)]
-        #     logger.log('\n'.join([f"{result['alpha']}: {J_val - result['opt_J_val']}" for result in results if result]))
-        #     results = filter(lambda d: d, results)  # filter out results with loss increment
-        #     best_result = min(results, key=lambda d: d['opt_J_val'], default=dict())
-        #     if best_result:
-        #         forward_accept = True
-        #
-        #         # optimized_action = best_result['optimized_action']
-        #         # opt_J_val, delta_J_alpha = best_result['opt_J_val'], best_result['delta_J_alpha']
-        #         alpha, opt_J_val = best_result['alpha'], best_result['opt_J_val']
-        #         # reward_array = best_result['reward_array']
-        #         self.u_array = best_result['opt_u_array']
-        #         optimized_action = self.u_array[0, :]
-        #         # self.x_array, self.u_array = best_result['opt_x_array'], best_result['opt_u_array']
-        #         # self.J_val = opt_J_val
-        #
-        #         delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
-        #         logger.log(f'pick alpha = {alpha}, actual = {J_val - opt_J_val}, exp = {-delta_J_alpha}')
-        #         if J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
-        #             self._decrease_mu()
-        #         else:  # still accept but increase mu to stay in trust region
-        #             self._increase_mu()
-        #
-        #         return optimized_action, backward_accept, forward_accept, (-J_val, -opt_J_val, -delta_J_alpha), None  # reward_array
-        #     else:  # all results are invalid, best_result is dict()
-        #         self._increase_mu()
-        #         return optimized_action, backward_accept, forward_accept, None, None
-        # else:
-        #     assert self.forward_stop_cond == 'rel'
 
         """
         Forward Pass (stop if 0 < c_1 < z)
@@ -258,10 +204,6 @@ class GTiLQRPlanner(object):
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 # store updated x, u array (CLIPPED), J_val
                 optimized_action = opt_u_array[0]
-                # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-                # # opt_u_array = np.clip(opt_u_array, self.act_low, self.act_high)
-                # self.x_array, self.u_array = opt_x_array, opt_u_array
-                # self.J_val = opt_J_val
                 self.u_array = np.stack(opt_u_array, axis=0)
                 forward_accept = True
             else:
@@ -317,7 +259,6 @@ class GTiLQRPlanner(object):
             u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
 
         self.u_array = np.concatenate([self.u_array[1:, :], u_new[None]])
-        # self.x_array, self.J_val = None, None
 
     def _run_open_loop(self, u_array, init_obs):
         x_array, sum_rewards = [], 0

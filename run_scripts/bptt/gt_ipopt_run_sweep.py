@@ -80,7 +80,6 @@ if __name__ == '__main__':
 
         # Problem
         'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        'normalize': [False],
         'discount': [1.0,],
 
         # Policy

@@ -15,7 +15,7 @@ class iLQRSampler(BaseSampler):
 
     Args:
         env (meta_mb.meta_envs.base.MetaEnv) : environment object
-        policy (meta_mb.policies.base.Policy) : policy object
+        policy (meta_mb.policies.*) : policy object
         batch_size (int) : number of trajectories per task
         meta_batch_size (int) : number of meta tasks
         max_path_length (int) : max number of steps per trajectory
@@ -28,18 +28,14 @@ class iLQRSampler(BaseSampler):
             policy,
             num_rollouts,
             max_path_length,
-            max_path_length_eval,
             n_parallel=1,
-            vae=None,
     ):
         Serializable.quick_init(self, locals())
         super(iLQRSampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
         self.total_samples = num_rollouts * max_path_length
-        self.max_path_length_eval = max_path_length_eval
         self.n_parallel = n_parallel
         self.total_timesteps_sampled = 0
-        self.vae = vae
 
         # setup vectorized environment
 
@@ -71,7 +67,7 @@ class iLQRSampler(BaseSampler):
 
         return returns
 
-    def obtain_samples(self, log_open_loop_performance=False, log_closed_loop_performance=False, log=False, log_prefix='', random=False, sinusoid=False, verbose=True):
+    def obtain_samples(self, log_open_loop_performance=True, log_closed_loop_performance=False, log=False, log_prefix='', random=False, sinusoid=False, verbose=True):
         """
         Collect batch_size trajectories from each task
 
@@ -106,11 +102,6 @@ class iLQRSampler(BaseSampler):
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
-            if self.vae is not None:
-                obses_fake = np.array(obses_fake)
-                obses_fake = self.vae.encode(obses_fake)
-                obses = np.array(obses)
-                obses = self.vae.encode(obses)
             if random:
                 actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
                 actions_array = actions[None]

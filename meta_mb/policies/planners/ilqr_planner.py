@@ -8,7 +8,7 @@ import copy
 from meta_mb.policies import utils
 
 
-class DyniLQRPlanner(object):
+class iLQRPlanner(object):
     def __init__(self, env, dynamics_model, num_envs, horizon, num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10):
@@ -172,16 +172,11 @@ class DyniLQRPlanner(object):
         optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
 
         # shift u_array and perm
-        self.shift_u_array(u_new=None)
+        self._shift(u_new=None)
 
         return optimized_actions, [], next_obs
 
     def _run_open_loop(self, u_array, init_obs):
-        # logger.log('Act100%', np.percentile(u_array, q=100, axis=None))
-        # logger.log('Act75%', np.percentile(u_array, q=75, axis=None))
-        # logger.log('Act25%', np.percentile(u_array, q=25, axis=None))
-        # logger.log('Act0%', np.percentile(u_array, q=0, axis=None))
-
         returns = 0
         _ = self._env.reset_from_obs(init_obs)
 
@@ -352,7 +347,7 @@ class DyniLQRPlanner(object):
     def _sample_u(self):
         return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
 
-    def shift_u_array(self, u_new):
+    def _shift(self, u_new):
         #  shift u_array
         if u_new is None:
             # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
