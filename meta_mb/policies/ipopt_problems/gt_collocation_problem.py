@@ -2,7 +2,7 @@ import numpy as np
 import copy
 
 
-class IPOPTCollocationProblem(object):
+class GTCollocationProblem(object):
     def __init__(self, env, horizon, discount, eps=1e-6):
         self.env = copy.deepcopy(env)
         self.horizon = horizon

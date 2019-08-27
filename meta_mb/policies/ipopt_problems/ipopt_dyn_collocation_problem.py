@@ -20,7 +20,7 @@ class CollocationProblem(object):
         )
         self.inputs_ph = tf.placeholder(
             dtype=tf.float32,
-            shape=((self.horizon-1)*self.obs_dim + self.horizon*self.act_dim, )
+            shape=((self.horizon-1)*self.obs_dim + self.horizon*self.act_dim,)
         )
         self.sess = tf.get_default_session()
         self._build_graph()
@@ -55,7 +55,7 @@ class CollocationProblem(object):
 
         # build jacobian matrix for constraints
         t = time.time()
-        self.tf_jacobian = utils.jacobian_wrapper(y=self.tf_constraints, x=inputs_ph, dim_y=(horizon - 1) * obs_dim)
+        self.tf_jacobian = utils.jacobian_wrapper(y=self.tf_constraints, x=inputs_ph, dim_y=(horizon-1) * obs_dim)
         logger.log(f'compute tf_jacobian takes {time.time() - t}')
 
     def set_init_obs(self, obs):
@@ -77,9 +77,6 @@ class CollocationProblem(object):
         :param x: concat(x_2, ..., x_T, u_1, u_2..., u_T)
         :return:
         """
-        # x_target_array, x_array_drop_first = self.sess.run(self.debugger_array, feed_dict={self.inputs_ph: x, self.init_obs_ph: self.init_obs_val})
-        # for i in range(self.horizon-1):
-        #     logger.log(f"at {i}, target_obs = {x_target_array[i]}, obs = {x_array_drop_first[i]}")
         return self.sess.run(self.tf_objective, feed_dict={self.inputs_ph: x, self.init_obs_ph: self.init_obs_val})
 
     def constraints(self, x):

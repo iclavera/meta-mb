@@ -144,7 +144,7 @@ if __name__ == '__main__':
         'fit_model': [True],
 
         # Problem
-        'env': [ReacherEnv], #[FirstOrderEnv, ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[FirstOrderEnv, ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'use_pretrained_model': [False],
         # HalfCheetah
         'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],

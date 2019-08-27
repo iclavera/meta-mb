@@ -56,7 +56,6 @@ def run_experiment(**config):
             policy=policy,
             max_path_length=config['max_path_length'],
         )
-
         algo = BPTTTrainer(
             env=env,
             policy=policy,
@@ -80,13 +79,13 @@ if __name__ == '__main__':
         'seed': [1],
 
         # Problem
-        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'normalize': [False],
         'discount': [1.0,],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],  # only matters for opt_act
-        'method_str': ['collocation', 'shooting'],
+        'initializer_str': ['cem'], #['zeros', 'uniform'],  # only matters for opt_act
+        'method_str': ['collocation'],
         'horizon': [30],
         'eps': [1e-5], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],

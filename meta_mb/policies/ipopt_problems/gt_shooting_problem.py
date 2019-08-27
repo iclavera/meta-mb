@@ -2,7 +2,7 @@ import numpy as np
 import copy
 
 
-class IPOPTShootingProblem(object):
+class GTShootingProblem(object):
     def __init__(self, env, horizon, discount, eps=1e-6):
         self.env = copy.deepcopy(env)
         self.horizon = horizon
@@ -30,8 +30,7 @@ class IPOPTShootingProblem(object):
         for t in range(self.horizon):
             _, reward, done, _ = self.env.step(acts[t])
             returns += self.discount ** t * reward
-            if done:
-                break
+            assert not done
         return -returns
 
     def gradient(self, x):
@@ -75,8 +74,7 @@ class IPOPTShootingProblem(object):
 
         grad_a_stacked = np.zeros((horizon, act_dim))
         acts = self.get_a(x)
-        env.reset_from_obs(self.init_obs)
-        s = self.init_obs
+        s = env.reset_from_obs(self.init_obs)
 
         for t in range(horizon):
             grad_a_t = dreturns_da(s, acts[t:], horizon-t)

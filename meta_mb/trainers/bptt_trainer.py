@@ -46,7 +46,7 @@ class BPTTTrainer(object):
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
         self.use_pretrained_model = use_pretrained_model
-        if on_policy_freq is not None:
+        if on_policy_freq > 1:
             assert cem_sampler is not None
         self.on_policy_freq = on_policy_freq
         self.cem_sampler = cem_sampler

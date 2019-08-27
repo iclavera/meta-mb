@@ -16,7 +16,6 @@ class GTMPCController(Serializable):
             num_cem_iters=8,
             percent_elites=0.1,
             alpha=0.25,
-            num_particles=1,
             deterministic_policy=True,
     ):
         Serializable.quick_init(self, locals())
@@ -30,7 +29,6 @@ class GTMPCController(Serializable):
         self.num_envs = num_rollouts
         self.num_elites = max(int(percent_elites * n_candidates), 1)
         self.alpha = alpha
-        self.num_particles = num_particles
         self.deterministic_policy = deterministic_policy
 
         self.unwrapped_env = env
@@ -87,7 +85,7 @@ class GTMPCController(Serializable):
             act = np.reshape(act, (horizon, num_envs, n_candidates, act_dim))
             act = np.transpose(act, (1, 2, 0, 3))  # (num_envs, n_candidates, horizon, act_dim)
             indices = np.argsort(-returns, axis=1)[:, :self.num_elites]  # (num_envs, num_elites)
-            elite_actions = np.stack([act[env_idx, indices[env_idx]] for env_idx in range(self.num_envs)], axis=0)
+            elite_actions = np.stack([act[env_idx, indices[env_idx]] for env_idx in range(num_envs)], axis=0)
             elite_actions = np.transpose(elite_actions, (2, 0, 1, 3))  # (horizon, num_envs, n_candidates, act_dim)
             elite_mean = np.mean(elite_actions, axis=2, keepdims=True)
             elite_var = np.var(elite_actions, axis=2, keepdims=True)

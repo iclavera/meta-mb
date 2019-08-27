@@ -81,7 +81,10 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         :return:
         """
         goal_x_array = x_array.copy()
-        goal_x_array[:, :, 8] *= 2
+        if goal_x_array.ndim == 3:
+            goal_x_array[:, :, 8] = np.minimum(goal_x_array[:, :, 8], 4)
+        else:
+            goal_x_array[:, 8] = np.minimum(goal_x_array[:, 8], 4)
         return goal_x_array
 
     def tf_reward(self, obs, acts, next_obs):

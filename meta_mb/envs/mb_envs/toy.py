@@ -86,7 +86,9 @@ class FirstOrderEnv(object):
         :return:
         """
         path_length = x_array.shape[0]
-        goal_x_array = np.linspace(start=x_array[0, :, :], stop=self.goal_pos[None], num=path_length, endpoint=True)
+        lin_interp = np.linspace(start=x_array[0, :, :], stop=self.goal_pos[None], num=path_length, endpoint=True)
+        goal_x_array = np.minimum(x_array, self.goal_pos[None][None])
+        goal_x_array = np.maximum(lin_interp, goal_x_array)
         assert goal_x_array.shape == x_array.shape
 
         return goal_x_array

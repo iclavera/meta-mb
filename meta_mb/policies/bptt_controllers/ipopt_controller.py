@@ -2,7 +2,7 @@ from meta_mb.utils.serializable import Serializable
 import numpy as np
 from meta_mb.logger import logger
 from meta_mb.policies.ipopt_problems.ipopt_dyn_collocation_problem import CollocationProblem
-from meta_mb.policies.ipopt_problems.ipopt_dyn_shooting_problem import ShootingProblem
+from meta_mb.policies.ipopt_problems.shooting_problem import ShootingProblem
 from meta_mb.policies.ipopt_problems.ipopt_dyn_shooting_w_policy_problem import ShootingWPolicyProblem
 import ipopt
 from meta_mb.samplers.vectorized_env_executor import IterativeEnvExecutor
@@ -160,15 +160,17 @@ class IpoptController(Serializable):
         :return: u_array with shape (horizon, num_envs, obs_dim) or None when using policy
         """
         if self.method_str == 'collocation':
+            self.u_array_val = self._init_u_array()
             self._update_u_array_collocation(obs, verbose=verbose)
             optimized_actions = self.u_array_val  # (horizon, num_envs, obs_dim)
             returns = self._eval_open_loop(optimized_actions, obs)
-            self._shift_u_array(u_new=None)
+            # self._shift_u_array(u_new=None)
         elif self.method_str == 'shooting':
+            self.u_array_val = self._init_u_array()
             self._update_u_array_shooting(obs, verbose=verbose)
             optimized_actions = self.u_array_val
             returns = self._eval_open_loop(optimized_actions, obs)
-            self._shift_u_array(u_new=None)
+            # self._shift_u_array(u_new=None)
         elif self.method_str == 'shooting_w_policy':
             self._update_policy_shooting(obs, verbose=verbose)
             optimized_actions, _ = self.stateless_policy.get_actions(obs)  # (num_envs, obs_dim)
@@ -179,7 +181,6 @@ class IpoptController(Serializable):
         if verbose:
             for env_idx in range(self.num_envs):
                 logger.logkv(f'RetEnv-{env_idx}', returns[env_idx])
-            logger.dumpkvs()
 
         return optimized_actions, []
 
@@ -210,10 +211,11 @@ class IpoptController(Serializable):
             outputs_u_array = np.clip(outputs_u_array, self.act_low, self.act_high)
             self.u_array_val[:, env_idx, :] = outputs_u_array
 
-            u_clipped_pct = np.sum(np.abs(outputs_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
-            if verbose and u_clipped_pct > 0:
+            if verbose:
                 logger.logkv(f'ReturnBefore-{env_idx}', returns[env_idx])
-                logger.logkv(f'u_clipped_pct-{env_idx}', u_clipped_pct)
+                u_clipped_pct = np.sum(np.abs(outputs_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
+                if u_clipped_pct > 0:
+                    logger.logkv(f'u_clipped_pct-{env_idx}', u_clipped_pct)
 
     def _update_policy_shooting(self, obs, verbose=True):
         self.problem_obj.set_init_obs(obs)

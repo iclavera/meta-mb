@@ -1,13 +1,11 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.mpc_controller import MPCController
-from meta_mb.policies.mpc_delta_controller import MPCDeltaController
+from meta_mb.policies.bptt_controllers.mpc_delta_controller import MPCDeltaController
 from meta_mb.policies.rnn_mpc_controller import RNNMPCController
-from meta_mb.policies.gt_mpc_controller import GTMPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
-from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.rnn_dynamics_ensemble import RNNDynamicsEnsemble
 from meta_mb.envs.mb_envs import InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv

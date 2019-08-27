@@ -4,9 +4,8 @@ import numpy as np
 import copy
 from meta_mb.logger import logger
 import ipopt
-import time
-from meta_mb.policies.ipopt_problems.ipopt_collocation_problem import IPOPTCollocationProblem
-from meta_mb.policies.ipopt_problems.ipopt_shooting_problem import IPOPTShootingProblem
+from meta_mb.policies.ipopt_problems.gt_collocation_problem import GTCollocationProblem
+from meta_mb.policies.ipopt_problems.gt_shooting_problem import GTShootingProblem
 from meta_mb.policies.ipopt_problems.ipopt_shooting_problem_w_policy import IPOPTShootingProblemWPolicy
 
 
@@ -19,13 +18,23 @@ class GTIpoptController(Serializable):
             method_str='collocation',
             initializer_str='uniform',
             horizon=10,
+            n_candidates=500, 
+            num_cem_iters=5,
+            percent_elites=0.1,
+            alpha=0.25, 
+            deterministic_policy=True,
     ):
         Serializable.quick_init(self, locals())
         self.discount = discount
         self.method_str = method_str
         self.initializer_str = initializer_str
         self.horizon = horizon
-        self.env = env
+        # cem
+        self.n_candidates = n_candidates
+        self.num_cem_iters = num_cem_iters
+        self.num_elites = max(int(percent_elites * n_candidates), 1)
+        self.alpha = alpha
+        self.deterministic_policy = deterministic_policy
 
         self.unwrapped_env = env
         while hasattr(self.unwrapped_env, '_wrapped_env'):
@@ -38,17 +47,11 @@ class GTIpoptController(Serializable):
 
         self._env = copy.deepcopy(env)
 
-        if self.method_str == 'ipopt_collocation':
-            self.executor = copy.deepcopy(env)
-            self.get_actions_factory = self.get_actions_ipopt_collocation
-
-            self.u_array = self._init_u_array()
-
-            # initialize nlp problem
-            self.problem_obj = IPOPTCollocationProblem(env, horizon, self.discount, eps=eps)
+        if self.method_str == 'collocation':
+            self.problem_obj = GTCollocationProblem(env, horizon, self.discount, eps=eps)
             problem_config = dict(
-                n=(horizon - 1) * self.obs_dim + horizon * self.act_dim,
-                m=(horizon - 1) * self.obs_dim,
+                n=(horizon-1) * self.obs_dim + horizon * self.act_dim,
+                m=(horizon-1) * self.obs_dim,
                 problem_obj=self.problem_obj,
                 cl=np.zeros(((horizon-1) * self.obs_dim,)),
                 cu=np.zeros(((horizon-1) * self.obs_dim,)),
@@ -57,40 +60,16 @@ class GTIpoptController(Serializable):
                 lb=np.concatenate([-np.ones(((horizon-1) * self.obs_dim,)) * 1e2]
                                     + [self.act_low] * horizon),
             )
-            self.nlp = nlp = ipopt.problem(**problem_config)
-            nlp.addOption('mu_strategy', 'adaptive')
-            nlp.addOption('tol', 1e-5)
-            nlp.addOption('max_iter', 100)
-            nlp.addOption('derivative_test', 'first-order')  # SLOW
-
-        elif self.method_str == 'ipopt_shooting':
-            self.executor = copy.deepcopy(env)
-            self.get_actions_factory = self.get_actions_ipopt_shooting
-
-            # initialize s_array, a_array
-            self.u_array = self._init_u_array()
-            # self.running_s_array, returns = self._run_open_loop(self.running_a_array)
-            # self.running_s_array = self.running_s_array[:-1]
-            # logger.log('InitialReturn', returns)
-
-            # initialize nlp problem
-            self.problem_obj = IPOPTShootingProblem(env, self.horizon, self.discount, eps=eps)
+        elif self.method_str == 'shooting':
+            self.problem_obj = GTShootingProblem(env, self.horizon, self.discount, eps=eps)
             problem_config = dict(
                 n=self.horizon * self.act_dim,
                 m=0,
                 problem_obj=self.problem_obj,
-                lb=np.concatenate([self.env.action_space.low] * self.horizon),
-                ub=np.concatenate([self.env.action_space.high] * self.horizon),
+                lb=np.concatenate([env.action_space.low] * self.horizon),
+                ub=np.concatenate([env.action_space.high] * self.horizon),
             )
-            self.nlp = nlp = ipopt.problem(**problem_config)
-            nlp.addOption('max_iter', 100)
-            nlp.addOption('tol', 1e-5)
-            nlp.addOption('mu_strategy', 'adaptive')
-            # nlp.addOption('hessian_approximation', 'limited-memory')
-            # nlp.addOption('derivative_test', 'first-order')  # SLOW
-            # nlp.addOption('derivative_test_print_all', 'yes')
-
-        elif self.method_str == 'ipopt_shooting_w_policy':
+        elif self.method_str == 'shooting_w_policy':
             self.executor = copy.deepcopy(env)
             self.get_actions_factory = self.get_actions_ipopt_shooting_w_policy
             # self._policy = LinearPolicy(obs_dim=self.obs_space_dims, action_dim=self.action_space_dims, output_nonlinearity=None)
@@ -107,32 +86,26 @@ class GTIpoptController(Serializable):
                 cl=np.concatenate([self.act_low] * self.horizon),
                 cu=np.concatenate([self.act_high] * self.horizon),
             )
-            self.nlp = nlp = ipopt.problem(**problem_config)
-            nlp.addOption('max_iter', 100)
-            nlp.addOption('tol', 1e-5)
-            nlp.addOption('mu_strategy', 'adaptive')
-            # nlp.addOption('derivative_test', 'first-order')  # SLOW
-
             self.policy_flatten_params = problem_obj_policy.get_param_values_flatten()
-
         else:
             raise NotImplementedError
+
+        self.nlp = nlp = ipopt.problem(**problem_config)
+        nlp.addOption('max_iter', 100)
+        nlp.addOption('tol', 1e-3)
+        nlp.addOption('mu_strategy', 'adaptive')
+        # nlp.addOption('derivative_test', 'first-order')
 
     @property
     def vectorized(self):
         return True
 
-    def get_rollouts(self, deterministic, plot_first_rollout):
-        self.get_rollouts_ipopt()
-
     def _run_open_loop(self, a_array, init_obs):
         s_array, returns = [], 0
         obs = self._env.reset_from_obs(init_obs)
 
-        try:
-            assert np.allclose(obs, init_obs)
-        except AssertionError:
-            logger.log('WARNING: assertion error from reset_from_obs')
+        if not np.allclose(obs, init_obs):
+            logger.warn('assertion error from reset_from_obs')
 
         for t in range(self.horizon):
             s_array.append(obs)
@@ -142,96 +115,114 @@ class GTIpoptController(Serializable):
 
         return s_array, returns
 
-    def _compute_collocation_loss(self, s_array, a_array):
-        sum_rewards, reg_loss = 0, 0
-        for t in range(self.horizon):
-            _ = self._env.reset_from_obs(s_array[t])
-            s_next, reward, _, _ = self._env.step(a_array[t])
-            sum_rewards += self.discount ** t * reward
-            if t < self.horizon - 1:
-                reg_loss += np.linalg.norm(s_array[t+1] - s_next)**2
-        return -sum_rewards, reg_loss
-
-    def _init_u_array(self):
+    def _init_u_array(self, obs):
         if self.initializer_str == 'cem':
-            init_u_array = self._init_u_array_cem()
+            init_u_array = self._get_actions_cem(obs)
         elif self.initializer_str == 'uniform':
-            init_u_array = np.random.uniform(low=self.env.action_space.low, high=self.env.action_space.high,
+            init_u_array = np.random.uniform(low=self.act_low, high=self.act_high,
                                              size=(self.horizon, self.act_dim))
         elif self.initializer_str == 'zeros':
             init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.act_dim))
-            init_u_array = np.clip(init_u_array, a_min=self.env.action_space.low, a_max=self.env.action_space.high)
+            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
         else:
             raise NotImplementedError
         return init_u_array
+    
+    def _get_actions_cem(self, obs):
+        obs_dim, act_dim = self.obs_dim, self.act_dim
+        horizon = self.horizon
+        n_candidates = self.n_candidates
+        num_envs = 1 
 
-    def get_rollouts_ipopt(self):
-        obs = self.executor.reset()
-        sum_rewards = 0
+        mean = np.ones(shape=(horizon, num_envs, 1, act_dim)) * (self.act_high + self.act_low) / 2
+        var = np.ones(shape=(horizon, num_envs, 1, act_dim)) * (self.act_high - self.act_low) / 16
 
-        for t in range(self.max_path_length):
-            opt_time = time.time()
-            optimized_action = self.get_actions_factory(obs)
-            opt_time = time.time() - opt_time
-            obs, reward, _, _ = self.executor.step(optimized_action)
-            sum_rewards += reward
+        for itr in range(self.num_cem_iters):
+            lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
+            constrained_var = np.minimum(np.minimum(np.square(lb_dist / 2), np.square(ub_dist / 2)), var)
+            std = np.sqrt(constrained_var)
+            act = mean + np.random.normal(size=(horizon, num_envs, n_candidates, act_dim)) * std
+            act = np.clip(act, self.act_low, self.act_high)
+            act = np.reshape(act, (horizon, num_envs*n_candidates, act_dim))
+            returns = np.zeros((num_envs*n_candidates,))
 
-            logger.logkv('PathLength', t)
-            logger.logkv('Reward', reward)
-            logger.logkv('TotalReward', sum_rewards)
-            logger.logkv('OptTime', opt_time)
-            logger.dumpkvs()
+            for i in range(n_candidates):
+                _ = self._env.reset_from_obs(obs)
+                for t in range(horizon):
+                    _, reward, _, _ = self._env.step(act[t, i, :])
+                    returns[i] += self.discount**t * reward
 
-        return [sum_rewards]
+            # Re-fit belief to the best ones
+            returns = np.reshape(returns, (num_envs, n_candidates))
+            # logger.log(f"at cem {itr}, returns avg = {np.mean(returns, axis=1)}")
+            act = np.reshape(act, (horizon, num_envs, n_candidates, act_dim))
+            act = np.transpose(act, (1, 2, 0, 3))  # (num_envs, n_candidates, horizon, act_dim)
+            indices = np.argsort(-returns, axis=1)[:, :self.num_elites]  # (num_envs, num_elites)
+            elite_actions = np.stack([act[env_idx, indices[env_idx]] for env_idx in range(num_envs)], axis=0)
+            elite_actions = np.transpose(elite_actions, (2, 0, 1, 3))  # (horizon, num_envs, n_candidates, act_dim)
+            elite_mean = np.mean(elite_actions, axis=2, keepdims=True)
+            elite_var = np.var(elite_actions, axis=2, keepdims=True)
+            mean = mean * self.alpha + elite_mean * (1 - self.alpha)
+            var = var * self.alpha + elite_var * (1 - self.alpha)
 
-    def get_actions_ipopt_collocation(self, obs):
-        self.problem_obj.set_init_obs(obs)
-        a_array = self.u_array
+        optimized_actions_mean = mean[:, 0, 0, :]
+        if self.deterministic_policy:
+            optimized_actions = optimized_actions_mean
+        else:
+            optimized_actions_var = var[:, 0, 0, :]
+            optimized_actions = mean + np.random.normal(size=np.shape(optimized_actions_mean)) * np.sqrt(optimized_actions_var)
+
+        assert optimized_actions.shape == (horizon, act_dim)
+        return optimized_actions
+
+    def get_action(self, obs, verbose=True):
+        if self.method_str == 'collocation':
+            optimized_actions = self._get_actions_collocation(obs, verbose=verbose)
+        elif self.method_str == 'shooting':
+            optimized_actions = self._get_actions_shooting(obs, verbose=verbose)
+        elif self.method_str == 'shooting_w_policy':
+            self._update_policy_shooting(obs, verbose=verbose)
+            optimized_actions, _ = self.stateless_policy.get_actions(obs)  # (num_envs, obs_dim)
+        else:
+            raise NotImplementedError
+
+        return optimized_actions, []
+
+    def _get_actions_collocation(self, obs, verbose):
+        a_array = self._init_u_array(obs)
         s_array, returns = self._run_open_loop(a_array, obs)
-        # s_array = s_array[1:]  # s_array[:-1, :]  # FIXME: which one???
-        logger.log('PrevReturn', returns)
+        if hasattr(self._env, "get_goal_x_array"):
+            s_array = self._env.get_goal_x_array(s_array)
 
         # Feed in trajectory s[2:T], a[1:T], with s[1] == obs
+        self.problem_obj.set_init_obs(obs)
         x0 = self.problem_obj.get_x(s=s_array[1:], a=a_array)
         x, info = self.nlp.solve(x0)
         s_array, a_array = self.problem_obj.get_s_a(x)
         optimized_action = a_array[0]
 
-        # logging
-        logger.logkv('Action100%', np.max(a_array, axis=None))
-        logger.logkv('Action0%', np.min(a_array, axis=None))
-        logger.logkv('Action75%', np.percentile(a_array, q=75, axis=None))
-        logger.logkv('Action25%', np.percentile(a_array, q=25, axis=None))
-        logger.logkv('Obs100%', np.max(s_array, axis=None))
-        logger.logkv('Obs0%', np.min(s_array, axis=None))
-
-        # shift
-        u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
-        self.u_array = np.concatenate([a_array[1:, :], u_new[None]])
-
-        # neg_return, reg_loss = self._compute_collocation_loss(np.concatenate([[obs], self.running_s_array]),
-        #                                                        self.running_a_array)
-        # logger.logkv('ColNegReturn', neg_return)
-        # logger.logkv('ColRegLoss', reg_loss)
+        if verbose:
+            logger.logkv(f'ReturnBefore', returns)
+            logger.logkv(f'ReturnAfter', -info['obj_val'])
+            u_clipped_pct = np.sum(np.abs(optimized_action) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
+            if u_clipped_pct > 0:
+                logger.logkv('u_clipped_pct', u_clipped_pct)
 
         return optimized_action
 
-    def get_actions_ipopt_shooting(self, obs):
+    def _get_actions_shooting(self, obs, verbose):
         self.problem_obj.set_init_obs(obs)
-        x0 = self.problem_obj.get_x(self.u_array)
+        a_array = self._init_u_array(obs)
+        x0 = self.problem_obj.get_x(a_array)
         x, info = self.nlp.solve(x0)
         a_array = self.problem_obj.get_a(x)
         optimized_action = a_array[0]
 
-        # logging
-        logger.logkv('Action100%', np.max(a_array, axis=None))
-        logger.logkv('Action0%', np.min(a_array, axis=None))
-        logger.logkv('Action75%', np.percentile(a_array, q=75, axis=None))
-        logger.logkv('Action25%', np.percentile(a_array, q=25, axis=None))
-
-        # shift
-        u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
-        self.u_array = np.concatenate([a_array[1:, :], u_new[None]])
+        if verbose:
+            logger.logkv(f'ReturnAfter', -info['obj_val'])
+            u_clipped_pct = np.sum(np.abs(optimized_action) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
+            if u_clipped_pct > 0:
+                logger.logkv('u_clipped_pct', u_clipped_pct)
 
         return optimized_action
 
