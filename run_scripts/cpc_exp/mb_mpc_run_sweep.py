@@ -359,7 +359,7 @@ if __name__ == '__main__':
 
         # Problem
 
-        'env': ['cheetah_run'],
+        'env': ['cheetah_gym'],
         'normalize': [True],
         'n_itr': [150],
         'discount': [1.],
@@ -416,4 +416,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_truedyn, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_error, EXP_NAME, INSTANCE_TYPE)
