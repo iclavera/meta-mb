@@ -821,6 +821,7 @@ class SAC_MB(Algo):
             ('gloss2-4', self.gloss2[3]),
             ('gloss2-5', self.gloss2[4]),
             ('gloss2-6', self.gloss2[5])
+            
         ))
 
         diagnostic_metrics = OrderedDict((
