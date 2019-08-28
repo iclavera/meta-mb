@@ -84,8 +84,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         batch_size = obs_batch.shape[0]
         result = dict([])
         next_obs, dones = [], []
-        result['observations'+str(t)] = obs_batch
-        result['actions'+str(t)] = action_batch
+        result['observations'+str(t+1)] = obs_batch
+        result['actions'+str(t+1)] = action_batch
         for i in range(batch_size):
             obs, action = obs_batch[i], action_batch[i]
             self.reset_from_obs(obs)

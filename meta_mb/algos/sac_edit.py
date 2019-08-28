@@ -256,6 +256,10 @@ class SAC_MB(Algo):
                 next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
                 all_phs_dict['%s%s%s' % (prefix, 'next_observations', str(i))] = next_obs_ph
 
+                obs_shape = [None, self.policy.obs_dim]
+                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+                all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
+
             return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle = True, k = 1):
@@ -767,6 +771,7 @@ class SAC_MB(Algo):
                 for k in vars:
                     temp_vars[k] = tf.identity(vars[k])
                 temp_vars[key] += epsilon
+                var = temp_vars[key]
                 dist_info_sym = self.policy.distribution_info_sym(gt_next_observation, params = temp_vars)
                 gt_next_actions_var1, _ = self.policy.distribution.sample_sym(dist_info_sym)
 
@@ -776,13 +781,17 @@ class SAC_MB(Algo):
                 gt_min_q_val_var1 = tf.reduce_min(gt_q_values_var1, axis=0)
                 policy_kl_losses = (self.alpha * log_pis_var - gt_min_q_val_var1 - policy_prior_log_probs)
                 policy_loss1 = tf.reduce_mean(policy_kl_losses)
-                gradient = (policy_loss1 - policy_loss)/epsilon
+                gradient = (policy_loss1 - policy_loss)/(epsilon * tf.ones(var.shape))
                 gradients.append(gradient)
 
 
         if self.ground_truth:
             grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=list(self.policy.policy_params.values()))
             policy_train_op = self.policy_optimizer.apply_gradients(grads_and_vars)
+            gradient_loss1 = [tf.reduce_sum(gradients[idx] - grads_and_vars[idx][0]) for idx in range(len(gradients))]
+            gradient_loss2 = [tf.reduce_sum(gradients[idx] - grads_and_vars[idx][1]) for idx in range(len(gradients))]
+            self.gloss1 = gradient_loss1
+            self.gloss2 = gradient_loss2
         else:
             policy_train_op = self.policy_optimizer.minimize(
                 loss=policy_loss,
@@ -799,7 +808,19 @@ class SAC_MB(Algo):
             ('alpha', self.alpha),
             ('Q_targets', self.q_target),
             ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
-            ('log_pis', self.log_pis_var)
+            ('log_pis', self.log_pis_var),
+            ('gloss1-1', self.gloss1[0]),
+            ('gloss1-2', self.gloss1[1]),
+            ('gloss1-3', self.gloss1[2]),
+            ('gloss1-4', self.gloss1[3]),
+            ('gloss1-5', self.gloss1[4]),
+            ('gloss1-6', self.gloss1[5]),
+            ('gloss1-1', self.gloss2[0]),
+            ('gloss2-2', self.gloss2[1]),
+            ('gloss2-3', self.gloss2[2]),
+            ('gloss2-4', self.gloss2[3]),
+            ('gloss2-5', self.gloss2[4]),
+            ('gloss2-6', self.gloss2[5])
         ))
 
         diagnostic_metrics = OrderedDict((
