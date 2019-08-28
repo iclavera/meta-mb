@@ -376,38 +376,39 @@ class Trainer(object):
 
 
                         for test_noise in latent_noises:
-                            # plot the state predictions along time
-                            latents = self.random_buffer._embedding_dataset['obs'][-test_traj:].reshape((-1, self.latent_dim))
-                            predicted_states = emb2state_model.predict(latents + np.random.normal(
-                                scale = test_noise, size=latents.shape))
-                            predicted_states = predicted_states.reshape(test_traj, -1, self.state_dim)
-                            true_states = self.random_buffer._dataset['true_state'][-test_traj:]
+                            for prefix, buffer in [('random', self.random_buffer), ('mpc', self.buffer)]:
+                                # plot the state predictions along time
+                                latents = buffer._embedding_dataset['obs'][-test_traj:].reshape((-1, self.latent_dim))
+                                predicted_states = emb2state_model.predict(latents + np.random.normal(
+                                    scale = test_noise, size=latents.shape))
+                                predicted_states = predicted_states.reshape(test_traj, -1, self.state_dim)
+                                true_states = buffer._dataset['true_state'][-test_traj:]
 
-                            # initial_latent = self.random_buffer._embedding_dataset['obs'][-test_traj:, :num_stack]
-                            # actions_to_take = self.random_buffer._dataset['act'][-test_traj:, num_stack - 1 : num_stack + 49]
-                            #
-                            # openloop_predicted_latents = self.dynamics_model.openloop_rollout(initial_latent, actions_to_take)
-                            # openloop_predicted_states = emb2state_model.predict\
-                            #     (openloop_predicted_latents.reshape(-1, self.latent_dim)).reshape(test_traj, -1, self.state_dim)
-                            #
-                            for counter, (true_traj, predicted_traj) in \
-                                    enumerate(zip(true_states[:2], predicted_states[:2])):#, openloop_predicted_states[:2])):
-                                num_plots = self.state_dim
-                                fig = plt.figure(figsize=(num_plots, 6))
-                                for i in range(num_plots):
-                                    ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
-                                    plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
-                                    plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
-                                plt.savefig(os.path.join(logger.get_dir(), 'itr%d_trnoise=% 3.1f_tenoise=% 3.1f_%d.png' \
-                                                         % (itr, noise, test_noise, counter)))
+                                # initial_latent = self.random_buffer._embedding_dataset['obs'][-test_traj:, :num_stack]
+                                # actions_to_take = self.random_buffer._dataset['act'][-test_traj:, num_stack - 1 : num_stack + 49]
+                                #
+                                # openloop_predicted_latents = self.dynamics_model.openloop_rollout(initial_latent, actions_to_take)
+                                # openloop_predicted_states = emb2state_model.predict\
+                                #     (openloop_predicted_latents.reshape(-1, self.latent_dim)).reshape(test_traj, -1, self.state_dim)
+                                #
+                                for counter, (true_traj, predicted_traj) in \
+                                        enumerate(zip(true_states[:2], predicted_states[:2])):#, openloop_predicted_states[:2])):
+                                    num_plots = self.state_dim
+                                    fig = plt.figure(figsize=(num_plots, 6))
+                                    for i in range(num_plots):
+                                        ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                                        plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
+                                        plt.plot(predicted_traj[num_stack:num_stack+50, i], label='predicted state')
+                                    plt.savefig(os.path.join(logger.get_dir(), '%s_itr%d_trnoise=% 3.1f_tenoise=% 3.1f_%d.png' \
+                                                             % (prefix, itr, noise, test_noise, counter)))
 
-                                # plt.clf()
-                                # for i in range(num_plots):
-                                #     ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
-                                #     plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
-                                #     plt.plot(predicte_openloop_traj[:, i], label='openloop')
-                                # plt.savefig(os.path.join(logger.get_dir(), 'openloop_itr%d_noise=% 3.1f_%d.png' \
-                                #                          % (itr, noise, counter)))
+                                    # plt.clf()
+                                    # for i in range(num_plots):
+                                    #     ax = plt.subplot(num_plots // 6 + 1, 6, i + 1)
+                                    #     plt.plot(true_traj[num_stack:num_stack+50, i], label='true state')
+                                    #     plt.plot(predicte_openloop_traj[:, i], label='openloop')
+                                    # plt.savefig(os.path.join(logger.get_dir(), 'openloop_itr%d_noise=% 3.1f_%d.png' \
+                                    #                          % (itr, noise, counter)))
 
 
                 """ ------------------- Logging Stuff --------------------------"""

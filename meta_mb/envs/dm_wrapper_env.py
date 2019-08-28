@@ -54,8 +54,16 @@ class DeepMindWrapper(Serializable):
     return self._env.physics.render(
         *self._render_size, camera_id=self._camera_id)
 
+  def reset_from_obs(self, observation):
+    # support only one observation
+    self._env._physics.reset_from_obs(observation)
 
-class ConcatObservation(object):
+  def tf_reward(self, obs, act, nextobs):
+    # support vector
+    return self._env._physics.reward(obs, act, nextobs)
+
+
+class ConcatObservation(Serializable):
   """Select observations from a dict space and concatenate them."""
 
   def __init__(self, env, keys):
@@ -95,7 +103,7 @@ class ConcatObservation(object):
       return self._env.render(*args, **kwargs)
 
 
-class ActionRepeat(object):
+class ActionRepeat(Serializable):
   """Repeat the agent action multiple steps."""
 
   def __init__(self, env, amount):

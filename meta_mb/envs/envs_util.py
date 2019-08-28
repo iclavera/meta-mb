@@ -50,7 +50,7 @@ def make_env(env, render_size=(64, 64), distractor=False, ptsize=2):
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat
         raw_env = ActionRepeat(ConcatObservation(DeepMindWrapper(suite.load('cheetah', 'run'), render_size=render_size),
                                                  keys=['position', 'velocity']), amount=4)
-        max_path_length = 250
+        max_path_length = 10
     elif env == 'cheetah_run_distractor':
         from dm_control import suite
         from meta_mb.envs.dm_wrapper_env import DeepMindWrapper, ConcatObservation, ActionRepeat

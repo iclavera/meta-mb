@@ -31,7 +31,7 @@ from meta_mb.envs.obs_stack_env import ObsStackEnv
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-EXP_NAME = 'cheetah_stateerror'
+EXP_NAME = 'cheetah_dm_truedyn'
 
 INSTANCE_TYPE = 'c4.2xlarge'
 
@@ -416,4 +416,4 @@ if __name__ == '__main__':
 
     }
 
-    run_sweep(run_experiment, config_error, EXP_NAME, INSTANCE_TYPE)
+    run_sweep(run_experiment, config_truedyn, EXP_NAME, INSTANCE_TYPE)
