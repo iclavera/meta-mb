@@ -17,7 +17,7 @@ class GTIpoptController(Serializable):
             discount=1,
             method_str='collocation',
             initializer_str='uniform',
-            horizon=10,
+            horizon=20,
             n_candidates=500, 
             num_cem_iters=5,
             percent_elites=0.1,
@@ -48,6 +48,7 @@ class GTIpoptController(Serializable):
         self._env = copy.deepcopy(env)
 
         if self.method_str == 'collocation':
+            self.u_array = None
             self.problem_obj = GTCollocationProblem(env, horizon, self.discount, eps=eps)
             problem_config = dict(
                 n=(horizon-1) * self.obs_dim + horizon * self.act_dim,
@@ -61,6 +62,7 @@ class GTIpoptController(Serializable):
                                     + [self.act_low] * horizon),
             )
         elif self.method_str == 'shooting':
+            self.u_array = None
             self.problem_obj = GTShootingProblem(env, self.horizon, self.discount, eps=eps)
             problem_config = dict(
                 n=self.horizon * self.act_dim,
@@ -94,7 +96,9 @@ class GTIpoptController(Serializable):
         nlp.addOption('max_iter', 100)
         nlp.addOption('tol', 1e-3)
         nlp.addOption('mu_strategy', 'adaptive')
-        # nlp.addOption('derivative_test', 'first-order')
+        nlp.addOption('derivative_test', 'first-order')
+        # nlp.addOption('derivative_test_perturbation', eps)
+        # nlp.addOption('derivative_test_print_all', 'yes')
 
     @property
     def vectorized(self):
@@ -127,7 +131,16 @@ class GTIpoptController(Serializable):
         else:
             raise NotImplementedError
         return init_u_array
-    
+
+    def _shift_u_array(self, u_array):
+        if self.initializer_str == 'cem':
+            u_new = np.random.normal(loc=np.mean(self.u_array, axis=0), scale=np.std(self.u_array, axis=0))
+        elif self.initializer_str == 'uniform':
+            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
+        else:
+            u_new = np.random.normal(scale=0.1, size=(self.act_dim,))
+        return np.concatenate([u_array[1:], u_new[None]], axis=0)
+
     def _get_actions_cem(self, obs):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
@@ -189,17 +202,20 @@ class GTIpoptController(Serializable):
         return optimized_actions, []
 
     def _get_actions_collocation(self, obs, verbose):
-        a_array = self._init_u_array(obs)
-        s_array, returns = self._run_open_loop(a_array, obs)
-        if hasattr(self._env, "get_goal_x_array"):
-            s_array = self._env.get_goal_x_array(s_array)
+        if self.u_array is None:
+            self.u_array  = self._init_u_array(obs)
+        u_array = self.u_array
+        x_array, returns = self._run_open_loop(u_array, obs)
+        # if hasattr(self._env, "get_goal_x_array"):
+        #     x_array = self._env.get_goal_x_array(x_array)
 
         # Feed in trajectory s[2:T], a[1:T], with s[1] == obs
         self.problem_obj.set_init_obs(obs)
-        x0 = self.problem_obj.get_x(s=s_array[1:], a=a_array)
-        x, info = self.nlp.solve(x0)
-        s_array, a_array = self.problem_obj.get_s_a(x)
-        optimized_action = a_array[0]
+        inputs = self.problem_obj.get_inputs(x=x_array[1:], u=u_array)
+        outputs, info = self.nlp.solve(inputs)
+        _, _, u_array = self.problem_obj.get_x_u(outputs)
+        self.u_array = self._shift_u_array(u_array)
+        optimized_action = u_array[0]
 
         if verbose:
             logger.logkv(f'ReturnBefore', returns)
@@ -211,12 +227,15 @@ class GTIpoptController(Serializable):
         return optimized_action
 
     def _get_actions_shooting(self, obs, verbose):
+        if self.u_array is None:
+            self.u_array = self._init_u_array(obs)
+        u_array = self.u_array
         self.problem_obj.set_init_obs(obs)
-        a_array = self._init_u_array(obs)
-        x0 = self.problem_obj.get_x(a_array)
-        x, info = self.nlp.solve(x0)
-        a_array = self.problem_obj.get_a(x)
-        optimized_action = a_array[0]
+        inputs = self.problem_obj.get_inputs(u_array)
+        outputs, info = self.nlp.solve(inputs)
+        u_array = self.problem_obj.get_u(outputs)
+        self.u_array = self._shift_u_array(u_array)
+        optimized_action = u_array[0]
 
         if verbose:
             logger.logkv(f'ReturnAfter', -info['obj_val'])
@@ -249,7 +268,7 @@ class GTIpoptController(Serializable):
         :param dones:
         :return:
         """
-        pass
+        self.u_array = None  # ????
 
     def log_diagnostics(*args):
         pass

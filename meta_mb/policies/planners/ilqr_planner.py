@@ -181,11 +181,8 @@ class iLQRPlanner(object):
         _ = self._env.reset_from_obs(init_obs)
 
         for i in range(self.horizon):
-            logger.log("------ ", u_array[i])
             x, reward, _, _ = self._env.step(u_array[i])
             returns += self.discount**i * reward
-
-        logger.log(returns)
 
         return returns
 

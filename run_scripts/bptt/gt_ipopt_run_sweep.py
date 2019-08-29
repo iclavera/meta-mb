@@ -5,6 +5,7 @@ from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
+from meta_mb.envs.mb_envs.toy import FirstOrderEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
@@ -19,7 +20,7 @@ def run_experiment(**config):
     repr = f"gt-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 100
+        config['max_path_length'] = 200
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -29,6 +30,9 @@ def run_experiment(**config):
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = 50
+    elif config['env'] is FirstOrderEnv:
+        repr += 'fo'
+        config['max_path_length'] = 100
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -85,8 +89,8 @@ if __name__ == '__main__':
         # Policy
         'initializer_str': ['cem'], #['zeros', 'uniform'],  # only matters for opt_act
         'method_str': ['collocation'],
-        'horizon': [30],
-        'eps': [1e-5], #[1e-6, 1e-4, 1e-3],
+        'horizon': [20],
+        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
         'deterministic_policy': [True],
     }
 

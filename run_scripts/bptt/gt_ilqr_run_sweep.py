@@ -20,7 +20,7 @@ def run_experiment(**config):
 
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 100
+        config['max_path_length'] = 200
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100

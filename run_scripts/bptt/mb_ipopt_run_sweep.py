@@ -147,7 +147,7 @@ if __name__ == '__main__':
         'env': [HalfCheetahEnv], #[FirstOrderEnv, ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'use_pretrained_model': [False],
         # HalfCheetah
-        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'n_itr': [50],
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME

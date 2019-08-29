@@ -61,7 +61,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def reward(self, obs, acts, next_obs):
         if next_obs is not None:
             assert obs.shape == next_obs.shape
-        if obs.ndim == 2:
+        if obs.ndim == 2:  # (batch_size, act_dim)
             assert obs.shape[0] == acts.shape[0]
             reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
             reward_run = obs[:, 8]
@@ -125,8 +125,8 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def reset_from_obs(self, obs):
         nq, nv = self.model.nq, self.model.nv
         self.sim.reset()
-        qpos = self.init_qpos + \
-            self.np_random.uniform(low=-.1, high=.1, size=nq)
+        qpos = self.init_qpos #+ \
+            # self.np_random.uniform(low=-.1, high=.1, size=nq)
         qpos[1:] = obs[:nq-1]
         qvel = obs[nq-1:]
         self.set_state(qpos, qvel)
