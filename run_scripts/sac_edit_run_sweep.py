@@ -15,7 +15,8 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+# from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -59,15 +60,21 @@ def run_experiment(**kwargs):
                                    action_dim=action_dim,
                                    hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
-        policy = GaussianMLPPolicy(
-            name="policy",
+        # policy = GaussianMLPPolicy(
+        #     name="policy",
+        #     obs_dim=np.prod(env.observation_space.shape),
+        #     action_dim=np.prod(env.action_space.shape),
+        #     hidden_sizes=kwargs['policy_hidden_sizes'],
+        #     learn_std=kwargs['policy_learn_std'],
+        #     output_nonlinearity=kwargs['policy_output_nonlinearity'],
+        #     hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+        #     squashed=True
+        # )
+
+        policy = LinearPolicy(
+            name="np_policy",
             obs_dim=np.prod(env.observation_space.shape),
             action_dim=np.prod(env.action_space.shape),
-            hidden_sizes=kwargs['policy_hidden_sizes'],
-            learn_std=kwargs['policy_learn_std'],
-            output_nonlinearity=kwargs['policy_output_nonlinearity'],
-            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-            squashed=True
         )
 
         env_sampler = BaseSampler(
@@ -233,7 +240,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66],
+        'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -264,10 +271,10 @@ if __name__ == '__main__':
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [3],
+        'T': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [4],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
@@ -277,7 +284,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
         'normalize_input': [True],
         'ground_truth': [True],
 

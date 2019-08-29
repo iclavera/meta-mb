@@ -1,8 +1,11 @@
 import numpy as np
-from meta_mb.utils.filters import MeanStdFilter
+from meta_mb.utils.filters import MeanStdFilter, TfMeanStdFilter
 from meta_mb.utils import Serializable
+from meta_mb.policies.distributions.diagonal_gaussian import DiagonalGaussian
 from meta_mb.policies.np_base import NpPolicy
 from collections import OrderedDict
+import tensorflow as tf
+from pdb import set_trace as st
 
 class LinearPolicy(NpPolicy):
     """
@@ -18,6 +21,9 @@ class LinearPolicy(NpPolicy):
         self.policy_params = OrderedDict(W=np.zeros((action_dim, obs_dim), dtype=np.float64),
                                          b=np.zeros((action_dim,), dtype=np.float64))
         self.obs_filters = [MeanStdFilter(shape=(obs_dim,))]
+        self.tf_obs_filters = [TfMeanStdFilter(shape=(obs_dim,))]
+        # self._dist = DiagonalGaussian(self.action_dim, squashed=True)
+
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)
@@ -29,6 +35,16 @@ class LinearPolicy(NpPolicy):
     def get_action(self, observation, update_filter=False):
         actions, _ = self.get_actions(np.expand_dims(observation, axis=0), update_filter=update_filter)
         return actions[0], {}
+
+    def tf_get_actions(self, observations, update_filter=True):
+        assert len(observations.shape) == 2
+        obs = self.tf_obs_filters[0](observations, update=update_filter)
+        actions = tf.transpose(tf.matmul(tf.cast(self.policy_params["W"], tf.float32), tf.transpose(obs))) + self.policy_params["b"]
+        return actions, {}
+
+    def tf_get_action(self, observation, update_filter=False):
+        actions, _ = self.tf_get_actions(observation, update_filter=update_filter)
+        return actions, {}
 
     def get_actions_batch(self, observations, update_filter=True):
         """
@@ -55,3 +71,7 @@ class LinearPolicy(NpPolicy):
         else:
             raise NotImplementedError
         return actions, {}
+
+    # @property
+    # def distribution(self):
+    #     return self._dist

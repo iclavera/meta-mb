@@ -7,6 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tensorflow as tf
 
 
 class Filter(object):
@@ -75,3 +76,48 @@ class MeanStdFilter(Filter):
         self.stats_increment()
 
 
+class TfMeanStdFilter(Filter):
+    def __init__(self, shape):
+        self.shape = shape
+        self._n = 0
+        self._M = tf.zeros(shape, dtype=tf.float32)
+        self._S = tf.zeros(shape, dtype=tf.float32)
+
+        self.mean = tf.zeros(shape, dtype=tf.float32)
+        self.std = tf.ones(shape, dtype=tf.float32)
+
+    def __call__(self, x, update=True):
+        if update:
+            self._update(x)
+        x = x - self.mean
+        x = x / (self.std + 1e-8)
+        return x
+
+    def stats_increment(self):
+        self.mean = tf.identity(self._M)
+        self.std = tf.identity(tf.sqrt(self._S))
+
+    def _update(self, x):
+        x = tf.reshape(x, (-1,) + self.shape)
+        n1 = self._n
+        n2 = len(x)
+        n = n1 + n2
+        mean = tf.reduce_mean(x, axis=0)
+        M = (n1 * self._M + n2 * mean)/n
+
+        delta = self._M - mean
+        delta2 = tf.square(delta)
+        var = tf.var(x, axis=0)
+        S = (self._S * n1 + var * n2 + n1 * n2/n * delta2)/n
+
+        self._M = M
+        self._n = n
+        self._S = S
+
+    def get_params(self):
+        return self.mean, self.std
+
+    def set_params(self, mean, std):
+        self._M = mean
+        self._S = tf.square(std)
+        self.stats_increment()
