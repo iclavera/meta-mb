@@ -68,8 +68,8 @@ class GTIpoptController(Serializable):
                 n=self.horizon * self.act_dim,
                 m=0,
                 problem_obj=self.problem_obj,
-                lb=np.concatenate([env.action_space.low] * self.horizon),
-                ub=np.concatenate([env.action_space.high] * self.horizon),
+                lb=np.concatenate([self.act_low] * self.horizon),
+                ub=np.concatenate([self.act_high] * self.horizon),
             )
         elif self.method_str == 'shooting_w_policy':
             self.executor = copy.deepcopy(env)
@@ -93,12 +93,11 @@ class GTIpoptController(Serializable):
             raise NotImplementedError
 
         self.nlp = nlp = ipopt.problem(**problem_config)
-        nlp.addOption('max_iter', 100)
+        nlp.addOption('max_iter', 20)
         nlp.addOption('tol', 1e-3)
         nlp.addOption('mu_strategy', 'adaptive')
-        nlp.addOption('derivative_test', 'first-order')
-        # nlp.addOption('derivative_test_perturbation', eps)
-        # nlp.addOption('derivative_test_print_all', 'yes')
+        nlp.addOption('derivative_test_perturbation', eps)
+        # nlp.addOption('derivative_test', 'first-order')
 
     @property
     def vectorized(self):
@@ -134,11 +133,13 @@ class GTIpoptController(Serializable):
 
     def _shift_u_array(self, u_array):
         if self.initializer_str == 'cem':
-            u_new = np.random.normal(loc=np.mean(self.u_array, axis=0), scale=np.std(self.u_array, axis=0))
+            u_new = np.random.normal(loc=np.mean(u_array, axis=0), scale=np.std(u_array, axis=0))
+            u_new = np.clip(u_new, a_min=self.act_low, a_max=self.act_high)
         elif self.initializer_str == 'uniform':
             u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.act_dim,))
         else:
             u_new = np.random.normal(scale=0.1, size=(self.act_dim,))
+            u_new = np.clip(u_new, a_min=self.act_low, a_max=self.act_high)
         return np.concatenate([u_array[1:], u_new[None]], axis=0)
 
     def _get_actions_cem(self, obs):

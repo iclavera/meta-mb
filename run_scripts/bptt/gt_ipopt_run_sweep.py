@@ -17,10 +17,10 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"gt-{config['method_str']}-"
+    repr = f"gt-{config['method_str']}-{config['initializer_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 200
+        config['max_path_length'] = 100
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -87,7 +87,7 @@ if __name__ == '__main__':
         'discount': [1.0,],
 
         # Policy
-        'initializer_str': ['cem'], #['zeros', 'uniform'],  # only matters for opt_act
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],
         'method_str': ['collocation'],
         'horizon': [20],
         'eps': [1e-6], #[1e-6, 1e-4, 1e-3],

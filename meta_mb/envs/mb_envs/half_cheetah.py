@@ -88,6 +88,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return goal_x_array
 
     def tf_reward(self, obs, acts, next_obs):
+        # FIXME: SHOULD NOT CLIP HERE
         acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
         if obs.get_shape().ndims == 1:
             reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)

@@ -25,8 +25,8 @@ class ShootingProblem(object):
     def _build_graph(self):
         obs_dim, act_dim = self.obs_dim, self.act_dim
         horizon = self.horizon
-        init_obs_ph, inputs_ph = tf.stop_gradient(self.init_obs_ph), tf.stop_gradient(self.inputs_ph)
         # init_obs_ph, inputs_ph = self.init_obs_ph, self.inputs_ph
+        init_obs_ph, inputs_ph = tf.stop_gradient(self.init_obs_ph), tf.stop_gradient(self.inputs_ph)
 
         u_array = tf.reshape(inputs_ph, shape=(horizon, act_dim))
 
@@ -35,19 +35,22 @@ class ShootingProblem(object):
         obs = init_obs_ph
         for i in range(horizon):
             act = u_array[i]
-            next_obs = self.dynamics_model.predict_sym(obs_ph=obs[None], act_ph=act[None])[0]
-            reward = self.env.tf_reward(obs=obs, acts=act, next_obs=next_obs)
-            returns += reward
-            obs = next_obs
+            returns += self.env.tf_reward(obs=obs, acts=act, next_obs=None)
+            obs = self.dynamics_model.predict_sym(obs_ph=obs[None], act_ph=act[None])[0]
         self.tf_objective = -returns
+
+        # # DEBUG MODE
+        # returns = tf.zeros(())
+        # obs = init_obs_ph
+        # for i in range(horizon):
+        #     act = u_array[i]
+        #     returns += tf.reduce_sum(obs) - tf.reduce_sum(act)
+        #     # obs = self.env.tf_step(obs=obs, act=act)
+        #     obs = self.dynamics_model.predict_sym(obs_ph=obs[None], act_ph=act[None])[0]
+        # self.tf_objective = -returns
 
         # build gradient
         self.tf_gradient, = tf.gradients(ys=[self.tf_objective], xs=[inputs_ph])
-
-        # # build gradient
-        # dr_dx = self.env.tf_deriv_reward_obs(obs=x_array, acts=u_array, batch_size=horizon)
-        # dr_du = self.env.tf_deriv_reward_act(obs=x_array, acts=u_array, batch_size=horizon)
-        # self.tf_gradient = tf.concat([tf.reshape(-dr_dx[1:], (-1,)), tf.reshape(-dr_du, (-1,))], axis=0)
 
     def set_init_obs(self, obs):
         self.init_obs_val = obs

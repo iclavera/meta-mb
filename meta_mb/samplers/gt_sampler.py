@@ -34,6 +34,7 @@ class GTSampler(Serializable):
 
         obs = self.env.reset()
         returns = 0
+        start_time = time.time()
         for t in range(self.max_path_length):
             policy_time = time.time()
             act, _ = self.policy.get_action(obs)
@@ -46,6 +47,7 @@ class GTSampler(Serializable):
                 logger.logkv(log_prefix + 'Reward', reward)
                 logger.logkv(log_prefix + 'SumReward', returns)
                 logger.logkv(log_prefix + 'PolicyExecTime', policy_time)
+                logger.logkv(log_prefix + 'TotalTime', time.time() - start_time)
                 logger.dumpkvs()
 
     def __getstate__(self):

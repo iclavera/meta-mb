@@ -17,12 +17,12 @@ import os
 import tensorflow as tf
 
 
-EXP_NAME = 'dyn-ipopt'
+EXP_NAME = 'bptt-mb-ipopt'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"dyn-{config['method_str']}-"
+    repr = f"mb-{config['method_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = 100  # 50
@@ -152,10 +152,10 @@ if __name__ == '__main__':
         'discount': [1.0,],
         'max_path_length_eval': [20],  # FIXME
         'horizon': [20],
-        'method_str': ['collocation'],
+        'method_str': ['shooting'],
 
         # Policy
-        'initializer_str': ['uniform'], #['zeros', 'uniform'],
+        'initializer_str': ['zeros'], #['zeros', 'uniform'],
 
         # CEM
         'n_candidates': [100],
@@ -168,7 +168,7 @@ if __name__ == '__main__':
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
         'num_random_iters': [1],
-        'on_policy_freq': [5],
+        'on_policy_freq': [1],
 
         # Dynamics Model
         'num_models': [1],
@@ -184,5 +184,13 @@ if __name__ == '__main__':
         #  Other
         'n_parallel': [1],
     }
+
+    config_debug = config.copy()
+    config_debug['hidden_nonlinearity_model'] = [None]
+    config_debug['hidden_sizes_model'] = [()]
+    config_debug['horizon'] = [2]
+
+    # logger.warn('=============== DEBUG MODE ===================')
+    # run_sweep(run_experiment, config_debug, EXP_NAME, INSTANCE_TYPE)
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

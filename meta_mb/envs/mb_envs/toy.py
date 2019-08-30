@@ -49,6 +49,10 @@ class FirstOrderEnv(object):
         done = False
         return next_obs, reward, done, {}
 
+    def tf_step(self, obs, act):
+        # CALLER IS RESPONSIBLE FOR CLIPPING
+        return obs + act
+
     def reset(self):
         self.set_state(self.init_pos + np.random.normal(loc=np.zeros_like(self.init_pos), scale=0.1))
         return self._get_obs()
@@ -73,7 +77,6 @@ class FirstOrderEnv(object):
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
-        acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
         reward_run = -tf.reduce_sum(tf.square(self.goal_pos - obs), axis=-1)
         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=-1)
         reward = reward_run + reward_ctrl

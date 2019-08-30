@@ -18,7 +18,7 @@ INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"{config['method_str']}-"
+    repr = f"mb-{config['method_str']}-"
 
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
