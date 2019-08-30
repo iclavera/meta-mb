@@ -295,7 +295,6 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                     self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss, var_list = vars))
 
                     self.loss_model_batches.append(loss)
-                    # self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
                 else:
                 # define loss and train_op
                     loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)

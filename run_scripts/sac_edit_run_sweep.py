@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "mb-lu-2"
+EXP_NAME = "mb-lu-2-walker"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -94,6 +94,7 @@ def run_experiment(**kwargs):
             normalize_adv=kwargs['normalize_adv'],
             positive_adv=kwargs['positive_adv'],
         )
+        print("==================================start========================================")
 
         assert kwargs['model_type'] in [0, 1, 2, 3]
         if kwargs['model_type'] == 0:
@@ -175,6 +176,7 @@ def run_experiment(**kwargs):
                                            )
         else:
             done_predictor = None
+        print("==================================start========================================")
 
         algo = SAC_MB(
             policy=policy,
@@ -263,34 +265,34 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [101],
+        'max_path_length': [1001],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [25],
+        'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [20],
+		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[5],
+		'num_actions_per_next_observation':[5, 10],
         'H': [2],
-        'T': [3],
+        'T': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1],
+        'q_loss_importance': [1, 1e-3, 1e-4, 1e-5],
         'actorH': [1],
         'method': [5],
         'policy_type': ['gaussian'],
 
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['relu', 'tanh'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
         'normalize_input': [True],
-        'ground_truth': [True],
+        'ground_truth': [False],
 
         'done_predictor_aux_hidden_dim':[512],
         'done_predictor_transition_hidden_dim': [256],
