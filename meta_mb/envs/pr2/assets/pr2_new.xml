@@ -79,6 +79,12 @@
                 <body name="torso_lift_link" pos="-0.05 0 0.739675">
                     <inertial pos="-0.1 0 -0.0885" quat="0.999335 0.007626 0.035453 0.003712" mass="36.248046" diaginertia="2.783075 2.510450 0.514581" />
                     <geom name="geom15" rgba="0.9 0.9 0.9 1" mesh="torso_lift_L" contype="0"/>
+                    <geom name="laser" rgba="0.9 0.9 0.9 1" pos="0.1 0 0.225" mesh="tilting_hokuyo_L" contype="0"/>
+                    <geom name="pan" rgba="0.9 0.9 0.9 1" pos="0 0 0.375" mesh="head_pan_L" contype="0"/>
+                    <body name="head_tilt">
+                        <geom name="tilt" rgba="0.9 0.9 0.9 1" pos="0.075 0 0.375" mesh="head_tilt_L" contype="0"/>
+                        <camera pos="0.125 0.025 0.5" fovy="65" euler="0  -0.785 1.5707" name="stereo"/>
+                    </body>
                     <body name="r_shoulder_pan_link" pos="0 -0.188 0">
                         <inertial pos="-0.001201 0.024513 -0.098231" quat="0.927482 -0.087656 0.074060 -0.355821" mass="25.799322" diaginertia="0.934201 0.837701 0.242033" />
                         <geom name="geom32" rgba="0 0 0.8 1" mesh="shoulder_pan" contype="0"/>
@@ -186,7 +192,7 @@
                                                             </body>
                                                             <body name="l_gripper_motor_accelerometer_link" pos="0 0 0">
                                                                 <inertial pos="0 0 0" mass="0.001" diaginertia="0.001 0.001 0.001" />
-                                                                <geom name="geom60" type="box" pos="0 0 0" size="0.0005 0.0005 0.0005" />
+                                                                <!--geom name="geom60" type="box" pos="0 0 0" size="0.0005 0.0005 0.0005" /-->
                                                             </body>
                                                                 <body name="l_gripper_tool_frame" pos="0.18 0 0">
                                                             </body>
@@ -219,11 +225,6 @@
                     </body>
                 </body>
             </body>
-        </body>
-        <body>
-            <geom type="sphere" size="0.09" pos="-0.32494656  0.10783821  0.13349636" rgba="1 0 0 1" />
-            <geom type="sphere" size="0.09" pos="-0.25219394  0.17542981  0.14526203" rgba="0 1 0 1" />
-            <geom type="sphere" size="0.09" pos="-0.27003359  0.11027046  0.2049362" rgba="0 0 1 1" />
         </body>
     </worldbody>
     <actuator>

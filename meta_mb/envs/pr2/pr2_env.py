@@ -115,9 +115,9 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     def reset_model(self):
         qpos = self.init_qpos
-        self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
-        gravity = np.random.randint(-1, 1)  # randomize environment gravity
-        self.model.opt.gravity[2] = gravity
+        #self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
+        #gravity = np.random.randint(-1, 1)  # randomize environment gravity
+        #self.model.opt.gravity[2] = gravity
         while True:
             #x = np.random.uniform(low=0.1, high=0.6)
             #y = np.random.uniform(low=0.1, high=0.65)
@@ -131,8 +131,8 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
                 break
         qvel = self.init_qvel # + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
         #self.goal = self.hole()
-        self.set_state(np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
-                                   1.31405443e+00, -1.54883181e+00, 1.43069760e-01]), qvel)
+        self.set_state(np.zeros(7), qvel)#np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
+                                   #1.31405443e+00, -1.54883181e+00, 1.43069760e-01]), qvel)
         #for i in range(len(self.model.mesh_normal)):
         #    self.model.mesh_normal[i] *= 5
         #self.sim = mujoco_py.MjSim(self.model)
@@ -164,8 +164,18 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
 if __name__ == "__main__":
     env = PR2ReacherEnv(exp_type='reach')
+    from PIL import Image
+    import time
+    file = 'pr2_'
+    from matplotlib import pyplot as plt
     while True:
         env.reset()
         for i in range(2000):
             env.step(env.action_space.sample())
-            env.render()
+            image = env.sim.render(128, 128, camera_name='stereo')
+            plt.imshow(image, interpolation='nearest')
+            #plt.show()
+            #time.sleep(100000)
+            fname = 'pr2_images_2/' + file + str(i)
+            plt.savefig(fname, format='png')
+            #env.render()
