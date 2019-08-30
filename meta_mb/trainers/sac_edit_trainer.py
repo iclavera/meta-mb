@@ -196,12 +196,12 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            reward = []
-                            for t in range(self.T):
-                                next_obs = batch['next_observations']
-                                next_actions = self.policy.get_actions(next_obs)[0]
-                                result = self.env.step_batch(next_obs, next_actions, t, reward)
-                            batch.update(result)
+                            # reward = []
+                            # for t in range(self.T):
+                            #     next_obs = batch['next_observations']
+                            #     next_actions = self.policy.get_actions(next_obs)[0]
+                            #     result = self.env.step_batch(next_obs, next_actions, t, reward)
+                            # batch.update(result)
                             self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],

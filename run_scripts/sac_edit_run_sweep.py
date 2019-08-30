@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "test"
+EXP_NAME = "mb-lu-2"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -15,7 +15,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-# from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.policies.np_linear_policy import LinearPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
@@ -60,22 +60,24 @@ def run_experiment(**kwargs):
                                    action_dim=action_dim,
                                    hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
-        # policy = GaussianMLPPolicy(
-        #     name="policy",
-        #     obs_dim=np.prod(env.observation_space.shape),
-        #     action_dim=np.prod(env.action_space.shape),
-        #     hidden_sizes=kwargs['policy_hidden_sizes'],
-        #     learn_std=kwargs['policy_learn_std'],
-        #     output_nonlinearity=kwargs['policy_output_nonlinearity'],
-        #     hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
-        #     squashed=True
-        # )
 
-        policy = LinearPolicy(
-            name="np_policy",
-            obs_dim=np.prod(env.observation_space.shape),
-            action_dim=np.prod(env.action_space.shape),
-        )
+        if kwargs['policy_type'] == 'linear':
+            policy = LinearPolicy(
+                name="np_policy",
+                obs_dim=np.prod(env.observation_space.shape),
+                action_dim=np.prod(env.action_space.shape),
+            )
+        elif kwargs['policy_type'] == 'gaussian':
+            policy = GaussianMLPPolicy(
+                name="policy",
+                obs_dim=np.prod(env.observation_space.shape),
+                action_dim=np.prod(env.action_space.shape),
+                hidden_sizes=kwargs['policy_hidden_sizes'],
+                learn_std=kwargs['policy_learn_std'],
+                output_nonlinearity=kwargs['policy_output_nonlinearity'],
+                hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+                squashed=True
+            )
 
         env_sampler = BaseSampler(
             env=env,
@@ -242,7 +244,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -253,7 +255,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'step_type': [0],
         'predict_done': [False],
-        'model_type': [0],
+        'model_type': [3],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -261,30 +263,32 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [101],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [250],
+        'model_train_freq': [25],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [20],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[4],
+		'q_function_type':[5],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [1],
+        'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [4],
+		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
         'actorH': [1],
+        'method': [5],
+        'policy_type': ['gaussian'],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
         'ground_truth': [True],
 

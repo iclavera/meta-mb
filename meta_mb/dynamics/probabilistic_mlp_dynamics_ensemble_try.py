@@ -69,7 +69,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
 
         """added"""
         self.env = env
-        if type == 2:
+        if type == 3:
             self.Qs = Qs
             if Q_targets is None:
                 self.Q_targets = Qs
@@ -147,12 +147,12 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
             self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
             self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            if type == 2:
+            if type == 3:
                 obs = self.obs_ph
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 for t in range(self.T+1):
-                    next_observation, _ = self.predict_sym(obs, actions)
+                    next_observation = self.predict_sym(obs, actions)
                     dist_info_sym = self.policy.distribution_info_sym(next_observation)
                     next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                     rewards = self.env.tf_reward(obs, actions, next_observation)
@@ -225,12 +225,12 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
-            if type == 2:
+            if type == 3:
                 obs = self.obs_model_batches_stack_ph
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
                 for t in range(self.T+1):
-                    next_observation, _ = self.predict_sym(obs, actions)
+                    next_observation = self.predict_sym(obs, actions)
                     dist_info_sym = self.policy.distribution_info_sym(next_observation)
                     next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
                     rewards = self.env.tf_reward(obs, actions, next_observation)
@@ -265,7 +265,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                 var = tf.exp(logvar)
                 inv_var = tf.exp(-logvar)
 
-                if type == 2:
+                if type == 3:
                     # define loss and train_op
                     # normalize
                     in_obs_var = (self.obs_model_batches[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
@@ -339,7 +339,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
         delta_preds = []
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=True):
+                with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
                     assert self.normalize_input
                     in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)
@@ -366,7 +366,6 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
         # unshuffle
         if shuffle:
             perm_inv = tf.invert_permutation(perm)
-            # next_obs = clip(obs + delta_pred
             next_obs = original_obs + tf.gather(delta_preds, perm_inv)
         else:
             next_obs = original_obs + delta_preds

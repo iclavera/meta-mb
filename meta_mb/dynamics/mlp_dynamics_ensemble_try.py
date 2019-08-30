@@ -74,7 +74,7 @@ class MLPDynamicsEnsembleTry(MLPDynamicsModel):
         self.output_nonlinearity = output_nonlinearity = self._activations[output_nonlinearity]
 
         """added"""
-        if type == 2:
+        if type == 3:
             self.Qs = Qs
             if Q_targets is None:
                 self.Q_targets = Qs
