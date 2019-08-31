@@ -503,18 +503,16 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             # shuffle
             if perm_dict is not None:
                 perm = perm_dict['perm']
+                perm_inv = perm_dict['perm_inv']
             else:
                 perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)
                 perm = tf.random.shuffle(perm)
+                perm_inv = tf.invert_permutation(perm)
             obs_ph_perm, act_ph_perm = tf.gather(obs_ph, perm), tf.gather(act_ph, perm)
 
             next_obs_perm = self.predict_batches_sym(obs_ph_perm, act_ph_perm)
 
             # unshuffle
-            if perm_dict is not None:
-                perm_inv = perm_dict['perm_inv']
-            else:
-                perm_inv = tf.invert_permutation(perm)
             next_obs = tf.gather(next_obs_perm, perm_inv)
             return next_obs
 
@@ -605,12 +603,11 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         if pred_type == 'rand' and obs.shape[0] % self.num_models == 0:
             batch_size = obs.shape[0]
             perm = np.random.permutation(batch_size)
-            obs_perm, act_perm = obs[perm], act[perm]
-
-            pred_obs_perm = self.predict_batches(obs_perm, act_perm)
-
             perm_inv = np.empty(batch_size, dtype=int)
             perm_inv[perm] = np.arange(batch_size)
+
+            obs_perm, act_perm = obs[perm], act[perm]
+            pred_obs_perm = self.predict_batches(obs_perm, act_perm)
             pred_obs = pred_obs_perm[perm_inv]
 
             return pred_obs

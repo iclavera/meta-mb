@@ -26,7 +26,7 @@ class iLQRController(Serializable):
         self.action_space_dims = env.action_space.shape[0]
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
-        planner.reset_u_array(self._init_u_array())
+        # planner.reset_u_array(self._init_u_array())
         self.planner = planner
 
     @property
@@ -42,16 +42,16 @@ class iLQRController(Serializable):
     def get_actions(self, obs, verbose=True):
         return self.planner.get_actions(obs, verbose=verbose)
 
-    def _init_u_array(self):
-        if self.initializer_str == 'uniform':
-            init_u_array = np.random.uniform(low=self.act_low, high=self.act_high,
-                                             size=(self.horizon, self.num_envs, self.action_space_dims))
-        elif self.initializer_str == 'zeros':
-            init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.action_space_dims))
-            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
-        else:
-            raise NotImplementedError
-        return init_u_array
+    # def _init_u_array(self):
+    #     if self.initializer_str == 'uniform':
+    #         init_u_array = np.random.uniform(low=self.act_low, high=self.act_high,
+    #                                          size=(self.horizon, self.num_envs, self.action_space_dims))
+    #     elif self.initializer_str == 'zeros':
+    #         init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.action_space_dims))
+    #         init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
+    #     else:
+    #         raise NotImplementedError
+    #     return init_u_array
 
     def get_params_internal(self, **tags):
         return []
@@ -62,15 +62,16 @@ class iLQRController(Serializable):
         :param dones:
         :return:
         """
-        pass
+        self.planner.u_array_val = None
 
     def warm_reset(self, u_array):
-        logger.log('planner resets with collected samples...')
-        if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):
-            u_array = self._init_u_array()
-        else:
-            u_array = u_array[:self.horizon, :, :]
-        self.planner.reset_u_array(u_array[:self.horizon, :, :])
+        pass
+        # logger.log('planner resets with collected samples...')
+        # if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):
+        #     u_array = self._init_u_array()
+        # else:
+        #     u_array = u_array[:self.horizon, :, :]
+        # self.planner.reset_u_array(u_array[:self.horizon, :, :])
 
     def log_diagnostics(*args):
         pass

@@ -87,7 +87,7 @@ if __name__ == '__main__':
         'discount': [1.0,],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],
+        'initializer_str': ['cem'], #['zeros', 'uniform'],
         'method_str': ['collocation'],
         'horizon': [20],
         'eps': [1e-6], #[1e-6, 1e-4, 1e-3],

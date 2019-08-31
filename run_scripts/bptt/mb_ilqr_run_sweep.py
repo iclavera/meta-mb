@@ -3,7 +3,7 @@ from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
 from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
-from meta_mb.samplers.ilqr_sampler import iLQRSampler
+from meta_mb.samplers.ipopt_sampler import IpoptSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
@@ -25,7 +25,7 @@ def run_experiment(**config):
     repr = "mb-ilqr-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 200
+        config['max_path_length'] = 100
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -93,6 +93,9 @@ def run_experiment(**config):
             c_1=config['c_1'],
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
+            n_candidates=config['n_candidates'],
+            num_cem_iters=config['num_cem_iters'],
+            cem_deterministic_policy='cem_deterministic_policy',
         )
 
         cem_policy = MPCController(
@@ -122,7 +125,7 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
         )
 
-        sampler = iLQRSampler(
+        sampler = IpoptSampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
@@ -153,21 +156,18 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [True],
-        'on_policy_freq': [5],
+        'on_policy_freq': [2],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
-        'normalize': [False],  # UNUSED
         'n_itr': [50],
         'discount': [1.0,],
-        'horizon': [10, 30],
+        'horizon': [5],  # FIXME: 5, 10
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
-        'policy_filter': [False,],
-        'deterministic_policy': [True],
 
         # iLQR
         'num_ilqr_iters': [20],
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         'delta_0': [2],
         'delta_init': [1.0],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-6, 1e-4],
+        'c_1': [1e-7],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
 
@@ -200,12 +200,9 @@ if __name__ == '__main__':
         'hidden_nonlinearity_model': ['relu'],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'hidden_sizes_model': [(512, 512)],
+        'hidden_sizes_model': [(512,)],  # (512, 512)
         'batch_size_model': [64],
         'learning_rate': [0.001],
-
-        #  Other
-        'n_parallel': [1],
     }
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

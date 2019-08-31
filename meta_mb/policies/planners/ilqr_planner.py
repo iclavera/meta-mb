@@ -1,7 +1,6 @@
 from meta_mb.logger import logger
 import scipy.linalg as sla
 import numpy as np
-from collections import OrderedDict
 import tensorflow as tf
 import time
 import copy
@@ -11,7 +10,8 @@ from meta_mb.policies import utils
 class iLQRPlanner(object):
     def __init__(self, env, dynamics_model, num_envs, horizon, num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
-                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10):
+                 c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
+                 n_candidates=1000, num_cem_iters=5, cem_deterministic_policy=True, alpha=0.1, percent_elites=0.1):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
         self.num_envs = num_envs
@@ -30,6 +30,14 @@ class iLQRPlanner(object):
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
+
+        # cem
+        self.n_candidates = n_candidates
+        self.num_cem_iters = num_cem_iters
+        self.cem_deterministic_policy = cem_deterministic_policy
+        self.alpha = alpha
+        self.num_elites = int(percent_elites * n_candidates)
+
         self.act_low, self.act_high = env.action_space.low + 5e-2, env.action_space.high - 5e-2
 
         self.param_array = None
@@ -58,6 +66,7 @@ class iLQRPlanner(object):
 
         build_time = time.time()
         self.utils_sym_by_env = self._build_deriv_graph()
+        self.cem_optimized_actions = self._build_cem_graph()
         logger.log('TimeBuildGraph', build_time - time.time())
 
     def _build_deriv_graph(self):
@@ -76,8 +85,9 @@ class iLQRPlanner(object):
 
             x_array.append(obs)
             model_idx_array.append(tf.floordiv(perm_inv, num_envs_per_model))
-            df = self._df_sym(obs, acts, next_obs).values()
-            df_array.append(df)
+            jac_f_x = utils.jacobian_wrapper(next_obs, obs, self.obs_dim, self.obs_dim)  # (num_envs, obs_dim, obs_dim)
+            jac_f_u = utils.jacobian_wrapper(next_obs, acts, self.obs_dim, self.act_dim)  # (num_envs, obs_dim, act_dim)
+            df_array.append([jac_f_x, jac_f_u])
             dl = self._env.tf_dl_dict(obs, acts, next_obs, self.num_envs).values()
             dl_array.append(dl)
             rewards = self._env.tf_reward(obs, acts, next_obs)
@@ -101,32 +111,67 @@ class iLQRPlanner(object):
 
         return utils_sym_by_env
 
-    def _df_sym(self, obs, acts, next_obs):
-        """
+    def _build_cem_graph(self):
+        obs_dim, act_dim = self.obs_dim, self.act_dim
+        horizon = self.horizon
+        n_candidates = self.n_candidates
+        num_envs = self.num_envs
 
-        :param obs: (num_envs, obs_dim)
-        :param acts: (num_envs, act_dim)
-        :param next_obs: (num_envs, obs_dim)
-        """
-        # jac_f_x: (num_envs, obs_dim, obs_dim)
-        jac_f_x = utils.jacobian_wrapper(next_obs, obs, self.obs_dim, self.obs_dim, [obs, acts])
+        mean = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high + self.act_low) / 2
+        var = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high - self.act_low) / 16
 
-        # jac_f_u: (num_envs, obs_dim, act_dim)
-        jac_f_u = utils.jacobian_wrapper(next_obs, acts, self.obs_dim, self.act_dim, [obs, acts])
+        init_obs = tf.reshape(
+            tf.tile(tf.expand_dims(self.obs_ph, axis=1), [1, n_candidates, 1]),
+            shape=(num_envs*n_candidates, obs_dim),
+        )
 
-        return OrderedDict(f_x=jac_f_x, f_u=jac_f_u)
+        for itr in range(self.num_cem_iters):
+            lb_dist, ub_dist = mean - self.act_low, self.act_high - mean
+            constrained_var = tf.minimum(tf.minimum(tf.square(lb_dist / 2), tf.square(ub_dist / 2)), var)
+            std = tf.sqrt(constrained_var)
+            act = mean + tf.random.normal(shape=[horizon, num_envs, n_candidates, act_dim]) * std
+            act = tf.clip_by_value(act, self.act_low, self.act_high)
+            act = tf.reshape(act, shape=(horizon, num_envs*n_candidates, act_dim))
+            returns = tf.zeros((num_envs*n_candidates,))
+
+            obs = init_obs
+            for t in range(horizon):
+                next_obs = self.dynamics_model.predict_sym(obs, act[t])
+                rewards = self._env.tf_reward(obs, act[t], next_obs)
+                returns += self.discount**t * rewards
+                obs = next_obs
+
+            # Re-fit belief to the best ones
+            returns = tf.reshape(returns, (num_envs, n_candidates))
+            _, indices = tf.nn.top_k(returns, k=self.num_elites, sorted=False)
+            act = tf.reshape(act, shape=(horizon, num_envs, n_candidates, act_dim))
+            act = tf.transpose(act, (1, 2, 3, 0))  # (num_envs, n_candidates, act_dim, horizon)
+            elite_actions = tf.batch_gather(act, indices)
+            elite_actions = tf.transpose(elite_actions, (3, 0, 1, 2))  # (horizon, num_envs, n_candidates, act_dim)
+            elite_mean, elite_var = tf.nn.moments(elite_actions, axes=[2], keep_dims=True)
+            mean = mean * self.alpha + elite_mean * (1 - self.alpha)
+            var = var * self.alpha + elite_var * (1 - self.alpha)
+
+        optimized_actions_mean = mean[:, :, 0, :]
+        if self.cem_deterministic_policy:
+            return optimized_actions_mean
+        else:
+            optimized_actions_var = var[:, :, 0, :]
+            return optimized_actions_mean + \
+                   tf.random.normal(shape=tf.shape(optimized_actions_mean)) * tf.sqrt(optimized_actions_var)
 
     def get_actions(self, obs, verbose=True):
-        self._reset_mu()
-        next_obs = np.empty((self.num_envs, self.obs_dim))
-        # perm = [np.random.permutation(self.num_envs) for _ in range(self.horizon)]
-        # perm = [np.arange(self.num_envs) for _ in range(self.horizon)]
-        # perm = np.stack(perm, axis=0)
         sess = tf.get_default_session()
+        if self.u_array_val is None:
+            self.u_array_val, = sess.run([self.cem_optimized_actions], feed_dict={self.obs_ph: obs})
+            self.perm_val = self.perm_val_init
+        self._reset_mu()
+        # next_obs = np.empty((self.num_envs, self.obs_dim))
         feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: self.perm_val}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
         for itr in range(self.num_ilqr_iters):
+            # self.u_array_val is changed along optimization
             # compute: x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
 
@@ -139,7 +184,7 @@ class iLQRPlanner(object):
                 try:
                     # assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
                     success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
-                    next_obs[env_idx, :] = agent_info['next_obs']
+                    # next_obs[env_idx, :] = agent_info['next_obs']
                     if verbose:
                         logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
                         if success:
@@ -164,27 +209,27 @@ class iLQRPlanner(object):
             logger.dumpkvs()
 
         # logging: RetEnv for env_idx = 0
-        if np.random.rand() < 0.3 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
-            for env_idx in range(self.num_envs):
-                logger.logkv(f'RetEnv-{env_idx}', self._run_open_loop(self.u_array_val[:, env_idx, :], obs[env_idx, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
-            logger.dumpkvs()
+        # if np.random.rand() < 0.3 and verbose:  # hack to prevent: Got MuJoCo Warning: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 0.4400.
+        #     for env_idx in range(self.num_envs):
+        #         logger.logkv(f'RetEnv-{env_idx}', self._run_open_loop(self.u_array_val[:, env_idx, :], obs[env_idx, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
+        #     logger.dumpkvs()
 
         optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
 
         # shift u_array and perm
         self._shift(u_new=None)
 
-        return optimized_actions, [], next_obs
-
-    def _run_open_loop(self, u_array, init_obs):
-        returns = 0
-        _ = self._env.reset_from_obs(init_obs)
-
-        for i in range(self.horizon):
-            x, reward, _, _ = self._env.step(u_array[i])
-            returns += self.discount**i * reward
-
-        return returns
+        return optimized_actions, []#, next_obs
+    #
+    # def _run_open_loop(self, u_array, init_obs):
+    #     returns = 0
+    #     _ = self._env.reset_from_obs(init_obs)
+    #
+    #     for i in range(self.horizon):
+    #         x, reward, _, _ = self._env.step(u_array[i])
+    #         returns += self.discount**i * reward
+    #
+    #     return returns
 
     def update_u_per_env(self, idx, utils_list):
         u_array = self.u_array_val[:, idx, :]
@@ -335,11 +380,11 @@ class iLQRPlanner(object):
     def _reset_mu(self):
         self.param_array = [(self.mu_init, self.delta_init) for _ in range(self.num_envs)]
 
-    def reset_u_array(self, u_array=None):
-        if u_array is None:
-            u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.num_envs, self.act_dim))
-        self.u_array_val[:, :, :] = u_array  # broadcast
-        self.perm_val = self.perm_val_init
+    # def reset_u_array(self, u_array=None):
+    #     if u_array is None:
+    #         u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.num_envs, self.act_dim))
+    #     self.u_array_val[:, :, :] = u_array  # broadcast
+    #     self.perm_val = self.perm_val_init
 
     def _sample_u(self):
         return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
@@ -353,7 +398,6 @@ class iLQRPlanner(object):
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
         #  shift perm
         self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
-
 
 def chol_inv(matrix):
     """

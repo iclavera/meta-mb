@@ -25,7 +25,6 @@ class MPCController(Serializable):
         self.horizon = horizon
         self.num_cem_iters = num_cem_iters
         self.num_envs = num_rollouts
-        self.percent_elites = percent_elites
         self.num_elites = int(percent_elites * n_candidates)
         self.env = env
         self.alpha = alpha
@@ -148,7 +147,7 @@ class MPCController(Serializable):
             mean = mean * self.alpha + elite_mean * (1 - self.alpha)
             var = var * self.alpha + elite_var * (1 - self.alpha)
 
-        optimized_actions_mean = mean[0, :, 0, :]  # TODO: stochastic
+        optimized_actions_mean = mean[0, :, 0, :]
         if self.deterministic_policy:
             self.optimized_actions = optimized_actions_mean
         else:
