@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "mb-lu-2-walker"
+EXP_NAME = "test"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -94,7 +94,6 @@ def run_experiment(**kwargs):
             normalize_adv=kwargs['normalize_adv'],
             positive_adv=kwargs['positive_adv'],
         )
-        print("==================================start========================================")
 
         assert kwargs['model_type'] in [0, 1, 2, 3]
         if kwargs['model_type'] == 0:
@@ -176,7 +175,6 @@ def run_experiment(**kwargs):
                                            )
         else:
             done_predictor = None
-        print("==================================start========================================")
 
         algo = SAC_MB(
             policy=policy,
@@ -246,7 +244,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -273,26 +271,26 @@ if __name__ == '__main__':
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[5, 10],
+		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [1],
+        'T': [3],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1, 1e-3, 1e-4, 1e-5],
+        'q_loss_importance': [1],
         'actorH': [1],
         'method': [5],
         'policy_type': ['gaussian'],
 
-        'policy_hidden_nonlinearity': ['relu', 'tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
-        'ground_truth': [False],
+        'ground_truth': [True],
 
         'done_predictor_aux_hidden_dim':[512],
         'done_predictor_transition_hidden_dim': [256],

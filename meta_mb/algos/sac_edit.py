@@ -438,9 +438,9 @@ class SAC_MB(Algo):
         else:
             dist_info_sym = self.policy.distribution_info_sym(observations_ph)
             actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
-        log_pis_var = tf.expand_dims(log_pis_var, axis=1)
-        assert log_pis_var.shape.as_list() == [None, 1]
+            log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
+            log_pis_var = tf.expand_dims(log_pis_var, axis=1)
+            assert log_pis_var.shape.as_list() == [None, 1]
 
         if self.dynamics_type == 2 or self.dynamics_type == 3:
             log_alpha = self.dynamics_model.log_alpha
@@ -449,7 +449,7 @@ class SAC_MB(Algo):
             log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
             alpha = tf.exp(log_alpha)
 
-        if isinstance(self.target_entropy, Number) and self.policy.name != 'linear':
+        if isinstance(self.target_entropy, Number) and self.policy.name != 'np_policy':
             alpha_loss = -tf.reduce_mean(
                 log_alpha * tf.stop_gradient(log_pis_var + self.target_entropy))
             self.log_pis_var = log_pis_var
@@ -522,26 +522,26 @@ class SAC_MB(Algo):
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
         # ground truth
-        # elif self.q_function_type == 4:
-        #     assert self.T >= 0
-        #     obs = observations_ph
-        #     actions = actions_var
-        #     for i in range(self.T+1):
-        #         next_observation, next_actions_var, rewards, dones_next, dist_info_sym = self.step(obs, actions)
-        #         if i == 0 :
-        #             reward_values = (self.discount**(i)) * self.reward_scale * rewards
-        #         else:
-        #             reward_values = (self.discount**(i)) * self.reward_scale * (1 - dones) * rewards + reward_values
-        #         dones = dones_next
-        #         obs, actions = next_observation, next_actions_var
-        #
-        #     input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-        #     next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        #     q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-        #     min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        elif self.q_function_type == 4:
+            assert self.T >= 0
+            obs = observations_ph
+            actions = actions_var
+            for i in range(self.T+1):
+                next_observation, next_actions_var, rewards, dones_next, dist_info_sym = self.step(obs, actions)
+                if i == 0 :
+                    reward_values = (self.discount**(i)) * self.reward_scale * rewards
+                else:
+                    reward_values = (self.discount**(i)) * self.reward_scale * (1 - dones) * rewards + reward_values
+                dones = dones_next
+                obs, actions = next_observation, next_actions_var
+
+            input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+            next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
         if self.reparameterize:
-            if self.policy.name == 'linear':
+            if self.policy.name == 'np_policy':
                 policy_kl_losses = (- min_q_val_var - policy_prior_log_probs)
             else:
                 policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
@@ -549,6 +549,51 @@ class SAC_MB(Algo):
             raise NotImplementedError
 
         assert policy_kl_losses.shape.as_list() == [None, 1]
+
+        if self.q_function_type == 4:
+            assert self.policy.name == 'np_policy'
+            gt_next_observation = self.op_phs_dict['next_observations'+str(self.T)]
+            gt_observation = self.op_phs_dict['observations'+str(self.T)]
+            gt_action = self.op_phs_dict['actions'+str(self.T)]
+
+            gt_next_actions_var, _ = self.policy.tf_get_action(next_observation)
+            gt_rewards = tf.reshape(self.op_phs_dict['rewards'+str(self.T)], [-1, 1])
+            gt_dones = tf.cast(tf.reshape(self.op_phs_dict['dones'+str(self.T)], [-1, 1]), gt_rewards.dtype)
+
+            gt_input_q_fun = tf.concat([gt_next_observation, gt_next_actions_var], axis=-1)
+            gt_q_values = [(self.discount ** (self.T + 1)) * (1-gt_dones) * Q.value_sym(input_var=gt_input_q_fun) for Q in self.Qs]
+            gt_q_values_var = [gt_rewards + gt_q_values[j] for j in range(2)]
+            gt_min_q_val_var = tf.reduce_min(gt_q_values_var, axis=0)
+            # st()
+            vars = self.policy.policy_params
+            gradients = []
+            for key in vars:
+                var_shape = vars[key].shape
+                if len(var_shape) == 2:
+                    for row in range(var_shape[0]):
+                        for col in range(var_shape[1]):
+                            temp_vars = {}
+                            for k in vars:
+                                temp_vars[k] = tf.identity(vars[k])
+
+                            indices = [-1 for _ in range(var_shape[0])]
+                            indices[row] = col
+                            epsilon = 1e-8
+                            epsilon_var = tf.one_hot(indices, var_shape[1], dtype = temp_vars[key].dtype) * epsilon
+                            temp_vars[key] += epsilon_var
+
+                            var = temp_vars[key]
+                            st()
+                            gt_next_actions_var1, _ = self.policy.tf_get_action(gt_next_observation, params = temp_vars)
+
+                            gt_input_q_fun1 = tf.concat([gt_next_observation, gt_next_actions_var1], axis=-1)
+                            gt_next_q_values1 = [(self.discount ** (self.T + 1)) * (1-gt_dones) * Q.value_sym(input_var=gt_input_q_fun1) for Q in self.Qs]
+                            gt_q_values_var1 = [gt_rewards + gt_next_q_values1[j] for j in range(2)]
+                            gt_min_q_val_var1 = tf.reduce_min(gt_q_values_var1, axis=0)
+                            policy_kl_losses = (self.alpha * log_pis_var - gt_min_q_val_var1 - policy_prior_log_probs)
+                            policy_loss1 = tf.reduce_mean(policy_kl_losses)
+                            gradient = (policy_loss1 - policy_loss)/(epsilon * tf.ones(var.shape))
+                            gradients.append(gradient)
 
         self.policy_losses = policy_kl_losses
         policy_loss = tf.reduce_mean(policy_kl_losses)
