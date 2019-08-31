@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "test"
+EXP_NAME = "mb-lu-4"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -16,7 +16,7 @@ from meta_mb.trainers.sac_edit_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from meta_mb.policies.np_linear_policy import LinearPolicy
+from meta_mb.policies.np_linear_policy import TfLinearPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -62,7 +62,7 @@ def run_experiment(**kwargs):
 
 
         if kwargs['policy_type'] == 'linear':
-            policy = LinearPolicy(
+            policy = TfLinearPolicy(
                 name="np_policy",
                 obs_dim=np.prod(env.observation_space.shape),
                 action_dim=np.prod(env.action_space.shape),
@@ -273,14 +273,14 @@ if __name__ == '__main__':
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [3],
+        'T': [3, 2],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1],
+        'q_loss_importance': [1, 1e-3, 1e-4],
         'actorH': [1],
         'method': [5],
         'policy_type': ['gaussian'],
@@ -290,7 +290,7 @@ if __name__ == '__main__':
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
-        'ground_truth': [True],
+        'ground_truth': [False],
 
         'done_predictor_aux_hidden_dim':[512],
         'done_predictor_transition_hidden_dim': [256],
