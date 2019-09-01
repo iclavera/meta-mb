@@ -1,5 +1,6 @@
 from meta_mb.utils.serializable import Serializable
 from meta_mb.policies.planners.gt_ilqr_planner import GTiLQRPlanner
+from meta_mb.policies.planners.mb_gt_ilqr_planner import MBGTiLQRPlanner
 import numpy as np
 from meta_mb.logger import logger
 
@@ -15,6 +16,7 @@ class GTiLQRController(Serializable):
             horizon,
             num_ilqr_iters=100,
             verbose=True,
+            dynamics_model=None,
     ):
         Serializable.quick_init(self, locals())
         self.discount = discount
@@ -33,7 +35,10 @@ class GTiLQRController(Serializable):
         self.act_dim = env.action_space.shape[0]
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
-        self.planner = GTiLQRPlanner(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
+        if dynamics_model is None:
+            self.planner = GTiLQRPlanner(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
+        else:
+            self.planner = MBGTiLQRPlanner(env, dynamics_model, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
 
     @property
     def vectorized(self):
@@ -79,6 +84,20 @@ class GTiLQRController(Serializable):
         :return:
         """
         pass
+
+    # hack for gt-style mb-ilqr
+    def get_actions(self, obs):
+        action, _ = self.get_action(obs[0])
+        return action[None], []
+
+    def warm_reset(self, u_array):
+        pass
+        # logger.log('planner resets with collected samples...')
+        if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.act_dim):
+            u_array = None
+        else:
+            u_array = u_array[:self.horizon,0, :]
+        self.planner.reset_u_array(u_array=u_array)
 
     def log_diagnostics(*args):
         pass

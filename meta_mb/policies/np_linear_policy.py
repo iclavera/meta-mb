@@ -29,6 +29,14 @@ class LinearPolicy(NpPolicy):
         else:
             self.obs_filters = [Filter(shape=(obs_dim,))]
 
+    def compute_du(self, obs):
+        """
+        Compute u_x, u_theta, u_xx, u_theta_theta, u_theta_x
+        :param obs: (obs_dim,) or (batch_size, obs_dim)
+        :return:
+        """
+        raise NotImplementedError
+
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)
         assert observations.ndim == 2

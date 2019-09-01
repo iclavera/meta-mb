@@ -40,7 +40,7 @@ class iLQRPlanner(object):
         self.alpha = alpha
         self.num_elites = int(percent_elites * n_candidates)
 
-        self.act_low, self.act_high = env.action_space.low + 5e-2, env.action_space.high - 5e-2
+        self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self.param_array = None
         self.u_array_val = None
@@ -277,8 +277,10 @@ class iLQRPlanner(object):
                     # compute control matrices
                     k = - Q_uu_reg_inv @ Q_u
                     K = - Q_uu_reg_inv @ Q_ux_reg
-                    open_k_array.append(k)
-                    closed_K_array.append(K)
+                    # open_k_array.append(k)
+                    # closed_K_array.append(K)
+                    open_k_array.insert(0, k)
+                    closed_K_array.insert(0, K)
                     delta_J_1 += k.T @ Q_u
                     delta_J_2 += k.T @ Q_uu @ k
 
@@ -414,8 +416,9 @@ class iLQRPlanner(object):
         self.perm_val = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
 
     def warm_reset(self, u_array):
-        self.u_array_val = u_array
-        self.perm_val = self.perm_val_init
+        if self.initializer_str != 'cem':
+            self.u_array_val = u_array
+            self.perm_val = self.perm_val_init
 
 
 def chol_inv(matrix):

@@ -83,7 +83,7 @@ if __name__ == '__main__':
         'seed': [1],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'discount': [1.0,],
         'eps': [1e-5],
         'initializer_str': ['zeros'],
