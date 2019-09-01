@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "actor-test-1"
+EXP_NAME = "gt-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -246,7 +246,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66],
+        'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -267,31 +267,31 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [11],
+        'max_path_length': [1001],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [2],
+        'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [20],
+		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[4],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [2],
+        'T': [2, 3],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [2],
+		'num_models': [8],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1e-4],
+        'q_loss_importance': [1],
         'actorH': [1],
         'method': [2],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['relu', 'tanh'],
         'normalize_input': [True],
 
         'done_predictor_aux_hidden_dim':[512],
