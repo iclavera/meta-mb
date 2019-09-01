@@ -38,19 +38,6 @@ class LinearPolicy(NpPolicy):
         actions, _ = self.get_actions(np.expand_dims(observation, axis=0), update_filter=update_filter)
         return actions[0], {}
 
-    def tf_get_actions(self, observations, update_filter=True, params = None):
-        assert len(observations.shape) == 2
-        obs = self.tf_obs_filters[0](observations, update=update_filter)
-        if params == None:
-            actions = tf.transpose(tf.matmul(tf.cast(self.policy_params["W"], obs.dtype), tf.transpose(obs))) + self.policy_params["b"]
-        else:
-            actions = tf.transpose(tf.matmul(tf.cast(params["W"], obs.dtype), tf.transpose(obs))) + tf.cast(params["b"], obs.dtype)
-
-        return actions, {}
-
-    def tf_get_action(self, observation, update_filter=False, params = None):
-        actions, _ = self.tf_get_actions(observation, update_filter=update_filter, params = params)
-        return actions, {}
 
     def get_actions_batch(self, observations, update_filter=True):
         """
@@ -112,6 +99,7 @@ class TfLinearPolicy(NpPolicy):
 
     def tf_get_actions(self, observations, update_filter=True, params = None):
         assert len(observations.shape) == 2
+        st()
         obs = self.tf_obs_filters[0](observations, update=update_filter)
         if params == None:
             actions = tf.transpose(tf.matmul(self.policy_params["W"], tf.transpose(obs))) + self.policy_params["b"]

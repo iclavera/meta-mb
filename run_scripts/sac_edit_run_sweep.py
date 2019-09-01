@@ -267,9 +267,9 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [11],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [250],
+        'model_train_freq': [2],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
@@ -277,10 +277,10 @@ if __name__ == '__main__':
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [2, 3],
+        'T': [2],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [2],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
@@ -291,7 +291,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu', 'tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
 
         'done_predictor_aux_hidden_dim':[512],
