@@ -276,7 +276,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                     q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k][i], predictions=q_values_var[k], weights=0.5)
                                                 for k in range(2)]
 
-                    # q_losses = [loss/tf.math.reduce_std(loss) for loss in q_losses]
+                    q_losses = [loss/tf.math.reduce_mean(loss) for loss in q_losses]
 
                     current_scope = name
                     trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)

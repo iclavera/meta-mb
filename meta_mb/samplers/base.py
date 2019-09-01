@@ -5,6 +5,7 @@ import time
 import numpy as np
 import copy
 from pyprind import ProgBar
+from pdb import set_trace as st
 
 
 class BaseSampler(object):
@@ -67,9 +68,10 @@ class BaseSampler(object):
                 agent_info = {}
             elif deterministic:
                 action, agent_info = policy.get_action(obs)
-                action = agent_info['mean']
-                if self.policy.squashed:
-                    action = np.tanh(action)
+                if self.policy.name != 'np_policy':
+                    action = agent_info['mean']
+                    if self.policy.squashed:
+                        action = np.tanh(action)
             else:
                 action, agent_info = policy.get_action(obs)
                 if action.ndim == 2:

@@ -176,7 +176,7 @@ class Trainer(object):
                         for _ in range(self.deal_with_oom):
                             samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
                             random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
-                            actions_from_policy = self.policy.get_actions(random_states)[0]
+                            actions_from_policy = self.policy.get_action(random_states)[0]
                             next_obs, rewards, term = self.step(random_states, actions_from_policy)
                             self.model_replay_buffer.add_samples(random_states,
                                                                  actions_from_policy,
@@ -196,12 +196,13 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            # reward = []
-                            # for t in range(self.T):
-                            #     next_obs = batch['next_observations']
-                            #     next_actions = self.policy.get_actions(next_obs)[0]
-                            #     result = self.env.step_batch(next_obs, next_actions, t, reward)
-                            # batch.update(result)
+                            if self.ground_truth:
+                                reward = []
+                                for t in range(self.T):
+                                    next_obs = batch['next_observations']
+                                    next_actions = self.policy.get_action(next_obs)[0]
+                                    result = self.env.step_batch(next_obs, next_actions, t, reward)
+                                batch.update(result)
                             self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -271,10 +272,12 @@ class Trainer(object):
         """
         Gets the current policy and env for storage
         """
-        return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline)
+        # return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline)
+        return dict(itr=itr, env=self.env, baseline=self.baseline)
 
     def log_diagnostics(self, paths, prefix):
         # TODO: we aren't using it so far
         self.env.log_diagnostics(paths, prefix)
-        self.policy.log_diagnostics(paths, prefix)
+        if not self.ground_truth:
+            self.policy.log_diagnostics(paths, prefix)
         self.baseline.log_diagnostics(paths, prefix)

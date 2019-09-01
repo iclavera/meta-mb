@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "mb-lu-4"
+EXP_NAME = "actor-test-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -27,7 +27,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDyna
 from meta_mb.dynamics.done_predictor import DonePredictor
 
 
-save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
+# save_model_dir = 'home/vioichigo/Desktop/meta-mb/Saved_Model/' + EXP_NAME + '/'
 
 
 def run_experiment(**kwargs):
@@ -38,6 +38,7 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
+    save_model_dir = logger.get_dir()
 
     with sess.as_default() as sess:
 
@@ -61,13 +62,14 @@ def run_experiment(**kwargs):
                                    hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
 
-        if kwargs['policy_type'] == 'linear':
+        if kwargs['q_function_type'] == 4:
             policy = TfLinearPolicy(
                 name="np_policy",
                 obs_dim=np.prod(env.observation_space.shape),
                 action_dim=np.prod(env.action_space.shape),
             )
-        elif kwargs['policy_type'] == 'gaussian':
+            ground_truth = True
+        else:
             policy = GaussianMLPPolicy(
                 name="policy",
                 obs_dim=np.prod(env.observation_space.shape),
@@ -78,6 +80,7 @@ def run_experiment(**kwargs):
                 hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
                 squashed=True
             )
+            ground_truth = False
 
         env_sampler = BaseSampler(
             env=env,
@@ -203,7 +206,7 @@ def run_experiment(**kwargs):
             step_type=kwargs['step_type'],
             dynamics_type=kwargs['model_type'],
             predict_done=kwargs['predict_done'],
-            ground_truth=kwargs['ground_truth'],
+            ground_truth=ground_truth,
         )
 
         trainer = Trainer(
@@ -225,7 +228,7 @@ def run_experiment(**kwargs):
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-            restore_path=save_model_dir+kwargs['restore_path'],
+            restore_path=save_model_dir,
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
             done_bar=kwargs['done_bar'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
@@ -234,6 +237,7 @@ def run_experiment(**kwargs):
             predict_done=kwargs['predict_done'],
             actorH=kwargs['actorH'],
             T=kwargs['T'],
+            ground_truth=ground_truth,
         )
 
         trainer.train()
@@ -242,7 +246,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66, 77],
+        'seed': [66],
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
@@ -255,7 +259,7 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'step_type': [0],
         'predict_done': [False],
-        'model_type': [3],
+        'model_type': [0],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -263,34 +267,32 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 		'n_itr': [1000],
         'n_train_repeats': [8],
-        'max_path_length': [1001],
+        'max_path_length': [11],
 		'rollout_length_params': [[20, 100, 1, 1]],
-        'model_train_freq': [250],
+        'model_train_freq': [2],
 		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
+		'dynamics_model_max_epochs': [20],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[5],
+		'q_function_type':[4],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [3, 2],
+        'T': [2],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [2],
 		'model_used_ratio': [0.5],
         'done_bar': [1],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1, 1e-3, 1e-4],
+        'q_loss_importance': [1e-4],
         'actorH': [1],
-        'method': [5],
-        'policy_type': ['gaussian'],
+        'method': [2],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
-        'ground_truth': [False],
 
         'done_predictor_aux_hidden_dim':[512],
         'done_predictor_transition_hidden_dim': [256],
@@ -309,7 +311,6 @@ if __name__ == '__main__':
         # Dynamics Model
 		'sampler_batch_size': [256],
         'real_ratio': [0.05],
-        'restore_path': [''],
 
         'model_learning_rate': [1e-3],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
