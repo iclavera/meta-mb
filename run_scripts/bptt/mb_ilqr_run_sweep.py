@@ -82,6 +82,7 @@ def run_experiment(**config):
             dynamics_model=dynamics_model,
             num_envs=config['num_rollouts'],
             horizon=config['horizon'],
+            initializer_str=config['initializer_str'],
             num_ilqr_iters=config['num_ilqr_iters'],
             discount=config['discount'],
             mu_min=config['mu_min'],
@@ -121,7 +122,6 @@ def run_experiment(**config):
             env=env,
             planner=planner,
             horizon=config['horizon'],
-            initializer_str=config['initializer_str'],
             num_rollouts=config['num_rollouts'],
         )
 
@@ -164,7 +164,7 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'n_itr': [50],
         'discount': [1.0,],
-        'horizon': [5],  # FIXME: 5, 10
+        'horizon': [30],  # FIXME: 5, 10
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         'delta_0': [2],
         'delta_init': [1.0],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-7],
+        'c_1': [1e-5],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
 

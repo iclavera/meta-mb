@@ -42,8 +42,6 @@ class GTiLQRController(Serializable):
     def get_action(self, obs):
         for itr in range(self.num_ilqr_iters):
             optimized_action, backward_accept, forward_accept, planner_returns_log, reward_array = self.planner.update_x_u_for_one_step(obs=obs)
-            if itr % 10 == 0:
-                logger.log(f'stats for u, max = {np.max(self.planner.u_array)}, min = {np.min(self.planner.u_array)}, mean {np.mean(self.planner.u_array)}')
 
             if backward_accept and forward_accept:
                 old_returns, new_returns, diff = planner_returns_log

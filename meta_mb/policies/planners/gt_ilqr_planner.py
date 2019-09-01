@@ -10,7 +10,6 @@ class GTiLQRPlanner(object):
     def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
-                 forward_stop_cond='rel',
                  use_hessian_f=False, verbose=False):
         self._env = env
         self.n_parallel = n_parallel
@@ -28,7 +27,6 @@ class GTiLQRPlanner(object):
         self.c_1 = c_1
         self.max_forward_iters = max_forward_iters
         self.max_backward_iters = max_backward_iters
-        self.forward_stop_cond = forward_stop_cond
         self.use_hessian_f = use_hessian_f
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 

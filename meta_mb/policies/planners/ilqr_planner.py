@@ -8,7 +8,8 @@ from meta_mb.policies import utils
 
 
 class iLQRPlanner(object):
-    def __init__(self, env, dynamics_model, num_envs, horizon, num_ilqr_iters ,reg_str='V', discount=1,
+    def __init__(self, env, dynamics_model, num_envs, horizon, initializer_str,
+                 num_ilqr_iters ,reg_str='V', discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
                  n_candidates=1000, num_cem_iters=5, cem_deterministic_policy=True, alpha=0.1, percent_elites=0.1):
@@ -16,6 +17,7 @@ class iLQRPlanner(object):
         self.dynamics_model = dynamics_model
         self.num_envs = num_envs
         self.horizon = horizon
+        self.initializer_str = initializer_str
         self.num_ilqr_iters = num_ilqr_iters
         self.reg_str = reg_str
         self.discount = discount
@@ -41,9 +43,7 @@ class iLQRPlanner(object):
         self.act_low, self.act_high = env.action_space.low + 5e-2, env.action_space.high - 5e-2
 
         self.param_array = None
-        self.u_array_val = np.empty(
-            shape=(self.horizon, self.num_envs, self.act_dim)
-        )
+        self.u_array_val = None
         self.perm_val = None
         # self.perm_val = np.stack([np.arange(self.num_envs) for _ in range(self.horizon)], axis=0)
         self.perm_val_init = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
@@ -161,12 +161,10 @@ class iLQRPlanner(object):
                    tf.random.normal(shape=tf.shape(optimized_actions_mean)) * tf.sqrt(optimized_actions_var)
 
     def get_actions(self, obs, verbose=True):
-        sess = tf.get_default_session()
         if self.u_array_val is None:
-            self.u_array_val, = sess.run([self.cem_optimized_actions], feed_dict={self.obs_ph: obs})
-            self.perm_val = self.perm_val_init
+            self._reset(obs)
         self._reset_mu()
-        # next_obs = np.empty((self.num_envs, self.obs_dim))
+        sess = tf.get_default_session()
         feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: self.perm_val}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
@@ -175,16 +173,15 @@ class iLQRPlanner(object):
             # compute: x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
 
-            if itr == 0 and verbose:
-                for env_idx in range(self.num_envs):
-                    logger.logkv(f'RetDyn-{env_idx}', -utils_by_env[env_idx][2])
-                logger.dumpkvs()
+            # if itr == 0 and verbose:
+            #     for env_idx in range(self.num_envs):
+            #         logger.logkv(f'RetDyn-{env_idx}', -utils_by_env[env_idx][2])
+            #     logger.dumpkvs()
 
             for env_idx in active_envs.copy():
                 try:
                     # assert np.allclose(utils_by_env[env_idx][0][0], obs[env_idx])  # compare x_array[0] and obs for the current environment
                     success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
-                    # next_obs[env_idx, :] = agent_info['next_obs']
                     if verbose:
                         logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
                         if success:
@@ -214,7 +211,7 @@ class iLQRPlanner(object):
         #         logger.logkv(f'RetEnv-{env_idx}', self._run_open_loop(self.u_array_val[:, env_idx, :], obs[env_idx, :]))  # USE RetEnv HERE TO MEASURE PERFORMANCE
         #     logger.dumpkvs()
 
-        optimized_actions = self.u_array_val  # (horizon, num_envs, act_dim)
+        optimized_actions = self.u_array_val.copy()  # (horizon, num_envs, act_dim)
 
         # shift u_array and perm
         self._shift(u_new=None)
@@ -386,18 +383,40 @@ class iLQRPlanner(object):
     #     self.u_array_val[:, :, :] = u_array  # broadcast
     #     self.perm_val = self.perm_val_init
 
-    def _sample_u(self):
-        return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
+    # def _sample_u(self):
+    #     return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
 
     def _shift(self, u_new):
         #  shift u_array
         if u_new is None:
             # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
             # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
-            u_new = self._sample_u()
+            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs, self.act_dim))
+            # u_new = self._sample_u()
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
         #  shift perm
         self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
+
+    def _reset(self, obs):
+        if self.initializer_str == 'cem':
+            sess = tf.get_default_session()
+            init_u_array, = sess.run([self.cem_optimized_actions], feed_dict={self.obs_ph: obs})
+        elif self.initializer_str == 'uniform':
+            init_u_array = np.random.uniform(low=self.act_low, high=self.act_high,
+                                             size=(self.horizon, self.num_envs, self.act_dim))
+        elif self.initializer_str == 'zeros':
+            init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.act_dim))
+            init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
+        else:
+            raise NotImplementedError
+
+        self.u_array_val = init_u_array
+        self.perm_val = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
+
+    def warm_reset(self, u_array):
+        self.u_array_val = u_array
+        self.perm_val = self.perm_val_init
+
 
 def chol_inv(matrix):
     """

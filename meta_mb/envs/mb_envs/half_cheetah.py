@@ -89,7 +89,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def tf_reward(self, obs, acts, next_obs):
         # FIXME: SHOULD NOT CLIP HERE
-        acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
+        # acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
         if obs.get_shape().ndims == 1:
             reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)
             reward_run = obs[8]
@@ -126,8 +126,9 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     def reset_from_obs(self, obs):
         nq, nv = self.model.nq, self.model.nv
         self.sim.reset()
-        qpos = self.init_qpos #+ \
-            # self.np_random.uniform(low=-.1, high=.1, size=nq)
+        # FIXME: noise here?
+        qpos = self.init_qpos + \
+             self.np_random.uniform(low=-.1, high=.1, size=nq)
         qpos[1:] = obs[:nq-1]
         qvel = obs[nq-1:]
         self.set_state(qpos, qvel)

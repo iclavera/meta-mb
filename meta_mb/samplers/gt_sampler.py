@@ -50,6 +50,8 @@ class GTSampler(Serializable):
                 logger.logkv(log_prefix + 'TotalTime', time.time() - start_time)
                 logger.dumpkvs()
 
+        return None
+
     def __getstate__(self):
         state = dict()
         state['init_args'] = Serializable.__getstate__(self)
