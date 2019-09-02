@@ -80,7 +80,10 @@ def run_experiment(**kwargs):
                 hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
                 squashed=True
             )
-            ground_truth = False
+            if kwargs['policy_hidden_sizes'] == [(0)]:
+                ground_truth = True
+            else:
+                ground_truth = False
 
         env_sampler = BaseSampler(
             env=env,
@@ -250,7 +253,8 @@ if __name__ == '__main__':
         'baseline': [LinearFeatureBaseline],
         'env': [HalfCheetahEnv],
         # Policy
-        'policy_hidden_sizes': [(256, 256)],
+        # 'policy_hidden_sizes': [(256, 256)],
+        'policy_hidden_sizes': [(0)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
         'num_model_rollouts': [1],
