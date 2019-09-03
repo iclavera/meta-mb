@@ -35,13 +35,24 @@ class LinearPolicy(NpPolicy):
         :param obs: (obs_dim,) or (batch_size, obs_dim)
         :return:
         """
-        raise NotImplementedError
+        obs_dim, act_dim = self.obs_dim, self.action_dim
+        # u_x = self.policy_params["W"]
+        u_W_flatten = np.zeros(shape=(act_dim, act_dim * obs_dim))
+        for i in range(act_dim):  # derivative of i-th row of u w.r.t theta
+            u_W_flatten[i, i*obs_dim:(i+1)*obs_dim] = obs
+        u_theta = np.hstack([u_W_flatten, np.eye(act_dim)])
+        # u_theta_x
+        # u_theta_x = np.zeros(shape=(self.action_dim, self.flatten_dim, self.obs_dim))
+        # for i in range(act_dim):
+        #     u_theta_x[i, i*obs_dim:(i+1)*obs_dim, :] = np.eye(obs_dim)
+
+        return None, u_theta, None, None, None
 
     def get_actions(self, observations, update_filter=True):
         observations = np.array(observations)
         assert observations.ndim == 2
         obs = self.obs_filters[0](observations, update=update_filter)
-        actions = np.dot(self.policy_params["W"], obs.T).T + self.policy_params["b"]
+        actions = np.dot(obs, self.policy_params["W"].T) + self.policy_params["b"]
         if self.output_nonlinearity is not None:
             actions = self.output_nonlinearity(actions)
         return actions, {}

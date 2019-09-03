@@ -544,7 +544,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         elif pred_type == 'mean':
             next_obs = tf.reduce_mean(next_obs, axis=2)
         else:
-            NotImplementedError('[rand, mean, all]')
+            next_obs = next_obs[:, :, pred_type]
 
         return tf.clip_by_value(next_obs, -1e2, 1e2)
 
@@ -640,7 +640,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             idx = np.random.randint(0, self.num_models, size=pred_obs.shape[0])
             pred_obs = np.stack([pred_obs[row, :, model_id] for row, model_id in enumerate(idx)], axis=0)
         else: # elif type(pred_type) is int:  # TODO: not optimal implementation
-            assert 0 <= pred_type < self.num_models
+            # assert 0 <= pred_type < self.num_models
             pred_obs = pred_obs[:, :, pred_type]
 
         return np.clip(pred_obs, -1e2, 1e2)

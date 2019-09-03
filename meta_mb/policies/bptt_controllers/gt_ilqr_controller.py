@@ -1,6 +1,7 @@
 from meta_mb.utils.serializable import Serializable
 from meta_mb.policies.planners.gt_ilqr_planner import GTiLQRPlanner
 from meta_mb.policies.planners.mb_gt_ilqr_planner import MBGTiLQRPlanner
+from meta_mb.policies.planners.gt_policy_ilqr_planner import GTPolicyiLQRPlanner
 import numpy as np
 from meta_mb.logger import logger
 
@@ -17,6 +18,7 @@ class GTiLQRController(Serializable):
             num_ilqr_iters=100,
             verbose=True,
             dynamics_model=None,
+            policy=None,
     ):
         Serializable.quick_init(self, locals())
         self.discount = discount
@@ -35,10 +37,12 @@ class GTiLQRController(Serializable):
         self.act_dim = env.action_space.shape[0]
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
-        if dynamics_model is None:
-            self.planner = GTiLQRPlanner(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
-        else:
+        if dynamics_model is not None:
             self.planner = MBGTiLQRPlanner(env, dynamics_model, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
+        elif policy is not None:
+            self.planner = GTPolicyiLQRPlanner(env, policy, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
+        else:
+            self.planner = GTiLQRPlanner(env, n_parallel, horizon, eps, self._init_u_array(), verbose=verbose)
 
     @property
     def vectorized(self):

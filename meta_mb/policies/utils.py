@@ -35,3 +35,21 @@ def jacobian_wrapper(y, x, dim_y, dim_x=None, stop_gradients=None):
             jac_array.append(jac)
         return tf.stack(jac_array, axis=1)  # FIXME: is it safe not to separate envs?
 
+def hessian_wrapper(y, x, dim_y, dim_x=None):
+    """
+
+    :param y: (batch_size, dim_y)
+    :param x: (batch_size, dim_x)
+    :param dim_y:
+    :param dim_x:
+    :param stop_gradient:
+    :return:
+    """
+    assert y.get_shape().ndims == 1
+    hess_array = []
+    for i in range(dim_y):
+        hess, = tf.hessians(ys=y[i], xs=[x])  # (dim_x, dim_x)
+        assert hess is not None
+        hess_array.append(hess)
+        assert hess.get_shape().as_list() == [dim_x, dim_x]
+    return tf.stack(hess_array, axis=0)  # (dim_y, dim_x, dim_x)

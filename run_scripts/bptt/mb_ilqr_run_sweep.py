@@ -36,6 +36,8 @@ def run_experiment(**config):
         repr += 'reacher'
         config['max_path_length'] = 50
 
+    repr += f"-{config['horizon']}"
+
     if config.get('model_path', None) is not None:
         repr += '-pretrain'
         # config['fit_model'] = False
@@ -83,6 +85,7 @@ def run_experiment(**config):
             num_envs=config['num_rollouts'],
             horizon=config['horizon'],
             initializer_str=config['initializer_str'],
+            use_hessian_f=config['use_hessian_f'],
             num_ilqr_iters=config['num_ilqr_iters'],
             discount=config['discount'],
             mu_min=config['mu_min'],
@@ -90,6 +93,7 @@ def run_experiment(**config):
             mu_init=config['mu_init'],
             delta_0=config['delta_0'],
             delta_init=config['delta_init'],
+            alpha_init=config['alpha_init'],
             alpha_decay_factor=config['alpha_decay_factor'],
             c_1=config['c_1'],
             max_forward_iters=config['max_forward_iters'],
@@ -159,12 +163,12 @@ if __name__ == '__main__':
         'on_policy_freq': [2],
 
         # Problem
-        'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
         'n_itr': [50],
         'discount': [1.0,],
-        'horizon': [30],  # FIXME: 5, 10
+        'horizon': [30],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
@@ -176,10 +180,12 @@ if __name__ == '__main__':
         'mu_init': [1e-5],
         'delta_0': [2],
         'delta_init': [1.0],
+        'alpha_init': [1e0],
         'alpha_decay_factor': [3.0],
         'c_1': [1e-5],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
+        'use_hessian_f': [True],
 
         # CEM
         'n_candidates': [100],

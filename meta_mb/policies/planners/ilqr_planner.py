@@ -9,10 +9,11 @@ from meta_mb.policies import utils
 
 class iLQRPlanner(object):
     def __init__(self, env, dynamics_model, num_envs, horizon, initializer_str,
-                 num_ilqr_iters ,reg_str='V', discount=1,
-                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
+                 num_ilqr_iters, reg_str='V', use_hessian_f=False, discount=1,
+                 mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0,
+                 alpha_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
-                 n_candidates=1000, num_cem_iters=5, cem_deterministic_policy=True, alpha=0.1, percent_elites=0.1):
+                 n_candidates=1000, num_cem_iters=5, cem_deterministic_policy=True, cem_alpha=0.1, percent_elites=0.1):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
         self.num_envs = num_envs
@@ -20,12 +21,14 @@ class iLQRPlanner(object):
         self.initializer_str = initializer_str
         self.num_ilqr_iters = num_ilqr_iters
         self.reg_str = reg_str
+        self.use_hessian_f = use_hessian_f
         self.discount = discount
         self.act_dim = env.action_space.shape[0]
         self.obs_dim = env.observation_space.shape[0]
         self.mu_min = mu_min
         self.mu_max = mu_max
         self.mu_init = mu_init
+        self.alpha_init = alpha_init
         self.alpha_decay_factor = alpha_decay_factor
         self.delta_0 = delta_0
         self.delta_init = delta_init
@@ -37,16 +40,15 @@ class iLQRPlanner(object):
         self.n_candidates = n_candidates
         self.num_cem_iters = num_cem_iters
         self.cem_deterministic_policy = cem_deterministic_policy
-        self.alpha = alpha
+        self.cem_alpha = cem_alpha
         self.num_elites = int(percent_elites * n_candidates)
 
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self.param_array = None
         self.u_array_val = None
-        self.perm_val = None
-        # self.perm_val = np.stack([np.arange(self.num_envs) for _ in range(self.horizon)], axis=0)
-        self.perm_val_init = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
+        self.model_idx_val = None
+        self.model_idx_val_init = np.random.randint(low=0, high=self.dynamics_model.num_models, size=(horizon, num_envs))
 
         self.u_array_ph = tf.placeholder(
             dtype=tf.float32,
@@ -58,7 +60,7 @@ class iLQRPlanner(object):
             shape=(self.num_envs, self.obs_dim),
             name='obs',
         )
-        self.perm_ph = tf.placeholder(
+        self.model_idx_ph = tf.placeholder(
             dtype=tf.int32,
             shape=(self.horizon, self.num_envs),
             name='perm',
@@ -70,44 +72,58 @@ class iLQRPlanner(object):
         logger.log('TimeBuildGraph', build_time - time.time())
 
     def _build_deriv_graph(self):
-        x_array, df_array, dl_array = [], [], []
-        model_idx_array = []
-        num_envs_per_model = self.num_envs // self.dynamics_model.num_models
+        obs_dim, act_dim = self.obs_dim, self.act_dim
+        discount = self.discount
+        num_envs = self.num_envs
+        utils_sym_by_env = []
 
-        obs = self.obs_ph
-        returns = tf.zeros((self.num_envs,))
-        for i in range(self.horizon):
-            acts = self.u_array_ph[i, :, :]
-            perm = self.perm_ph[i, :]
-            perm_inv = tf.invert_permutation(perm)
+        for env_idx in range(num_envs):
+            obs = self.obs_ph[env_idx, :]
+            disc_reward = tf.zeros(())
+            x_array, deriv_array = [], []
+            for i in range(self.horizon):
+                if self.use_hessian_f:
+                    # hack in order to compute f_ux
+                    act = self.u_array_ph[i, env_idx, :]
+                    obs_act_concat = tf.concat([obs, act], axis=0)
+                    obs, act = obs_act_concat[:obs_dim], obs_act_concat[-act_dim:]
+                    model_idx = self.model_idx_ph[i, env_idx]
+                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
+                    reward = self._env.tf_reward(obs, act, next_obs)
 
-            next_obs = self.dynamics_model.predict_sym(obs, acts, pred_type='rand', perm_dict=dict(perm=perm, perm_inv=perm_inv))
+                    # compute gradients
+                    hess = utils.hessian_wrapper(next_obs, obs_act_concat, obs_dim, obs_dim+act_dim)  # (obs_dim, obs_dim+act_dim, obs_dim+act_dim)
+                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                    f_xx = hess[:, :obs_dim, :obs_dim]
+                    f_uu = hess[:, -act_dim:, -act_dim:]
+                    f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
+                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
 
-            x_array.append(obs)
-            model_idx_array.append(tf.floordiv(perm_inv, num_envs_per_model))
-            jac_f_x = utils.jacobian_wrapper(next_obs, obs, self.obs_dim, self.obs_dim)  # (num_envs, obs_dim, obs_dim)
-            jac_f_u = utils.jacobian_wrapper(next_obs, acts, self.obs_dim, self.act_dim)  # (num_envs, obs_dim, act_dim)
-            df_array.append([jac_f_x, jac_f_u])
-            dl = self._env.tf_dl_dict(obs, acts, next_obs, self.num_envs).values()
-            dl_array.append(dl)
-            rewards = self._env.tf_reward(obs, acts, next_obs)
-            returns += self.discount**i * rewards
+                else:
+                    # obs, act, next_obs, reward
+                    act = self.u_array_ph[i, env_idx, :]
+                    model_idx = self.model_idx_ph[i, env_idx]
+                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
+                    reward = self._env.tf_reward(obs, act, next_obs)
 
-            obs = next_obs
+                    # compute gradients
+                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                    f_xx = utils.hessian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                    f_uu, f_ux = None, None
+                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
 
-        # post process
-        x_array = tf.stack(x_array, axis=0)
-        model_idx = tf.stack(model_idx_array, axis=0)  # (horizon, num_envs)
-        J_val = -returns
-        # for each element of array, stack along horizon: (horizon, num_envs, *)
-        f_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*df_array)))
-        l_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*dl_array)))
-        # store by env
-        derivs_by_env = list(map(lambda arr: [arr[:, env_idx] for env_idx in range(self.num_envs)], f_array + l_array))
-        x_array_by_env = [x_array[:, env_idx] for env_idx in range(self.num_envs)]
-        model_idx_by_env = [model_idx[:, env_idx] for env_idx in range(self.num_envs)]
-        J_val_by_env = [J_val[env_idx] for env_idx in range(self.num_envs)]
-        utils_sym_by_env = list(zip(x_array_by_env, model_idx_by_env, J_val_by_env, *derivs_by_env))
+                # store
+                disc_reward += discount**i * reward
+                x_array.append(obs)
+                deriv_array.append([f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux])
+                obs = next_obs
+
+            x_array = tf.stack(x_array, axis=0)
+            deriv_array = list(map(lambda arr: tf.stack(arr, axis=0), zip(*deriv_array)))  # (horizon, *)
+
+            utils_sym_by_env.append([x_array, -disc_reward, *deriv_array])
 
         return utils_sym_by_env
 
@@ -116,6 +132,7 @@ class iLQRPlanner(object):
         horizon = self.horizon
         n_candidates = self.n_candidates
         num_envs = self.num_envs
+        alpha = self.cem_alpha
 
         mean = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high + self.act_low) / 2
         var = tf.ones(shape=[horizon, num_envs, 1, act_dim]) * (self.act_high - self.act_low) / 16
@@ -149,8 +166,8 @@ class iLQRPlanner(object):
             elite_actions = tf.batch_gather(act, indices)
             elite_actions = tf.transpose(elite_actions, (3, 0, 1, 2))  # (horizon, num_envs, n_candidates, act_dim)
             elite_mean, elite_var = tf.nn.moments(elite_actions, axes=[2], keep_dims=True)
-            mean = mean * self.alpha + elite_mean * (1 - self.alpha)
-            var = var * self.alpha + elite_var * (1 - self.alpha)
+            mean = mean * alpha + elite_mean * (1 - alpha)
+            var = var * alpha + elite_var * (1 - alpha)
 
         optimized_actions_mean = mean[:, :, 0, :]
         if self.cem_deterministic_policy:
@@ -165,12 +182,12 @@ class iLQRPlanner(object):
             self._reset(obs)
         self._reset_mu()
         sess = tf.get_default_session()
-        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.perm_ph: self.perm_val}  # self.u_array_val is updated over iterations
+        feed_dict = {self.u_array_ph: self.u_array_val, self.obs_ph: obs, self.model_idx_ph: self.model_idx_val}  # self.u_array_val is updated over iterations
 
         active_envs = list(range(self.num_envs))
         for itr in range(self.num_ilqr_iters):
             # self.u_array_val is changed along optimization
-            # compute: x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux
+            # compute: x_array, J_val, f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux
             utils_by_env = sess.run(self.utils_sym_by_env, feed_dict=feed_dict)
 
             # if itr == 0 and verbose:
@@ -214,7 +231,7 @@ class iLQRPlanner(object):
         optimized_actions = self.u_array_val.copy()  # (horizon, num_envs, act_dim)
 
         # shift u_array and perm
-        self._shift(u_new=None)
+        self._shift(u_new=None)  # FIXME: alternative ways to initialize u_new
 
         return optimized_actions, []#, next_obs
     #
@@ -230,8 +247,9 @@ class iLQRPlanner(object):
 
     def update_u_per_env(self, idx, utils_list):
         u_array = self.u_array_val[:, idx, :]
-        x_array, model_idx, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
-        agent_info = dict(next_obs=x_array[1, :], returns=-J_val)
+        model_idx = self.model_idx_val[:, idx]
+        x_array, J_val, f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        agent_info = dict(returns=-J_val)
 
         """
         Backward Pass
@@ -241,7 +259,7 @@ class iLQRPlanner(object):
         while not backward_accept and backward_pass_counter < self.max_backward_iters:
             # initialize
             V_prime_xx, V_prime_x = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)
-            open_k_array, closed_K_array = [], []
+            open_k_array, closed_K_array = [None] * self.horizon, [None] * self.horizon
             delta_J_1, delta_J_2 = 0, 0
             mu, _ = self.param_array[idx]
 
@@ -249,13 +267,16 @@ class iLQRPlanner(object):
                 # backward pass
                 for i in range(self.horizon-1, -1, -1):
                     # compute Q
-                    Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
+                    if self.use_hessian_f:
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
+                    else:
+                        Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
                     if self.reg_str == 'Q':
                         Q_uu_reg = Q_uu + mu * np.eye(self.act_dim)
                     elif self.reg_str == 'V':
                         Q_uu_reg = Q_uu + mu * f_u[i].T @ f_u[i]
                     else:
-                        raise NotImplementedError
+                        raise ValueError
 
                     if not np.allclose(Q_uu, Q_uu.T):
                         print(Q_uu)
@@ -265,22 +286,28 @@ class iLQRPlanner(object):
 
                     Q_x = l_x[i] + f_x[i].T @ V_prime_x
                     Q_u = l_u[i] + f_u[i].T @ V_prime_x
-                    Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
-                    Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i]
+                    if self.use_hessian_f:
+                        Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_xx[i], axes=1)
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i] + np.tensordot(V_prime_x, f_ux[i], axes=1)
+                    else:
+                        Q_xx = l_xx[i] + f_x[i].T @ V_prime_xx @ f_x[i]
+                        Q_ux = l_ux[i] + f_u[i].T @ V_prime_xx @ f_x[i]
                     if self.reg_str == 'Q':
                         Q_ux_reg = Q_ux
                     elif self.reg_str == 'V':
                         Q_ux_reg = Q_ux + mu * f_u[i].T @ f_x[i]
                     else:
-                        raise NotImplementedError
+                        raise ValueError
 
                     # compute control matrices
                     k = - Q_uu_reg_inv @ Q_u
                     K = - Q_uu_reg_inv @ Q_ux_reg
                     # open_k_array.append(k)
                     # closed_K_array.append(K)
-                    open_k_array.insert(0, k)
-                    closed_K_array.insert(0, K)
+                    # open_k_array.insert(0, k)
+                    # closed_K_array.insert(0, K)
+                    open_k_array[i] = k
+                    closed_K_array[i] = K
                     delta_J_1 += k.T @ Q_u
                     delta_J_2 += k.T @ Q_uu @ k
 
@@ -302,8 +329,8 @@ class iLQRPlanner(object):
         Forward Pass (break if 0 < c_1 < z)
         """
         forward_accept = False
-        alpha = 1.0
         forward_pass_counter = 0
+        alpha = self.alpha_init
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
             x = x_array[0]
@@ -319,8 +346,6 @@ class iLQRPlanner(object):
                 opt_x_array.append(x)
                 opt_u_array.append(u)
                 x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=model_idx[i])[0]
-                if i == 0:  # store next_obs
-                    opt_next_obs = x_prime
                 # # sanity check
                 # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
                 # if not np.allclose(x_prime, x_prime_second_predict):
@@ -334,12 +359,10 @@ class iLQRPlanner(object):
             if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
                 opt_u_array = np.stack(opt_u_array, axis=0)
                 self.u_array_val[:, idx, :] = opt_u_array
-
-                forward_accept = True
-
                 agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
                 agent_info['returns'] = -opt_J_val
-                agent_info['next_obs'] = opt_next_obs
+
+                forward_accept = True
             else:
                 # continue line search
                 alpha /= self.alpha_decay_factor
@@ -349,6 +372,8 @@ class iLQRPlanner(object):
             # if self.verbose and idx == 0:
             #     # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed iterations, mu = {mu}')
             #     logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
+            # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed itrs, mu = {mu}, alpha = {alpha}')
+            logger.log(f"alpha, J, opt_J, real_diff, exp_diff = {alpha, J_val, opt_J_val, J_val - opt_J_val, -delta_J_alpha}")
 
             self._decrease_mu(idx)
             return True, agent_info
@@ -396,8 +421,8 @@ class iLQRPlanner(object):
             u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs, self.act_dim))
             # u_new = self._sample_u()
         self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
-        #  shift perm
-        self.perm_val = np.concatenate([self.perm_val[1:, :], np.random.permutation(self.num_envs)[None]])
+        #  shift model index
+        self.model_idx_val = np.concatenate([self.model_idx_val[1:, :], np.random.randint(self.dynamics_model.num_models, size=(1, self.num_envs))])
 
     def _reset(self, obs):
         if self.initializer_str == 'cem':
@@ -413,12 +438,12 @@ class iLQRPlanner(object):
             raise NotImplementedError
 
         self.u_array_val = init_u_array
-        self.perm_val = np.stack([np.random.permutation(self.num_envs) for _ in range(self.horizon)], axis=0)
+        self.model_idx_val = np.random.randint(low=0, high=self.dynamics_model.num_models, size=(self.horizon, self.num_envs))
 
     def warm_reset(self, u_array):
         if self.initializer_str != 'cem':
             self.u_array_val = u_array
-            self.perm_val = self.perm_val_init
+            self.model_idx_val = self.model_idx_val_init
 
 
 def chol_inv(matrix):
