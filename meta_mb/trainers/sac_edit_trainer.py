@@ -2,7 +2,6 @@ import tensorflow as tf
 import numpy as np
 import time
 from meta_mb.logger import logger
-# import nn
 
 import abc
 from collections import OrderedDict
@@ -35,11 +34,9 @@ class Trainer(object):
             env_sampler,
             env_sample_processor,
             dynamics_model,
-            done_predictor,
             policy,
             n_itr,
             rollout_length_params,
-            num_model_rollouts = 1,
             sess=None,
             n_initial_exploration_steps=1e3,
             env_max_replay_buffer_size=1e6,
@@ -53,12 +50,8 @@ class Trainer(object):
             restore_path=None,
             dynamics_model_max_epochs=50,
             sampler_batch_size=64,
-            done_bar=1.0,
             dynamics_type=0,
-            step_type=0,
             aux_hidden_dim=256,
-            predict_done=False,
-            actorH=1,
             T=1,
             ground_truth=False,
             ):
@@ -70,7 +63,6 @@ class Trainer(object):
         self.baseline = env_sample_processor.baseline
         self.policy = policy
         self.n_itr = n_itr
-        self.num_model_rollouts = num_model_rollouts
         self.rollout_length_params = rollout_length_params
         self.n_initial_exploration_steps = n_initial_exploration_steps
         self.env_replay_buffer = SimpleReplayBuffer(self.env, env_max_replay_buffer_size)
@@ -87,12 +79,7 @@ class Trainer(object):
         self.sampler_batch_size = sampler_batch_size
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
         self.action_dim = int(np.prod(self.env.action_space.shape))
-        self.done_bar = done_bar
         self.dynamics_type = dynamics_type
-        self.step_type = step_type
-        self.done_predictor = done_predictor
-        self.predict_done = predict_done
-        self.actorH = actorH
         self.T = T
         self.ground_truth = ground_truth
 
@@ -118,9 +105,7 @@ class Trainer(object):
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
-            self.saver = tf.train.Saver(write_version=tf.train.SaverDef.V2, max_to_keep=10, pad_step_number=True)
 
-            # if self.start_itr == 0:
             if tf.train.get_checkpoint_state(self.restore_path):
                 logger.log("reading stored model from %s", self.restore_path)
                 self.saver.restore(sess, tf.train.latest_checkpoint(self.restore_path))
@@ -155,28 +140,18 @@ class Trainer(object):
                     self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
                                             log_tabular=True, prefix='Model-')
-                elif self.dynamics_type == 1 or self.dynamics_type == 2:
-                    expanded_rewards = np.expand_dims(all_samples[3], axis = -1)
-                    self.dynamics_model.fit(all_samples[0], all_samples[1], np.concatenate([all_samples[2], expanded_rewards], axis = -1),
-                                            epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-')
-                if self.predict_done:
-                    input = np.concatenate([all_samples[0], all_samples[1], all_samples[2]], -1)
-                    output = all_samples[4]
-                    self.done_predictor.fit(input, output)
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
                 sac_time = []
 
-                # for h in range(self.actorH):
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
                     for _ in range(self.rollout_length):
                         for _ in range(self.deal_with_oom):
                             samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
                             random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
-                            actions_from_policy = self.policy.get_action(random_states)[0]
+                            actions_from_policy = self.policy.get_actions(random_states)[0]
                             next_obs, rewards, term = self.step(random_states, actions_from_policy)
                             self.model_replay_buffer.add_samples(random_states,
                                                                  actions_from_policy,
@@ -196,13 +171,13 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            if self.ground_truth:
-                                reward = []
-                                for t in range(self.T):
-                                    next_obs = batch['next_observations']
-                                    next_actions = self.policy.get_action(next_obs)[0]
-                                    result = self.env.step_batch(next_obs, next_actions, t, reward)
-                                batch.update(result)
+                            # if self.ground_truth:
+                            #     reward = []
+                            #     for t in range(self.T):
+                            #         next_obs = batch['next_observations']
+                            #         next_actions = self.policy.get_actions(next_obs)[0]
+                            #         result = self.env.step_batch(next_obs, next_actions, t, reward)
+                            #     batch.update(result)
                             self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -229,8 +204,8 @@ class Trainer(object):
                 logger.log("Saved")
 
                 logger.dumpkvs()
-                # if itr == 0:
-                #     sess.graph.finalize()
+                if itr == 0:
+                    sess.graph.finalize()
 
         logger.log("Training finished")
         self.sess.close()
@@ -247,23 +222,12 @@ class Trainer(object):
         self.rollout_length = int(y)
 
     def step(self, obs, actions):
-        assert self.dynamics_type in [0, 1, 2, 3]
-        assert self.step_type in [0, 1]
+        assert self.dynamics_type in [0, 3]
         if self.dynamics_type == 0 or self.dynamics_type == 3:
             next_observation = self.dynamics_model.predict(obs, actions)
             rewards = self.env.reward(obs, actions, next_observation)
-            if self.predict_done:
-                dones = self.done_predictor.predict(obs, actions, next_observation)
-            else:
-                dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
-        elif self.dynamics_type == 1 or self.dynamics_type == 2:
-            next_observation, rewards = self.dynamics_model.predict(obs, actions)
-            if self.predict_done:
-                dones = self.done_predictor.predict(obs, actions, next_observation)
-            else:
-                dones = self.env.termination_fn(obs, actions, next_observation).reshape((-1))
-            if self.step_type == 1:
-                rewards = self.env.reward(obs, actions, next_observation)
+            dones = self.env.termination_fn(obs, actions, next_observation)
+
         dones = dones.reshape((-1))
         rewards = rewards.reshape((-1))
         return next_observation, rewards, dones
@@ -273,11 +237,10 @@ class Trainer(object):
         Gets the current policy and env for storage
         """
         return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline)
-        # return dict(itr=itr, env=self.env, baseline=self.baseline)
 
     def log_diagnostics(self, paths, prefix):
         # TODO: we aren't using it so far
         self.env.log_diagnostics(paths, prefix)
-        if not self.ground_truth:
-            self.policy.log_diagnostics(paths, prefix)
+        # if not self.ground_truth:
+        self.policy.log_diagnostics(paths, prefix)
         self.baseline.log_diagnostics(paths, prefix)
