@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "ln-hc"
+EXP_NAME = "final-ant-2"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [66, 77],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_rollouts': [1],
-        'model_type': [3],
+        'model_type': [0],
 
         # replay_buffer
 		'n_initial_exploration_steps': [5e3],
@@ -225,28 +225,28 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 25]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
-		'q_target_type': [1],
-		'num_actions_per_next_observation':[5],
-        'H': [2],
+		'q_target_type': [0],
+		'num_actions_per_next_observation':[5, 10],
+        'H': [0],
         'T': [3, 2],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [8],
-		'model_used_ratio': [1],
+		'model_used_ratio': [0.5],
 		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1, 1e-3, 1e-4],
-        'method': [5],
+        'q_loss_importance': [1],
+        'method': [2],
 
-        'policy_hidden_nonlinearity': ['tanh', 'relu'],
+        'policy_hidden_nonlinearity': ['relu', 'tanh'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
         'normalize_input': [True],
 
 
@@ -256,7 +256,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['none'],
+		'prediction_type':['none', 'rand'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],
