@@ -2,6 +2,7 @@ import numpy as np
 from meta_mb.logger import logger
 import gym
 import mujoco_py
+from mujoco_py import MjSim
 from gym import spaces
 from gym.envs.mujoco.mujoco_env import MujocoEnv
 from meta_mb.meta_envs.base import MetaEnv, RandomEnv
@@ -13,12 +14,12 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
                  exp_type='reach',
                  max_torques=[3, 3, 2, 1, 1, 0.5, 1],
                  vel_penalty=1.25e-2,
-                 torque_penalty=1.25e-1,
-                 log_rand=1,
+                 ctrl_penalty=1.25e-1,
+                 log_rand=0,
                  joint=True):
         self.max_torques = np.array(max_torques)
         self.vel_penalty = -vel_penalty
-        self.torque_penalty = -torque_penalty
+        self.torque_penalty = -ctrl_penalty
         self.exp_type = exp_type
         self.joint = joint
 
@@ -26,42 +27,23 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
         if self.exp_type == 'reach':
             xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_new.xml')
-            self.goal2 = np.array([-0.30982005, 0.71146246, 0.51908543,
-                                   -0.14216614, 0.78684261, 0.56139753,
-                                   -0.20410874, 0.64335638, 0.61437626])
-            self.joint_goal = np.array([1.37154795, -0.20691918, 1.27061209, -1.11557631, 1.46168019, -1.7804405, 0.0283875])
-        elif self.exp_type == 'shape':
-            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_shape.xml')
-            self.goal2 = np.array([-0.35572354, 0.12565246, -0.0315576,
-                                   -0.18394014, 0.18021465, -0.02460234,
-                                   -0.2609592, 0.04723381, 0.03987207])
-            self.joint_goal = np.array(
-                [1.37154795, -0.20691918, 1.27061209, -1.11557631, 1.46168019, -1.7804405, 0.0283875])
-
-        self.goal = np.zeros(3)
-
-        self.ref_point = np.array([-0.31032794, -0.03286406,  0.19625491,
-          -0.23757531,  0.03472754,  0.20802058,
-          -0.25541497, -0.03043181,  0.26769475])
-
-        self.init_grip = np.array([-3.06694218e-01, 1.87049223e-01, 1.12720687e-03,
-                                   -2.03442785e-01, 1.59440809e-01, 1.02890217e-02,
-                                   -3.07411827e-01, 1.18937711e-01, 7.99029507e-02])
-
-        self.init_qpos = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
+            if self.joint:
+            	self.goal = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
                                    1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
+            else:
+            	self.goal2 = np.array([-0.30982005, 0.71146246, 0.51908543,
+                                   	   -0.14216614, 0.78684261, 0.56139753,
+                                       -0.20410874, 0.64335638, 0.61437626])
+
+        self.init_qpos = np.zeros(7)
         self.init_qvel = np.zeros(7)
         self.alpha = 10e-5
-        self.offset = np.array(
-            [0.76801963, -0.03153535,  0.68872096,
-             0.73720673, -0.10671044,  0.65789482,
-             0.71356131, -0.04428578,  0.62665989])
 
         self._low = -self.max_torques
         self._high = self.max_torques
-        self.goal2 -= self.offset
-        #MujocoEnv.__init__(self, xml_file, 4)
         RandomEnv.__init__(self, log_rand, xml_file, 4)
+        self.obs_dim = 14
+        self.act_dim = 7
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
@@ -69,9 +51,9 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         self.do_simulation(action, self.frame_skip)
         ob = self._get_obs()
         if not self.joint:
-            vec = self.ee_position - self.goal2
+            vec = self.ee_position - self.goal
         else:
-            vec = ob[:7] - self.joint_goal
+            vec = ob[:7] - self.goal
         norm = np.linalg.norm(vec)
         reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
         reward_vel = self.vel_penalty * np.square(np.linalg.norm(ob[7:14]))
@@ -97,13 +79,13 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
             if not self.joint:
                 vec = obs_next[:, -9:] - self.goal2
             else:
-                vec = obs_next[:, :7] - self.goal_joint
+                vec = obs_next[:, :7] - self.goal
             norm = np.linalg.norm(vec)
             reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
             reward_vel = self.vel_penalty * np.square(np.linalg.norm(obs_next[:, 7:14]))
             reward_ctrl = self.torque_penalty * np.square(np.linalg.norm(act))
             reward = reward_dist + reward_vel + reward_ctrl
-            return np.clip(reward, -1e3, 1e3)
+            return np.clip(reward, -1e5, 1e5)
         elif obs.ndim == 1:
             assert obs.shape == obs_next.shape
             reward_ctrl = -0.5 * 0.1 * np.sum(np.square(act))
@@ -140,7 +122,18 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         return self._get_obs()
 
     def _get_obs(self):
-        ob =  np.concatenate([
+        #if not self.has_cam and self.cam:
+        #    self.configure_cam()
+        #    self.has_cam = 1
+        #try:
+        #data = self.sim.render(camera_name='stereo', width=, height=64, depth=False)
+
+        #except:
+        #    data = np.zeros((128, 128))
+        #    self.cam = 1
+
+        #print(data)
+        ob = np.concatenate([
             self.sim.data.qpos.flat,
             self.sim.data.qvel.flat
         ])
@@ -164,18 +157,30 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
 if __name__ == "__main__":
     env = PR2ReacherEnv(exp_type='reach')
-    from PIL import Image
     import time
     file = 'pr2_'
     from matplotlib import pyplot as plt
     while True:
         env.reset()
-        for i in range(2000):
+        for i in range(200):
             env.step(env.action_space.sample())
-            image = env.sim.render(128, 128, camera_name='stereo')
-            plt.imshow(image, interpolation='nearest')
+        #    viewer = mujoco_py.MjRenderContextOffscreen(env.sim, 0)
+            #for i in range(3):
+                #viewer.render(128, 128, 0)
+                #data = np.asarray(viewer.read_pixels(128, 128, depth=False)[:, :, :], dtype=np.uint8)
+                #print(data)
+                #plt.imshow(data, interpolation='nearest')
+                #plt.show()
+                #time.sleep(1000000)
+
+            #sim = MjSim(env.model)
+            #print(sim)
+            #image = sim.render(128, 128, camera_name='stereo')
+            #print("HOWHERE")
+            #plt.imshow(image, interpolation='nearest')
             #plt.show()
             #time.sleep(100000)
-            fname = 'pr2_images_2/' + file + str(i)
-            plt.savefig(fname, format='png')
-            #env.render()
+            #fname = 'pr2_images_2/' + file + str(i)
+            #plt.savefig(fname, format='png')
+            #time.sleep(100000)
+            env.render()

@@ -51,8 +51,9 @@ class NormalizedEnv(Serializable):
         self._normalize_obs = normalize_obs
         self._normalize_reward = normalize_reward
         self._obs_alpha = obs_alpha
-        self._obs_mean = np.zeros(self.observation_space.shape)
-        self._obs_var = np.ones(self.observation_space.shape)
+        print(env.observation_space)
+        self._obs_mean = np.zeros(14) #CHANGE THIS BACK #np.zeros(env.observation_space.shape)
+        self._obs_var = np.ones(14) #CHANGE THIS BACK #np.ones(env.observation_space.shape)
         self._reward_alpha = reward_alpha
         self._reward_mean = 0.
         self._reward_var = 1.
