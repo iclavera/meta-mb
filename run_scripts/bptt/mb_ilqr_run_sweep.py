@@ -41,6 +41,8 @@ def run_experiment(**config):
     if config.get('model_path', None) is not None:
         repr += '-pretrain'
         # config['fit_model'] = False
+        config['initializer_str'] = 'zeros'
+        config['cem_num_rollouts'] = config['num_rollouts']
         config['initial_random_samples'] = False
         config['initial_sinusoid_samples'] = False
 
@@ -74,6 +76,7 @@ def run_experiment(**config):
                 valid_split_ratio=config['valid_split_ratio'],
                 rolling_average_persitency=config['rolling_average_persitency'],
                 hidden_nonlinearity=config['hidden_nonlinearity_model'],
+                output_nonlinearity=config['output_nonlinearity_model'],
                 batch_size=config['batch_size_model'],
             )
 
@@ -99,7 +102,7 @@ def run_experiment(**config):
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
             n_candidates=config['n_candidates'],
-            num_cem_iters=config['num_cem_iters'],
+            num_cem_iters=config['num_cem_iters_for_init'],
             cem_deterministic_policy='cem_deterministic_policy',
         )
 
@@ -163,12 +166,12 @@ if __name__ == '__main__':
         'on_policy_freq': [2],
 
         # Problem
-        'env': [InvertedPendulumEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-100/params.pkl'],
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [50],
-        'discount': [1.0,],
-        'horizon': [30],
+        'discount': [0.99],
+        'horizon': [5, 15],
 
         # Policy
         'initializer_str': ['zeros'], #['zeros', 'uniform'],
@@ -180,16 +183,17 @@ if __name__ == '__main__':
         'mu_init': [1e-5],
         'delta_0': [2],
         'delta_init': [1.0],
-        'alpha_init': [1e0],
+        'alpha_init': [1e-1],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-5],
+        'c_1': [1e-4],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
-        'use_hessian_f': [True],
+        'use_hessian_f': [True, False],
+        'num_cem_iters_for_init': [5],
 
         # CEM
         'n_candidates': [100],
-        'num_cem_iters': [10],
+        'num_cem_iters': [5],
         'cem_deterministic_policy': [True],
         'cem_num_rollouts': [20],
 
@@ -201,12 +205,12 @@ if __name__ == '__main__':
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'dyn_str': ['ensemble'],
-        'num_models': [1],
+        'num_models': [1,],
         'hidden_nonlinearity_model': ['relu'],
+        'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'hidden_sizes_model': [(512,)],  # (512, 512)
+        'hidden_sizes_model': [(512, 512),],
         'batch_size_model': [64],
         'learning_rate': [0.001],
     }

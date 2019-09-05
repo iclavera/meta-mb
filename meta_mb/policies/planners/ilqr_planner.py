@@ -82,37 +82,37 @@ class iLQRPlanner(object):
             disc_reward = tf.zeros(())
             x_array, deriv_array = [], []
             for i in range(self.horizon):
-                if self.use_hessian_f:
-                    # hack in order to compute f_ux
-                    act = self.u_array_ph[i, env_idx, :]
-                    obs_act_concat = tf.concat([obs, act], axis=0)
-                    obs, act = obs_act_concat[:obs_dim], obs_act_concat[-act_dim:]
-                    model_idx = self.model_idx_ph[i, env_idx]
-                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
-                    reward = self._env.tf_reward(obs, act, next_obs)
+                # if self.use_hessian_f:
+                # hack in order to compute f_ux
+                act = self.u_array_ph[i, env_idx, :]
+                obs_act_concat = tf.concat([obs, act], axis=0)
+                obs, act = obs_act_concat[:obs_dim], obs_act_concat[-act_dim:]
+                model_idx = self.model_idx_ph[i, env_idx]
+                next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
+                reward = self._env.tf_reward(obs, act, next_obs)
 
-                    # compute gradients
-                    hess = utils.hessian_wrapper(next_obs, obs_act_concat, obs_dim, obs_dim+act_dim)  # (obs_dim, obs_dim+act_dim, obs_dim+act_dim)
-                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
-                    f_xx = hess[:, :obs_dim, :obs_dim]
-                    f_uu = hess[:, -act_dim:, -act_dim:]
-                    f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
-                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
+                # compute gradients
+                hess = utils.hessian_wrapper(next_obs, obs_act_concat, obs_dim, obs_dim+act_dim)  # (obs_dim, obs_dim+act_dim, obs_dim+act_dim)
+                f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                f_xx = hess[:, :obs_dim, :obs_dim]
+                f_uu = hess[:, -act_dim:, -act_dim:]
+                f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
+                l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
 
-                else:
-                    # obs, act, next_obs, reward
-                    act = self.u_array_ph[i, env_idx, :]
-                    model_idx = self.model_idx_ph[i, env_idx]
-                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
-                    reward = self._env.tf_reward(obs, act, next_obs)
-
-                    # compute gradients
-                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
-                    f_xx = utils.hessian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                    f_uu, f_ux = None, None
-                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
+                # else:
+                #     # obs, act, next_obs, reward
+                #     act = self.u_array_ph[i, env_idx, :]
+                #     model_idx = self.model_idx_ph[i, env_idx]
+                #     next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
+                #     reward = self._env.tf_reward(obs, act, next_obs)
+                #
+                #     # compute gradients
+                #     f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                #     f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                #     f_xx = utils.hessian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                #     f_uu, f_ux = None, None  # None value not supported
+                #     l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
 
                 # store
                 disc_reward += discount**i * reward
@@ -231,7 +231,7 @@ class iLQRPlanner(object):
         optimized_actions = self.u_array_val.copy()  # (horizon, num_envs, act_dim)
 
         # shift u_array and perm
-        self._shift(u_new=None)  # FIXME: alternative ways to initialize u_new
+        self._shift()  # FIXME: alternative ways to initialize u_new
 
         return optimized_actions, []#, next_obs
     #
@@ -245,9 +245,9 @@ class iLQRPlanner(object):
     #
     #     return returns
 
-    def update_u_per_env(self, idx, utils_list):
-        u_array = self.u_array_val[:, idx, :]
-        model_idx = self.model_idx_val[:, idx]
+    def update_u_per_env(self, env_idx, utils_list):
+        u_array = self.u_array_val[:, env_idx, :]
+        model_idx = self.model_idx_val[:, env_idx]
         x_array, J_val, f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = utils_list
         agent_info = dict(returns=-J_val)
 
@@ -261,7 +261,7 @@ class iLQRPlanner(object):
             V_prime_xx, V_prime_x = np.zeros((self.obs_dim, self.obs_dim)), np.zeros(self.obs_dim,)
             open_k_array, closed_K_array = [None] * self.horizon, [None] * self.horizon
             delta_J_1, delta_J_2 = 0, 0
-            mu, _ = self.param_array[idx]
+            mu, _ = self.param_array[env_idx]
 
             try:
                 # backward pass
@@ -302,10 +302,6 @@ class iLQRPlanner(object):
                     # compute control matrices
                     k = - Q_uu_reg_inv @ Q_u
                     K = - Q_uu_reg_inv @ Q_ux_reg
-                    # open_k_array.append(k)
-                    # closed_K_array.append(K)
-                    # open_k_array.insert(0, k)
-                    # closed_K_array.insert(0, K)
                     open_k_array[i] = k
                     closed_K_array[i] = K
                     delta_J_1 += k.T @ Q_u
@@ -314,12 +310,13 @@ class iLQRPlanner(object):
                     # prepare for next i
                     V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
                     V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
-                    V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
+                    assert np.allclose(V_prime_xx, V_prime_xx.T)
+                    # V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
 
                 backward_accept = True
 
             except np.linalg.LinAlgError: # encountered non-PD Q_uu, increase mu, start backward pass again
-                self._increase_mu(idx)
+                self._increase_mu(env_idx)
                 backward_pass_counter += 1
 
         if not backward_accept:
@@ -331,58 +328,96 @@ class iLQRPlanner(object):
         forward_accept = False
         forward_pass_counter = 0
         alpha = self.alpha_init
+        num_models = self.dynamics_model.num_models
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
-            x = x_array[0]
             opt_x_array, opt_u_array = [], []
             opt_J_val = 0
+            opt_J_val_by_model = np.zeros((num_models,))
 
-            # forward pass
-            for i in range(self.horizon):
-                u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
-                u = np.clip(u, self.act_low, self.act_high)
+            # forward pass with J value ensemble
+            for _model_idx in range(num_models):
+                x = x_array[0]
+                for i in range(self.horizon):
+                    u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
+                    u = np.clip(u, self.act_low, self.act_high)
 
-                # store updated state/action
-                opt_x_array.append(x)
-                opt_u_array.append(u)
-                x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=model_idx[i])[0]
-                # # sanity check
-                # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
-                # if not np.allclose(x_prime, x_prime_second_predict):
-                #     logger.log(f'call predict twice, {x_prime}, {x_prime_second_predict}')
-                #     raise RuntimeError
-                reward = self._env.reward(x, u, x_prime)
-                opt_J_val += -self.discount**i * reward
-                x = x_prime
+                    # store updated state/action
+                    x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=_model_idx)[0]
+                    reward = self._env.reward(x, u, x_prime)
+                    opt_J_val_by_model[_model_idx] += -self.discount**i * reward
+                    if _model_idx == model_idx[i]:
+                        opt_x_array.append(x)
+                        opt_u_array.append(u)
+                        opt_J_val += -self.discount**i * reward
+
+                    x = x_prime
 
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
-            if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
+            cond_diff = J_val - np.mean(opt_J_val_by_model)
+            if cond_diff > 0 and cond_diff > self.c_1 * (-delta_J_alpha):
                 opt_u_array = np.stack(opt_u_array, axis=0)
-                self.u_array_val[:, idx, :] = opt_u_array
+                self.u_array_val[:, env_idx, :] = opt_u_array
                 agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
                 agent_info['returns'] = -opt_J_val
 
+                logger.log(f"alpha, cond_ratio, eff_ratio, exp_diff = {alpha, cond_diff/(-delta_J_alpha), (J_val-opt_J_val)/(-delta_J_alpha), -delta_J_alpha}")
                 forward_accept = True
             else:
                 # continue line search
                 alpha /= self.alpha_decay_factor
                 forward_pass_counter += 1
 
+            # # reset
+            # x = x_array[0]
+            # opt_x_array, opt_u_array = [], []
+            # opt_J_val = 0
+            #
+            # # forward pass
+            # for i in range(self.horizon):
+            #     u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
+            #     u = np.clip(u, self.act_low, self.act_high)
+            #
+            #     # store updated state/action
+            #     opt_x_array.append(x)
+            #     opt_u_array.append(u)
+            #     x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=model_idx[i])[0]
+            #     # # sanity check
+            #     # x_prime_second_predict = self.dynamics_model.predict(x[None], u[None], pred_type='mean', deterministic=True)[0]
+            #     # if not np.allclose(x_prime, x_prime_second_predict):
+            #     #     logger.log(f'call predict twice, {x_prime}, {x_prime_second_predict}')
+            #     #     raise RuntimeError
+            #     reward = self._env.reward(x, u, x_prime)
+            #     opt_J_val += -self.discount**i * reward
+            #     x = x_prime
+            #
+            # delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
+            # if J_val > opt_J_val and J_val - opt_J_val > self.c_1 * (- delta_J_alpha):
+            #     opt_u_array = np.stack(opt_u_array, axis=0)
+            #     self.u_array_val[:, idx, :] = opt_u_array
+            #     agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
+            #     agent_info['returns'] = -opt_J_val
+            #
+            #     forward_accept = True
+            # else:
+            #     # continue line search
+            #     alpha /= self.alpha_decay_factor
+            #     forward_pass_counter += 1
+
         if forward_accept:
             # if self.verbose and idx == 0:
             #     # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed iterations, mu = {mu}')
             #     logger.log(f'mu = {mu}, J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha = {J_val, opt_J_val, J_val-opt_J_val, -delta_J_alpha}')
             # logger.log(f'accepted after {backward_pass_counter, forward_pass_counter} failed itrs, mu = {mu}, alpha = {alpha}')
-            logger.log(f"alpha, J, opt_J, real_diff, exp_diff = {alpha, J_val, opt_J_val, J_val - opt_J_val, -delta_J_alpha}")
 
-            self._decrease_mu(idx)
+            self._decrease_mu(env_idx)
             return True, agent_info
 
         else:
             # if self.verbose:
                 # logger.log(f'bw, fw = {backward_pass_counter, forward_pass_counter}, mu = {mu}')
                 # logger.log(f'J_val = {J_val}')
-            self._increase_mu(idx)
+            self._increase_mu(env_idx)
             return False, agent_info
 
     def _decrease_mu(self, idx):
@@ -413,19 +448,27 @@ class iLQRPlanner(object):
     # def _sample_u(self):
     #     return np.clip(np.random.normal(size=(self.num_envs, self.act_dim), scale=0.1), a_min=self.act_low, a_max=self.act_high)
 
-    def _shift(self, u_new):
+    def _shift(self):
         #  shift u_array
-        if u_new is None:
+        if self.initializer_str == 'cem':
+            self.u_array_val = None
+            self.model_idx_val = None
+        else:
             # u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs,self.act_dim))
             # u_new = np.mean(self.u_array_val, axis=0) + np.random.normal(size=(self.num_envs, self.act_dim)) * np.std(self.u_array_val, axis=0)
-            u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs, self.act_dim))
-            # u_new = self._sample_u()
-        self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
-        #  shift model index
-        self.model_idx_val = np.concatenate([self.model_idx_val[1:, :], np.random.randint(self.dynamics_model.num_models, size=(1, self.num_envs))])
+            if self.initializer_str == 'uniform':
+                u_new = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.num_envs, self.act_dim))
+            elif self.initializer_str == 'zeros':
+                u_new = np.random.normal(scale=0.1, size=(self.num_envs, self.act_dim))
+                u_new = np.clip(u_new, a_min=self.act_low, a_max=self.act_high)
+            else:
+                raise RuntimeError
+            self.u_array_val = np.concatenate([self.u_array_val[1:, :, :], u_new[None]])
+            self.model_idx_val = np.concatenate([self.model_idx_val[1:, :], np.random.randint(self.dynamics_model.num_models, size=(1, self.num_envs))])
 
     def _reset(self, obs):
         if self.initializer_str == 'cem':
+            logger.log('initialize with cem...')
             sess = tf.get_default_session()
             init_u_array, = sess.run([self.cem_optimized_actions], feed_dict={self.obs_ph: obs})
         elif self.initializer_str == 'uniform':
@@ -435,7 +478,7 @@ class iLQRPlanner(object):
             init_u_array = np.random.normal(scale=0.1, size=(self.horizon, self.num_envs, self.act_dim))
             init_u_array = np.clip(init_u_array, a_min=self.act_low, a_max=self.act_high)
         else:
-            raise NotImplementedError
+            raise RuntimeError
 
         self.u_array_val = init_u_array
         self.model_idx_val = np.random.randint(low=0, high=self.dynamics_model.num_models, size=(self.horizon, self.num_envs))
@@ -444,6 +487,9 @@ class iLQRPlanner(object):
         if self.initializer_str != 'cem':
             self.u_array_val = u_array
             self.model_idx_val = self.model_idx_val_init
+        else:
+            self.u_array_val = None
+            self.model_idx_val = None
 
 
 def chol_inv(matrix):

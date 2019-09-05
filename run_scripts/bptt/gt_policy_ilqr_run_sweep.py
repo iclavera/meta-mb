@@ -6,6 +6,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
 from meta_mb.utils.utils import ClassEncoder
+from meta_mb.policies.np_linear_policy import LinearPolicy
 import json
 import os
 import tensorflow as tf
@@ -44,6 +45,13 @@ def run_experiment(**config):
 
         env = config['env']()
 
+        linear_policy = LinearPolicy(
+            obs_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            use_filter=False,
+            output_nonlinearity=None,
+        )
+
         policy = GTiLQRController(
             env=env,
             eps=config['eps'],
@@ -52,6 +60,7 @@ def run_experiment(**config):
             n_parallel=config['n_parallel'],
             initializer_str=config['initializer_str'],
             num_ilqr_iters=config['num_ilqr_iters'],
+            policy=linear_policy,
         )
 
         sampler = GTSampler(

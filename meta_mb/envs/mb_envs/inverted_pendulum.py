@@ -215,28 +215,53 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
             raise NotImplementedError
 
     def tf_reward(self, obs, acts, next_obs):
-        return - tf.square(obs[:, 1] - np.pi)
+        if obs.get_shape().ndims == 1:
+            return -tf.square(obs[1] - np.pi)
+        elif obs.get_shape().ndims == 2:
+            return -tf.square(obs[:, 1] - np.pi)
 
-    def tf_deriv_reward_obs(self, obs, acts, batch_size):
-        mask = np.zeros((batch_size, self.obs_dim))
-        mask[:, 1] = -2
-        return mask * (obs - np.pi)
+    def tf_dl(self, obs, act, next_obs, f_x, f_xx):
+        # l_x
+        mask = np.zeros((self.obs_dim,))
+        mask[1] = -2
+        l_x = -mask * (obs-np.pi)
 
-    def tf_deriv_reward_act(self, obs, acts, batch_size):
-        return tf.zeros_like(acts)
+        # l_u
+        l_u = tf.zeros((self.act_dim,))
 
-    def tf_hessian_l_xx(self, obs, acts, batch_size):
-        hess = np.zeros((batch_size, self.obs_dim, self.obs_dim))
-        hess[:, 1, 1] = -2
-        return tf.constant(-hess)
+        # l_xx
+        r_xx = np.zeros((self.obs_dim, self.obs_dim))
+        r_xx[1, 1] = -2
+        l_xx = -tf.constant(r_xx)
 
-    def tf_hessian_l_uu(self, obs, acts, batch_size):
-        hess = tf.zeros((batch_size, self.act_dim, self.act_dim))
-        return -hess
+        # l_uu
+        l_uu = tf.zeros((self.act_dim, self.act_dim))
 
-    def tf_hessian_l_ux(self, obs, acts, batch_size):
-        hess = tf.zeros((batch_size, self.act_dim, self.obs_dim))
-        return -hess
+        # l_ux
+        l_ux = tf.zeros((self.act_dim, self.obs_dim))
+
+        return l_x, l_u, l_xx, l_uu, l_ux
+
+    # def tf_deriv_reward_obs(self, obs, acts, batch_size):
+    #     mask = np.zeros((batch_size, self.obs_dim))
+    #     mask[:, 1] = -2
+    #     return mask * (obs - np.pi)
+    #
+    # def tf_deriv_reward_act(self, obs, acts, batch_size):
+    #     return tf.zeros_like(acts)
+    #
+    # def tf_hessian_l_xx(self, obs, acts, batch_size):
+    #     hess = np.zeros((batch_size, self.obs_dim, self.obs_dim))
+    #     hess[:, 1, 1] = -2
+    #     return tf.constant(-hess)
+    #
+    # def tf_hessian_l_uu(self, obs, acts, batch_size):
+    #     hess = tf.zeros((batch_size, self.act_dim, self.act_dim))
+    #     return -hess
+    #
+    # def tf_hessian_l_ux(self, obs, acts, batch_size):
+    #     hess = tf.zeros((batch_size, self.act_dim, self.obs_dim))
+    #     return -hess
 
     def deriv_reward_obs(self, obs, acts):
         assert obs.ndim == acts.ndim
@@ -280,16 +305,15 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
                            l_xx=self.hessian_l_xx(obs, acts),
                            l_uu=self.hessian_l_uu(obs, acts),
                            l_ux=self.hessian_l_ux(obs, acts),)
-
-    def tf_dl_dict(self, obs, acts, next_obs, batch_size):
-        return OrderedDict(
-            l_x=-self.tf_deriv_reward_obs(obs, acts, batch_size),
-            l_u=-self.tf_deriv_reward_act(obs, acts, batch_size),
-            l_xx=self.tf_hessian_l_xx(obs, acts, batch_size),
-            l_uu=self.tf_hessian_l_uu(obs, acts, batch_size),
-            l_ux=self.tf_hessian_l_ux(obs, acts, batch_size),
-        )
-
+    #
+    # def tf_dl_dict(self, obs, acts, next_obs, batch_size):
+    #     return OrderedDict(
+    #         l_x=-self.tf_deriv_reward_obs(obs, acts, batch_size),
+    #         l_u=-self.tf_deriv_reward_act(obs, acts, batch_size),
+    #         l_xx=self.tf_hessian_l_xx(obs, acts, batch_size),
+    #         l_uu=self.tf_hessian_l_uu(obs, acts, batch_size),
+    #         l_ux=self.tf_hessian_l_ux(obs, acts, batch_size),
+    #     )
 
 
 if __name__ == "__main__":
