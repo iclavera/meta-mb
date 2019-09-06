@@ -21,7 +21,7 @@ class ImgWrapperEnv(Serializable):
 
     def step(self, action):
         _, reward, done, info = self._wrapped_env.step(action)
-        obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
+        obs = self.sim.render(width=self._img_size[0], height=self._img_size[1]) # mode='rgb_array') / 255.
         self._obs[:, :, self._num_chan:] = self._obs[:, :, :-self._num_chan]
         self._obs[:, :, :self._num_chan] = obs
 
@@ -35,7 +35,7 @@ class ImgWrapperEnv(Serializable):
     def reset(self):
         _ = self._wrapped_env.reset()
         self._obs = np.zeros(self._img_size[:-1] + (self._num_chan * self._time_steps,))
-        obs = self.render('rgb_array', width=self._img_size[0], height=self._img_size[1]) / 255.
+        obs = self.sim.render(width=self._img_size[0], height=self._img_size[1]) / 255.
         self._obs[:, :, :self._num_chan] = obs
 
         if self._vae is not None:

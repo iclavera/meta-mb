@@ -100,7 +100,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         #self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
         #gravity = np.random.randint(-1, 1)  # randomize environment gravity
         #self.model.opt.gravity[2] = gravity
-        while True:
+        #while True:
             #x = np.random.uniform(low=0.1, high=0.6)
             #y = np.random.uniform(low=0.1, high=0.65)
             #z = np.random.uniform(low=0.5, high=0.9)
@@ -109,8 +109,8 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
             #    np.array([0.02, -0.025,  0.05]) + self.goal,
             #    np.array([0.02, -0.025, -0.05]) + self.goal,
             #    np.array([0.02,  0.05,   0.00]) + self.goal])
-            if np.linalg.norm(self.goal) < 2:
-                break
+            #if np.linalg.norm(self.goal) < 2:
+                #break
         qvel = self.init_qvel # + self.np_random.uniform(low=-.005, high=.005, size=self.model.nv)
         #self.goal = self.hole()
         self.set_state(np.zeros(7), qvel)#np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
