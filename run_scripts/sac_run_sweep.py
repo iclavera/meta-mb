@@ -3,13 +3,13 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'sac-rerun5'
+EXP_NAME = 'sac-rerun6'
 
 
 from meta_mb.algos.sac import SAC
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mujoco import *
+from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.sac_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
@@ -113,7 +113,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': ['tanh', 'relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['tanh','relu'],
 
 
         # Env Sampling

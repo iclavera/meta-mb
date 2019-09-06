@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "final-ant-2"
+EXP_NAME = "final-walker-4"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -170,6 +170,7 @@ def run_experiment(**kwargs):
                 target_update_interval=kwargs['n_train_repeats'],
                 dynamics_type=kwargs['model_type'],
                 ground_truth=ground_truth,
+                actor_H=kwargs['actor_H'],
             )
 
 
@@ -206,9 +207,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [66, 77],
+        'seed': [99],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -225,28 +226,29 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 25]],
+		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.9],
-		'q_function_type':[5],
+		'q_function_type':[7],
 		'q_target_type': [0],
-		'num_actions_per_next_observation':[5, 10],
-        'H': [0],
-        'T': [3, 2],
+		'num_actions_per_next_observation':[5],
+        'H': [2],
+        'T': [3],
+        'actor_H': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [4],
 		'model_used_ratio': [0.5],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'method': [2],
+        'method': [1],
 
-        'policy_hidden_nonlinearity': ['relu', 'tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
 
 
@@ -256,7 +258,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['none', 'rand'],
+		'prediction_type':['rand'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],
