@@ -59,15 +59,15 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def reward(self, obs, acts, next_obs):
         # if next_obs is not None:
-        assert obs.shape == next_obs.shape
+        assert obs.shape == obs.shape
         if obs.ndim == 2:  # (batch_size, act_dim)
             assert obs.shape[0] == acts.shape[0]
             reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
-            reward_run = next_obs[:, 8]
+            reward_run = obs[:, 8]
             reward = reward_run + reward_ctrl
         elif obs.ndim == 1:
             reward_ctrl = -0.1 * np.sum(np.square(acts))
-            reward_run = next_obs[8]
+            reward_run = obs[8]
             reward = reward_run + reward_ctrl  # scalar
         else:
             raise ValueError
@@ -150,10 +150,10 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         # acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
         if obs.get_shape().ndims == 1:
             reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)
-            reward_run = next_obs[8]
+            reward_run = obs[8]
         elif obs.get_shape().ndims == 2:
             reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-            reward_run = next_obs[:, 8]  # changed from next_obs to obs
+            reward_run = obs[:, 8]  # changed from next_obs to obs
         else:
             raise NotImplementedError
         reward = reward_run + reward_ctrl
@@ -182,7 +182,7 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     #     return reward
 
     # FIXME: use tf.gradients instead
-    def tf_dl(self, obs, act, next_obs, f_x, f_xx):
+    def tf_dl(self, obs, act, next_obs):
         """
 
         :param obs: (obs_dim,)
@@ -194,19 +194,20 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         """
         # r(x, u) = g(x', u) = g(f(x, u), u)
         # l_x
-        r_f = np.zeros((self.obs_dim,))
-        r_f[8] = 1
-        r_f = tf.constant(r_f, dtype=tf.float32)
-        l_x = -tf.matmul(f_x, tf.reshape(r_f, (self.obs_dim, 1)), transpose_a=True)
-        l_x = tf.squeeze(l_x)
+        r_x = np.zeros((self.obs_dim,))
+        r_x[8] = 1
+        l_x = tf.constant(-r_x, dtype=tf.float32)
+        # l_x = -tf.matmul(f_x, tf.reshape(r_f, (self.obs_dim, 1)), transpose_a=True)
+        # l_x = tf.squeeze(l_x)
 
         # l_u
         r_u = -0.2 * act
         l_u = -r_u
 
         # l_xx
-        l_xx = tf.tensordot(r_f, f_xx, axes=[[0], [0]])
-        assert l_xx.get_shape().as_list() == [self.obs_dim, self.obs_dim]
+        l_xx = tf.zeros((self.obs_dim, self.obs_dim))
+        # l_xx = tf.tensordot(r_f, f_xx, axes=[[0], [0]])
+        # assert l_xx.get_shape().as_list() == [self.obs_dim, self.obs_dim]
 
         # l_uu
         r_uu = tf.eye(self.act_dim) * (-0.2)

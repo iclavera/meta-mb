@@ -82,42 +82,41 @@ class iLQRPlanner(object):
             disc_reward = tf.zeros(())
             x_array, deriv_array = [], []
             for i in range(self.horizon):
-                # if self.use_hessian_f:
-                # hack in order to compute f_ux
-                act = self.u_array_ph[i, env_idx, :]
-                obs_act_concat = tf.concat([obs, act], axis=0)
-                obs, act = obs_act_concat[:obs_dim], obs_act_concat[-act_dim:]
-                model_idx = self.model_idx_ph[i, env_idx]
-                next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
-                reward = self._env.tf_reward(obs, act, next_obs)
+                if self.use_hessian_f:
+                    # hack in order to compute f_ux
+                    act = self.u_array_ph[i, env_idx, :]
+                    obs_act_concat = tf.concat([obs, act], axis=0)
+                    obs, act = obs_act_concat[:obs_dim], obs_act_concat[-act_dim:]
+                    model_idx = self.model_idx_ph[i, env_idx]
+                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
 
-                # compute gradients
-                hess = utils.hessian_wrapper(next_obs, obs_act_concat, obs_dim, obs_dim+act_dim)  # (obs_dim, obs_dim+act_dim, obs_dim+act_dim)
-                f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
-                f_xx = hess[:, :obs_dim, :obs_dim]
-                f_uu = hess[:, -act_dim:, -act_dim:]
-                f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
-                l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
+                    # compute gradients
+                    hess = utils.hessian_wrapper(next_obs, obs_act_concat, obs_dim, obs_dim+act_dim)  # (obs_dim, obs_dim+act_dim, obs_dim+act_dim)
+                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                    f_xx = hess[:, :obs_dim, :obs_dim]
+                    f_uu = hess[:, -act_dim:, -act_dim:]
+                    f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
+                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs)
 
-                # else:
-                #     # obs, act, next_obs, reward
-                #     act = self.u_array_ph[i, env_idx, :]
-                #     model_idx = self.model_idx_ph[i, env_idx]
-                #     next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
-                #     reward = self._env.tf_reward(obs, act, next_obs)
-                #
-                #     # compute gradients
-                #     f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                #     f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
-                #     f_xx = utils.hessian_wrapper(next_obs, obs, obs_dim, obs_dim)
-                #     f_uu, f_ux = None, None  # None value not supported
-                #     l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs, f_x, f_xx)
+                    deriv_array.append([f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux])
+                else:
+                    # obs, act, next_obs, reward
+                    act = self.u_array_ph[i, env_idx, :]
+                    model_idx = self.model_idx_ph[i, env_idx]
+                    next_obs = self.dynamics_model.predict_sym(obs[None], act[None], pred_type=model_idx)[0]
+
+                    # compute gradients
+                    f_x = utils.jacobian_wrapper(next_obs, obs, obs_dim, obs_dim)
+                    f_u = utils.jacobian_wrapper(next_obs, act, obs_dim, act_dim)
+                    l_x, l_u, l_xx, l_uu, l_ux = self._env.tf_dl(obs, act, next_obs)
+
+                    deriv_array.append([f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux])
 
                 # store
+                reward = self._env.tf_reward(obs, act, next_obs)
                 disc_reward += discount**i * reward
                 x_array.append(obs)
-                deriv_array.append([f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux])
                 obs = next_obs
 
             x_array = tf.stack(x_array, axis=0)
@@ -201,8 +200,15 @@ class iLQRPlanner(object):
                     success, agent_info = self.update_u_per_env(env_idx, utils_by_env[env_idx])
                     if verbose:
                         logger.logkv(f'RetDyn-{env_idx}', agent_info['returns'])
+                        logger.logkv(f'RetEnv-{env_idx}', agent_info['gt_returns'])
                         if success:
                             logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
+                            logger.logkv('alpha', agent_info['alpha'])
+                            logger.logkv('ensemble_ratio', agent_info['ensemble_ratio'])
+                            logger.logkv('eff_ratio', agent_info['eff_ratio'])
+                            logger.logkv('gt_ratio', agent_info['gt_ratio'])
+                            logger.logkv('gt_diff', agent_info['gt_diff'])
+
                     # if success and agent_info['u_clipped_pct'] > 0.85:  # actions all on boundary
                     #     self.u_array_val[:, env_idx, :] = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
 
@@ -248,8 +254,14 @@ class iLQRPlanner(object):
     def update_u_per_env(self, env_idx, utils_list):
         u_array = self.u_array_val[:, env_idx, :]
         model_idx = self.model_idx_val[:, env_idx]
-        x_array, J_val, f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        if self.use_hessian_f:
+            x_array, J_val, f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = utils_list
+        else:
+            x_array, J_val, f_x, f_u, l_x, l_u, l_xx, l_uu, l_ux = utils_list
         agent_info = dict(returns=-J_val)
+
+        gt_J_val = self._gt_J_val(x_array[0], u_array)
+        agent_info['gt_returns'] = -gt_J_val
 
         """
         Backward Pass
@@ -271,16 +283,25 @@ class iLQRPlanner(object):
                         Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i] + np.tensordot(V_prime_x, f_uu[i], axes=1)
                     else:
                         Q_uu = l_uu[i] + f_u[i].T @ V_prime_xx @ f_u[i]
+
+                    # try:
+                    #     assert np.allclose(Q_uu, Q_uu.T)
+                    # except AssertionError:
+                    #     # assert np.allclose(V_prime_xx, V_prime_xx.T)
+                    #     # assert np.allclose(l_uu[i], l_uu[i].T)
+                    #     # hess = np.tensordot(V_prime_x, f_uu[i], axes=1)
+                    #     # assert np.allclose(hess, hess.T)
+                    #     diff = Q_uu - Q_uu.T
+                    #     logger.warn(f"min, max, mean = {np.min(diff), np.max(diff), np.mean(diff)}")
+                    Q_uu = (Q_uu + Q_uu.T) * 0.5
+                        # raise AssertionError
+
                     if self.reg_str == 'Q':
                         Q_uu_reg = Q_uu + mu * np.eye(self.act_dim)
                     elif self.reg_str == 'V':
                         Q_uu_reg = Q_uu + mu * f_u[i].T @ f_u[i]
                     else:
                         raise ValueError
-
-                    if not np.allclose(Q_uu, Q_uu.T):
-                        print(Q_uu)
-                        raise RuntimeError
 
                     Q_uu_reg_inv = chol_inv(Q_uu_reg)  # except error here
 
@@ -310,8 +331,14 @@ class iLQRPlanner(object):
                     # prepare for next i
                     V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
                     V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
-                    assert np.allclose(V_prime_xx, V_prime_xx.T)
-                    # V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
+                    # if not np.allclose(V_prime_xx, V_prime_xx.T):
+                    #     print(i)
+                    #     assert np.allclose(Q_xx, Q_xx.T)
+                    #     assert np.allclose(Q_uu, Q_uu.T)
+                    #     assert np.allclose(K.T @ Q_uu @ K, K.T @ Q_uu @ K)
+                    #     diff = V_prime_xx - V_prime_xx.T
+                    #     print(f"min, max, mean = {np.min(diff), np.max(diff), np.mean(diff)}")
+                    V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
 
                 backward_accept = True
 
@@ -346,7 +373,7 @@ class iLQRPlanner(object):
                     x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=_model_idx)[0]
                     reward = self._env.reward(x, u, x_prime)
                     opt_J_val_by_model[_model_idx] += -self.discount**i * reward
-                    if _model_idx == model_idx[i]:
+                    if _model_idx == model_idx[i]:  # FIXME: THIS IS INCORRECT, must recompute the trajectory following model_idx
                         opt_x_array.append(x)
                         opt_u_array.append(u)
                         opt_J_val += -self.discount**i * reward
@@ -355,13 +382,21 @@ class iLQRPlanner(object):
 
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             cond_diff = J_val - np.mean(opt_J_val_by_model)
-            if cond_diff > 0 and cond_diff > self.c_1 * (-delta_J_alpha):
+            gt_cond_diff = gt_J_val - self._gt_J_val(x_array[0], opt_u_array)  # use gt to check
+            if gt_cond_diff > 0 and gt_cond_diff > self.c_1 * (-delta_J_alpha):
+            # if cond_diff > 0 and cond_diff > self.c_1 * (-delta_J_alpha):
                 opt_u_array = np.stack(opt_u_array, axis=0)
                 self.u_array_val[:, env_idx, :] = opt_u_array
                 agent_info['u_clipped_pct'] = np.sum(np.abs(opt_u_array) >= np.mean(self.act_high))/(self.horizon*self.act_dim)
                 agent_info['returns'] = -opt_J_val
+                agent_info['gt_returns'] = gt_cond_diff - gt_J_val
+                agent_info['alpha'] = alpha
+                agent_info['ensemble_ratio'] = cond_diff/(-delta_J_alpha)
+                agent_info['eff_ratio'] = (J_val - opt_J_val)/(-delta_J_alpha)
+                agent_info['gt_ratio'] = gt_cond_diff/(-delta_J_alpha)
+                agent_info['gt_diff'] = gt_cond_diff
 
-                logger.log(f"alpha, cond_ratio, eff_ratio, exp_diff = {alpha, cond_diff/(-delta_J_alpha), (J_val-opt_J_val)/(-delta_J_alpha), -delta_J_alpha}")
+                # logger.log(f"alpha, cond_ratio, eff_ratio, gt_ratio, exp_diff = {alpha, cond_diff/(-delta_J_alpha), (J_val-opt_J_val)/(-delta_J_alpha), gt_cond_diff/(-delta_J_alpha), -delta_J_alpha}")
                 forward_accept = True
             else:
                 # continue line search
@@ -419,6 +454,14 @@ class iLQRPlanner(object):
                 # logger.log(f'J_val = {J_val}')
             self._increase_mu(env_idx)
             return False, agent_info
+
+    def _gt_J_val(self, init_obs, u_array):
+        _ = self._env.reset_from_obs(init_obs)
+        disc_reward = 0
+        for i in range(self.horizon):
+            _, reward, _, _ = self._env.step(u_array[i])
+            disc_reward += self.discount**i * reward
+        return -disc_reward
 
     def _decrease_mu(self, idx):
         mu, delta = self.param_array[idx]

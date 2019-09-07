@@ -2,6 +2,7 @@ from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
+# from meta_mb.policies.planners.ilqr_tf_planner import iLQRPlanner
 from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
 from meta_mb.samplers.ipopt_sampler import IpoptSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -163,21 +164,21 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [True],
-        'on_policy_freq': [2],
+        'on_policy_freq': [2],  # FIXME: debug
 
         # Problem
         'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [50],
-        'discount': [0.99],
+        'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
         'horizon': [5, 15],
 
         # Policy
-        'initializer_str': ['zeros'], #['zeros', 'uniform'],
+        'initializer_str': ['zeros', 'uniform'],
 
         # iLQR
-        'num_ilqr_iters': [20],
+        'num_ilqr_iters': [10, 20],
         'mu_min': [1e-6],
         'mu_max': [1e10],
         'mu_init': [1e-5],
@@ -206,11 +207,11 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [1,],
-        'hidden_nonlinearity_model': ['relu'],
+        'hidden_nonlinearity_model': ['swish', 'relu'],
         'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'hidden_sizes_model': [(512, 512),],
+        'hidden_sizes_model': [(512, 512), (512,)],
         'batch_size_model': [64],
         'learning_rate': [0.001],
     }

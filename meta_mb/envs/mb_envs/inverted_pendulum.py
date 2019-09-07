@@ -220,7 +220,7 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         elif obs.get_shape().ndims == 2:
             return -tf.square(obs[:, 1] - np.pi)
 
-    def tf_dl(self, obs, act, next_obs, f_x, f_xx):
+    def tf_dl(self, obs, act, next_obs):
         # l_x
         mask = np.zeros((self.obs_dim,))
         mask[1] = -2

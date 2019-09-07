@@ -65,13 +65,13 @@ class GTPolicyiLQRPlanner(object):
         _, u_theta, _, _, _ = policy.compute_du(x_array[0])
         # dl
         # l_bar_x = l_x[0] + u_x.T @ l_u[0]
-        l_bar_theta = u_theta.T @ l_u[0]  # (theta_dim,)
+        # l_bar_theta = u_theta.T @ l_u[0]  # (theta_dim,)
         # l_bar_xx = l_xx[0] + u_x.T @ l_ux[0] @ u_x + np.tensordot(l_u[0], u_xx)
-        l_bar_theta_theta = u_theta.T @ l_uu[0] @ u_theta # + np.tensordot(l_u[0], u_theta_theta)  # FIXME: drop second order?
+        # l_bar_theta_theta = u_theta.T @ l_uu[0] @ u_theta # + np.tensordot(l_u[0], u_theta_theta)  # FIXME: drop second order?
         # l_bar_theta_x = u_theta.T @ l_uu[0] @ u_x + np.tensordot(l_u[0], u_theta_x)
         # df
         # f_bar_x = f_x[0] + f_u[0] @ u_x
-        f_bar_theta = f_u[0] @ u_theta
+        # f_bar_theta = f_u[0] @ u_theta
 
         """
         Backward Pass
@@ -120,57 +120,68 @@ class GTPolicyiLQRPlanner(object):
                         raise ValueError
 
                     # compute control matrices
-                    k = - Q_uu_reg_inv @ Q_u
-                    K = - Q_uu_reg_inv @ Q_ux_reg
-                    open_k_array[i] = k
-                    closed_K_array[i] = K
-                    delta_J_1 += k.T @ Q_u
-                    delta_J_2 += k.T @ Q_uu @ k
+                    if i > 0:
+                        k = - Q_uu_reg_inv @ Q_u
+                        K = - Q_uu_reg_inv @ Q_ux_reg
+                        open_k_array[i] = k
+                        closed_K_array[i] = K
+                        delta_J_1 += k.T @ Q_u
+                        delta_J_2 += k.T @ Q_uu @ k
 
-                    # prepare for next i
-                    # V_prime_x = Q_x + Q_u @ feedback_gain
-                    # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
-                    V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
-                    V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
-                    V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
+                        # prepare for next i
+                        # V_prime_x = Q_x + Q_u @ feedback_gain
+                        # V_prime_xx = Q_xx + Q_ux.T @ feedback_gain
+                        V_prime_x = Q_x + K.T @ Q_uu @ k + K.T @ Q_u + Q_ux.T @ k
+                        V_prime_xx = Q_xx + K.T @ Q_uu @ K + K.T @ Q_ux + Q_ux.T @ K
+                        V_prime_xx = (V_prime_xx + V_prime_xx.T) * 0.5
 
-                # i = 0, consider Q_bar
                 i = 0
-                if self.use_hessian_f:
-                    raise NotImplementedError
-                else:
-                    Q_bar_theta_theta = l_bar_theta_theta + f_bar_theta.T @ V_prime_xx @ f_bar_theta
-                if self.reg_str == 'Q':
-                    Q_bar_theta_theta_reg = Q_bar_theta_theta + self.mu * np.eye(self.theta_dim)
-                elif self.reg_str == 'V':
-                    Q_bar_theta_theta_reg = Q_bar_theta_theta + self.mu * f_bar_theta.T @ f_bar_theta
-                else:
-                    raise ValueError
+                Q_theta_theta = u_theta.T @ Q_uu_reg @ u_theta + self.mu * np.eye(self.theta_dim) # + np.tensordot(Q_u, u_thetat_theta)A  # FIXME: Q_uu_reg or Q_uu?
+                Q_theta_theta_inv = chol_inv(Q_theta_theta)
+                Q_theta = Q_u @ u_theta
 
-                assert np.allclose(Q_bar_theta_theta, Q_bar_theta_theta.T)
+                k = -Q_theta_theta_inv @ Q_theta
+                open_k_array[0] = k
+                delta_J_1 += k.T @ Q_theta
+                delta_J_2 += k.T @ Q_theta_theta @ k
 
-                Q_bar_theta_theta_reg_inv = chol_inv(Q_bar_theta_theta_reg)
-
-                # Q_bar_x = l_bar_x + f_bar_x.T @ V_prime_x
-                Q_bar_theta = l_bar_theta + f_bar_theta.T @ V_prime_x
+                # # i = 0, consider Q_bar
+                # i = 0
                 # if self.use_hessian_f:
                 #     raise NotImplementedError
                 # else:
-                #     Q_bar_xx = l_bar_xx + f_bar_x.T @ V_prime_xx @ f_bar_x
-                #     Q_bar_theta_x = l_bar_theta_x + f_bar_theta.T @ V_prime_xx @ f_bar_x
+                #     Q_bar_theta_theta = l_bar_theta_theta + f_bar_theta.T @ V_prime_xx @ f_bar_theta
                 # if self.reg_str == 'Q':
-                #     Q_bar_theta_x_reg = Q_bar_theta_x
+                #     Q_bar_theta_theta_reg = Q_bar_theta_theta + self.mu * np.eye(self.theta_dim)
                 # elif self.reg_str == 'V':
-                #     Q_bar_theta_x_reg = Q_bar_theta_x + self.mu * f_bar_theta.T @ f_bar_x
+                #     Q_bar_theta_theta_reg = Q_bar_theta_theta + self.mu * f_bar_theta.T @ f_bar_theta
                 # else:
                 #     raise ValueError
-
-                k = - Q_bar_theta_theta_reg_inv @ Q_bar_theta
-                # K = - Q_bar_theta_theta_reg_inv @ Q_bar_theta_x_reg
-                open_k_array[0] = k
-                # closed_K_array[0] = K
-                delta_J_1 += k.T @ Q_bar_theta
-                delta_J_2 += k.T @ Q_bar_theta_theta @ k
+                #
+                # assert np.allclose(Q_bar_theta_theta, Q_bar_theta_theta.T)
+                #
+                # Q_bar_theta_theta_reg_inv = chol_inv(Q_bar_theta_theta_reg)
+                #
+                # # Q_bar_x = l_bar_x + f_bar_x.T @ V_prime_x
+                # Q_bar_theta = l_bar_theta + f_bar_theta.T @ V_prime_x
+                # # if self.use_hessian_f:
+                # #     raise NotImplementedError
+                # # else:
+                # #     Q_bar_xx = l_bar_xx + f_bar_x.T @ V_prime_xx @ f_bar_x
+                # #     Q_bar_theta_x = l_bar_theta_x + f_bar_theta.T @ V_prime_xx @ f_bar_x
+                # # if self.reg_str == 'Q':
+                # #     Q_bar_theta_x_reg = Q_bar_theta_x
+                # # elif self.reg_str == 'V':
+                # #     Q_bar_theta_x_reg = Q_bar_theta_x + self.mu * f_bar_theta.T @ f_bar_x
+                # # else:
+                # #     raise ValueError
+                #
+                # k = - Q_bar_theta_theta_reg_inv @ Q_bar_theta
+                # # K = - Q_bar_theta_theta_reg_inv @ Q_bar_theta_x_reg
+                # open_k_array[0] = k
+                # # closed_K_array[0] = K
+                # delta_J_1 += k.T @ Q_bar_theta
+                # delta_J_2 += k.T @ Q_bar_theta_theta @ k
 
                 backward_accept = True
 
@@ -178,7 +189,7 @@ class GTPolicyiLQRPlanner(object):
                 if i > 0:
                     logger.log(f'i = {i}, mu = {self.mu}, Q_uu min eigen value = {np.min(np.linalg.eigvals(Q_uu))}')
                 else:
-                    logger.log(f'i = {i}, mu = {self.mu}, Q_bar_theta_theta min eigen value = {np.min(np.linalg.eigvals(Q_bar_theta_theta))}')
+                    logger.log(f'i = {i}, mu = {self.mu}, Q_bar_theta_theta min eigen value = {np.min(np.linalg.eigvals(Q_theta_theta))}')
                 self._increase_mu()
                 backward_pass_counter += 1
 
@@ -191,6 +202,7 @@ class GTPolicyiLQRPlanner(object):
         """
         alpha = 1.0
         forward_pass_counter = 0
+        theta = policy.get_param_values_flatten()
         while not forward_accept and forward_pass_counter < self.max_forward_iters:
             # reset
             assert np.allclose(obs, x_array[0])
@@ -203,8 +215,8 @@ class GTPolicyiLQRPlanner(object):
             for i in range(self.horizon):
                 if i == 0:
                     # theta <- theta + alpha * k
-                    policy.update_theta(alpha * open_k_array[0])  # since x - x_array[0] = 0, closed loop term is dropped
-                    u = policy.get_action(x)  # FIXME: either clip or use tanh
+                    policy.set_param_values_flatten(theta + alpha * open_k_array[0])  # since x - x_array[0] = 0, closed loop term is dropped
+                    u, _ = policy.get_action(x)  # FIXME: either clip or use tanh
                 else:
                     u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
                 u = np.clip(u, self.act_low, self.act_high)
@@ -237,6 +249,7 @@ class GTPolicyiLQRPlanner(object):
             return optimized_action, backward_accept, forward_accept, (-J_val, -opt_J_val, -delta_J_alpha), reward_array
         else:
             logger.log(f'foward pass not accepted')
+            policy.set_param_values_flatten(theta)
             self._increase_mu()
             return optimized_action, backward_accept, forward_accept, None, None
 
