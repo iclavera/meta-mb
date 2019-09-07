@@ -2,8 +2,8 @@ from meta_mb.trainers.bptt_trainer import BPTTTrainer
 from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
-# from meta_mb.policies.planners.ilqr_tf_planner import iLQRPlanner
-from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
+from meta_mb.policies.planners.ilqr_tf_planner import iLQRPlanner
+# from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
 from meta_mb.samplers.ipopt_sampler import IpoptSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -172,7 +172,7 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [50],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [5, 15],
+        'horizon': [2], #FIXME: [5, 15],
 
         # Policy
         'initializer_str': ['zeros', 'uniform'],

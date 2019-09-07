@@ -541,6 +541,15 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
 
         if pred_type == 'all':
             pass
+        # elif pred_type == 'rand_alt':  # when batch_size % num_models != 0
+        #     print(next_obs)
+        #     next_obs = tf.transpose(next_obs, (2, 0, 1))  # (num_models, batch_size, obs_dims)
+        #     next_obs = tf.gather(
+        #         next_obs,
+        #         tf.random.uniform(shape=(tf.shape(next_obs)[0],), maxval=self.num_models, dtype=tf.int32),
+        #         axis=2,
+        #     )
+        #     print(next_obs)
         elif pred_type == 'mean':
             next_obs = tf.reduce_mean(next_obs, axis=2)
         else:
