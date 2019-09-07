@@ -76,7 +76,8 @@
             <body name="base_link" pos="0 0 0.051">
                 <inertial pos="-0.061 0 0.293" quat="0.973598 0.001764 -0.228065 -0.009443" mass="116" diaginertia="6.293885 5.669245 3.041772" />
                 <geom name="base" rgba="1 1 1 1" mesh="base_L" contype="0"/>
-                <body name="torso_lift_link" pos="-0.05 0 0.739675">
+                <body name="torso_lift_link" pos="-0.05 0 1.049675">
+                    <!--joint name="torso_lift_joint" type="slide" pos="0 0 0" axis="0 0 1" limited="true" range="0 0.31"/-->
                     <inertial pos="-0.1 0 -0.0885" quat="0.999335 0.007626 0.035453 0.003712" mass="36.248046" diaginertia="2.783075 2.510450 0.514581" />
                     <geom name="geom15" rgba="0.9 0.9 0.9 1" mesh="torso_lift_L" contype="0"/>
                     <geom name="laser" rgba="0.9 0.9 0.9 1" pos="0.1 0 0.225" mesh="tilting_hokuyo_L" contype="0"/>
@@ -211,6 +212,9 @@
                                                                 <body name="l_gripper_r_finger_tip_link" pos="0.09137 -0.00495 0">
                                                                     <inertial pos="0.00423 -0.00284 0" quat="-0.249588 0.661594 0.249588 0.661594" mass="0.04419" diaginertia="0.000015 0.000015 0.000003" />
                                                                     <geom name="l_gripper_r_finger_tip" euler="3.14 0 0" rgba="0 0.8 0 1" mesh="l_finger_tip" />
+                                                                    <body name="ee_pos" pos="0.03275 0.0154 -0.003275">
+                                                                        <geom name="ee_viz" pos="0 0 0" rgba="1 0 0 1" type="sphere" size="0.01"/>
+                                                                    </body>
                                                                 </body>
                                                             </body>
                                                         </body>

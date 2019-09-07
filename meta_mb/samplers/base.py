@@ -82,7 +82,6 @@ class BaseSampler(object):
             # step environments
             t = time.time()
             next_obs, reward, done, env_info = self.env.step(action)
-            print("step!")
 
             ts += 1
             done = done or ts >= self.max_path_length
