@@ -201,6 +201,7 @@ def run_experiment(**kwargs):
             T=kwargs['T'],
             ground_truth=ground_truth,
             max_epochs_since_update=kwargs['max_epochs_since_update'],
+            num_eval_trajectories=kwargs['num_eval_trajectories'],
         )
 
         trainer.train()
@@ -248,6 +249,7 @@ if __name__ == '__main__':
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
         'method': [2],
+        'num_eval_trajectories': [5],
 
         'policy_hidden_nonlinearity': ['relu'],
 
