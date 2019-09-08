@@ -172,7 +172,7 @@ if __name__ == '__main__':
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [50],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [2], #FIXME: [5, 15],
+        'horizon': [5, 15],
 
         # Policy
         'initializer_str': ['zeros', 'uniform'],

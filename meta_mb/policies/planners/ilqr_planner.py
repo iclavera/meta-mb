@@ -204,7 +204,7 @@ class iLQRPlanner(object):
                         if success:
                             logger.logkv(f'u_clipped_pct-{env_idx}', agent_info['u_clipped_pct'])
                             logger.logkv('alpha', agent_info['alpha'])
-                            logger.logkv('ensemble_ratio', agent_info['ensemble_ratio'])
+                            # logger.logkv('ensemble_ratio', agent_info['ensemble_ratio'])
                             logger.logkv('eff_ratio', agent_info['eff_ratio'])
                             logger.logkv('gt_ratio', agent_info['gt_ratio'])
                             logger.logkv('gt_diff', agent_info['gt_diff'])
@@ -360,28 +360,41 @@ class iLQRPlanner(object):
             # reset
             opt_x_array, opt_u_array = [], []
             opt_J_val = 0
-            opt_J_val_by_model = np.zeros((num_models,))
+            # opt_J_val_by_model = np.zeros((num_models,))
 
             # forward pass with J value ensemble
-            for _model_idx in range(num_models):
-                x = x_array[0]
-                for i in range(self.horizon):
-                    u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
-                    u = np.clip(u, self.act_low, self.act_high)
+            # for _model_idx in range(num_models):
+            #     x = x_array[0]
+            #     for i in range(self.horizon):
+            #         u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
+            #         u = np.clip(u, self.act_low, self.act_high)
+            #
+            #         # store updated state/action
+            #         x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=_model_idx)[0]
+            #         reward = self._env.reward(x, u, x_prime)
+            #         opt_J_val_by_model[_model_idx] += -self.discount**i * reward
+            #         if _model_idx == model_idx[i]:  # FIXME: THIS IS INCORRECT, must recompute the trajectory following model_idx
+            #             opt_x_array.append(x)
+            #             opt_u_array.append(u)
+            #             opt_J_val += -self.discount**i * reward
+            #
+            #         x = x_prime
+            x = x_array[0]
+            for i in range(self.horizon):
+                u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
+                u = np.clip(u, self.act_low, self.act_high)
 
-                    # store updated state/action
-                    x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=_model_idx)[0]
-                    reward = self._env.reward(x, u, x_prime)
-                    opt_J_val_by_model[_model_idx] += -self.discount**i * reward
-                    if _model_idx == model_idx[i]:  # FIXME: THIS IS INCORRECT, must recompute the trajectory following model_idx
-                        opt_x_array.append(x)
-                        opt_u_array.append(u)
-                        opt_J_val += -self.discount**i * reward
+                # store updated state/action
+                x_prime = self.dynamics_model.predict(x[None], u[None], pred_type=np.random.randint(num_models))[0]
+                reward = self._env.reward(x, u, x_prime)
+                opt_x_array.append(x)
+                opt_u_array.append(u)
+                opt_J_val += -self.discount**i * reward
 
-                    x = x_prime
+                x = x_prime
 
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
-            cond_diff = J_val - np.mean(opt_J_val_by_model)
+            # cond_diff = J_val - np.mean(opt_J_val_by_model)
             gt_cond_diff = gt_J_val - self._gt_J_val(x_array[0], opt_u_array)  # use gt to check
             if gt_cond_diff > 0 and gt_cond_diff > self.c_1 * (-delta_J_alpha):
             # if cond_diff > 0 and cond_diff > self.c_1 * (-delta_J_alpha):
@@ -391,7 +404,7 @@ class iLQRPlanner(object):
                 agent_info['returns'] = -opt_J_val
                 agent_info['gt_returns'] = gt_cond_diff - gt_J_val
                 agent_info['alpha'] = alpha
-                agent_info['ensemble_ratio'] = cond_diff/(-delta_J_alpha)
+                # agent_info['ensemble_ratio'] = cond_diff/(-delta_J_alpha)
                 agent_info['eff_ratio'] = (J_val - opt_J_val)/(-delta_J_alpha)
                 agent_info['gt_ratio'] = gt_cond_diff/(-delta_J_alpha)
                 agent_info['gt_diff'] = gt_cond_diff

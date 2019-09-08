@@ -83,18 +83,18 @@ class iLQRPlanner(object):
             act = mean + tf.random.normal(shape=[horizon, num_envs, n_candidates, act_dim]) * std
             act = tf.clip_by_value(act, self.act_low, self.act_high)
             act = tf.reshape(act, shape=(horizon, num_envs*n_candidates, act_dim))
-            returns = tf.zeros((num_envs*n_candidates,))
+            disc_rewards = tf.zeros((num_envs*n_candidates,))
 
             obs = init_obs
             for t in range(horizon):
                 next_obs = self.dynamics_model.predict_sym(obs, act[t])
                 rewards = self._env.tf_reward(obs, act[t], next_obs)
-                returns += self.discount**t * rewards
+                disc_rewards += self.discount**t * rewards
                 obs = next_obs
 
             # Re-fit belief to the best ones
-            returns = tf.reshape(returns, (num_envs, n_candidates))
-            _, indices = tf.nn.top_k(returns, k=self.num_elites, sorted=False)
+            disc_rewards = tf.reshape(disc_rewards, (num_envs, n_candidates))
+            _, indices = tf.nn.top_k(disc_rewards, k=self.num_elites, sorted=False)
             act = tf.reshape(act, shape=(horizon, num_envs, n_candidates, act_dim))
             act = tf.transpose(act, (1, 2, 3, 0))  # (num_envs, n_candidates, act_dim, horizon)
             elite_actions = tf.batch_gather(act, indices)
@@ -124,9 +124,9 @@ class iLQRPlanner(object):
         '''--------------- Compute gradients, x_ho, disc_reward ----------------------'''
 
         x_ho = []
-        gradients_list = [[] for _ in range(10)]
+        gradients_list = [tf.TensorArray(dtype=tf.float32, size=horizon, clear_after_read=True) for _ in range(10)]
         x = self.x_ph_o
-        disc_reward = 0
+        disc_reward = tf.zeros(())
 
         for i in range(horizon):
             if self.use_hessian_f:
@@ -160,18 +160,18 @@ class iLQRPlanner(object):
             dl = list(self._env.tf_dl(x, u, x_prime))
             for grad_idx, grad in enumerate(df + dl):
                 if grad is not None:
-                    gradients_list[grad_idx].append(grad)
+                    grad = tf.dtypes.cast(grad, tf.float32)
+                    gradients_list[grad_idx] = gradients_list[grad_idx].write(i, grad)
             reward = self._env.tf_reward(x, u, x_prime)
             disc_reward += self.discount**i * reward
             x_ho.append(x)
             x = x_prime
         J_val = -disc_reward
-        gradients_list = [tf.stack(grad, axis=0) for grad in gradients_list if grad]
 
         ''' -------------------- Backward Pass ---------------------------------'''
 
-        def body(accept, i, open_k_array, closed_K_array, delta_J_1, delta_J_2, V_prime_x, V_prime_xx):
-            f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = [gradients_list[grad_idx][i] for grad_idx in range(10)]
+        def body(prev_reject, i, open_k_array, closed_K_array, delta_J_1, delta_J_2, V_prime_x, V_prime_xx):
+            f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = [gradients_list[grad_idx].read(i) for grad_idx in range(10)]
             Q_x = l_x + tf.linalg.matvec(tf.transpose(f_x), V_prime_x)
             Q_u = l_u + tf.linalg.matvec(tf.transpose(f_u), V_prime_x)
             if self.use_hessian_f:
@@ -184,26 +184,24 @@ class iLQRPlanner(object):
                 Q_uu = l_uu + tf.transpose(f_u) @ V_prime_xx @ f_u
                 Q_ux = l_ux + tf.transpose(f_u) @ V_prime_xx @ f_x
 
-            # use conjugate gradient method to solve for
+            # use conjugate gradient method to solve for k, K
             accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
             accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
-            new_accept = tf.logical_or(accept_k, accept_K)
+            # set new_reject = False and do the next step in backward pass if and only if both cg converge
+            reject = tf.logical_not(tf.logical_and(accept_k, accept_K))
 
             open_k_array = open_k_array.write(i, k)
             closed_K_array = closed_K_array.write(i, K)
             delta_J_1 += utils.tf_inner(k, Q_u)
             delta_J_2 += utils.tf_inner(k, tf.linalg.matvec(Q_uu, k))
 
-            # prepare for next i
-            i -= 1
-            V_prime_x = Q_x + tf.linalg.matvec(tf.transpose(K) @ Q_uu, k) + tf.linalg.matvec(tf.transpose(K), Q_u) + tf.linalg.matvec(tf.transpose(Q_ux), k)
-            V_prime_xx = Q_xx + tf.transpose(K) @ Q_uu @ K + tf.transpose(K) @ Q_ux + tf.transpose(Q_ux) @ K
-            V_prime_xx = (V_prime_xx + tf.transpose(V_prime_xx)) * 0.5
+            V_x = Q_x + tf.linalg.matvec(tf.transpose(K) @ Q_uu, k) + tf.linalg.matvec(tf.transpose(K), Q_u) + tf.linalg.matvec(tf.transpose(Q_ux), k)
+            V_xx = Q_xx + tf.transpose(K) @ Q_uu @ K + tf.transpose(K) @ Q_ux + tf.transpose(Q_ux) @ K
+            V_xx = (V_xx + tf.transpose(V_xx)) * 0.5
 
-            return (new_accept, i, open_k_array, closed_K_array, delta_J_1, delta_J_2, V_prime_x, V_prime_xx)
+            return (reject, i-1, open_k_array, closed_K_array, delta_J_1, delta_J_2, V_x, V_xx)
 
         # define variables for backward while loop
-        i = tf.Variable(initial_value=horizon-1, trainable=False, dtype=tf.int32, name='i')
         V_prime_xx, V_prime_x = tf.zeros((obs_dim, obs_dim)), tf.zeros((obs_dim,))
         open_k_array = tf.TensorArray(
             dtype=tf.float32, size=horizon, element_shape=(act_dim,), tensor_array_name='open_k', clear_after_read=False,
@@ -211,48 +209,52 @@ class iLQRPlanner(object):
         closed_K_array = tf.TensorArray(
             dtype=tf.float32, size=horizon, element_shape=(act_dim, obs_dim), tensor_array_name='closed_K', clear_after_read=False,
         )
-        delta_J_1 = tf.Variable(initial_value=0, trainable=False, name="delta_J_1", dtype=tf.float32)
-        delta_J_2 = tf.Variable(initial_value=0, trainable=False, name="delta_J_2", dtype=tf.float32)
-        accept = tf.constant(True)
 
-        # if no error: do the i-th step of backward pass, i = horizon-1, ..., 0
-        cond = lambda accept, *args: accept
-        loop_vars = (accept, i, open_k_array, closed_K_array, delta_J_1, delta_J_2, V_prime_x, V_prime_xx)
-        backward_accept, _, open_k_array, closed_K_array, delta_J_1, delta_J_2, _, _ = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars, maximum_iterations=horizon)
+        # while no error (not rejected): do the i-th step of backward pass, i = horizon-1, ..., 0
+        cond = lambda prev_reject, *args: tf.logical_not(prev_reject)
+        loop_vars = (False, horizon-1, open_k_array, closed_K_array, tf.zeros(()), tf.zeros(()), V_prime_x, V_prime_xx)
+        backward_reject, _, open_k_array, closed_K_array, delta_J_1, delta_J_2, _, _ = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars, maximum_iterations=horizon)
+
+        # debug logging
+        # backward_reject = tf.Print(backward_reject, data=['backward accepted', tf.logical_not(backward_reject), 'at itr', i+1])
 
         ''' ----------------------------- Forward Pass --------------------------------'''
 
-        def body(accept, alpha, opt_J_val, opt_u_ha):
+        def body(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha):
             x = self.x_ph_o
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
-            disc_reward = tf.Variable(initial_value=0, trainable=False, name='disc_reward', dtype=tf.float32)
+            disc_reward = tf.zeros(())
+            opt_u_ha = [None] * horizon
             for i in range(horizon):
                 u = u_ha[i] + alpha * open_k_array.read(i) + tf.linalg.matvec(closed_K_array.read(i), (x - x_ho[i]))
                 u = tf.clip_by_value(u, self.act_low, self.act_high)
-                opt_u_ha = opt_u_ha.write(i, u)
+                opt_u_ha[i] = u
 
                 x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32))[0]
                 reward = self._env.tf_reward(x, u, x_prime)
                 disc_reward += self.discount**i * reward
                 x = x_prime
             opt_J_val = -disc_reward
+            opt_u_ha= tf.stack(opt_u_ha)
 
-            accept = tf.math.logical_and(tf.greater(J_val, opt_J_val), tf.greater(J_val-opt_J_val, self.c_1*delta_J_alpha))
             next_alpha = alpha / self.alpha_decay_factor
-            return (accept, next_alpha, opt_J_val, opt_u_ha)
+            return (next_alpha, opt_J_val, delta_J_alpha, opt_u_ha)
 
-        accept = tf.constant(False)
-        alpha = self.alpha_init
-        opt_J_val = J_val
-        opt_u_ha = tf.TensorArray(
-            dtype=tf.float32, size=horizon, element_shape=(act_dim,), tensor_array_name='opt_u_ha',
-        ).unstack(u_ha)
+        # if the previous iteration converges, break the while loop
+        cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha: tf.math.logical_not(
+            tf.math.logical_and(tf.greater(J_val, prev_opt_J_val), tf.greater(J_val-prev_opt_J_val, -self.c_1*prev_delta_J_alpha))
+        )
+        loop_vars = (self.alpha_init, J_val, tf.zeros(()), u_ha)
+        # loop args right before convergence or maximum iteration is reached
+        terminal_loop_vars = tf.while_loop(
+            cond=cond, body=body, loop_vars=loop_vars, maximum_iterations=self.max_backward_iters
+        )
+        # if forward_stop is True, forward pass is accepted, otherwise set opt_J_val, opt_u_ha back to J_val, u_ha and no optimization is carried out
+        forward_accept = tf.math.logical_not(cond(*terminal_loop_vars))
+        next_alpha, opt_J_val, delta_J_alpha, opt_u_ha = tf.cond(pred=forward_accept, true_fn=lambda: terminal_loop_vars, false_fn=lambda: loop_vars)
 
-        # if not accepted: do full forward pass with alpha
-        cond = lambda accept, *args: tf.logical_and(tf.logical_not(accept), backward_accept)
-        loop_vars = (accept, alpha, opt_J_val, opt_u_ha)
-        _, _, opt_J_val, opt_u_ha = tf.while_loop(cond=cond, body=body, loop_vars=loop_vars, maximum_iterations=self.max_backward_iters)
-        opt_u_ha = opt_u_ha.stack()
+        # debug logging
+        # opt_J_val = tf.Print(opt_J_val, data=['forward accepted', forward_accept, 'alpha', next_alpha*self.alpha_decay_factor, 'eff_diff', J_val-opt_J_val, 'pred_diff', -delta_J_alpha])
 
         return -opt_J_val, opt_u_ha
 

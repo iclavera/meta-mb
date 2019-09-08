@@ -58,8 +58,7 @@ def tf_inner(a, b):
     return tf.reduce_sum(tf.multiply(a, b))
 
 def tf_cg(f_Ax, b, cg_iters=10, residual_tol=1e-10):
-    cond = lambda p, r, x, rdotr: tf.less(rdotr, residual_tol)
-
+    cond = lambda p, r, x, rdotr: tf.greater_equal(rdotr, residual_tol)
     def body(p, r, x, rdotr):
         z = f_Ax(p)
         v = rdotr / tf_inner(p, z)
@@ -68,17 +67,15 @@ def tf_cg(f_Ax, b, cg_iters=10, residual_tol=1e-10):
         newrdotr = tf_inner(r, r)
         mu = newrdotr / rdotr
         p = r + mu*p
-        return [p, r, x, newrdotr]
+        return (p, r, x, newrdotr)
 
     p = tf.identity(b)
     r = tf.identity(b)
     x = tf.zeros_like(b)
     rdotr = tf_inner(r, r)
-    # at least do one iteration
-    loop_vars = body(p, r, x, rdotr)
+    loop_vars = (p, r, x, rdotr)
 
-    # define while loop
-    p, r, x, rdotr = tf.while_loop(body=body, cond=cond, loop_vars=loop_vars, maximum_iterations=cg_iters-1)
-    accept = cond(p, r, x, rdotr)
-
+    p, r, x, rdotr = tf.while_loop(body=body, cond=cond, loop_vars=loop_vars, maximum_iterations=cg_iters)
+    accept = tf.less(rdotr, residual_tol)
+    # accept = tf.Print(accept, ['accepted', accept])
     return accept, x
