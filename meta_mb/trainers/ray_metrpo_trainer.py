@@ -1,11 +1,5 @@
 import time
 from meta_mb.logger import logger
-import ray
-
-print(ray.init())
-#print(ray.init(num_cpus=12, num_gpus=4))
-# print(ray.init(redis_address="ADDR:PORT"))
-
 from meta_mb.workers_multi_machines.utils import *
 from meta_mb.workers_multi_machines.metrpo.worker_data import WorkerData
 from meta_mb.workers_multi_machines.metrpo.worker_model import WorkerModel

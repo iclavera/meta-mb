@@ -164,15 +164,15 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [True],
-        'on_policy_freq': [1, 2],
+        'on_policy_freq': [1],
 
         # Problem
         'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
-        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
-        'n_itr': [50],
+        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
+        'n_itr': [201],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [5, 15],
+        'horizon': [15],
 
         # Policy
         'initializer_str': ['zeros',],
@@ -184,7 +184,7 @@ if __name__ == '__main__':
         'mu_init': [1e-5],
         'delta_0': [2],
         'delta_init': [1.0],
-        'alpha_init': [5e-1, 1e-1],
+        'alpha_init': [1e-1],
         'alpha_decay_factor': [3.0],
         'c_1': [1e-3, 1e-6],
         'max_forward_iters': [10],
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
-        'hidden_sizes_model': [(512, 512), (512,)],
+        'hidden_sizes_model': [(512, 512),],
         'batch_size_model': [64],
         'learning_rate': [0.001],
     }

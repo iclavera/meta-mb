@@ -60,6 +60,9 @@ def run_experiment(**kwargs):
 
 
 def run_base(exp_dir, **kwargs):
+    import ray
+    logger.log(ray.init())
+
     config = ConfigProto()
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
@@ -196,7 +199,7 @@ if __name__ == '__main__':
         'num_data_workers': [1,],
         'num_model_workers': [1, 2],
         'num_policy_workers': [1, 2],
-        'env': ['HalfCheetah', 'Walker2d'],
+        'env': ['Walker2d'],
 
         # Problem Conf
 
@@ -219,7 +222,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-4, 5e-4, 1e-3],
+        'dynamics_learning_rate': [5e-4],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
