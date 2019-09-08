@@ -1,65 +1,56 @@
-from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import ParallelEnvExecutor, IterativeEnvExecutor
+import copy
 from meta_mb.logger import logger
-from meta_mb.utils import utils
-
-from pyprind import ProgBar
-import numpy as np
 import time
-import os
-import itertools
-import matplotlib.pyplot as plt
-from math import ceil
-from itertools import accumulate
 
 
-class GTSampler(BaseSampler):
+class GTSampler(Serializable):
     """
-    Sampler for Meta-RL
+    Sampler for ground-truth model
 
     Args:
         env (meta_mb.meta_envs.base.MetaEnv) : environment object
-        policy (meta_mb.policies.base.Policy) : policy object
-        batch_size (int) : number of trajectories per task
-        meta_batch_size (int) : number of meta tasks
-        max_path_length (int) : max number of steps per trajectory
-        envs_per_task (int) : number of meta_envs to run vectorized for each task (influences the memory usage)
+        policy (meta_mb.policies.bptt_controllers.gt_mpc_controller.*) : policy object
+        max_path_length (int): maximum path length
     """
-
     def __init__(
             self,
             env,
             policy,
-            num_rollouts,
             max_path_length,
-            dyn_pred_str=None,
-            vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(GTSampler, self).__init__(env, policy, num_rollouts, max_path_length)
 
-        self.total_samples = num_rollouts * max_path_length
-        self.total_timesteps_sampled = 0
-        self.vae = vae
-        self.dyn_pred_str = dyn_pred_str
+        self.env = copy.deepcopy(env)
+        self.policy = policy
+        self.max_path_length = max_path_length
 
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log, log_prefix='', deterministic=False, verbose=True, plot_first_rollout=False):
-        self.policy.reset()  # do not reset
-        self.policy.get_rollouts(
-            deterministic=deterministic, plot_first_rollout=plot_first_rollout
-        )
+    def obtain_samples(self, log=True, log_prefix='', random=False):
+        policy = self.policy
+        policy.reset(dones=[True])
 
-        # logger.logkv(log_prefix + 'AverageReturn', np.mean(returns_array))
-        # if log:
-        #     for idx, returns in enumerate(returns_array):
-        #         logger.logkv(log_prefix + f'Return {idx}', returns)
-            # logger.logkv(log_prefix + 'StdReturn', np.std(returns_array))
-            # logger.logkv(log_prefix + 'MaxReturn', np.max(returns_array))
-            # logger.logkv(log_prefix + 'MinReturn', np.min(returns_array))
+        obs = self.env.reset()
+        returns = 0
+        start_time = time.time()
+        for t in range(self.max_path_length):
+            policy_time = time.time()
+            act, _ = self.policy.get_action(obs)
+            policy_time = time.time() - policy_time
+            obs, reward, _, _ = self.env.step(act)
+            returns += reward
+
+            if log:
+                logger.logkv(log_prefix + 'PathLengthSoFar', t)
+                logger.logkv(log_prefix + 'Reward', reward)
+                logger.logkv(log_prefix + 'SumReward', returns)
+                logger.logkv(log_prefix + 'PolicyExecTime', policy_time)
+                logger.logkv(log_prefix + 'TotalTime', time.time() - start_time)
+                logger.dumpkvs()
+
+        return None
 
     def __getstate__(self):
         state = dict()

@@ -34,9 +34,7 @@ class Sampler(BaseSampler):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
-        self.total_samples = num_rollouts * max_path_length
         self.n_parallel = n_parallel
-        self.total_timesteps_sampled = 0
         self.vae = vae
 
         # setup vectorized environment

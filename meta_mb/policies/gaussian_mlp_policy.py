@@ -44,6 +44,7 @@ class GaussianMLPPolicy(Policy):
         self.log_std_var = None
         self.action_var = None
         self._dist = None
+        self._unravel_processor = None
 
         self.build_graph()
 
@@ -80,11 +81,27 @@ class GaussianMLPPolicy(Policy):
             current_scope = self.name
             trainable_policy_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.policy_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_policy_vars])
+            # utils for reset with raveled policy params
+            self.policy_param_keys=self.policy_params.keys()
 
             self.policy_params_ph = self._create_placeholders_for_vars(scope=self.name + "/mean_network")
             log_std_network_phs = self._create_placeholders_for_vars(scope=self.name + "/log_std_network")
             self.policy_params_ph.update(log_std_network_phs)
             self.policy_params_keys = self.policy_params_ph.keys()
+
+            # create assign_ops
+            assert self._assign_ops is None
+            assign_ops, assign_phs = [], []
+            raveled_params_size = 0
+            for var in self.get_params().values():
+                raveled_params_size += np.prod(var.get_shape())
+                assign_placeholder = tf.placeholder(dtype=var.dtype)
+                assign_op = tf.assign(var, assign_placeholder)
+                assign_ops.append(assign_op)
+                assign_phs.append(assign_placeholder)
+            self._assign_ops = assign_ops
+            self._assign_phs = assign_phs
+            self._raveled_params_size = int(raveled_params_size)
 
     def get_action(self, observation):
         """
@@ -173,6 +190,10 @@ class GaussianMLPPolicy(Policy):
         """
         return self._dist
 
+    def get_actions_sym(self, obs):
+        dist_info = self.distribution_info_sym(obs)
+        return self._dist.sample_sym(dist_info)
+
     def distribution_info_sym(self, obs_var, params=None):
         """
         Return the symbolic distribution information about the actions.
@@ -229,33 +250,57 @@ class GaussianMLPPolicy(Policy):
         """
         raise ["mean", "log_std"]
 
-    """
-    should not overwrite parent
-    def __getstate__(self):
-        # state = LayersPowered.__getstate__(self)
-        state = dict()
-        state['init_args'] = Serializable.__getstate__(self)
-        state['policy_params'] = self.get_param_values()
-        return state
+    def set_ravel_params(self, policy_params):
+        """
+        Sets the parameters for the graph
 
-    def __setstate__(self, state):
-        # LayersPowered.__setstate__(self, state)
-        Serializable.__setstate__(self, state['init_args'])
-        '''
-        sess = tf.get_default_session()
-        if sess is None:
-            sess = tf.Session()
-        '''
-        tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
+        Args:
+            policy_params (dict): of variable names and corresponding parameter values
+        """
+        assert all([k1 == k2 for k1, k2 in zip(self.get_params().keys(), policy_params.keys())]), \
+            "parameter keys must match with variable"
 
-        self.set_params(state['policy_params'])
-    """
+        if self._assign_ops is None:
+            assign_ops, assign_phs = [], []
+            for var in self.get_params().values():
+                assign_placeholder = tf.placeholder(dtype=var.dtype)
+                assign_op = tf.assign(var, assign_placeholder)
+                assign_ops.append(assign_op)
+                assign_phs.append(assign_placeholder)
+            self._assign_ops = assign_ops
+            self._assign_phs = assign_phs
+        feed_dict = dict(zip(self._assign_phs, policy_params.values()))
+        tf.get_default_session().run(self._assign_ops, feed_dict=feed_dict)
 
+    # for asynchronous training
     def get_shared_param_values(self):
         state = dict()
         state['network_params'] = self.get_param_values()
         return state
 
+    # for asynchronous training
     def set_shared_params(self, state):
         self.set_params(state['network_params'])
+
+    # for ipopt optimization
+    def get_raveled_param_values(self):
+        param_values = list(self.get_param_values().values())
+        if self._unravel_processor is None:
+            param_values_shape = list(map(np.shape, param_values))
+            param_values_shape_prod = list(map(np.prod, param_values_shape))
+            def unravel_processor(raveled_params):
+                # split and unravel
+                raveled_params_split = np.split(raveled_params, np.cumsum(param_values_shape_prod))
+                params = list(map(lambda args: np.reshape(*args), zip(raveled_params_split, param_values_shape)))
+                return params
+            self._unravel_processor = unravel_processor
+
+        # ravel and concatenate
+        raveled_param_values = list(map(np.ravel, param_values))
+        return np.concatenate(raveled_param_values, axis=0)
+
+    # for ipopt optimization
+    def set_raveled_params(self, policy_raveled_params):
+        feed_dict = dict(zip(self._assign_phs, self._unravel_processor(policy_raveled_params)))
+        tf.get_default_session().run(self._assign_ops, feed_dict=feed_dict)
 

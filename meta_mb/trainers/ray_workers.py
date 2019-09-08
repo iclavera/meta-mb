@@ -18,7 +18,7 @@ class Worker(object):
         # default is to do nothing
         pass
 
-@ray.remote(num_cpus=1, num_gpus=0)
+@ray.remote()
 class Server(object):
     def __init__(self):
         self.objects = {
@@ -37,7 +37,7 @@ class Server(object):
     def pull(self, keys):
         return [self.objects[key] for key in keys]
 
-@ray.remote(num_cpus=1, num_gpus=0)
+@ray.remote()
 class WorkerData(Worker):
     def __init__(self, server, dynamics_sample_processor):
         super().__init__()
@@ -68,7 +68,7 @@ class WorkerData(Worker):
         
         self.server.push.remote('samples_data', ray.put(samples_data))
             
-@ray.remote(num_cpus=1, num_gpus=0)
+@ray.remote()
 class WorkerModel(Worker):
     def __init__(self, server, dynamics_model_max_epochs):
         super().__init__()
@@ -95,7 +95,7 @@ class WorkerModel(Worker):
 #        logger.record_tabular('Time-ModelFit', time.time() - time_fit_start)
 
 
-@ray.remote(num_cpus=1, num_gpus=0)
+@ray.remote()
 class WorkerPolicy(Worker):
     def __init__(self, model_sample_processor, algo):
         super().__init__()

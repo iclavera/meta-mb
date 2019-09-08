@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 import time
 from meta_mb.logger import logger
 
@@ -28,14 +27,15 @@ class BPTTTrainer(object):
             policy,
             dynamics_model,
             n_itr,
-            start_itr=0,
             initial_random_samples=True,
             initial_sinusoid_samples=False,
             sess=None,
             dynamics_model_max_epochs=200,
-            fit_model = True,
-            plot_freq=-1,
-            deterministic_policy=False,
+            fit_model=True,
+            on_policy_freq=1,
+            cem_sampler=None,
+            use_pretrained_model=False,
+            num_random_iters=1,
     ):
         self.env = env
         self.sampler = sampler
@@ -43,14 +43,17 @@ class BPTTTrainer(object):
         self.dynamics_model = dynamics_model
         self.policy = policy
         self.n_itr = n_itr
-        self.start_itr = start_itr
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.fit_model = fit_model
-        self.plot_freq = plot_freq
-        self.deterministic_policy = deterministic_policy
+        self.use_pretrained_model = use_pretrained_model
+        if on_policy_freq > 1:
+            assert cem_sampler is not None
+        self.on_policy_freq = on_policy_freq
+        self.cem_sampler = cem_sampler
 
-        self.initial_random_samples = initial_random_samples
-        self.initial_sinusoid_samples = initial_sinusoid_samples
+        self.initial_random_samples = initial_random_samples and not use_pretrained_model
+        self.initial_sinusoid_samples = initial_sinusoid_samples and not use_pretrained_model
+        self.num_random_iters = num_random_iters
 
         if sess is None:
             sess = tf.Session()
@@ -60,36 +63,35 @@ class BPTTTrainer(object):
     def train(self):
         logger.log('training starts...')
         with self.sess.as_default() as sess:
-
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            try:
-                if self.fit_model:
-                    sess.run(tf.initializers.global_variables())
-                else:
-                    # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            if self.dynamics_model is not None:
+                if self.use_pretrained_model:
                     global_vars = tf.global_variables()
                     is_var_initialized = sess.run([tf.is_variable_initialized(var) for var in global_vars])
                     uninit_vars = [var for idx, var in enumerate(global_vars) if not is_var_initialized[idx]]
                     sess.run(tf.variables_initializer(uninit_vars))
-            except RuntimeError:
-                pass  # hack for ground truth where sess has empty graph
+                else:
+                    sess.run(tf.initializers.global_variables())
 
             start_time = time.time()
-            for itr in range(self.start_itr, self.n_itr):
+            for itr in range(self.n_itr):
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
 
                 time_env_sampling_start = time.time()
 
-                if self.initial_random_samples and itr < 3:
+                if self.initial_random_samples and itr < self.num_random_iters:
                     logger.log("Obtaining random samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, random=True, log_prefix='')
-                elif self.initial_sinusoid_samples and itr < 3:
+                elif self.initial_sinusoid_samples and itr < self.num_random_iters:
                     logger.log("Obtaining sinusoidal samples from the environment...")
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
-                else:
+                elif itr % self.on_policy_freq == 0:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log_open_loop_performance=True, log_closed_loop_performance=(itr % 5 == 0), log=True, log_prefix='')
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+                else:
+                    logger.log("Obtaining samples from the environment usnig cem policy...")
+                    env_paths= self.cem_sampler.obtain_samples(log=True, log_prefix='')
 
                 logger.record_tabular('Time-EnvSampling', time.time() - time_env_sampling_start)
 
@@ -122,9 +124,9 @@ class BPTTTrainer(object):
                 logger.logkv('Time', time.time() - start_time)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
 
+                self.log_diagnostics(env_paths, '')
                 # logger.log("Saving snapshot...")
                 # params = self.get_itr_snapshot(itr)
-                self.log_diagnostics(env_paths, '')
                 # logger.save_itr_params(itr, params)
                 # logger.log("Saved")
 

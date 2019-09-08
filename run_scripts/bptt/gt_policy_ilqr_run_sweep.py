@@ -1,26 +1,27 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.gt_mpc_controller import GTMPCController
+from meta_mb.policies.bptt_controllers.gt_ilqr_controller import GTiLQRController
 from meta_mb.samplers.gt_sampler import GTSampler
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
 from meta_mb.utils.utils import ClassEncoder
+from meta_mb.policies.np_linear_policy import LinearPolicy
 import json
 import os
 import tensorflow as tf
 
 
-EXP_NAME = 'bptt-gt-mpc'
+EXP_NAME = 'bptt-gt-ilqr'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"gt-{config['method_str']}-"
+    repr = f"gt-ilqr-"
 
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
-        config['max_path_length'] = 100
+        config['max_path_length'] = 200
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -43,21 +44,23 @@ def run_experiment(**config):
     with sess.as_default() as sess:
 
         env = config['env']()
-        dynamics_model = None
-        sample_processor = None
 
-        policy = GTMPCController(
+        linear_policy = LinearPolicy(
+            obs_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            use_filter=False,
+            output_nonlinearity=None,
+        )
+
+        policy = GTiLQRController(
             env=env,
-            dynamics_model=dynamics_model,
+            eps=config['eps'],
             discount=config['discount'],
-            n_candidates=config['n_candidates'],
             horizon=config['horizon'],
-            method_str=config['method_str'],
-            num_cem_iters=config['num_cem_iters'],
-            num_rollouts=config['num_rollouts'],
-            alpha=config['alpha'],
-            percent_elites=config['percent_elites'],
-            deterministic_policy=config['deterministic_policy'],
+            n_parallel=config['n_parallel'],
+            initializer_str=config['initializer_str'],
+            num_ilqr_iters=config['num_ilqr_iters'],
+            policy=linear_policy,
         )
 
         sampler = GTSampler(
@@ -69,13 +72,13 @@ def run_experiment(**config):
         algo = BPTTTrainer(
             env=env,
             policy=policy,
-            dynamics_model=dynamics_model,
+            dynamics_model=None,
             sampler=sampler,
-            dynamics_sample_processor=sample_processor,
+            dynamics_sample_processor=None,
             n_itr=1,
             initial_random_samples=False,
             initial_sinusoid_samples=False,
-            dynamics_model_max_epochs=None,
+            dynamics_model_max_epochs=False,
             sess=sess,
             fit_model=False,
         )
@@ -89,23 +92,17 @@ if __name__ == '__main__':
         'seed': [1],
 
         # Problem
-        'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        'normalize': [False],
+        'env': [InvertedPendulumEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'discount': [1.0,],
-
-        # Policy
-        'method_str': ['cem', 'rs'],
-        'deterministic_policy': [True],
-
-        # cem
-        'horizon': [20],
-        'n_candidates': [500],
-        'num_cem_iters': [50],
-        'alpha': [0.15],
-        'percent_elites': [0.1],
+        'eps': [1e-5],
+        'initializer_str': ['zeros'],
 
         # Training
-        'num_rollouts': [1],  # number of experts
+        'horizon': [30],
+        'num_ilqr_iters': [20],
+
+        # Other
+        'n_parallel': [1,],
     }
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

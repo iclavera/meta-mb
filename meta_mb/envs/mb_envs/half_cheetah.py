@@ -1,7 +1,6 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-
 import os
 from collections import OrderedDict
 import tensorflow as tf
@@ -9,7 +8,6 @@ import numpy as np
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
-
 
 
 class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
@@ -28,12 +26,11 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         start_ob = self._get_obs()
         reward_run = start_ob[8]
 
+        self.do_simulation(action, self.frame_skip)
+        ob = self._get_obs()
         if getattr(self, 'action_space', None):
             action = np.clip(action, self.action_space.low,
                              self.action_space.high)
-
-        self.do_simulation(action, self.frame_skip)
-        ob = self._get_obs()
         reward_ctrl = -0.1 * np.square(action).sum()
 
         reward = reward_run + reward_ctrl
@@ -61,9 +58,9 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = self.model.stat.extent * 0.5
 
     def reward(self, obs, acts, next_obs):
-        if next_obs is not None:
-            assert obs.shape == next_obs.shape
-        if obs.ndim == 2:
+        # if next_obs is not None:
+        assert obs.shape == obs.shape
+        if obs.ndim == 2:  # (batch_size, act_dim)
             assert obs.shape[0] == acts.shape[0]
             reward_ctrl = -0.1 * np.sum(np.square(acts), axis=1)
             reward_run = obs[:, 8]
@@ -76,40 +73,25 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
             raise ValueError
         return reward
 
-    def tf_reward(self, obs, acts, next_obs):
-        acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
-        reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = obs[:, 8]  # changed from next_obs to obs
-        reward = reward_run + reward_ctrl
-        return reward
+    def get_goal_x_array(self, x_array):
+        """
 
-    def tf_deriv_reward_obs(self, obs, acts, batch_size):
-        deriv = np.zeros((batch_size, self.obs_dim))
-        deriv[:, 8] = 1
-        return tf.constant(deriv)
-
-    def tf_deriv_reward_act(self, obs, acts, batch_size):
-        return -0.2*acts
-
-    def tf_hessian_l_xx(self, obs, acts, batch_size):
-        hess = tf.zeros((batch_size, self.obs_dim, self.obs_dim))
-        return -hess
-
-    def tf_hessian_l_uu(self, obs, acts, batch_size):
-        hess = np.zeros((batch_size, self.act_dim, self.act_dim))
-        for i in range(self.act_dim):
-            hess[:, i, i] = -0.2
-        return tf.constant(-hess)
-
-    def tf_hessian_l_ux(self, obs, acts, batch_size):
-        hess = tf.zeros((batch_size, self.act_dim, self.obs_dim))
-        return -hess
+        :param x_array: (path_length, num_envs, obs_dim)
+        :return:
+        """
+        goal_x_array = x_array.copy()
+        if goal_x_array.ndim == 3:
+            goal_x_array[:, :, 8] = np.minimum(goal_x_array[:, :, 8], 4)
+        else:
+            goal_x_array[:, 8] = np.minimum(goal_x_array[:, 8], 4)
+        return goal_x_array
 
     def reset_from_obs(self, obs):
         nq, nv = self.model.nq, self.model.nv
         self.sim.reset()
+        # FIXME: noise here?
         qpos = self.init_qpos + \
-            self.np_random.uniform(low=-.1, high=.1, size=nq)
+             self.np_random.uniform(low=-.1, high=.1, size=nq)
         qpos[1:] = obs[:nq-1]
         qvel = obs[nq-1:]
         self.set_state(qpos, qvel)
@@ -163,23 +145,117 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         hess = np.zeros((obs.shape[0], self.act_dim, self.obs_dim))
         return -hess
 
-    def tf_dl_dict(self, obs, acts, next_obs, batch_size):
-        return OrderedDict(
-            l_x=-self.tf_deriv_reward_obs(obs, acts, batch_size),
-            l_u=-self.tf_deriv_reward_act(obs, acts, batch_size),
-            l_xx=self.tf_hessian_l_xx(obs, acts, batch_size),
-            l_uu=self.tf_hessian_l_uu(obs, acts, batch_size),
-            l_ux=self.tf_hessian_l_ux(obs, acts, batch_size),
-        )
+    def tf_reward(self, obs, acts, next_obs):
+        # FIXME: SHOULD NOT CLIP HERE
+        # acts = tf.clip_by_value(acts, self.action_space.low, self.action_space.high)
+        if obs.get_shape().ndims == 1:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)
+            reward_run = obs[8]
+        elif obs.get_shape().ndims == 2:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
+            reward_run = obs[:, 8]  # changed from next_obs to obs
+        else:
+            raise NotImplementedError
+        reward = reward_run + reward_ctrl
+        return reward
 
-    def dl_dict(self, inputs_dict):
-        # FOR NEGATIVE RETURNS
-        obs, acts = inputs_dict['obs'], inputs_dict['act']
-        return OrderedDict(l_x=-self.deriv_reward_obs(obs, acts),
-                           l_u=-self.deriv_reward_act(obs, acts),
-                           l_xx=self.hessian_l_xx(obs, acts),
-                           l_uu=self.hessian_l_uu(obs, acts),
-                           l_ux=self.hessian_l_ux(obs, acts),)
+    # def tf_reward(self, obs, acts, next_obs, batch_size=None):
+    #     if obs.get_shape().ndims == 1:
+    #         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=0)
+    #         if batch_size is not None:
+    #             mask = np.zeros(shape=(self.obs_dim,))
+    #             mask[8] = 1
+    #             reward_run = tf.reduce_sum(next_obs * tf.constant(mask, dtype=tf.float32), axis=-1)
+    #         else:
+    #             reward_run = next_obs[8]
+    #     elif obs.get_shape().ndims == 2:
+    #         reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
+    #         if batch_size is not None:
+    #             mask = np.zeros(shape=(batch_size, self.obs_dim))
+    #             mask[:, 8] = 1
+    #             reward_run = tf.reduce_sum(next_obs * tf.constant(mask, dtype=tf.float32), axis=-1)
+    #         else:
+    #             reward_run = next_obs[:, 8]
+    #     else:
+    #         raise ValueError
+    #     reward = reward_run + reward_ctrl
+    #     return reward
+
+    # FIXME: use tf.gradients instead
+    def tf_dl(self, obs, act, next_obs):
+        """
+
+        :param obs: (obs_dim,)
+        :param act: (act_dim,)
+        :param next_obs: (obs_dim,)
+        :param f_x: (obs_dim, obs_dim)
+        :param f_xx: (obs_dim, obs_dim, obs_dim)
+        :return:
+        """
+        # r(x, u) = g(x', u) = g(f(x, u), u)
+        # l_x
+        r_x = np.zeros((self.obs_dim,))
+        r_x[8] = 1
+        l_x = tf.constant(-r_x, dtype=tf.float32)
+        # l_x = -tf.matmul(f_x, tf.reshape(r_f, (self.obs_dim, 1)), transpose_a=True)
+        # l_x = tf.squeeze(l_x)
+
+        # l_u
+        r_u = -0.2 * act
+        l_u = -r_u
+
+        # l_xx
+        l_xx = tf.zeros((self.obs_dim, self.obs_dim))
+        # l_xx = tf.tensordot(r_f, f_xx, axes=[[0], [0]])
+        # assert l_xx.get_shape().as_list() == [self.obs_dim, self.obs_dim]
+
+        # l_uu
+        r_uu = tf.eye(self.act_dim) * (-0.2)
+        l_uu = -r_uu
+
+        # l_ux
+        l_ux = tf.zeros((self.act_dim, self.obs_dim))
+
+        return l_x, l_u, l_xx, l_uu, l_ux
+
+        # def tf_deriv_reward_obs(self, obs, acts, batch_size):
+        #     deriv = np.zeros((batch_size, self.obs_dim))
+        #     deriv[:, 8] = 1
+        #     return tf.constant(deriv, dtype=tf.float32)
+        #
+        # def tf_deriv_reward_act(self, obs, acts, batch_size):
+        #     return -0.2*acts
+        #
+        # def tf_hessian_l_xx(self, obs, acts, batch_size):
+        #     hess = tf.zeros((batch_size, self.obs_dim, self.obs_dim))
+        #     return -hess
+        #
+        # def tf_hessian_l_uu(self, obs, acts, batch_size):
+        #     hess = np.zeros((batch_size, self.act_dim, self.act_dim))
+        #     for i in range(self.act_dim):
+        #         hess[:, i, i] = -0.2
+        #     return tf.constant(-hess)
+        #
+        # def tf_hessian_l_ux(self, obs, acts, batch_size):
+        #     hess = tf.zeros((batch_size, self.act_dim, self.obs_dim))
+        #     return -hess
+
+        # return OrderedDict(
+        #     l_x=-self.tf_deriv_reward_obs(obs, acts, batch_size),
+        #     l_u=-self.tf_deriv_reward_act(obs, acts, batch_size),
+        #     l_xx=self.tf_hessian_l_xx(obs, acts, batch_size),
+        #     l_uu=self.tf_hessian_l_uu(obs, acts, batch_size),
+        #     l_ux=self.tf_hessian_l_ux(obs, acts, batch_size),
+        # )
+
+    # def dl_dict(self, inputs_dict):
+    #     # FOR NEGATIVE RETURNS
+    #     obs, acts = inputs_dict['obs'], inputs_dict['act']
+    #     return OrderedDict(l_x=-self.deriv_reward_obs(obs, acts),
+    #                        l_u=-self.deriv_reward_act(obs, acts),
+    #                        l_xx=self.hessian_l_xx(obs, acts),
+    #                        l_uu=self.hessian_l_uu(obs, acts),
+    #                        l_ux=self.hessian_l_ux(obs, acts),)
 
 
 if __name__ == "__main__":
