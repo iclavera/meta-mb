@@ -10,7 +10,9 @@ from itertools import count
 import math
 import os
 from pdb import set_trace as st
+import pickle
 from meta_mb.replay_buffers import SimpleReplayBuffer
+import os.path as osp
 
 class Trainer(object):
     """
@@ -47,7 +49,7 @@ class Trainer(object):
             rollout_length = 1,
             model_deterministic = False,
             model_train_freq=250,
-            restore_path=None,
+            restore=False,
             dynamics_model_max_epochs=50,
             sampler_batch_size=64,
             dynamics_type=0,
@@ -74,7 +76,7 @@ class Trainer(object):
         self.model_deterministic = model_deterministic
         self.epoch_length = self.env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
-        self.restore_path = restore_path
+        self.restore = restore
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.sampler_batch_size = sampler_batch_size
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
@@ -100,19 +102,20 @@ class Trainer(object):
                 sampler.update_goals()
         """
 
+        saver = tf.train.Saver()
         with self.sess.as_default() as sess:
             # initialize uninitialized vars  (only initialize vars that were not loaded)
             uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
 
-            if tf.train.get_checkpoint_state(self.restore_path):
-                logger.log("reading stored model from %s", self.restore_path)
-                self.saver.restore(sess, tf.train.latest_checkpoint(self.restore_path))
-                self.start_itr = self.itr.eval() + 1
-
+            if self.restore:
+                self.algo._update_target(tau=1.0)
+                self.env_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "env_buffer.p"), "rb"))
+                self.model_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "model_buffer.p"), "rb"))
+                self.start_itr = pickle.load(open(osp.join(logger.get_dir(), "itr.p"), "rb")) + 1
             else:
-                self.start_itr = 0
+                self.start_itr=0
                 self.algo._update_target(tau=1.0)
                 while self.env_replay_buffer._size < self.n_initial_exploration_steps:
                     paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
@@ -133,6 +136,7 @@ class Trainer(object):
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
                 samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
@@ -171,13 +175,13 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            # if self.ground_truth:
-                            #     reward = []
-                            #     for t in range(self.T):
-                            #         next_obs = batch['next_observations']
-                            #         next_actions = self.policy.get_actions(next_obs)[0]
-                            #         result = self.env.step_batch(next_obs, next_actions, t, reward)
-                            #     batch.update(result)
+                            if self.ground_truth:
+                                reward = []
+                                for t in range(self.T):
+                                    next_obs = batch['next_observations']
+                                    next_actions = self.policy.get_actions(next_obs)[0]
+                                    result = self.env.step_batch(next_obs, next_actions, t, reward)
+                                batch.update(result)
                             self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -199,13 +203,20 @@ class Trainer(object):
                 logger.logkv('Model Rollout Time', sum(expand_model_replay_buffer_time))
 
                 logger.log("Saving snapshot...")
-                params = self.get_itr_snapshot(itr)
-                logger.save_itr_params(itr, params)
-                logger.log("Saved")
 
-                logger.dumpkvs()
                 if itr == 0:
                     sess.graph.finalize()
+                # if itr % 1 == 0:
+                #     pickle.dump(self.env_replay_buffer, open(osp.join(logger.get_dir(), "env_buffer.p"), "wb"))
+                #     pickle.dump(self.model_replay_buffer, open(osp.join(logger.get_dir(), "model_buffer.p"), "wb"))
+                #     pickle.dump(self.itr, open(osp.join(logger.get_dir(), "itr.p"), "wb"))
+                #     self.algo.save()
+                #     self.dynamics_model.save()
+                params = self.get_itr_snapshot(itr)
+                logger.save_itr_params(itr, params)
+                logger.dumpkvs()
+                logger.log("Saved")
+
 
         logger.log("Training finished")
         self.sess.close()
@@ -236,7 +247,7 @@ class Trainer(object):
         """
         Gets the current policy and env for storage
         """
-        return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline)
+        return dict(itr=itr, policy=self.policy, env=self.env, baseline=self.baseline, dynamics=self.dynamics_model)
 
     def log_diagnostics(self, paths, prefix):
         # TODO: we aren't using it so far

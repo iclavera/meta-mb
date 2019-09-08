@@ -2,8 +2,11 @@ from meta_mb.dynamics.layers import MLP
 import tensorflow as tf
 import numpy as np
 from meta_mb.utils.serializable import Serializable
+from meta_mb.logger import logger
 from meta_mb.utils import compile_function
 from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+import os.path as osp
+from pdb import set_trace as st
 
 
 class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
@@ -26,6 +29,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                  valid_split_ratio=0.2,
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
+                 restore=False,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -49,6 +53,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         self.hidden_sizes = hidden_sizes
         self._dataset_train = None
         self._dataset_test = None
+        self.restore = restore
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
@@ -60,6 +65,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         output_nonlinearity = self._activations[output_nonlinearity]
         self.hidden_nonlinearity = hidden_nonlinearity
         self.output_nonlinearity = output_nonlinearity
+        self.saver = tf.train.Saver()
 
         """ computation graph for training and simple inference """
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -188,6 +194,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
 
         self._networks = mlps
 
+        if self.restore:
+            sess = tf.get_default_session()
+            self.saver.restore(sess, osp.join(logger.get_dir(), "ensemble.ckpt"))
+
     """
     def predict_sym(self, obs_ph, act_ph):
         delta_preds = []
@@ -308,7 +318,7 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
         return next_obs
 
-        
+
     def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.

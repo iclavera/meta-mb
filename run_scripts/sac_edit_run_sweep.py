@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "final-walker-4"
+EXP_NAME = "early-stopping-test"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -22,6 +22,7 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 # from meta_mb.dynamics.done_predictor import DonePredictor
+# import os.path as osp
 
 
 
@@ -34,7 +35,6 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
-    save_model_dir = logger.get_dir()
 
     with sess.as_default() as sess:
 
@@ -101,6 +101,7 @@ def run_experiment(**kwargs):
                                                     learning_rate=kwargs['model_learning_rate'],
                                                     buffer_size=kwargs['dynamics_buffer_size'],
     												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    restore=kwargs['restore'],
                                                     )
             algo = SAC_MB(
                 policy=policy,
@@ -125,6 +126,7 @@ def run_experiment(**kwargs):
     			exp_dir=exp_dir,
                 target_update_interval=kwargs['n_train_repeats'],
                 dynamics_type=kwargs['model_type'],
+                restore=kwargs['restore'],
                 ground_truth=ground_truth,
             )
         elif kwargs['model_type'] == 3:
@@ -146,6 +148,7 @@ def run_experiment(**kwargs):
                                                     reward_scale=kwargs['reward_scale'],
                                                     discount=kwargs['discount'],
                                                     normalize_input=kwargs['normalize_input'],
+                                                    restore=kwargs['restore'],
                                                     type=3,
                                                     )
             algo = SAC_MB(
@@ -170,9 +173,10 @@ def run_experiment(**kwargs):
                 target_update_interval=kwargs['n_train_repeats'],
                 dynamics_type=kwargs['model_type'],
                 ground_truth=ground_truth,
+                start_itr=kwargs['start_itr'],
                 actor_H=kwargs['actor_H'],
+                restore=kwargs['restore'],
             )
-
 
 
 
@@ -193,12 +197,12 @@ def run_experiment(**kwargs):
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-            restore_path=save_model_dir,
 			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
 			sampler_batch_size=kwargs['sampler_batch_size'],
             dynamics_type=kwargs['model_type'],
             T=kwargs['T'],
             ground_truth=ground_truth,
+            restore=kwargs['restore'],
         )
 
         trainer.train()
@@ -207,9 +211,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [99],
+        'seed': [90,29],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -230,25 +234,26 @@ if __name__ == '__main__':
         'model_train_freq': [250],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
-		'rolling_average_persitency':[0.9],
-		'q_function_type':[7],
+		'rolling_average_persitency':[0.9, 0.4],
+		'q_function_type':[0],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
         'H': [2],
-        'T': [3],
-        'actor_H': [1],
+        'T': [2],
+        'actor_H': [2, 3, 4],
 		'reward_scale': [1],
 		'target_entropy': [1],
 		'num_models': [4],
-		'model_used_ratio': [0.5],
+		'model_used_ratio': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'method': [1],
+        'method': [-3],
+        'restore': [False],
 
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['tanh'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
         'normalize_input': [True],
 
 

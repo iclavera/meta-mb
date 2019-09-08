@@ -5,9 +5,11 @@ from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
 from meta_mb.logger import logger
 from meta_mb.dynamics.mlp_dynamics import MLPDynamicsModel
+from meta_mb.logger import logger
 import time
 from collections import OrderedDict
 from meta_mb.dynamics.utils import normalize, denormalize, train_test_split
+import os.path as osp
 
 class MLPDynamicsEnsemble(MLPDynamicsModel):
     """
@@ -30,6 +32,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                  rolling_average_persitency=0.99,
                  buffer_size=50000,
                  loss_str='MSE',
+                 restore = False,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -53,6 +56,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         self.name = name
         self._dataset_train = None
         self._dataset_test = None
+        self.saver = tf.train.Saver()
+        self.restore = restore
 
         # determine dimensionality of state and action space
         self.obs_space_dims = obs_space_dims = env.observation_space.shape[0]
@@ -495,6 +500,10 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
             logger.logkv(prefix+'AvgFinalTrainLoss', np.mean(batch_losses))
             logger.logkv(prefix+'AvgFinalValidLoss', np.mean(valid_loss))
             logger.logkv(prefix+'AvgFinalValidLossRoll', np.mean(valid_loss_rolling_average))
+
+    def save(self):
+        sess = tf.get_default_session()
+        self.saver.save(sess, osp.join(logger.get_dir(), "ensemble.ckpt"))
 
     def predict_sym(self, obs_ph, act_ph):
         """

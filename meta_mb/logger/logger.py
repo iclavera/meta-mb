@@ -13,6 +13,7 @@ import datetime
 import tempfile
 import joblib
 from collections import defaultdict
+from pdb import set_trace as st
 
 LOG_OUTPUT_FORMATS     = ['stdout', 'log', 'csv']
 LOG_OUTPUT_FORMATS_MPI = ['log']
@@ -94,6 +95,22 @@ class HumanOutputFormat(KVWriter, SeqWriter):
 
 
 class JSONOutputFormat(KVWriter):
+    def __init__(self, filename):
+        self.file = open(filename, 'wt')
+
+    def writekvs(self, kvs):
+        for k, v in sorted(kvs.items()):
+            if hasattr(v, 'dtype'):
+                v = v.tolist()
+                kvs[k] = float(v)
+        self.file.write(json.dumps(kvs) + '\n')
+        self.file.flush()
+
+    def close(self):
+        self.file.close()
+
+
+class OtherOutputFormat(KVWriter):
     def __init__(self, filename):
         self.file = open(filename, 'wt')
 
