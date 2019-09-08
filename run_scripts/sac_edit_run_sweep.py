@@ -20,6 +20,7 @@ from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
+# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_es import ProbMLPDynamicsEnsembleEs
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 # from meta_mb.dynamics.done_predictor import DonePredictor
 # import os.path as osp
@@ -101,7 +102,7 @@ def run_experiment(**kwargs):
                                                     learning_rate=kwargs['model_learning_rate'],
                                                     buffer_size=kwargs['dynamics_buffer_size'],
     												rolling_average_persitency=kwargs['rolling_average_persitency'],
-                                                    restore=kwargs['restore'],
+                                                    early_stopping=kwargs['early_stopping'],
                                                     )
             algo = SAC_MB(
                 policy=policy,
@@ -126,7 +127,6 @@ def run_experiment(**kwargs):
     			exp_dir=exp_dir,
                 target_update_interval=kwargs['n_train_repeats'],
                 dynamics_type=kwargs['model_type'],
-                restore=kwargs['restore'],
                 ground_truth=ground_truth,
             )
         elif kwargs['model_type'] == 3:
@@ -148,7 +148,6 @@ def run_experiment(**kwargs):
                                                     reward_scale=kwargs['reward_scale'],
                                                     discount=kwargs['discount'],
                                                     normalize_input=kwargs['normalize_input'],
-                                                    restore=kwargs['restore'],
                                                     type=3,
                                                     )
             algo = SAC_MB(
@@ -175,7 +174,6 @@ def run_experiment(**kwargs):
                 ground_truth=ground_truth,
                 start_itr=kwargs['start_itr'],
                 actor_H=kwargs['actor_H'],
-                restore=kwargs['restore'],
             )
 
 
@@ -202,7 +200,7 @@ def run_experiment(**kwargs):
             dynamics_type=kwargs['model_type'],
             T=kwargs['T'],
             ground_truth=ground_truth,
-            restore=kwargs['restore'],
+            max_epochs_since_update=kwargs['max_epochs_since_update'],
         )
 
         trainer.train()
@@ -211,9 +209,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90,29],
+        'seed': [90, 2043],
         'baseline': [LinearFeatureBaseline],
-        'env': [Walker2dEnv],
+        'env': [HalfCheetahEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -232,28 +230,29 @@ if __name__ == '__main__':
         'max_path_length': [1001],
 		'rollout_length_params': [[20, 100, 1, 1]],
         'model_train_freq': [250],
+        'early_stopping': [1],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
-		'rolling_average_persitency':[0.9, 0.4],
-		'q_function_type':[0],
+		'rolling_average_persitency':[0.4],
+		'q_function_type':[5],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
+        'max_epochs_since_update': [5, 8],
         'H': [2],
-        'T': [2],
-        'actor_H': [2, 3, 4],
+        'T': [2, 3],
+        'actor_H': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [4],
+		'num_models': [8],
 		'model_used_ratio': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'method': [-3],
-        'restore': [False],
+        'method': [2],
 
-        'policy_hidden_nonlinearity': ['tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
+        'vfun_hidden_nonlineariy': ['relu'],
         'normalize_input': [True],
 
 

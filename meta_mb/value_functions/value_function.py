@@ -1,6 +1,4 @@
 from meta_mb.utils.networks.mlp import create_mlp, forward_mlp
-from meta_mb.policies.distributions.diagonal_gaussian import DiagonalGaussian
-from meta_mb.policies.base import Policy
 from meta_mb.utils import Serializable
 from meta_mb.utils.utils import remove_scope_from_name
 from meta_mb.logger import logger
@@ -102,7 +100,7 @@ class ValueFunction(Serializable):
                                                hidden_nonlinearity=self.hidden_nonlinearity,
                                                output_nonlinearity=self.output_nonlinearity,
                                                input_var=input_var,
-                                               reuse=tf.AUTO_REUSE,
+                                               reuse=True,
                                                )
         else:
             input_var, output_var = forward_mlp(output_dim=1,

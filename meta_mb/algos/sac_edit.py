@@ -61,7 +61,6 @@ class SAC_MB(Algo):
             dynamics_type=0,
             ground_truth=False,
             actor_H=1,
-            restore=False,
             **kwargs
     ):
         """
@@ -130,7 +129,6 @@ class SAC_MB(Algo):
         self.experiment_name = experiment_name
         self.exp_dir = exp_dir
         self.ground_truth = ground_truth
-        self.restore = restore
         self.saver = tf.train.Saver()
 
         self.build_graph()
@@ -146,9 +144,9 @@ class SAC_MB(Algo):
         self._init_actor_update()
         self._init_critic_update()
         self._init_diagnostics_ops()
-        if self.restore:
-            sess = tf.get_default_session()
-            self.saver.restore(sess, osp.join(logger.get_dir(), "model.ckpt"))
+        # if self.restore:
+        #     sess = tf.get_default_session()
+        #     self.saver.restore(sess, osp.join(logger.get_dir(), "model.ckpt"))
 
 
     def _init_global_step(self):
@@ -622,8 +620,8 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
-        # self.training_ops.update({'policy_train_op': policy_train_op})
-        self.actor_ops.update({'policy_train_op': policy_train_op})
+        self.training_ops.update({'policy_train_op': policy_train_op})
+        # self.actor_ops.update({'policy_train_op': policy_train_op})
 
         # ground truth
         # elif self.q_function_type == 4:
@@ -789,8 +787,8 @@ class SAC_MB(Algo):
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                      value_dict=batch)
         sess.run(self.training_ops, feed_dict)
-        for _ in range(self.actor_H):
-            sess.run(self.actor_ops, feed_dict)
+        # for _ in range(self.actor_H):
+        #     sess.run(self.actor_ops, feed_dict)
 
         if log:
             diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
@@ -799,6 +797,6 @@ class SAC_MB(Algo):
         if timestep % self.target_update_interval == 0:
             self._update_target()
 
-    def save(self):
-        sess = tf.get_default_session()
-        save_path = self.saver.save(sess, osp.join(logger.get_dir(), "model.ckpt"))
+    # def save(self):
+    #     sess = tf.get_default_session()
+    #     save_path = self.saver.save(sess, osp.join(logger.get_dir(), "model.ckpt"))

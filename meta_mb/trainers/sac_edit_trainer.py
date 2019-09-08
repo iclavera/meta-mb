@@ -10,9 +10,7 @@ from itertools import count
 import math
 import os
 from pdb import set_trace as st
-import pickle
 from meta_mb.replay_buffers import SimpleReplayBuffer
-import os.path as osp
 
 class Trainer(object):
     """
@@ -49,13 +47,13 @@ class Trainer(object):
             rollout_length = 1,
             model_deterministic = False,
             model_train_freq=250,
-            restore=False,
             dynamics_model_max_epochs=50,
             sampler_batch_size=64,
             dynamics_type=0,
             aux_hidden_dim=256,
             T=1,
             ground_truth=False,
+            max_epochs_since_update=5,
             ):
         self.algo = algo
         self.env = env
@@ -76,7 +74,6 @@ class Trainer(object):
         self.model_deterministic = model_deterministic
         self.epoch_length = self.env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
-        self.restore = restore
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.sampler_batch_size = sampler_batch_size
         self.obs_dim = int(np.prod(self.env.observation_space.shape))
@@ -84,6 +81,7 @@ class Trainer(object):
         self.dynamics_type = dynamics_type
         self.T = T
         self.ground_truth = ground_truth
+        self.max_epochs_since_update = max_epochs_since_update
 
         if sess is None:
             sess = tf.Session()
@@ -109,19 +107,19 @@ class Trainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
 
-            if self.restore:
-                self.algo._update_target(tau=1.0)
-                self.env_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "env_buffer.p"), "rb"))
-                self.model_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "model_buffer.p"), "rb"))
-                self.start_itr = pickle.load(open(osp.join(logger.get_dir(), "itr.p"), "rb")) + 1
-            else:
-                self.start_itr=0
-                self.algo._update_target(tau=1.0)
-                while self.env_replay_buffer._size < self.n_initial_exploration_steps:
-                    paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
-                    samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
-                    self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
-                                                       samples_data['dones'], samples_data['next_observations'])
+            # if self.restore:
+            #     self.algo._update_target(tau=1.0)
+            #     self.env_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "env_buffer.p"), "rb"))
+            #     self.model_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "model_buffer.p"), "rb"))
+            #     self.start_itr = pickle.load(open(osp.join(logger.get_dir(), "itr.p"), "rb")) + 1
+            # else:
+            self.start_itr=0
+            self.algo._update_target(tau=1.0)
+            while self.env_replay_buffer._size < self.n_initial_exploration_steps:
+                paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
+                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
+                                                   samples_data['dones'], samples_data['next_observations'])
 
             if self.algo.obs_dim > 50:
                 self.deal_with_oom = 16
@@ -143,7 +141,8 @@ class Trainer(object):
                 if self.dynamics_type == 0 or self.dynamics_type == 3:
                     self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
                                             epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-')
+                                            log_tabular=True, prefix='Model-',
+                                            max_epochs_since_update=self.max_epochs_since_update)
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
@@ -206,12 +205,6 @@ class Trainer(object):
 
                 if itr == 0:
                     sess.graph.finalize()
-                # if itr % 1 == 0:
-                #     pickle.dump(self.env_replay_buffer, open(osp.join(logger.get_dir(), "env_buffer.p"), "wb"))
-                #     pickle.dump(self.model_replay_buffer, open(osp.join(logger.get_dir(), "model_buffer.p"), "wb"))
-                #     pickle.dump(self.itr, open(osp.join(logger.get_dir(), "itr.p"), "wb"))
-                #     self.algo.save()
-                #     self.dynamics_model.save()
                 params = self.get_itr_snapshot(itr)
                 logger.save_itr_params(itr, params)
                 logger.dumpkvs()
