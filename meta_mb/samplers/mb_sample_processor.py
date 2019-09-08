@@ -1,7 +1,7 @@
 from meta_mb.samplers.base import SampleProcessor
-from meta_mb.utils
-import utils
+from meta_mb.utils import utils
 import numpy as np
+from pdb import set_trace as st
 
 class ModelSampleProcessor(SampleProcessor):
     def __init__(
@@ -22,20 +22,20 @@ class ModelSampleProcessor(SampleProcessor):
 
 
     def process_samples(self, multiple_trajectories, log=False, log_prefix=''):
-    """
-    Processes sampled paths. This involves:
-    - computing discounted rewards (returns)
-    - fitting baseline estimator using the path returns and predicting the return baselines
-    - estimating the advantages using GAE (+ advantage normalization id desired)
-    - stacking the path data
-    - logging statistics of the paths
-    Args:
-    paths_meta_batch (dict): A list of dict of lists, size: [meta_batch_size] x (batch_size) x [5] x (max_path_length)
-    log (boolean): indicates whether to log
-    log_prefix (str): prefix for the logging keys
-    Returns:
-    (list of dicts) : Processed sample data among the meta-batch; size: [meta_batch_size] x [7] x (batch_size x max_path_length)
-    """
+        """
+        Processes sampled paths. This involves:
+        - computing discounted rewards (returns)
+        - fitting baseline estimator using the path returns and predicting the return baselines
+        - estimating the advantages using GAE (+ advantage normalization id desired)
+        - stacking the path data
+        - logging statistics of the paths
+        Args:
+        paths_meta_batch (dict): A list of dict of lists, size: [meta_batch_size] x (batch_size) x [5] x (max_path_length)
+        log (boolean): indicates whether to log
+        log_prefix (str): prefix for the logging keys
+        Returns:
+        (list of dicts) : Processed sample data among the meta-batch; size: [meta_batch_size] x [7] x (batch_size x max_path_length)
+        """
 
         samples_data_list, multiple_trajectories = self._compute_samples_data(multiple_trajectories)
         # 8) log statistics if desired

@@ -113,7 +113,7 @@ class Trainer(object):
             self.algo._update_target(tau=1.0)
             while self.env_replay_buffer._size < self.n_initial_exploration_steps:
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
-                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
                 self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                    samples_data['dones'], samples_data['next_observations'])
 
@@ -184,10 +184,10 @@ class Trainer(object):
                                                    samples_data['rewards'],
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
-                multiple_trajectories = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True, num_trajectory = self.num_eval_trajectories)
+                multiple_trajectories = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True, multiple_trajectory = self.num_eval_trajectories)
                 _ = self.env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
 
-                self.log_diagnostics(paths, prefix='train-')
+                self.log_diagnostics(paths[0], prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)

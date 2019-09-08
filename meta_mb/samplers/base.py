@@ -240,7 +240,7 @@ class SampleProcessor(object):
     def _log_path_stats(self, multiple_trajectories, log=False, log_prefix='', return_avg_return=False, trajectory_num = 1):
         # compute log stats
         if trajectory_num == 1:
-            paths = multiple_trajectories
+            paths = multiple_trajectories[0]
             average_discounted_return = np.mean([path["returns"][0] for path in paths])
             undiscounted_returns = [sum(path["rewards"]) for path in paths]
 
@@ -257,21 +257,26 @@ class SampleProcessor(object):
 
             return np.mean(undiscounted_returns)
         else:
-            average_discounted_return = np.mean(np.mean([path["returns"][0] for path in paths]), axis = 0) for paths in multiple_trajectories
-            undiscounted_returns = np.mean(np.array([sum(path["rewards"]) for path in paths]), axis = 0) for ptahs in multiple_trajectories
+            lst = [np.mean([path["returns"][0] for path in paths]) for paths in multiple_trajectories]
+            average_discounted_return = sum(lst)/len(lst)
+            lst = [[sum(path["rewards"]) for path in paths] for paths in multiple_trajectories]
+            maxreturn = [np.max(r) for r in lst]
+            minreturn = [np.min(r) for r in lst]
+            stdreturn = [np.std(r) for r in lst]
+            meanreturn = [np.mean(r) for r in lst]
 
             if log == 'reward':
                 logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
 
             elif log == 'all' or log is True:
                 logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
-                logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
+                logger.logkv(log_prefix + 'AverageReturn', np.mean(meanreturn))
                 logger.logkv(log_prefix + 'NumTrajs', np.mean([len(paths) for paths in multiple_trajectories]))
-                logger.logkv(log_prefix + 'StdReturn', np.std(undiscounted_returns))
-                logger.logkv(log_prefix + 'MaxReturn', np.max(undiscounted_returns))
-                logger.logkv(log_prefix + 'MinReturn', np.min(undiscounted_returns))
+                logger.logkv(log_prefix + 'StdReturn', np.mean(stdreturn))
+                logger.logkv(log_prefix + 'MaxReturn', np.mean(maxreturn))
+                logger.logkv(log_prefix + 'MinReturn', np.mean(minreturn))
 
-            return np.mean(undiscounted_returns)
+            return np.mean(meanreturn)
 
     def _compute_advantages(self, paths, all_path_baselines):
         assert len(paths) == len(all_path_baselines)

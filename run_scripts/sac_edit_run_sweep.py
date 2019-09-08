@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "early-stopping-test"
+EXP_NAME = "h-ant"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -210,9 +210,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90, 2043],
+        'seed': [90, 2098],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [AntEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -229,32 +229,32 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 1]],
+		'rollout_length_params': [[20, 100, 1, 25]],
         'model_train_freq': [250],
-        'early_stopping': [1],
+        'early_stopping': [0],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.4],
-		'q_function_type':[5],
+		'q_function_type':[0],
 		'q_target_type': [0],
 		'num_actions_per_next_observation':[5],
-        'max_epochs_since_update': [5, 8],
+        'max_epochs_since_update': [5],
         'H': [2],
-        'T': [2, 3],
-        'actor_H': [1],
+        'T': [3],
+        'actor_H': [2, 3, 4],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8],
+		'num_models': [8, 4],
 		'model_used_ratio': [1],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'method': [2],
+        'method': [1],
         'num_eval_trajectories': [5],
 
         'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
+        'vfun_hidden_nonlineariy': ['tanh'],
         'normalize_input': [True],
 
 

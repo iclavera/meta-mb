@@ -620,8 +620,8 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
-        self.training_ops.update({'policy_train_op': policy_train_op})
-        # self.actor_ops.update({'policy_train_op': policy_train_op})
+        # self.training_ops.update({'policy_train_op': policy_train_op})
+        self.actor_ops.update({'policy_train_op': policy_train_op})
 
         # ground truth
         # elif self.q_function_type == 4:
@@ -787,8 +787,8 @@ class SAC_MB(Algo):
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                      value_dict=batch)
         sess.run(self.training_ops, feed_dict)
-        # for _ in range(self.actor_H):
-        #     sess.run(self.actor_ops, feed_dict)
+        for _ in range(self.actor_H):
+            sess.run(self.actor_ops, feed_dict)
 
         if log:
             diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
