@@ -499,7 +499,8 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                 updated = False
                 for m in range(self.num_models):
                     _, best = self.best_so_far[m]
-                    if best > valid_loss[m]:
+                    improvement = (best - valid_loss[m]) / best
+                    if improvement > 0.01:
                         self.best_so_far[m] = (epoch, valid_loss[m])
                         updated = True
 
