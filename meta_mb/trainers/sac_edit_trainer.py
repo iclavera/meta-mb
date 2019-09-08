@@ -54,6 +54,7 @@ class Trainer(object):
             T=1,
             ground_truth=False,
             max_epochs_since_update=5,
+            num_eval_trajectories=5,
             ):
         self.algo = algo
         self.env = env
@@ -71,6 +72,7 @@ class Trainer(object):
         self.rollout_length = rollout_length
         self.n_train_repeats = n_train_repeats
         self.real_ratio = real_ratio
+        self.num_eval_trajectories = num_eval_trajectories
         self.model_deterministic = model_deterministic
         self.epoch_length = self.env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
@@ -127,7 +129,7 @@ class Trainer(object):
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
                 paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
-                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
 
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
@@ -182,8 +184,8 @@ class Trainer(object):
                                                    samples_data['rewards'],
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
-                paths = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True)
-                _ = self.env_sample_processor.process_samples(paths, log='all', log_prefix='eval-')
+                multiple_trajectories = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True, num_trajectory = self.num_eval_trajectories)
+                _ = self.env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
 
                 self.log_diagnostics(paths, prefix='train-')
 

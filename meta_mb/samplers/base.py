@@ -29,7 +29,7 @@ class BaseSampler(object):
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
 
-    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False):
+    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, multiple_trajectory=1):
         """
         Collect batch_size trajectories from each task
 
@@ -43,81 +43,84 @@ class BaseSampler(object):
         """
 
         # initial setup / preparation
-        paths = []
- 
-        n_samples = 0
-        running_paths = _get_empty_running_paths_dict()
+        multiple_trajectories = []
 
-        if log: pbar = ProgBar(self.total_samples)
-        policy_time, env_time = 0, 0
+        for _ in range(multiple_trajectory):
+            paths = []
+            n_samples = 0
+            running_paths = _get_empty_running_paths_dict()
 
-        policy = self.policy
-        policy.reset(dones=[True])
+            if log: pbar = ProgBar(self.total_samples)
+            policy_time, env_time = 0, 0
 
-        # initial reset of meta_envs
-        obs = np.asarray(self.env.reset())
+            policy = self.policy
+            policy.reset(dones=[True])
 
-        ts = 0
+            # initial reset of meta_envs
+            obs = np.asarray(self.env.reset())
 
-        while n_samples < self.total_samples:
+            ts = 0
 
-            # execute policy
-            t = time.time()
-            if random:
-                action = self.env.action_space.sample()
-                agent_info = {}
-            elif deterministic:
-                action, agent_info = policy.get_action(obs)
-                if self.policy.name != 'np_policy':
+            while n_samples < self.total_samples:
+
+                # execute policy
+                t = time.time()
+                if random:
+                    action = self.env.action_space.sample()
+                    agent_info = {}
+                elif deterministic:
+                    action, agent_info = policy.get_action(obs)
+                    # if self.policy.name != 'np_policy':
                     action = agent_info['mean']
                     if self.policy.squashed:
                         action = np.tanh(action)
-            else:
-                action, agent_info = policy.get_action(obs)
-                if action.ndim == 2:
-                    action = action[0]
-            policy_time += time.time() - t
+                else:
+                    action, agent_info = policy.get_action(obs)
+                    if action.ndim == 2:
+                        action = action[0]
+                policy_time += time.time() - t
 
-            # step environments
-            t = time.time()
-            next_obs, reward, done, env_info = self.env.step(action)
+                # step environments
+                t = time.time()
+                next_obs, reward, done, env_info = self.env.step(action)
 
-            ts += 1
+                ts += 1
 
-            env_time += time.time() - t
+                env_time += time.time() - t
 
-            new_samples = 0
+                new_samples = 0
 
-            # append new samples to running paths
-            if isinstance(reward, np.ndarray):
-                reward = reward[0]
-            running_paths["observations"].append(obs)
-            running_paths["actions"].append(action)
-            running_paths["rewards"].append(reward)
-            running_paths["dones"].append(done)
-            running_paths["env_infos"].append(env_info)
-            running_paths["agent_infos"].append(agent_info)
+                # append new samples to running paths
+                if isinstance(reward, np.ndarray):
+                    reward = reward[0]
+                running_paths["observations"].append(obs)
+                running_paths["actions"].append(action)
+                running_paths["rewards"].append(reward)
+                running_paths["dones"].append(done)
+                running_paths["env_infos"].append(env_info)
+                running_paths["agent_infos"].append(agent_info)
 
-            # if running path is done, add it to paths and empty the running path
-            if done or ts >= self.max_path_length:
-                paths.append(dict(
-                    observations=np.asarray(running_paths["observations"]),
-                    actions=np.asarray(running_paths["actions"]),
-                    rewards=np.asarray(running_paths["rewards"]),
-                    dones=np.asarray(running_paths["dones"]),
-                    env_infos=utils.stack_tensor_dict_list(running_paths["env_infos"]),
-                    agent_infos=utils.stack_tensor_dict_list(running_paths["agent_infos"]),
-                ))
-                new_samples += len(running_paths["rewards"])
-                running_paths = _get_empty_running_paths_dict()
+                # if running path is done, add it to paths and empty the running path
+                if done or ts >= self.max_path_length:
+                    paths.append(dict(
+                        observations=np.asarray(running_paths["observations"]),
+                        actions=np.asarray(running_paths["actions"]),
+                        rewards=np.asarray(running_paths["rewards"]),
+                        dones=np.asarray(running_paths["dones"]),
+                        env_infos=utils.stack_tensor_dict_list(running_paths["env_infos"]),
+                        agent_infos=utils.stack_tensor_dict_list(running_paths["agent_infos"]),
+                    ))
+                    new_samples += len(running_paths["rewards"])
+                    running_paths = _get_empty_running_paths_dict()
 
-            if done or ts >= self.max_path_length:
-                next_obs = self.env.reset()
-                ts = 0
+                if done or ts >= self.max_path_length:
+                    next_obs = self.env.reset()
+                    ts = 0
 
-            if log: pbar.update(new_samples)
-            n_samples += new_samples
-            obs = next_obs
+                if log: pbar.update(new_samples)
+                n_samples += new_samples
+                obs = next_obs
+            multiple_trajectories.append(paths)
         if log: pbar.stop()
 
         self.total_timesteps_sampled += self.total_samples
@@ -125,7 +128,7 @@ class BaseSampler(object):
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 
-        return paths
+        return multiple_trajectories
 
 
 def _get_empty_running_paths_dict():
@@ -234,23 +237,41 @@ class SampleProcessor(object):
 
         return samples_data, paths
 
-    def _log_path_stats(self, paths, log=False, log_prefix='', return_avg_return=False):
+    def _log_path_stats(self, multiple_trajectories, log=False, log_prefix='', return_avg_return=False, trajectory_num = 1):
         # compute log stats
-        average_discounted_return = np.mean([path["returns"][0] for path in paths])
-        undiscounted_returns = [sum(path["rewards"]) for path in paths]
+        if trajectory_num == 1:
+            paths = multiple_trajectories
+            average_discounted_return = np.mean([path["returns"][0] for path in paths])
+            undiscounted_returns = [sum(path["rewards"]) for path in paths]
 
-        if log == 'reward':
-            logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
+            if log == 'reward':
+                logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
 
-        elif log == 'all' or log is True:
-            logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
-            logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
-            logger.logkv(log_prefix + 'NumTrajs', len(paths))
-            logger.logkv(log_prefix + 'StdReturn', np.std(undiscounted_returns))
-            logger.logkv(log_prefix + 'MaxReturn', np.max(undiscounted_returns))
-            logger.logkv(log_prefix + 'MinReturn', np.min(undiscounted_returns))
+            elif log == 'all' or log is True:
+                logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
+                logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
+                logger.logkv(log_prefix + 'NumTrajs', len(paths))
+                logger.logkv(log_prefix + 'StdReturn', np.std(undiscounted_returns))
+                logger.logkv(log_prefix + 'MaxReturn', np.max(undiscounted_returns))
+                logger.logkv(log_prefix + 'MinReturn', np.min(undiscounted_returns))
 
-        return np.mean(undiscounted_returns)
+            return np.mean(undiscounted_returns)
+        else:
+            average_discounted_return = np.mean(np.mean([path["returns"][0] for path in paths]), axis = 0) for paths in multiple_trajectories
+            undiscounted_returns = np.mean(np.array([sum(path["rewards"]) for path in paths]), axis = 0) for ptahs in multiple_trajectories
+
+            if log == 'reward':
+                logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
+
+            elif log == 'all' or log is True:
+                logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
+                logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
+                logger.logkv(log_prefix + 'NumTrajs', np.mean([len(paths) for paths in multiple_trajectories]))
+                logger.logkv(log_prefix + 'StdReturn', np.std(undiscounted_returns))
+                logger.logkv(log_prefix + 'MaxReturn', np.max(undiscounted_returns))
+                logger.logkv(log_prefix + 'MinReturn', np.min(undiscounted_returns))
+
+            return np.mean(undiscounted_returns)
 
     def _compute_advantages(self, paths, all_path_baselines):
         assert len(paths) == len(all_path_baselines)

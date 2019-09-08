@@ -21,7 +21,7 @@ class ModelSampleProcessor(SampleProcessor):
         self.positive_adv = positive_adv
 
 
-    def process_samples(self, paths, log=False, log_prefix=''):
+    def process_samples(self, multiple_trajectories, log=False, log_prefix=''):
     """
     Processes sampled paths. This involves:
     - computing discounted rewards (returns)
@@ -37,22 +37,26 @@ class ModelSampleProcessor(SampleProcessor):
     (list of dicts) : Processed sample data among the meta-batch; size: [meta_batch_size] x [7] x (batch_size x max_path_length)
     """
 
-        samples_data, paths = self._compute_samples_data(paths)
+        samples_data_list, multiple_trajectories = self._compute_samples_data(multiple_trajectories)
         # 8) log statistics if desired
-        self._log_path_stats(paths, log=log, log_prefix=log_prefix)
-        return samples_data
+        self._log_path_stats(multiple_trajectories, log=log, log_prefix=log_prefix, trajectory_num=len(multiple_trajectories))
+        return samples_data_list
 
-    def _compute_samples_data(self, paths):
-        assert type(paths) == list
+    def _compute_samples_data(self, multiple_trajectories):
+        assert type(multiple_trajectories) == list
+        if len(multiple_trajectories) > 0:
+            assert type(multiple_trajectories[0]) == list
         # 1) compute discounted rewards (returns)
-        for idx, path in enumerate(paths):
-            path["returns"] = utils.discount_cumsum(path["rewards"], self.discount)
-            # 4) stack path data
+        samples_data_list = []
+        for paths in multiple_trajectories:
+            for idx, path in enumerate(paths):
+                path["returns"] = utils.discount_cumsum(path["rewards"], self.discount)
+                # 4) stack path data
             if self.recurrent:
                 observations, next_observations, actions, rewards, dones, returns, time_steps, env_infos, agent_infos = self._stack_path_data(paths)
             else:
                 observations, next_observations, actions, rewards, dones, returns, time_steps, env_infos, agent_infos = self._concatenate_path_data(paths)
-            # 6) create samples_data object
+                # 6) create samples_data object
             samples_data = dict(
                                 observations=observations,
                                 next_observations=next_observations,
@@ -65,7 +69,8 @@ class ModelSampleProcessor(SampleProcessor):
                                 env_infos=env_infos,
                                 agent_infos=agent_infos,
                                 )
-        return samples_data, paths
+            samples_data_list.append(samples_data)
+        return samples_data_list, multiple_trajectories
 
     def _concatenate_path_data(self, paths):
         observations = np.concatenate([path["observations"] for path in paths])
