@@ -107,12 +107,6 @@ class Trainer(object):
             sess.run(tf.variables_initializer(uninit_vars))
             start_time = time.time()
 
-            # if self.restore:
-            #     self.algo._update_target(tau=1.0)
-            #     self.env_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "env_buffer.p"), "rb"))
-            #     self.model_replay_buffer = pickle.load(open(osp.join(logger.get_dir(), "model_buffer.p"), "rb"))
-            #     self.start_itr = pickle.load(open(osp.join(logger.get_dir(), "itr.p"), "rb")) + 1
-            # else:
             self.start_itr=0
             self.algo._update_target(tau=1.0)
             while self.env_replay_buffer._size < self.n_initial_exploration_steps:

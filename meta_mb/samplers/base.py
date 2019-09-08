@@ -44,7 +44,7 @@ class BaseSampler(object):
 
         # initial setup / preparation
         paths = []
-
+ 
         n_samples = 0
         running_paths = _get_empty_running_paths_dict()
 
