@@ -37,14 +37,6 @@ class WorkerModel(Worker):
 
     def step_wrapper(self):
         do_synch = self.pull()
-        # do_synch = self.pull()
-        # if not self.remaining_model_idx and not do_synch:
-        #     # block wait until new samples arrive
-        #     time_wait = time.time()
-        #     while not do_synch:
-        #         do_synch = self.pull()
-        #     logger.logkv('Model-TimeBlockWait', time.time() - time_wait)
-
         self.step()
         self.push()
 

@@ -2,18 +2,18 @@ import numpy as np
 from meta_mb.logger import logger
 import time
 import scipy.linalg as sla
-import pickle as pickle
-from multiprocessing import Process, Pipe
 
 
-class GTiLQRPlanner(object):
-    def __init__(self, env, n_parallel, horizon, eps, u_array, reg_str='V',
+class MBGTiLQRPlanner(object):
+    def __init__(self, env, dynamics_model, n_parallel, horizon, eps, u_array, reg_str='V',
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0, alpha_decay_factor=3.0,
                  c_1=1e-7, max_forward_iters=10, max_backward_iters=10,
                  use_hessian_f=False, verbose=False):
-        self._env = env
+        self.env = env
+        self.dynamics_model = dynamics_model
         self.n_parallel = n_parallel
         self.horizon = horizon
+        self.eps = eps
         self.u_array = u_array
         self.reg_str = reg_str
         self.act_dim = env.action_space.shape[0]
@@ -31,57 +31,10 @@ class GTiLQRPlanner(object):
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
 
         self._reset_mu()
-        # self.x_array, self.J_val = None, None
-
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
-        if use_hessian_f:
-            self.fn_str_array = ['jac_f_x', 'jac_f_u', 'hessian_f_xx', 'hessian_f_uu', 'hessian_f_ux']
-        else:
-            self.fn_str_array = ['jac_f_x', 'jac_f_u']
-
-        seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
-
-        self.ps = [
-            Process(
-                target=DDP_worker,
-                args=(work_remote, remote, pickle.dumps(env), eps,
-                      horizon, self.obs_dim, self.act_dim, self.act_low, self.act_high,
-                      seed, verbose),
-            ) for (work_remote, remote, seed) \
-            in zip(self.work_remotes, self.remotes, seeds)
-        ]
-
-        for p in self.ps:
-            p.daemon = True
-            p.start()
-
-        logger.log(f'Planner started {self.n_parallel} workers...')
-
-        for remote in self.work_remotes:
-            remote.close()
-
-    def _compute_deriv(self, inputs_dict):
-        # for fn_str, remote in zip(self.fn_str_array, self.remotes):
-        #     remote.send((fn_str, inputs_dict))
-        for i, fn_str in enumerate(self.fn_str_array):
-            self.remotes[i%self.n_parallel].send((fn_str, inputs_dict))
-
-        dl = self._env.dl_dict(inputs_dict).values()
-        df = [self.remotes[i%self.n_parallel].recv() for i in range(len(self.fn_str_array))]
-        return dl, df
-
-    def _f(self, x, u):
-        _ = self._env.reset_from_obs(x)
-        x_prime, reward, _, _ = self._env.step(u)
-        return x_prime, reward
 
     def update_x_u_for_one_step(self, obs):
         u_array = self.u_array
         optimized_action = u_array[0]
-        # if self.x_array is None:
-        #     x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
-            # self.x_array, self.J_val = x_array, J_val
-        # else:
         x_array, J_val = self._run_open_loop(u_array=u_array, init_obs=obs)
             # x_array, J_val = self.x_array, self.J_val
         backward_accept, forward_accept = False, False
@@ -92,7 +45,7 @@ class GTiLQRPlanner(object):
         """
         Derivatives
         """
-        dl, df = self._compute_deriv(dict(obs=x_array, act=u_array))  # dl, df has length = horizon
+        dl, df = self._compute_deriv(x_array=x_array, u_array=u_array)  # dl, df has length = horizon
         l_x, l_u, l_xx, l_uu, l_ux = dl
         if self.use_hessian_f:
             f_x, f_u, f_xx, f_uu, f_ux = df
@@ -172,7 +125,7 @@ class GTiLQRPlanner(object):
 
         if not backward_accept:
             logger.log(f'backward not accepted with mu = {self.mu}')
-            return None, backward_accept, forward_accept, None, None  # FIXME: None should be optimized_action??
+            return None, backward_accept, forward_accept, None, None
 
         """
         Forward Pass (stop if 0 < c_1 < z)
@@ -196,7 +149,7 @@ class GTiLQRPlanner(object):
                 opt_x_array.append(x)
                 opt_u_array.append(u)
                 time.sleep(0.004)
-                x, reward = self._f(x, u)
+                x, reward = self._f(x, u, return_reward=True)
                 reward_array.append(reward)
                 opt_J_val += -reward
 
@@ -240,10 +193,8 @@ class GTiLQRPlanner(object):
         self.mu = self.mu_init
         self.delta = self.delta_init
 
-    def reset_u_array(self):
+    def reset_u_array(self, u_array):
         self._reset_mu()
-
-        u_array = np.random.uniform(low=self.act_low, high=self.act_high, size=(self.horizon, self.act_dim))
         self.u_array = u_array
 
     def shift_u_array(self, u_new):
@@ -262,194 +213,112 @@ class GTiLQRPlanner(object):
 
     def _run_open_loop(self, u_array, init_obs):
         x_array, sum_rewards = [], 0
-        x = self._env.reset_from_obs(init_obs)
-        try:
-            assert np.allclose(x, init_obs)  # FAILS IN REACHER
-        except AssertionError:
-            logger.log('ERROR from reset_from_obs')
+        x = init_obs
 
         for i in range(self.horizon):
             x_array.append(x)
-            x, reward, _, _ = self._env.step(u_array[i])
+            x, reward = self._f(x, u_array[i], return_reward=True)
             sum_rewards += reward
         x_array = np.stack(x_array, axis=0)
 
         return x_array, -sum_rewards
 
-
-def DDP_worker(remote, parent_remote, env_pickle, eps,
-                       horizon, obs_dim, act_dim, act_low, act_high,
-                       seed, verbose):
-
-    # batch_size = num_rollouts in the original env executors (number of experts
-    # when the dynamics model is ground truth)
-
-    print('DDP/iLQR worker starts...')
-
-    parent_remote.close()
-
-    env = pickle.loads(env_pickle)
-    np.random.seed(seed)
-
-    def f(x, u, return_reward=False):
-        _ = env.reset_from_obs(x)
-        x_prime, reward, _, _ = env.step(u)
+    def _f(self, x, u, return_reward=False):
+        x_prime = self.dynamics_model.predict(x[None], u[None])[0]
         if return_reward:
+            reward = self.env.reward(obs=x, acts=u, next_obs=x_prime)
             return x_prime, reward
         return x_prime
 
-    def jac_f_x(x, u, centered=True):
-        """
-        :param x: (act_dim.)
-        :param u: (obs_dim,)
-        :return: (obs_dim, obs_dim)
-        """
+    def _df_by_pair(self, x, u, centered=True):
+        obs_dim, act_dim = self.obs_dim, self.act_dim
+        _f = self._f
+        eps = self.eps
+
+        # jac_f_x: (obs_dim, obs_dim)
         jac = np.zeros((obs_dim, obs_dim))
         e_i = np.zeros((obs_dim,))
         if centered:
             for i in range(obs_dim):
                 e_i[i] = eps
-                jac[:, i] = (f(x+e_i, u) - f(x-e_i, u)) / (2*eps)
+                jac[:, i] = (_f(x+e_i, u) - _f(x-e_i, u)) / (2*eps)
                 e_i[i] = 0
         else:
-            f_val = f(x, u)
+            f_val = _f(x, u)
             for i in range(obs_dim):
                 e_i[i] = eps
-                jac[:, i] = (f(x+e_i, u) - f_val) / eps
+                jac[:, i] = (_f(x+e_i, u) - f_val) / eps
                 e_i[i] = 0
-        return jac
+        jac_f_x = jac
 
-    def jac_f_u(x, u, centered=True):
-        """
-        :param x: (act_dim.)
-        :param u: (obs_dim,)
-        :return: (obs_dim, act_dim)
-        """
+        # jac_f_u: (obs_dim, act_dim)
         jac = np.zeros((obs_dim, act_dim))
         e_i = np.zeros((act_dim,))
         if centered:
             for i in range(act_dim):
                 e_i[i] = eps
-                jac[:, i] = (f(x, u+e_i) - f(x, u-e_i)) / (2*eps)
+                jac[:, i] = (_f(x, u+e_i) - _f(x, u-e_i)) / (2*eps)
                 e_i[i] = 0
         else:
-            f_val = f(x, u)
+            f_val = _f(x, u)
             for i in range(act_dim):
                 e_i[i] = eps
-                jac[:, i] = (f(x, u+e_i) - f_val) / eps
+                jac[:, i] = (_f(x, u+e_i) - f_val) / eps
                 e_i[i] = 0
-        return jac
+        jac_f_u = jac
 
-    def hessian_f_xx(x, u):
+        if not self.use_hessian_f:
+            return jac_f_x, jac_f_u
+
+        # hessian_f_xx
         hess = np.zeros((obs_dim, obs_dim, obs_dim))
-        f_val = f(x, u)
+        f_val = _f(x, u)
         e_i, e_j = np.zeros((obs_dim,)), np.zeros((obs_dim,))
         for i in range(obs_dim):
             e_i[i] = eps
-            f_val_fix_i = f(x+e_i, u) - f_val
+            f_val_fix_i = _f(x+e_i, u) - f_val
             for j in range(obs_dim):
                 e_j[j] = eps
-                hess[:, i, j] = (f(x+e_i+e_j, u) - f(x+e_j, u) - f_val_fix_i) / eps**2
+                hess[:, i, j] = (_f(x+e_i+e_j, u) - _f(x+e_j, u) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
-        return (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
+        hessian_f_xx = (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
 
-    def hessian_f_uu(x, u):
+        # hessian_f_uu
         hess = np.zeros((obs_dim, act_dim, act_dim))
-        f_val = f(x, u)
+        f_val = _f(x, u)
         e_i, e_j = np.zeros((act_dim,)), np.zeros((act_dim,))
         for i in range(act_dim):
             e_i[i] = eps
-            f_val_fix_i = f(x, u+e_i) - f_val
+            f_val_fix_i = _f(x, u+e_i) - f_val
             for j in range(act_dim):
                 e_j[j] = eps
-                hess[:, i, j] = (f(x, u+e_i+e_j) - f(x, u+e_j) - f_val_fix_i) / eps**2
+                hess[:, i, j] = (_f(x, u+e_i+e_j) - _f(x, u+e_j) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
-        return (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
+        hessian_f_uu = (hess + np.transpose(hess, axes=[0, 2, 1])) * 0.5
 
-    def hessian_f_ux(x, u):
+        # hessian_f_ux
         hess = np.zeros((obs_dim, act_dim, obs_dim))
-        f_val = f(x, u)
+        f_val = _f(x, u)
         e_i, e_j = np.zeros((act_dim,)), np.zeros((obs_dim,))
         for i in range(act_dim):
             e_i[i] = eps
-            f_val_fix_i = f(x, u+e_i) - f_val
+            f_val_fix_i = _f(x, u+e_i) - f_val
             for j in range(obs_dim):
                 e_j[j] = eps
-                hess[:, i, j] = (f(x+e_j, u+e_i) - f(x, u+e_i) - f_val_fix_i) / eps**2
+                hess[:, i, j] = (_f(x+e_j, u+e_i) - _f(x, u+e_i) - f_val_fix_i) / eps**2
                 e_j[j] = 0
             e_i[i] = 0
-        # return (hess + np.transpose(hessian_f_xu(x, u), axes=[0, 2, 1])) * 0.5
-        return hess
+        hessian_f_ux = hess
 
-    def forward_pass(alpha, open_k_array, closed_K_array, J_val, u_array, x_array):
-        # initialize
-        # opt_x_array, opt_u_array = [], []
-        opt_u_array = []
-        # reward_array = []
-        opt_J_val = 0
-        info_dict = dict()
+        return jac_f_x, jac_f_u, hessian_f_xx, hessian_f_uu, hessian_f_ux
 
-        # forward pass
-        x = x_array[0]
-        for i in range(horizon):
-            u = u_array[i] + alpha * open_k_array[i] + closed_K_array[i] @ (x - x_array[i])
-            u = np.clip(u, act_low, act_high)  # FIXME: clip here?
-
-            # store updated state/action
-            # opt_x_array.append(x)
-            opt_u_array.append(u)
-            time.sleep(0.004)
-            x, reward = f(x, u, return_reward=True)
-            # reward_array.append(reward)
-            opt_J_val += -reward
-
-        if J_val > opt_J_val:  # valid update
-
-            # delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
-            # optimized_action = opt_u_array[0]
-            # opt_x_array, opt_u_array = np.stack(opt_x_array, axis=0), np.stack(opt_u_array, axis=0)
-            opt_u_array = np.stack(opt_u_array, axis=0)
-            info_dict = dict(
-                alpha=alpha,
-                # optimized_action=optimized_action,
-                # opt_x_array=opt_x_array,
-                opt_u_array=opt_u_array,
-                opt_J_val=opt_J_val,
-                # delta_J_alpha=delta_J_alpha,
-                # reward_array=reward_array,
-            )
-
-        return info_dict
-
-    str_to_fn = dict(jac_f_x=jac_f_x, jac_f_u=jac_f_u, hessian_f_xx=hessian_f_xx, hessian_f_uu=hessian_f_uu, hessian_f_ux=hessian_f_ux)
-
-    while True:
-        # receive command and data from the remote
-        cmd, *data = remote.recv()
-        # do a step in each of the environment of the worker
-        if cmd == 'close':
-            remote.close()
-            break
-        elif cmd == 'forward_pass':
-            alpha, inputs_dict, = data
-            result = forward_pass(alpha=alpha, **inputs_dict)
-            remote.send(result)
-        else:
-            inputs_dict, = data
-            x_array, u_array = inputs_dict['obs'], inputs_dict['act']
-
-            try:
-                fn = str_to_fn[cmd]
-
-            except KeyError:
-                print(f'receiving command {cmd}')
-                raise NotImplementedError
-
-            # result = [fn(x_array[i], u_array[i]) for i in range(horizon-1, -1, -1)]  # FIXME: WHY INVERSE ORDER????
-            result = [fn(x_array[i], u_array[i]) for i in range(horizon)]
-            remote.send(result)
+    def _compute_deriv(self, x_array, u_array):
+        df_by_pair = [self._df_by_pair(x_array[i], u_array[i]) for i in range(self.horizon)]
+        df = list(zip(*df_by_pair))  # df = [jac_f_x, jac_f_u, ...], jac_f_x is a list of length horizon
+        dl = self.env.dl_dict(dict(obs=x_array, act=u_array)).values()
+        return dl, df
 
 
 def chol_inv(matrix):

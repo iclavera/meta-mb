@@ -2,22 +2,23 @@ import numpy as np
 import copy
 
 
-class IPOPTShootingProblem(object):
+class GTShootingProblem(object):
     def __init__(self, env, horizon, discount, eps=1e-6):
         self.env = copy.deepcopy(env)
         self.horizon = horizon
         self.discount = discount
         self.act_dim = int(np.prod(env.action_space.shape))
+        # self.obs_dim = int(np.prod(env.observation_space.shape))
         self.eps = eps
         self.init_obs = None
 
     def set_init_obs(self, obs):
         self.init_obs = obs
 
-    def get_a(self, x):
-        return x.reshape(self.horizon, self.act_dim)
+    def get_u(self, inputs):
+        return inputs.reshape(self.horizon, self.act_dim)
 
-    def get_x(self, a):
+    def get_inputs(self, a):
         return a.ravel()  # WARNING: not copied
 
     def objective(self, x):
@@ -25,14 +26,24 @@ class IPOPTShootingProblem(object):
         # The callback for calculating the objective
         #
         returns = 0
-        acts = self.get_a(x)
+        acts = self.get_u(x)
         _ = self.env.reset_from_obs(self.init_obs)
         for t in range(self.horizon):
             _, reward, done, _ = self.env.step(acts[t])
             returns += self.discount ** t * reward
-            if done:
-                break
+            assert not done
         return -returns
+
+    # # THIS IS INCORRECT
+    # def gradient(self, x):
+    #     u_array = self.get_a(x)
+    #     grad = np.empty(shape=(self.horizon, self.act_dim))
+    #     obs = self.env.reset_from_obs(self._init_obs)
+    #     for i in range(self.horizon):
+    #         act = u_array[i]
+    #         grad[i, :] = -self.env.deriv_reward_obs(obs=obs, acts=act)
+    #         obs, *_ = self.env.step(act)
+    #     return grad
 
     def gradient(self, x):
         #
@@ -74,9 +85,8 @@ class IPOPTShootingProblem(object):
             return -grad_a
 
         grad_a_stacked = np.zeros((horizon, act_dim))
-        acts = self.get_a(x)
-        env.reset_from_obs(self.init_obs)
-        s = self.init_obs
+        acts = self.get_u(x)
+        s = env.reset_from_obs(self.init_obs)
 
         for t in range(horizon):
             grad_a_t = dreturns_da(s, acts[t:], horizon-t)

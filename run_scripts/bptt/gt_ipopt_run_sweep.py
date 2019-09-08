@@ -1,23 +1,23 @@
 from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.gt_mpc_controller import GTMPCController
+from meta_mb.policies.bptt_controllers.gt_ipopt_controller import GTIpoptController
 from meta_mb.samplers.gt_sampler import GTSampler
 from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
+from meta_mb.envs.mb_envs.toy import FirstOrderEnv
 from meta_mb.utils.utils import ClassEncoder
 import json
 import os
 import tensorflow as tf
 
 
-EXP_NAME = 'bptt-gt-mpc'
+EXP_NAME = 'bptt-gt-ipopt'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
 def run_experiment(**config):
-    repr = f"gt-{config['method_str']}-"
-
+    repr = f"gt-{config['method_str']}-{config['initializer_str']}-"
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = 100
@@ -30,6 +30,9 @@ def run_experiment(**config):
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = 50
+    elif config['env'] is FirstOrderEnv:
+        repr += 'fo'
+        config['max_path_length'] = 100
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -43,35 +46,26 @@ def run_experiment(**config):
     with sess.as_default() as sess:
 
         env = config['env']()
-        dynamics_model = None
-        sample_processor = None
 
-        policy = GTMPCController(
+        policy = GTIpoptController(
             env=env,
-            dynamics_model=dynamics_model,
+            eps=config['eps'],
             discount=config['discount'],
-            n_candidates=config['n_candidates'],
             horizon=config['horizon'],
             method_str=config['method_str'],
-            num_cem_iters=config['num_cem_iters'],
-            num_rollouts=config['num_rollouts'],
-            alpha=config['alpha'],
-            percent_elites=config['percent_elites'],
-            deterministic_policy=config['deterministic_policy'],
+            initializer_str=config['initializer_str'],
         )
-
         sampler = GTSampler(
             env=env,
             policy=policy,
             max_path_length=config['max_path_length'],
         )
-
         algo = BPTTTrainer(
             env=env,
             policy=policy,
-            dynamics_model=dynamics_model,
+            dynamics_model=None,
             sampler=sampler,
-            dynamics_sample_processor=sample_processor,
+            dynamics_sample_processor=None,
             n_itr=1,
             initial_random_samples=False,
             initial_sinusoid_samples=False,
@@ -90,22 +84,14 @@ if __name__ == '__main__':
 
         # Problem
         'env': [HalfCheetahEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        'normalize': [False],
         'discount': [1.0,],
 
         # Policy
-        'method_str': ['cem', 'rs'],
-        'deterministic_policy': [True],
-
-        # cem
+        'initializer_str': ['cem'], #['zeros', 'uniform'],
+        'method_str': ['collocation'],
         'horizon': [20],
-        'n_candidates': [500],
-        'num_cem_iters': [50],
-        'alpha': [0.15],
-        'percent_elites': [0.1],
-
-        # Training
-        'num_rollouts': [1],  # number of experts
+        'eps': [1e-6], #[1e-6, 1e-4, 1e-3],
+        'deterministic_policy': [True],
     }
 
     run_sweep(run_experiment, config, EXP_NAME, INSTANCE_TYPE)

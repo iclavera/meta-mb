@@ -21,6 +21,7 @@ class WorkerPolicy(Worker):
         with sess.as_default():
 
             """ --------------------- Construct instances -------------------"""
+
             from meta_mb.samplers.bptt_samplers.bptt_sampler import BPTTSampler
             from meta_mb.samplers.base import SampleProcessor
             from meta_mb.algos.ppo import PPO

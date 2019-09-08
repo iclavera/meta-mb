@@ -15,7 +15,7 @@ from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'parallel-metrpo'
+EXP_NAME = 'ray-metrpo'
 
 
 def init_vars(sender, config, policy, dynamics_model):
@@ -181,11 +181,11 @@ if __name__ == '__main__':
 
     sweep_params = {
 
-        'flags_need_query': [
-            [False, False, False],
-        ],
+        # 'flags_need_query': [
+        #     [False, False, False],
+        # ],
         'rolling_average_persitency': [
-            0.1, 0.4, 0.99,
+            0.4, #0.1, 0.99,
         ],
 
         'seed': [1,],
@@ -194,9 +194,9 @@ if __name__ == '__main__':
 
         'simulation_sleep_frac': [1,],
         'num_data_workers': [1,],
-        'num_model_workers': [1,],
-        'num_policy_workers': [1,],
-        'env': ['HalfCheetah'],
+        'num_model_workers': [1, 2],
+        'num_policy_workers': [1, 2],
+        'env': ['Ant', 'Hopper'],
 
         # Problem Conf
 
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-4, 5e-4,],
+        'dynamics_learning_rate': [1e-4, 5e-4, 1e-3],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
