@@ -164,29 +164,29 @@ if __name__ == '__main__':
     config = {
         'seed': [1],
         'fit_model': [True],
-        'on_policy_freq': [2],  # FIXME: debug
+        'on_policy_freq': [1, 2],
 
         # Problem
         'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
-        # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
+        'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [50],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
         'horizon': [5, 15],
 
         # Policy
-        'initializer_str': ['zeros', 'uniform'],
+        'initializer_str': ['zeros',],
 
         # iLQR
-        'num_ilqr_iters': [10, 20],
+        'num_ilqr_iters': [10,],
         'mu_min': [1e-6],
         'mu_max': [1e10],
         'mu_init': [1e-5],
         'delta_0': [2],
         'delta_init': [1.0],
-        'alpha_init': [1e-1],
+        'alpha_init': [5e-1, 1e-1],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-4],
+        'c_1': [1e-3, 1e-6],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
         'use_hessian_f': [True, False],
