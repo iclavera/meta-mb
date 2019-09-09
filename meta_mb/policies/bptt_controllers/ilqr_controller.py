@@ -50,16 +50,14 @@ class iLQRController(Serializable):
         :return:
         """
         pass
-        # self.planner.u_array_val = None
 
-    def warm_reset(self, u_array):
-        pass
-        # logger.log('planner resets with collected samples...')
-        if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):
-            u_array = None
-        else:
-            u_array = u_array[:self.horizon, :, :]
-        self.planner.warm_reset(u_array=u_array)
+    # def warm_reset(self, u_array):
+    #     # logger.log('planner resets with collected samples...')
+    #     if u_array is None or np.sum(np.abs(u_array) >= np.mean(self.act_high)) > 0.8 * (self.horizon*self.action_space_dims):
+    #         u_array = None
+    #     else:
+    #         u_array = u_array[:self.horizon, :, :]
+    #     self.planner.warm_reset(u_array=u_array)
 
     def log_diagnostics(*args):
         pass

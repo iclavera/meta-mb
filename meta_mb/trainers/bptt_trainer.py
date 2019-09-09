@@ -59,7 +59,6 @@ class BPTTTrainer(object):
             sess = tf.Session()
         self.sess = sess
 
-
     def train(self):
         logger.log('training starts...')
         with self.sess.as_default() as sess:

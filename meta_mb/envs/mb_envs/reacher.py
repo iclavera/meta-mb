@@ -69,6 +69,18 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward = reward_dist + reward_ctrl
         return reward
 
+    def tf_reward(self, obs, acts, next_obs):
+        if obs.get_shape().ndims == 2:
+            dist_vec = obs[:, -3:]
+            reward_dist = -tf.linalg.norm(dist_vec, axis=1)
+            reward_ctrl = -tf.reduce_sum(np.square(acts), axis=1)
+        else:
+            dist_vec = obs[-3:]
+            reward_dist = -tf.linalg.norm(dist_vec)
+            reward_ctrl = -tf.reduce_sum(tf.square(acts))
+        reward = reward_dist + reward_ctrl
+        return reward
+
     def deriv_reward_obs(self, obs, acts):
         assert obs.ndim == acts.ndim
         deriv = np.zeros_like(obs)
@@ -84,6 +96,35 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
 
     def deriv_reward_act(self, obs, acts):
         return -2 * acts #(-2 * acts).copy()
+
+    def tf_dl(self, obs, act, next_obs):
+        # l_x
+        assert obs.get_shape().ndims == 1
+        mask = np.zeros((self.obs_dim,))
+        mask[-3:] = 1
+        mask = tf.constant(mask, dtype=tf.float32)
+        reward_dist = -tf.linalg.norm(obs[-3:])
+        r_x = mask * obs / (reward_dist)
+        l_x = -r_x
+
+        # l_u
+        r_u = -2*act
+        l_u = -r_u
+
+        # l_xx
+        r_xx_unpadded = -tf.tensordot(obs[-3:], obs[-3:], axes=0) / reward_dist**3
+        r_xx_unpadded += tf.eye(3) / reward_dist
+        r_xx = tf.pad(r_xx_unpadded, tf.constant([[self.obs_dim-3, 0], [self.obs_dim-3, 0]]))
+        l_xx = -r_xx
+
+        # l_uu
+        r_uu = tf.eye(self.act_dim) * (-2)
+        l_uu = -r_uu
+
+        # l_ux
+        l_ux = tf.zeros((self.act_dim, self.obs_dim))
+
+        return l_x, l_u, l_xx, l_uu, l_ux
 
     # def l_xx(self, obs, act):
     #     """
@@ -138,7 +179,7 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         reward_dist = - np.linalg.norm(obses[:, -3:], axis=1)  # (horizon,)
         for i in range(-3, 0):
             for j in range(-3, 0):
-                hess[:, i, j] = obses[:, i] * obses[:, j] / reward_dist
+                hess[:, i, j] = obses[:, i] * obses[:, j] / reward_dist**3
         for i in range(-3, 0):
             hess[:, i, i] += obses[:, i] / reward_dist
 
@@ -183,12 +224,6 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         self.set_state(qpos, qvel)
         return self._get_obs()
 
-    def tf_reward(self, obs, acts, next_obs):
-        dist_vec = obs[:, -3:]
-        reward_dist = - tf.linalg.norm(dist_vec, axis=1)
-        reward_ctrl = - tf.reduce_sum(np.square(acts), axis=1)
-        reward = reward_dist + reward_ctrl
-        return reward
 
 
 if __name__ == "__main__":

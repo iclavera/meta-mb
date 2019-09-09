@@ -53,7 +53,7 @@ class iLQRPlanner(object):
             dtype=tf.float32, shape=(self.obs_dim,), name='x_o',
         )
         self.u_val_hna = None
-        self.opt_disc_reward_var, self.opt_u_var_ha = self._build_action_graph()
+        self.opt_disc_reward_var, self.opt_u_var_ha, self.eff_diff_var = self._build_action_graph()
 
         self.x_ph_no = tf.placeholder(
             dtype=tf.float32, shape=(self.num_envs, self.obs_dim,), name='x_no',
@@ -133,8 +133,11 @@ class iLQRPlanner(object):
                 u = u_ha[i, :]
                 x_u_concat = tf.concat([x, u], axis=0)
                 x, u = x_u_concat[:obs_dim], x_u_concat[-act_dim:]
-                x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type='all')[0]  # (obs_dim, num_models)
-                x_prime = tf.gather(x_prime, tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32), axis=1)
+                x_prime = self.dynamics_model.predict_sym(
+                    x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32)
+                )[0]
+                # x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type='all')[0]
+                # x_prime = tf.gather(x_prime, tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32), axis=1)
 
                 hess = utils.hessian_wrapper(x_prime, x_u_concat, obs_dim, obs_dim+act_dim)
                 f_x = utils.jacobian_wrapper(x_prime, x, obs_dim, obs_dim)
@@ -145,8 +148,11 @@ class iLQRPlanner(object):
 
             else:
                 u = u_ha[i, :]
-                x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type='all')[0]
-                x_prime = tf.gather(x_prime, tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32), axis=1)
+                x_prime = self.dynamics_model.predict_sym(
+                    x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32)
+                )[0]
+                # x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type='all')[0]
+                # x_prime = tf.gather(x_prime, tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32), axis=1)
 
                 # compute gradients
                 f_x = utils.jacobian_wrapper(x_prime, x, obs_dim, obs_dim)
@@ -192,8 +198,8 @@ class iLQRPlanner(object):
 
             open_k_array = open_k_array.write(i, k)
             closed_K_array = closed_K_array.write(i, K)
-            delta_J_1 += utils.tf_inner(k, Q_u)
-            delta_J_2 += utils.tf_inner(k, tf.linalg.matvec(Q_uu, k))
+            delta_J_1 += tf.tensordot(k, Q_u, axes=1)
+            delta_J_2 += tf.tensordot(k, tf.linalg.matvec(Q_uu, k), axes=1)
 
             V_x = Q_x + tf.linalg.matvec(tf.transpose(K) @ Q_uu, k) + tf.linalg.matvec(tf.transpose(K), Q_u) + tf.linalg.matvec(tf.transpose(Q_ux), k)
             V_xx = Q_xx + tf.transpose(K) @ Q_uu @ K + tf.transpose(K) @ Q_ux + tf.transpose(Q_ux) @ K
@@ -251,12 +257,12 @@ class iLQRPlanner(object):
         )
         # if forward_stop is True, forward pass is accepted, otherwise set opt_J_val, opt_u_ha back to J_val, u_ha and no optimization is carried out
         forward_accept = tf.math.logical_not(cond(*terminal_loop_vars))
-        next_alpha, opt_J_val, delta_J_alpha, opt_u_ha = tf.cond(pred=forward_accept, true_fn=lambda: terminal_loop_vars, false_fn=lambda: loop_vars)
+        _, opt_J_val, _, opt_u_ha = tf.cond(pred=forward_accept, true_fn=lambda: terminal_loop_vars, false_fn=lambda: loop_vars)
 
         # debug logging
         # opt_J_val = tf.Print(opt_J_val, data=['forward accepted', forward_accept, 'alpha', next_alpha*self.alpha_decay_factor, 'eff_diff', J_val-opt_J_val, 'pred_diff', -delta_J_alpha])
 
-        return -opt_J_val, opt_u_ha
+        return opt_u_ha, -opt_J_val, J_val-opt_J_val
 
     def get_actions(self, obs_no, verbose=True):
         if self.u_val_hna is None:
@@ -264,17 +270,21 @@ class iLQRPlanner(object):
         sess = tf.get_default_session()
 
         for env_idx in range(self.num_envs):
-            feed_dict = {self.u_ph_ha: self.u_val_hna[:, env_idx, :], self.x_ph_o: obs_no[env_idx, :]}
+            u_val_ha = self.u_val_hna[:, env_idx, :]
+            x_val_o = obs_no[env_idx, :]
             for itr in range(self.num_ilqr_iters):
-                opt_disc_reward, opt_u_val_ha = sess.run([self.opt_disc_reward_var, self.opt_u_var_ha], feed_dict=feed_dict)
-                self.u_val_hna[:, env_idx, :] = opt_u_val_ha
+                u_val_ha, opt_disc_reward, eff_diff = sess.run(
+                    [self.opt_disc_reward_var, self.opt_u_var_ha, self.eff_diff_var], feed_dict={self.u_ph_ha: u_val_ha, self.x_ph_o: x_val_o}
+                )
                 if verbose:
-                    logger.logkv(f'RetDyn-{env_idx}', opt_disc_reward)
+                    logger.logkv(f'RetDyn-{env_idx}-{itr}', opt_disc_reward)
+                    logger.logkv(f'RetImpv-{env_idx}-{itr}', eff_diff)
+            self.u_val_hna[:, env_idx, :] = u_val_ha
 
         if verbose:
             logger.dumpkvs()
 
-        optimized_actions = self.u_val_hna.copy()  # (horizon, num_envs, act_dim)
+        optimized_actions = self.u_val_hna[0]  # (num_envs, act_dim)
 
         # shift u_array and perm
         self._shift()  # FIXME: alternative ways to initialize u_new
@@ -320,11 +330,11 @@ class iLQRPlanner(object):
 
         self.u_val_hna = init_u_array
 
-    def warm_reset(self, u_array):
-        if self.initializer_str != 'cem':
-            self.u_val_hna = u_array
-        else:
-            self.u_val_hna = None
+    # def warm_reset(self, u_array):
+    #     if self.initializer_str != 'cem':
+    #         self.u_val_hna = u_array
+    #     else:
+    #         self.u_val_hna = None
 
 def chol_inv(matrix):
     """

@@ -55,6 +55,10 @@ def group_by(exp_data, group_by_key=None):
                 key_str = str(exp['flat_params'][group_by_key]).split('.')[-1]
             except KeyError:
                 key_str = str(exp['flat_params']['env']) + 'Env'
+        elif group_by_key == 'num_workers':
+            key_str = f"m-{exp['flat_params']['num_model_workers']}-p-{exp['flat_params']['num_policy_workers']}"
+        elif group_by_key is None:
+            key_str = None
         else:
             key_str = str(exp['flat_params'][group_by_key])
         if key_str in split_dict.keys():

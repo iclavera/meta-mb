@@ -4,7 +4,7 @@ from meta_mb.samplers.sampler import Sampler
 from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
 from meta_mb.policies.planners.ilqr_tf_planner import iLQRPlanner
 # from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
-from meta_mb.samplers.ipopt_sampler import IpoptSampler
+# from meta_mb.samplers.ipopt_sampler import IpoptSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
@@ -107,24 +107,27 @@ def run_experiment(**config):
             cem_deterministic_policy='cem_deterministic_policy',
         )
 
-        cem_policy = MPCController(
-            env=env,
-            dynamics_model=dynamics_model,
-            method_str='cem',
-            num_rollouts=config['cem_num_rollouts'],
-            discount=config['discount'],
-            n_candidates=config['n_candidates'],
-            horizon=config['horizon'],
-            num_cem_iters=config['num_cem_iters'],
-            deterministic_policy=config['cem_deterministic_policy'],
-        )
+        if config['on_policy_freq'] > 1:
+            cem_policy = MPCController(
+                env=env,
+                dynamics_model=dynamics_model,
+                method_str='cem',
+                num_rollouts=config['cem_num_rollouts'],
+                discount=config['discount'],
+                n_candidates=config['n_candidates'],
+                horizon=config['horizon'],
+                num_cem_iters=config['num_cem_iters'],
+                deterministic_policy=config['cem_deterministic_policy'],
+            )
 
-        cem_sampler = Sampler(
-            env=env,
-            policy=cem_policy,
-            num_rollouts=config['cem_num_rollouts'],
-            max_path_length=config['max_path_length'],
-        )
+            cem_sampler = Sampler(
+                env=env,
+                policy=cem_policy,
+                num_rollouts=config['cem_num_rollouts'],
+                max_path_length=config['max_path_length'],
+            )
+        else:
+            cem_sampler = None
 
         policy = iLQRController(
             env=env,
@@ -133,7 +136,7 @@ def run_experiment(**config):
             num_rollouts=config['num_rollouts'],
         )
 
-        sampler = IpoptSampler(
+        sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=config['num_rollouts'],
@@ -167,7 +170,7 @@ if __name__ == '__main__':
         'on_policy_freq': [1],
 
         # Problem
-        'env': [HalfCheetahEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [ReacherEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [201],
@@ -189,7 +192,7 @@ if __name__ == '__main__':
         'c_1': [1e-3, 1e-6],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
-        'use_hessian_f': [True, False],
+        'use_hessian_f': [False],
         'num_cem_iters_for_init': [5],
 
         # CEM
@@ -206,7 +209,7 @@ if __name__ == '__main__':
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'num_models': [1,],
+        'num_models': [5,],
         'hidden_nonlinearity_model': ['swish', 'relu'],
         'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],

@@ -67,13 +67,13 @@ class Sampler(BaseSampler):
         paths = []
 
         n_samples = 0
-        running_paths = [_get_empty_running_paths_dict() for _ in range(self.vec_env.num_envs)]
+        running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_envs)]
 
         if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
         policy = self.policy
-        policy.reset(dones=[True] * self.vec_env.num_envs)
+        policy.reset(dones=[True] * self.num_envs)
 
         # initial reset of meta_envs
         obses = np.asarray(self.vec_env.reset())
@@ -86,7 +86,7 @@ class Sampler(BaseSampler):
                 obses = self.vae.encode(obses)
 
             if random:
-                actions = np.stack([self.env.action_space.sample() for _ in range(self.vec_env.num_envs)], axis=0)
+                actions = np.stack([self.env.action_space.sample() for _ in range(self.num_envs)], axis=0)
                 agent_infos = []
             elif sinusoid:
                 action_space = self.env.action_space.shape[0]

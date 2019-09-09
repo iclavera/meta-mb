@@ -61,9 +61,11 @@ def tf_cg(f_Ax, b, cg_iters=10, residual_tol=1e-10):
     cond = lambda p, r, x, rdotr: tf.greater_equal(rdotr, residual_tol)
     def body(p, r, x, rdotr):
         z = f_Ax(p)
+        # v = rdotr / tf.tensordot(p, z, axes=1)
         v = rdotr / tf_inner(p, z)
         x += v*p
         r -= v*z
+        # newrdotr = tf.tensordot(r, r, axes=1)
         newrdotr = tf_inner(r, r)
         mu = newrdotr / rdotr
         p = r + mu*p
@@ -72,6 +74,7 @@ def tf_cg(f_Ax, b, cg_iters=10, residual_tol=1e-10):
     p = tf.identity(b)
     r = tf.identity(b)
     x = tf.zeros_like(b)
+    # rdotr = tf.tensordot(r, r, axes=1)
     rdotr = tf_inner(r, r)
     loop_vars = (p, r, x, rdotr)
 
