@@ -490,7 +490,7 @@ class SAC_MB(Algo):
             next_q_values = [tf.reduce_mean(value, axis = 0) for value in next_q_values]
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-
+        #
         # elif self.q_function_type == 7:
         #     self.policy_optimizer = tf.train.AdamOptimizer(
         #         learning_rate=self.policy_lr,
@@ -594,7 +594,6 @@ class SAC_MB(Algo):
         #     grads_and_vars = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
         #     real_list = []
         #     for i in range(len(var_list)):
-        #         st()
         #         value = (grads_and_vars[i][0] - grad_stacks[i], grads_and_vars[i][1])
         #         real_list.append(value)
         #     policy_train_op = self.policy_optimizer.apply_gradients(real_list)
@@ -620,8 +619,8 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
-        # self.training_ops.update({'policy_train_op': policy_train_op})
-        self.actor_ops.update({'policy_train_op': policy_train_op})
+        self.training_ops.update({'policy_train_op': policy_train_op})
+        # self.actor_ops.update({'policy_train_op': policy_train_op})
 
         # ground truth
         # elif self.q_function_type == 4:
@@ -787,8 +786,8 @@ class SAC_MB(Algo):
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                      value_dict=batch)
         sess.run(self.training_ops, feed_dict)
-        for _ in range(self.actor_H):
-            sess.run(self.actor_ops, feed_dict)
+        # for _ in range(self.actor_H):
+        #     sess.run(self.actor_ops, feed_dict)
 
         if log:
             diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)

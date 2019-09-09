@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "h-ant"
+EXP_NAME = "rant-r"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -172,7 +172,6 @@ def run_experiment(**kwargs):
                 target_update_interval=kwargs['n_train_repeats'],
                 dynamics_type=kwargs['model_type'],
                 ground_truth=ground_truth,
-                start_itr=kwargs['start_itr'],
                 actor_H=kwargs['actor_H'],
             )
 
@@ -210,7 +209,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90, 2098],
+        'seed': [90, 2098, 208],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv],
         # Policy
@@ -235,21 +234,21 @@ if __name__ == '__main__':
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
 		'rolling_average_persitency':[0.4],
-		'q_function_type':[0],
-		'q_target_type': [0],
+		'q_function_type':[5],
+		'q_target_type': [1],
 		'num_actions_per_next_observation':[5],
         'max_epochs_since_update': [5],
         'H': [2],
-        'T': [3],
-        'actor_H': [2, 3, 4],
+        'T': [2, 3],
+        'actor_H': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
-		'num_models': [8, 4],
-		'model_used_ratio': [1],
+		'num_models': [4],
+		'model_used_ratio': [0.5],
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
-        'method': [1],
-        'num_eval_trajectories': [5],
+        'method': [4],
+        'num_eval_trajectories': [3, 1],
 
         'policy_hidden_nonlinearity': ['relu'],
 
@@ -264,7 +263,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['rand'],
+		'prediction_type':['none'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],

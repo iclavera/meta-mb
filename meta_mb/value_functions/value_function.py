@@ -100,6 +100,7 @@ class ValueFunction(Serializable):
                                                hidden_nonlinearity=self.hidden_nonlinearity,
                                                output_nonlinearity=self.output_nonlinearity,
                                                input_var=input_var,
+                                               # reuse=tf.AUTO_REUSE,
                                                reuse=True,
                                                )
         else:
