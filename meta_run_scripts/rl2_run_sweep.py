@@ -6,12 +6,12 @@ from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
 
-from meta_mb.envs.blue.full_blue_env import FullBlueEnv
-from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
-from meta_mb.envs.blue.blue_env import BlueEnv
+#from meta_mb.envs.blue.full_blue_env import FullBlueEnv
+#from meta_mb.envs.blue.peg_full_blue_env import PegFullBlueEnv
+#from meta_mb.envs.blue.blue_env import BlueEnv
 
-from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
-from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
+#from meta_mb.envs.jelly.fetch_jelly import FetchJellyEnv
+#from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
 
 from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
 
@@ -31,8 +31,8 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'rl2-pr2-reach-dr'
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = 'rl2-pr2-peg-randomization'
 
 def run_experiment(**config):
     exp_name = EXP_NAME + '-' + str(random.randint(0, 1e9))
@@ -50,11 +50,16 @@ def run_experiment(**config):
         baseline = config['baseline']()
         #timeskip = config['timeskip']
         #log_rand = config['log_rand']
-        if config['env'] == 'PR2ReacherEnv':
-            exp_type = config['exp_type']
-            env = rl2env(normalize(config['env'](exp_type=exp_type)))
-        else:
-            env = rl2env(normalize(config['env']()))#log_rand=log_rand)))#timeskip=timeskip)))
+        #if config['env'] == 'PR2ReacherEnv':
+        exp_type = config['exp_type']
+        print(exp_type)
+        env = rl2env(normalize(config['env'](max_torques=config['max_torques'],
+                                             exp_type='peg',
+                                             ctrl_penalty=config['ctrl_penalty'],
+                                             vel_penalty=config['vel_penalty'],
+                                             joint=config['joint'])))
+        #else:
+            #env = rl2env(normalize(config['env']()))#log_rand=log_rand)))#timeskip=timeskip)))
         obs_dim = np.prod(env.observation_space.shape) + np.prod(env.action_space.shape) + 1 + 1 # obs + act + rew + done
         policy = GaussianRNNPolicy(
                 name="meta-policy",
@@ -106,28 +111,32 @@ if __name__ == '__main__':
 
     sweep_params = {
         'algo': ['rl2'],
-        'seed': [1, 2, 3],
+        'seed': [1, 2],
 
         'baseline': [LinearFeatureBaseline],
         'env': [PR2ReacherEnv],
-        'exp_type': ['reach'],
+        'exp_type': ['peg'],
+        'max_torques': [(3, 3, 2, 1, 1, 0.5, 1)],
+        'ctrl_penalty': [1.25e-2],
+        'vel_penalty': [1.25e-3, 1.25e-2],
+        'log_rand' : [0, 1, 2, 3, 4],
+        'joint': [False],
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
-        'backprop_steps': [50, 100, 200],
+        'backprop_steps': [100, 200],
         "rollouts_per_meta_task": [10],
         "parallel": [True],
-        "max_path_length": [30],
-        "discount": [0.99],
+        "max_path_length": [60],
+        "discount": [0.99, 0.95],
         "gae_lambda": [1.0],
         "normalize_adv": [True],
         "positive_adv": [False],
-        "learning_rate": [1e-3],
+        "learning_rate": [1e-3, 5e-4],
         "max_epochs": [5],
         "cell_type": ["lstm"],
         "num_minibatches": [1],
-        "n_itr": [100],
-        'exp_tag': ['v0'],
-        'log_rand': [0, 1, 2]
+        "n_itr": [1000],
+        'exp_tag': ['v0']
         #'timeskip': [1, 2, 3, 4]
     }
 

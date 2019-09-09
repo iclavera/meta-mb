@@ -11,7 +11,7 @@ import os
 
 class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self,
-                 exp_type='reach',
+                 exp_type='peg',
                  max_torques=[3, 3, 2, 1, 1, 0.5, 1],
                  vel_penalty=1.25e-2,
                  ctrl_penalty=1.25e-1,
@@ -25,13 +25,8 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
         self.gains = np.array([3.09, 1.08, 0.393, 0.674, 0.111, 0.152, 0.098])
 
-        if self.exp_type == 'reach':
-            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_new.xml')
-            if self.joint:
-                self.goal = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
-                                   1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
-            else:
-                self.goal = np.array([0.61925865, 0.11996082, 0.96922978])
+        self.obs_dim = 17
+        self.act_dim = 7
 
         self.init_qpos = np.zeros(7)
         self.init_qvel = np.zeros(7)
@@ -39,20 +34,53 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
         self._low = -self.max_torques
         self._high = self.max_torques
-        RandomEnv.__init__(self, log_rand, xml_file, 4)
-        self.obs_dim = 17
-        self.act_dim = 7
+        self.reached = False
+        if self.exp_type == 'reach':
+            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_new.xml')
+            if self.joint:
+                self.goal = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
+                                   1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
+            else:
+                self.goal = np.array([0.61925865, 0.11996082, 0.96922978])
+            RandomEnv.__init__(self, log_rand, xml_file, 4)
+
+        elif self.exp_type == 'shape':
+            xml_file = os.path.joint(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_shape.xml')
+            self.reached = False
+            if self.joint:
+                raise NotImplementedError
+            else:
+                self.goal = np.zeros(3)
+            RandomEnv.__init__(self, log_rand, xml_file, 4)
+
+        elif self.exp_type == 'peg':
+            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_peg.xml')
+            if self.joint:
+                raise NotImplementedError
+            else:
+                self.goal = np.zeros(3)
+            RandomEnv.__init__(self, log_rand, xml_file, 4)
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
         action = np.clip(action, self._low, self._high)#.astype(np.float32) * self.gains
         self.do_simulation(action, self.frame_skip)
         ob = self._get_obs()
-        if not self.joint:
-            vec = self.get_ee_pos - self.goal
-        else:
-            vec = ob[:7] - self.goal
+        if self.exp_type == 'reach':
+            if not self.joint:
+                vec = self.get_ee_pos - self.goal
+            else:
+                vec = ob[:7] - self.goal
+        elif self.exp_type == 'shape':
+            raise NotImplementedError
+        elif self.exp_type == 'peg':
+            if not self.reached:
+                vec = ob[-3:] - self.get_body_com('g1')
+            else:
+                vec = ob[-3:] - self.get_body_com('g3')
         norm = np.linalg.norm(vec)
+        if not self.reached and self.exp_type == 'peg' and norm < 3e-2:
+            self.reached = True
         reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
         reward_vel = self.vel_penalty * np.square(np.linalg.norm(ob[7:14]))
         reward_ctrl = self.torque_penalty * np.square(np.linalg.norm(action))
@@ -74,11 +102,27 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         assert obs.ndim == act.ndim == obs_next.ndim
         if obs.ndim == 2:
             assert obs.shape == obs_next.shape and act.shape[0] == obs.shape[0]
-            if not self.joint:
-                vec = obs_next[:, -3:] - self.goal
-            else:
-                vec = obs_next[:, :7] - self.goal
-            norm = np.linalg.norm(vec, axis=1)
+
+            if self.exp_type == 'reach':
+                if not self.joint:
+                    vec = obs_next[:, -3:] - self.goal
+                else:
+                    vec = obs_next[:, :7] - self.goal
+                norm = np.linalg.norm(vec, axis=1)
+            elif self.exp_type == 'shape':
+                raise NotImplementedError
+            elif self.exp_type == 'peg':
+                norm = np.array()
+                for row in obs_next:
+                    if not self.reached:
+                        v = row[:-3] - self.get_body_com('g1')
+                    else:
+                        v = row[:-3] - self.get_body_com('g3')
+                v_norm = np.linalg.norm(v)
+                if not self.reached and v_norm < 3e-2:
+                    self.reached = True
+                norm.append(v_norm)
+
             reward_dist = -(np.square(norm) + np.log(np.square(norm) + self.alpha))
             reward_vel = self.vel_penalty * np.square(np.linalg.norm(obs_next[:, 7:14], axis=1))
             reward_ctrl = self.torque_penalty * np.square(np.linalg.norm(act, axis=1))
@@ -96,10 +140,21 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         #self.model.opt.gravity[2] = gravity
         while True:
             x = np.random.uniform(low=0.2, high=0.7)
-            y = np.random.uniform(low=0.1, high=0.65)
-            z = np.random.uniform(low=0.7, high=1.3)
+            y = np.random.uniform(low=0.0, high=0.2)
+            z = np.random.uniform(low=0.5, high=0.8)
             if np.linalg.norm(self.goal) < 2:
                 break
+        if self.exp_type == 'reach':
+            self.goal = np.array([x, y, z])
+        elif self.exp_type == 'shape':
+            raise NotImplementedError
+        elif self.exp_type == 'peg':
+            self.sim.model.body_pos[-4] = np.array([x, y, z])
+            self.sim.model.body_pos[-3] = self.g1()
+            self.sim.model.body_pos[-2] = self.g2()
+            self.sim.model.body_pos[-1] = self.g3()
+        else:
+            raise NotImplementedError
         qvel = self.init_qvel
         self.set_state(np.zeros(7), qvel)
         return self._get_obs()
@@ -128,12 +183,29 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
     def get_ee_pos(self):
         return self.get_body_com('ee_pos')
 
+    def g1(self):
+        x = 0.092
+        y = 0
+        z = 0.15 + np.random.uniform(low=-0.1, high=0.2)
+        return np.array([x, y, z])
+
+    def g2(self):
+        x = 0.092
+        y = 0
+        z = 0.078
+        return np.array([x, y, z])
+
+    def g3(self):
+        x = 0.092
+        y = 0
+        z = 0.04
+        return np.array([x, y, z])
 
 if __name__ == "__main__":
-    env = PR2ReacherEnv(exp_type='reach')
+    env = PR2ReacherEnv(exp_type='peg')
     file = 'pr2_'
     while True:
         env.reset()
         for i in range(200):
-            env.step(env.action_space.sample() * 0)
+            env.step(env.action_space.sample())
             env.render()
