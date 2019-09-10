@@ -4,7 +4,10 @@ import csv
 import json
 from collections import OrderedDict, defaultdict
 
+import matplotlib.pyplot as plt
+
 def load_exps_data(exp_folder_paths):
+    assert type(exp_folder_paths) is list
     exps = []
     for exp_folder_path in exp_folder_paths:
         exps += [x[0] for x in os.walk(exp_folder_path)]
@@ -22,6 +25,7 @@ def load_exps_data(exp_folder_paths):
             print(e)
     return exps_data
 
+
 def filter(exps_data, filters={}):
     print("before filtering", len(exps_data), 'exps')
     keep_array = []
@@ -36,6 +40,7 @@ def filter(exps_data, filters={}):
     print("after filtering", len(exps_data_filtered), 'exps')
     return exps_data_filtered
 
+
 def group_by(exp_data, group_by_key=None):
     split_dict = OrderedDict()
     for exp in exp_data:
@@ -47,13 +52,14 @@ def group_by(exp_data, group_by_key=None):
             elif key_str == 'maml':
                 key_str = 'ours'
         elif group_by_key == 'env.$class':
-            key_str = str(exp['flat_params'][group_by_key]).split('.')[-1]
-            if key_str[-13:] == 'EnvRandParams':
-                key_str = key_str[:-13]
-            elif key_str[-15:] == 'EnvRandomParams':
-                key_str = key_str[:-15] + '2D'
-            else:
-                key_str = key_str[:-3]
+            try:
+                key_str = str(exp['flat_params'][group_by_key]).split('.')[-1]
+            except KeyError:
+                key_str = str(exp['flat_params']['env']) + 'Env'
+        elif group_by_key == 'num_workers':
+            key_str = f"m-{exp['flat_params']['num_model_workers']}-p-{exp['flat_params']['num_policy_workers']}"
+        elif group_by_key is None:
+            key_str = None
         else:
             key_str = str(exp['flat_params'][group_by_key])
         if key_str in split_dict.keys():
@@ -61,6 +67,85 @@ def group_by(exp_data, group_by_key=None):
         else:
             split_dict[key_str] = [exp]
     return split_dict
+
+
+# def prepare_data_for_plot(exp_data, x_key='n_timesteps', y_key=None, sup_y_key=None, round_x=None):
+#     x_y_tuples = []
+#     for exp in exp_data:
+#         if sup_y_key is not None:
+#             assert type(sup_y_key) is list
+#             for key in sup_y_key:
+#                 if key in exp['progress'].keys():
+#                     x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][key])))
+#                     break
+#         else:
+#             x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key])))
+#     x_y_dict = defaultdict(list)
+#     for k, v in x_y_tuples:
+#         if round_x is not None:
+#             x_y_dict[(k//round_x) * round_x].append(v)
+#         else:
+#             x_y_dict[k].append(v)
+#     means, stddevs = [], []
+#     for key in sorted(x_y_dict.keys()):
+#         means.append(np.mean(x_y_dict[key]))
+#         stddevs.append(np.std(x_y_dict[key]))
+#     return np.array(sorted(x_y_dict.keys())), np.array(means), np.array(stddevs)
+
+
+def _load_progress(progress_csv_path):
+    print("Reading %s" % progress_csv_path)
+    entries = dict()
+    with open(progress_csv_path, 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            for k, v in row.items():
+                if k not in entries:
+                    entries[k] = []
+                try:
+                    entries[k].append(float(v))
+                except:
+                    entries[k].append(0.)
+    entries = dict([(k, np.array(v)) for k, v in entries.items()])
+    return entries
+
+
+def _load_params(params_json_path):
+    with open(params_json_path, 'r') as f:
+        data = json.loads(f.read())
+        if "args_data" in data:
+            del data["args_data"]
+        if "exp_name" not in data:
+            data["exp_name"] = params_json_path.split("/")[-2]
+    return data
+
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+def _flatten_dict(d):
+    flat_params = dict()
+    for k, v in d.items():
+        if isinstance(v, dict):
+            v = _flatten_dict(v)
+            for subk, subv in _flatten_dict(v).items():
+                flat_params[k + "." + subk] = subv
+        else:
+            flat_params[k] = v
+    return flat_params
+
+
+def correct_limit(ax, x, y_min, y_max):
+    # ax: axes object handle
+    #  x: data for entire x-axes
+    #  y: data for entire y-axes
+    # assumption: you have already set the x-limit as desired
+    lims = ax.get_xlim()
+    i = np.where((x > lims[0]) & (x < lims[1]))[0]
+    return y_min[i].min(), y_max[i].max()
 
 def prepare_data_for_plot(exp_data, x_key='n_timesteps', y_key=None, sup_y_key=None, round_x=None):
     x_y_tuples = []
@@ -81,44 +166,14 @@ def prepare_data_for_plot(exp_data, x_key='n_timesteps', y_key=None, sup_y_key=N
         stddevs.append(np.std(x_y_dict[key]))
     return np.array(sorted(x_y_dict.keys())), np.array(means), np.array(stddevs)
 
+def sorting_legend(label):
+    return LEGEND_ORDER[label]
 
-def _load_progress(progress_csv_path):
-    print("Reading %s" % progress_csv_path)
-    entries = dict()
-    with open(progress_csv_path, 'r') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            for k, v in row.items():
-                if k not in entries:
-                    entries[k] = []
-                try:
-                    entries[k].append(float(v))
-                except:
-                    entries[k].append(0.)
-    entries = dict([(k, np.array(v)) for k, v in entries.items()])
-    return entries
 
-def _load_params(params_json_path):
-    with open(params_json_path, 'r') as f:
-        data = json.loads(f.read())
-        if "args_data" in data:
-            del data["args_data"]
-        if "exp_name" not in data:
-            data["exp_name"] = params_json_path.split("/")[-2]
-    return data
-
-class AttrDict(dict):
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
-def _flatten_dict(d):
-    flat_params = dict()
-    for k, v in d.items():
-        if isinstance(v, dict):
-            v = _flatten_dict(v)
-            for subk, subv in _flatten_dict(v).items():
-                flat_params[k + "." + subk] = subv
-        else:
-            flat_params[k] = v
-    return flat_params
+def get_marker(label):
+    if label.startswith('a'):
+        return MARKER
+    else:
+        return None
+def get_linestyle(label):
+    return '-'
