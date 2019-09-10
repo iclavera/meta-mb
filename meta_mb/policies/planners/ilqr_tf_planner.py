@@ -233,7 +233,9 @@ class iLQRPlanner(object):
             opt_u_ha = [None] * horizon
             for i in range(horizon):
                 u = u_ha[i] + alpha * open_k_array.read(i) + tf.linalg.matvec(closed_K_array.read(i), (x - x_ho[i]))
-                u = tf.clip_by_value(u, self.act_low, self.act_high)
+                # u = tf.clip_by_value(u, self.act_low, self.act_high)
+                # tanh and rescale
+                u = self._activate_u(u)
                 opt_u_ha[i] = u
 
                 x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32))[0]
@@ -263,6 +265,11 @@ class iLQRPlanner(object):
         # opt_J_val = tf.Print(opt_J_val, data=['forward accepted', forward_accept, 'alpha', next_alpha*self.alpha_decay_factor, 'eff_diff', J_val-opt_J_val, 'pred_diff', -delta_J_alpha])
 
         return opt_u_ha, -opt_J_val, J_val-opt_J_val
+
+    def _activate_u(self, u):
+        scale = (self.act_high - self.act_low) * 0.5  # + 1e-8
+        loc = (self.act_high + self.act_low) * 0.5
+        return tf.tanh((u-loc)/scale) * scale + loc
 
     def get_actions(self, obs_no, verbose=True):
         if self.u_val_hna is None:

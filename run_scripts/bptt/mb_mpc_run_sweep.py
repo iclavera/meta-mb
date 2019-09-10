@@ -101,7 +101,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'env': [HalfCheetahEnv, ReacherEnv],
+        'env': [InvertedPendulumSwingUpEnv],
         'horizon': [20,],
         'num_rollouts': [20],
         'method_str': ['rs', 'cem'],
@@ -110,7 +110,7 @@ if __name__ == '__main__':
         'seed': [1],
         'normalize': [False],
          'n_itr': [201],
-        'discount': [1.0],
+        'discount': [1.0, 0.99],
 
         # Policy
         'n_candidates': [1000],
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         # Dynamics Model
         'num_models': [5],
         'hidden_nonlinearity_model': ['relu'],
-        'hidden_sizes_model': [(512,)],
+        'hidden_sizes_model': [(512, 512)],
         'dynamic_model_epochs': [15],
         'backprop_steps': [100],
         'weight_normalization_model': [False],  # FIXME: Doesn't work

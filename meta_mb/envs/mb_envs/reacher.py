@@ -102,7 +102,6 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         assert obs.get_shape().ndims == 1
         mask = np.zeros((self.obs_dim,))
         mask[-3:] = 1
-        mask = tf.constant(mask, dtype=tf.float32)
         reward_dist = -tf.linalg.norm(obs[-3:])
         r_x = mask * obs / (reward_dist)
         l_x = -r_x
@@ -114,7 +113,7 @@ class ReacherEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         # l_xx
         r_xx_unpadded = -tf.tensordot(obs[-3:], obs[-3:], axes=0) / reward_dist**3
         r_xx_unpadded += tf.eye(3) / reward_dist
-        r_xx = tf.pad(r_xx_unpadded, tf.constant([[self.obs_dim-3, 0], [self.obs_dim-3, 0]]))
+        r_xx = tf.pad(r_xx_unpadded, [[self.obs_dim-3, 0], [self.obs_dim-3, 0]])
         l_xx = -r_xx
 
         # l_uu

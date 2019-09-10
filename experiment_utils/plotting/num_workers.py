@@ -22,26 +22,25 @@ plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=BIG_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIG_SIZE)  # fontsize of the figure title
 
-prop_cycle = plt.rcParams['axes.prop_cycle']
-colors = prop_cycle.by_key()['color']
-print(colors)
+# prop_cycle = plt.rcParams['axes.prop_cycle']
+# colors = prop_cycle.by_key()['color']
 # colors = ['green', 'blue', 'red', 'yellow', 'black']
 # Use cycler to change the color
 # keys = list(colors.keys())      # Python 3; use keys = d.keys() in Python 2
 # random.shuffle(colors)
 # colors = [(key, colors[key]) for key in keys]
-colors = [
-    (0, 107, 164),  # ORANGE
-    (255, 128, 14),  # BLUE
-    # (171, 171, 171),  # GREY
-    # (89, 89, 89),  # LIGHT GREY
-    (137, 137, 137),  # VERY DARK GREY
-    (95, 158, 209),  # LIGHT BLUE
-    # (163, 200, 236), # VERY LIGHT BLUE
-    # (255, 188, 121),  # LIGHT ORANGE
-    (200, 82, 0),  # RED
-    (207, 207, 207),  # LIGHT GREY
-]  # COLOR-BLIND
+# colors = [
+#     (0, 107, 164),  # ORANGE
+#     (255, 128, 14),  # BLUE
+#     # (171, 171, 171),  # GREY
+#     # (89, 89, 89),  # LIGHT GREY
+#     (137, 137, 137),  # VERY DARK GREY
+#     (95, 158, 209),  # LIGHT BLUE
+#     # (163, 200, 236), # VERY LIGHT BLUE
+#     # (255, 188, 121),  # LIGHT ORANGE
+#     (200, 82, 0),  # RED
+#     (207, 207, 207),  # LIGHT GREY
+# ]  # COLOR-BLIND
 colors = [
     (31, 119, 180),
     (255, 127, 14),
@@ -55,11 +54,9 @@ colors = [
 for idx, color in enumerate(colors):
     colors[idx] = '#%02x%02x%02x' % color
 COLORS = dict()
-LEGEND_ORDER = {'a-me-trpo':0 , 'a-me-ppo':1, 'a-mb-mpo': 2, 'a-mb-mpc': 3,
-                'me-trpo': 4, 'me-ppo': 5, 'mb-mpo': 6, 'mb-mpc': 7,
-                'trpo': 8, 'ppo': 9}
+LEGEND_ORDER = {'m-1-p-1': 0, 'm-1-p-2': 1, 'm-2-p-1': 2,'m-2-p-2': 3}
 
-data_path = '/home/yunzhi/mb/meta-mb/corl_data/time_comparison/'
+data_path = '/home/yunzhi/mb/meta-mb/final_data/multi_workers'
 
 exps_data = load_exps_data([data_path])
 
@@ -73,84 +70,27 @@ sampling_time = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 0.008,
                  'meta_mb.envs.mujoco.hopper_env.HopperEnv': 0.008,
                  'Hopper': 0.008,
                  }
-round_plot = {'a-me-ppo': {'Hopper': 5000,
-                           'Walker2d': 5000,
-                           'Ant': 5000,
-                           'HalfCheetah': 5000,
-                      },
-                'a-mb-mpo': {'Hopper':5000,
-                           'Walker2d': 5000,
-                           'Ant': 5000,
-                           'HalfCheetah': 5000,
-                      },
-            'me-ppo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
-                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
-                        'meta_mb.envs.mb_envs.ant.AntEnv': 5000,
-                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
-                      },
-            'me-trpo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
-                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
-                        'meta_mb.envs.mb_envs.ant.AntEnv': 5000,
-                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
-                      },
-            'mbmpo': {'meta_mb.envs.mb_envs.hopper.HopperEnv': 5000,
-                        'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 5000,
-                        'meta_mb.envs.mb_envs.ant.AntEnv': 500,
-                        'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': 5000,
-                      }
 
-         }
-
-x_limits = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': [0, 20e4],
-            'Walker2d': [0, 20e4],
-            'meta_mb.envs.mb_envs.half_cheetah.HalfCheetahEnv': [0, 20e4],
-            'HalfCheetah': [0, 20e4],
-            'meta_mb.envs.mb_envs.ant.AntEnv': [0, 25e4],
-            'Ant': [0, 25e4],
-            'meta_mb.envs.mb_envs.hopper.HopperEnv': [0, 20e4],
-            'meta_mb.envs.mujoco.hopper_env.HopperEnv': [0, 20e4],
-            'Hopper': [0, 20e4],
+x_limits = {'Walker2d': [0, 1.6e7],
+            'HalfCheetah': [0, 1.6e7],
+            'Ant': [0, 1.6e7],
+            'Hopper': [0, 1.6e7],
             }
-
 
 def prepare_data_for_plot(exp_data,
                           y_key=None,
                           sup_y_key=None,
                           round_x=None,
                           add_sampling_time=False):
+    x_key = 'Data-EnvSampler-TimeStepsCtr'
     x_y_tuples = []
-    x_key = 'n_timesteps'
-    asynch = exp_data[0]['flat_params'].get('async', False)
+    max_path_length = exp_data[0]['flat_params']['max_path_length']
     for exp in exp_data:
-        if not asynch:
-            if sup_y_key is not None:
-                assert type(sup_y_key) is list
-                for key in sup_y_key:
-                    if key in exp['progress'].keys():
-                        x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][key])))
-                        break
-            else:
-                x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key])))
-        else:
-            if sup_y_key is not None:
-                assert type(sup_y_key) is list
-                for key in sup_y_key:
-                    if key in exp['progress'].keys():
-                        env_time = sampling_time[exp['flat_params']['env']]
-                        x_y_tuples.extend(list(zip(exp['progress']['Data-TimeSoFar']/env_time, exp['progress'][key])))
-                        # x_y_tuples.extend(list(zip(exp['progress']['Data-TotalStep']*exp['flat_params']['max_path_length'], exp['progress'][key])))
-                        break
-            else:
-                raise NotImplementedError
+        if x_key in exp['progress']:
+            x_y_tuples.extend(list(zip(exp['progress'][x_key]*max_path_length, exp['progress'][y_key])))
     x_y_dict = defaultdict(list)
-    if asynch:
-        env = exp_data[0]['flat_params']['env']
-    else:
-        env = exp_data[0]['flat_params']['env.$class']
 
-    algo = exp_data[0]['flat_params']['algo']
-    _round_x = round_plot.get(algo, dict()).get(env, None)
-    round_x = _round_x if _round_x is not None else round_x
+    env = exp_data[0]['flat_params']['env']
     for k, v in x_y_tuples:
         if round_x is not None:
             x_y_dict[(k//round_x) * round_x].append(v)
@@ -168,30 +108,25 @@ def sorting_legend(label):
 
 
 def get_color(label):
-    asynch = True if label[:2] == 'a-' else False
     if label not in COLORS.keys():
         new_color = colors.pop(0)
         COLORS[label] = new_color
-        if asynch:
-            COLORS[label[2:]] = new_color
-        else:
-            COLORS['a-' + label] = new_color
     return COLORS[label]
 
 
 def get_linestyle(label):
-    if label.startswith('a'):
-        return '-'
-    elif label.startswith('m'):
-        return '--'
-    else:
-        return ':'
+    # if label.startswith('a'):
+    #     return '-'
+    # elif label.startswith('m'):
+    #     return '--'
+    # else:
+    return None
 
 def get_marker(label):
-    if label.startswith('a'):
-        return MARKER
-    else:
-        return None
+    # if label.startswith('a'):
+    #     return MARKER
+    # else:
+    return None
 
 
 def plot_from_exps(exp_data,
@@ -244,8 +179,6 @@ def plot_from_exps(exp_data,
 
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
-            if _label.startswith('a-'):
-                _label = 'asynch-' + _label[2:]
             if log_scale:
                 axarr[r, c].semilogx(x, y_mean, label=_label, linewidth=LINEWIDTH,
                                      color=get_color(label), linestyle=get_linestyle(label), marker=get_marker(label), markersize=10)
@@ -288,22 +221,19 @@ exps_data_filtered = filter(exps_data, filter_dict)
 
 plot_from_exps(exps_data,
                split_figures_by='env.$class',
-               split_plots_by='algo',
-               y_key='train-AverageReturn',
-               x_key='Time',
+               split_plots_by='num_workers',
+               y_key='Data-EnvTrajs-AverageReturn',
+               x_key='Data-0-TotalStep',
                filters=filter_dict,
-               sup_y_key=['EnvTrajs-AverageReturn',
-                          'Data-EnvTrajs-AverageReturn',
-                          'train-AverageReturn'],
                # subfigure_titles=['HalfCheetah - output_bias_range [0.0, 0.1]',
                #                  'HalfCheetah - output_bias_range [0.0, 0.5]',
                #                  'HalfCheetah - output_bias_range [0.0, 1.0]'],
                # plot_labels=['ME-MPG', 'ME-TRPO'],
                x_label='Time-steps',
                y_label='Average Return',
-               plot_name='./comparison_samples2.pdf',
+               plot_name='./num_workers.pdf',
                num_rows=1,
                report_max_performance=False,
                log_scale=False,
-               round_x=5000,
+               round_x=6e5,
                )

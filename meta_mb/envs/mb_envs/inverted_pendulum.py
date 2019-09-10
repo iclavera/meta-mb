@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import meta_mb.policies.utils as p_utils
 from gym import utils
 from gym.envs.mujoco import mujoco_env
 from meta_mb.meta_envs.base import MetaEnv
@@ -208,26 +209,38 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
             assert obs.shape == next_obs.shape
         if obs.ndim == 2:
             assert obs.shape[0] == acts.shape[0]
-            return -(obs[:, 1] - np.pi) ** 2
-        elif obs.ndim == 1:
-            return -(obs[1] - np.pi) ** 2
+            return -(obs[:, 1] - np.pi) ** 2 - 0.1*np.sum(np.square(acts), axis=1)
         else:
-            raise NotImplementedError
+            return -(obs[1] - np.pi) ** 2 - 0.1*np.sum(np.square(acts))
 
     def tf_reward(self, obs, acts, next_obs):
         if obs.get_shape().ndims == 1:
-            return -tf.square(obs[1] - np.pi)
-        elif obs.get_shape().ndims == 2:
-            return -tf.square(obs[:, 1] - np.pi)
+            return -tf.square(obs[1] - np.pi) - 0.1*tf.reduce_sum(tf.square(acts))
+        else:
+            return -tf.square(obs[:, 1] - np.pi) - 0.1*tf.reduce_sum(tf.square(acts), axis=1)
 
     def tf_dl(self, obs, act, next_obs):
+        # obs_dim, act_dim = self.obs_dim, self.act_dim
+        # x_u_concat = tf.concat([obs, act], axis=0)
+        # obs, act = x_u_concat[:obs_dim], x_u_concat[-act_dim:]
+        # reward = self.tf_reward(obs, act, next_obs)
+        # l_x, = tf.gradients([-reward], obs)
+        # l_u, = tf.gradients([-reward], act)
+        # hess, = tf.hessians(ys=-reward, xs=[x_u_concat])
+        # l_xx = hess[:obs_dim, :obs_dim]
+        # l_uu = hess[-act_dim:, -act_dim:]
+        # l_ux = (hess[-act_dim:, :obs_dim] + tf.transpose(hess[:obs_dim, -act_dim:])) * 0.5
+        # return l_x, l_u, l_xx, l_uu, l_ux
+
         # l_x
         mask = np.zeros((self.obs_dim,))
-        mask[1] = -2
-        l_x = -mask * (obs-np.pi)
+        mask[1] = 1
+        r_x = -2*(obs[1]-np.pi)*mask
+        l_x = -r_x
 
         # l_u
-        l_u = tf.zeros((self.act_dim,))
+        r_u = -0.2 * act
+        l_u = -r_u
 
         # l_xx
         r_xx = np.zeros((self.obs_dim, self.obs_dim))
@@ -235,7 +248,8 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         l_xx = -tf.constant(r_xx)
 
         # l_uu
-        l_uu = tf.zeros((self.act_dim, self.act_dim))
+        r_uu = -0.2 * tf.eye(self.act_dim)
+        l_uu = -r_uu
 
         # l_ux
         l_ux = tf.zeros((self.act_dim, self.obs_dim))
@@ -297,7 +311,9 @@ class InvertedPendulumSwingUpEnv(mujoco_env.MujocoEnv, utils.EzPickle, MetaEnv):
         hess = np.zeros((obs.shape[0], self.act_dim, self.obs_dim))
         return -hess
 
+    # FIXME: need to add derivatives for reward_ctrl
     def dl_dict(self, inputs_dict):
+        raise NotImplementedError  # reward function changed!
         # FOR NEGATIVE RETURNS
         obs, acts = inputs_dict['obs'], inputs_dict['act']
         return OrderedDict(l_x=-self.deriv_reward_obs(obs, acts),

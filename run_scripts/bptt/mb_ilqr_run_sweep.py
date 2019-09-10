@@ -170,18 +170,18 @@ if __name__ == '__main__':
         'on_policy_freq': [1],
 
         # Problem
-        'env': [ReacherEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HalfCheetahEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
-        'n_itr': [201],
-        'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [15],
+        'n_itr': [101],
+        'discount': [1, 0.99],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
+        'horizon': [5, 15],
 
         # Policy
         'initializer_str': ['zeros',],
 
         # iLQR
-        'num_ilqr_iters': [10,],
+        'num_ilqr_iters': [5, 10],
         'mu_min': [1e-6],
         'mu_max': [1e10],
         'mu_init': [1e-5],
@@ -202,14 +202,14 @@ if __name__ == '__main__':
         'cem_num_rollouts': [20],
 
         # Training
-        'num_rollouts': [1],
+        'num_rollouts': [20],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'initial_sinusoid_samples': [False],
 
         # Dynamics Model
-        'num_models': [5,],
+        'num_models': [2, 5],
         'hidden_nonlinearity_model': ['swish', 'relu'],
         'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],
