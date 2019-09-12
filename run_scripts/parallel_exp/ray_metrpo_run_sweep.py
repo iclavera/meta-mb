@@ -13,6 +13,7 @@ from meta_mb.trainers.ray_metrpo_trainer import RayTrainer
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
+from math import ceil
 
 INSTANCE_TYPE = 'c4.4xlarge'
 EXP_NAME = 'ray-metrpo'
@@ -35,7 +36,9 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', 'tmp')
+    kwargs['n_itr'] = ceil(8e4/(kwargs['num_data_workers']*kwargs['num_rollouts']*kwargs['max_path_length']))
+
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', 'tmp') + "-" + str(kwargs['num_rollouts']*kwargs['num_data_workers']) + "-" + str(kwargs['num_model_workers']) + "-" + str(kwargs['num_policy_workers'])
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -188,17 +191,17 @@ if __name__ == '__main__':
         #     [False, False, False],
         # ],
         'rolling_average_persitency': [
-            0.4, #0.1, 0.99,
+            0.4, 0.1, 0.99,
         ],
 
         'seed': [1,],
         'n_itr': [401],
-        'num_rollouts': [1],
+        'num_rollouts': [1, 2, 5, 10],
 
         'simulation_sleep_frac': [1,],
-        'num_data_workers': [1,],
-        'num_model_workers': [1, 2],
-        'num_policy_workers': [1, 2],
+        'num_data_workers': [1],
+        'num_model_workers': [1,],
+        'num_policy_workers': [1,],
         'env': ['Walker2d'],
 
         # Problem Conf
@@ -222,7 +225,7 @@ if __name__ == '__main__':
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [5e-4],
+        'dynamics_learning_rate': [1e-4, 5e-4, 1e-3],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],

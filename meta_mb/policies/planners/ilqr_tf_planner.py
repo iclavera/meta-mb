@@ -191,8 +191,13 @@ class iLQRPlanner(object):
                 Q_ux = l_ux + tf.transpose(f_u) @ V_prime_xx @ f_x
 
             # use conjugate gradient method to solve for k, K
-            accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
-            accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
+            # accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
+            # accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
+            accept_k, accept_K = True, True
+            Q_uu_inv = tf.linalg.inv(Q_uu + tf.eye(act_dim))
+            k = tf.linalg.matvec(Q_uu_inv, -Q_u)
+            K = Q_uu_inv @ (-Q_ux)
+
             # set new_reject = False and do the next step in backward pass if and only if both cg converge
             reject = tf.logical_not(tf.logical_and(accept_k, accept_K))
 
@@ -250,8 +255,12 @@ class iLQRPlanner(object):
 
         # if the previous iteration converges, break the while loop
         cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha: tf.math.logical_not(
-            tf.math.logical_and(tf.greater(J_val, prev_opt_J_val), tf.greater(J_val-prev_opt_J_val, -self.c_1*prev_delta_J_alpha))
+            tf.math.logical_and(tf.greater(0, prev_delta_J_alpha), tf.greater(J_val-prev_opt_J_val, -self.c_1*prev_delta_J_alpha))
         )
+        # cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha: tf.math.logical_not(
+        #     # tf.math.logical_and(tf.greater(prev_delta_J_alpha, 0), tf.greater(J_val-prev_opt_J_val, self.c_1*prev_delta_J_alpha))
+        #     tf.greater(prev_delta_J_alpha, 0),
+        # )
         loop_vars = (self.alpha_init, J_val, tf.zeros(()), u_ha)
         # loop args right before convergence or maximum iteration is reached
         terminal_loop_vars = tf.while_loop(

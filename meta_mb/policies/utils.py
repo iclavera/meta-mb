@@ -38,8 +38,8 @@ def jacobian_wrapper(y, x, dim_y, dim_x=None, stop_gradients=None):
 def hessian_wrapper(y, x, dim_y, dim_x=None):
     """
 
-    :param y: (batch_size, dim_y)
-    :param x: (batch_size, dim_x)
+    :param y: (dim_y)
+    :param x: (dim_x)
     :param dim_y:
     :param dim_x:
     :param stop_gradient:

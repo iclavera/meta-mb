@@ -69,6 +69,46 @@ class MPCController(Serializable):
 
         return actions, agent_infos
 
+    def get_actions(self, observations, verbose=True):
+        n = self.n_candidates
+        m = len(observations)
+        h = self.horizon
+        act_dim = self.env.action_space.shape[0]
+
+        num_elites = max(int(self.n_candidates * self.percent_elites), 1)
+        mean = np.ones((m, h * act_dim)) * (self.env.action_space.high + self.env.action_space.low)/2
+        std = np.ones((m, h * act_dim)) * (self.env.action_space.high - self.env.action_space.low)/16
+        clip_low = np.concatenate([self.env.action_space.low] * h)
+        clip_high = np.concatenate([self.env.action_space.high] * h)
+
+        for i in range(self.num_cem_iters):
+            z = np.random.normal(size=(n, m,  h * act_dim))
+            a = mean + z * std
+            a = np.clip(a, clip_low, clip_high)
+            a_stacked = a.copy()
+            a = a.reshape((n * m, h, act_dim))
+            a = np.transpose(a, (1, 0, 2))
+            returns = np.zeros((n * m * self.num_particles,))
+
+            cand_a = a[0].reshape((m, n, -1))
+            observation = np.repeat(observations, n * self.num_particles, axis=0)
+            for t in range(h):
+                a_t = np.repeat(a[t], self.num_particles, axis=0)
+                next_observation = self.dynamics_model.predict(observation, a_t, deterministic=False)
+                rewards = self.unwrapped_env.reward(observation, a_t, next_observation)
+                returns += self.discount ** t * rewards
+                observation = next_observation
+            returns = np.mean(np.split(returns.reshape(m, n * self.num_particles),
+                                       self.num_particles, axis=-1), axis=0)   # TODO: Make sure this reshaping works
+            elites_idx = ((-returns).argsort(axis=-1) < num_elites).T
+            elites = a_stacked[elites_idx]
+            mean = mean * self.alpha + (1 - self.alpha) * np.mean(elites, axis=0)
+            std = np.std(elites, axis=0)
+            lb_dist, ub_dist = mean - self.env.action_space.low, self.env.action_space.high - mean
+            std = np.minimum(np.minimum(lb_dist/2, ub_dist/2), std)
+
+        return cand_a[range(m), np.argmax(returns, axis=1)]
+
     def get_random_action(self, n):
         return np.random.uniform(low=self.act_low,
                                  high=self.act_high, size=(n,) + self.act_low.shape)

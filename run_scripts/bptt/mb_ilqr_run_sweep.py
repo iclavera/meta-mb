@@ -37,7 +37,7 @@ def run_experiment(**config):
         repr += 'reacher'
         config['max_path_length'] = 50
 
-    repr += f"-{config['horizon']}"
+    repr += f"-{config['horizon']}-{config['num_ilqr_iters']}-{config['c_1']}-{config['num_models']}"
 
     if config.get('model_path', None) is not None:
         repr += '-pretrain'
@@ -165,7 +165,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'seed': [1],
+        'seed': [1, 2],
         'fit_model': [True],
         'on_policy_freq': [1],
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
         'cem_num_rollouts': [20],
 
         # Training
-        'num_rollouts': [20],
+        'num_rollouts': [1], # FIXME: 20
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
@@ -210,7 +210,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'num_models': [2, 5],
-        'hidden_nonlinearity_model': ['swish', 'relu'],
+        'hidden_nonlinearity_model': ['swish',],
         'output_nonlinearity_model': [None],
         'dynamic_model_epochs': [50],
         'weight_normalization_model': [False],  # FIXME: Doesn't work
