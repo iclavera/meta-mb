@@ -458,6 +458,10 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
                                 shape:  (n_samples, ndim_obs) - in case of 'rand' and 'mean' mode
                                         (n_samples, ndim_obs, n_models) - in case of 'all' mode
         """
+        # if obs.ndim == 1:
+        #     st()
+        #     obs = [obs for _ in range(act.shape[0])]
+        #     obs = np.array(obs)
         assert obs.shape[0] == act.shape[0]
         assert obs.ndim == 2 and obs.shape[1] == self.obs_space_dims
         assert act.ndim == 2 and act.shape[1] == self.action_space_dims

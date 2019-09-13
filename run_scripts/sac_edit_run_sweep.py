@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "rant-r"
+EXP_NAME = "mpc-hopper-1"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -16,14 +16,13 @@ from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
+from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
-# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_es import ProbMLPDynamicsEnsembleEs
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
+# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 # from meta_mb.dynamics.done_predictor import DonePredictor
-# import os.path as osp
 
 
 
@@ -69,12 +68,15 @@ def run_experiment(**kwargs):
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             squashed=True
         )
+
+
+
         if kwargs['policy_hidden_sizes'] == ():
             ground_truth = True
         else:
             ground_truth = False
 
-        env_sampler = BaseSampler(
+        train_env_sampler = BaseSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
@@ -82,13 +84,25 @@ def run_experiment(**kwargs):
 
         )
 
-        env_sample_processor = ModelSampleProcessor(
+        train_env_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             discount=kwargs['discount'],
             gae_lambda=kwargs['gae_lambda'],
             normalize_adv=kwargs['normalize_adv'],
             positive_adv=kwargs['positive_adv'],
         )
+
+
+
+        eval_env_sample_processor = ModelSampleProcessor(
+            baseline=baseline,
+            discount=kwargs['discount'],
+            gae_lambda=kwargs['gae_lambda'],
+            normalize_adv=kwargs['normalize_adv'],
+            positive_adv=kwargs['positive_adv'],
+        )
+
+
 
         assert kwargs['model_type'] in [0, 3]
         if kwargs['model_type'] == 0:
@@ -175,15 +189,38 @@ def run_experiment(**kwargs):
                 actor_H=kwargs['actor_H'],
             )
 
+        eval_policy = MPCController(
+            name="mpc",
+            env=env,
+            dynamics_model=dynamics_model,
+            discount=kwargs['discount'],
+            n_candidates=kwargs['n_candidates'],
+            horizon=kwargs['horizon'],
+            use_cem=kwargs['use_cem'],
+            num_cem_iters=kwargs['num_cem_iters'],
+            Qs=Qs,
+        )
+
+        eval_env_sampler = BaseSampler(
+            env=env,
+            policy=policy,
+            num_rollouts=kwargs['num_rollouts'],
+            max_path_length=kwargs['max_path_length'],
+            mpc=eval_policy,
+
+        )
 
 
         trainer = Trainer(
             algo=algo,
             env=env,
-            env_sampler=env_sampler,
-            env_sample_processor=env_sample_processor,
+            train_env_sampler=train_env_sampler,
+            eval_env_sampler=eval_env_sampler,
+            train_env_sample_processor=train_env_sample_processor,
+            eval_env_sample_processor=eval_env_sample_processor,
             dynamics_model=dynamics_model,
             policy=policy,
+            # eval_policy=eval_policy,
             n_itr=kwargs['n_itr'],
             sess=sess,
             n_initial_exploration_steps=kwargs['n_initial_exploration_steps'],
@@ -209,9 +246,9 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90, 2098, 208],
+        'seed': [90, 230],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HopperEnv],
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
@@ -228,18 +265,18 @@ if __name__ == '__main__':
 		'n_itr': [1000],
         'n_train_repeats': [8],
         'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 25]],
+		'rollout_length_params': [[20, 100, 1, 15]],
         'model_train_freq': [250],
-        'early_stopping': [0],
+        'early_stopping': [1],
 		'rollout_batch_size': [100e3],
 		'dynamics_model_max_epochs': [200],
-		'rolling_average_persitency':[0.4],
+		'rolling_average_persitency':[0.9],
 		'q_function_type':[5],
 		'q_target_type': [1],
-		'num_actions_per_next_observation':[5],
-        'max_epochs_since_update': [5],
+		'num_actions_per_next_observation':[10],
+        'max_epochs_since_update': [5, 8],
         'H': [2],
-        'T': [2, 3],
+        'T': [3],
         'actor_H': [1],
 		'reward_scale': [1],
 		'target_entropy': [1],
@@ -248,12 +285,16 @@ if __name__ == '__main__':
 		'dynamics_buffer_size': [1e4],
         'q_loss_importance': [1],
         'method': [4],
-        'num_eval_trajectories': [3, 1],
+        'num_eval_trajectories': [1],
 
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['tanh'],
 
         # Value Function
         'vfun_hidden_nonlineariy': ['tanh'],
+        'n_candidates': [100, 50], # K
+        'horizon': [5, 3], # Tau
+        'use_cem': [True],
+        'num_cem_iters': [5],
         'normalize_input': [True],
 
 
@@ -263,7 +304,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['none'],
+		'prediction_type':['none', 'rand'],
 
         # Dynamics Model
 		'sampler_batch_size': [256],

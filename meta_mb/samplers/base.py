@@ -19,7 +19,7 @@ class BaseSampler(object):
         max_path_length (int) : max number of steps per trajectory
     """
 
-    def __init__(self, env, policy, num_rollouts, max_path_length):
+    def __init__(self, env, policy, num_rollouts, max_path_length, mpc=None):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
@@ -28,8 +28,16 @@ class BaseSampler(object):
 
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
+        self.mpc=mpc
 
-    def obtain_samples(self, log=False, log_prefix='', random=False, deterministic=False, multiple_trajectory=1):
+    def obtain_samples(self,
+                       log=False,
+                       log_prefix='',
+                       random=False,
+                       deterministic=False,
+                       eval=False,
+                       multiple_trajectory=1,
+                       dynamics_model = None):
         """
         Collect batch_size trajectories from each task
 
@@ -65,19 +73,38 @@ class BaseSampler(object):
 
                 # execute policy
                 t = time.time()
-                if random:
-                    action = self.env.action_space.sample()
-                    agent_info = {}
-                elif deterministic:
-                    action, agent_info = policy.get_action(obs)
-                    # if self.policy.name != 'np_policy':
-                    action = agent_info['mean']
-                    if self.policy.squashed:
-                        action = np.tanh(action)
+                if eval:
+                    H = self.mpc.horizon
+                    mean_list = []
+                    std_list = []
+                    observation = obs
+                    for t in range(H+1):
+                        action, agent_info = policy.get_action(observation)
+                        action = agent_info['mean']
+                        mean_list.append(action)
+                        std_list.append(agent_info['log_std'])
+                        if self.policy.squashed:
+                            action = np.tanh(action)
+                        if observation.ndim == 1:
+                            observation = observation[None]
+                        if action.ndim == 1:
+                            action = action[None]
+                        observation = dynamics_model.predict(observation, action)
+                        observation = observation.reshape((-1))
+                    action = self.mpc.get_cem_action(obs[None], mean_list, std_list)
                 else:
-                    action, agent_info = policy.get_action(obs)
-                    if action.ndim == 2:
-                        action = action[0]
+                    if random:
+                        action = self.env.action_space.sample()
+                        agent_info = {}
+                    elif deterministic:
+                        action, agent_info = policy.get_action(obs)
+                        action = agent_info['mean']
+                        if self.policy.squashed:
+                            action = np.tanh(action)
+                    else:
+                        action, agent_info = policy.get_action(obs)
+                        if action.ndim == 2:
+                            action = action[0]
                 policy_time += time.time() - t
 
                 # step environments

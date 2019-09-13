@@ -6,7 +6,7 @@ from meta_mb.logger import logger
 import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
-
+from meta_mb.utils import compile_function
 
 class ValueFunction(Serializable):
     """
@@ -73,6 +73,7 @@ class ValueFunction(Serializable):
 
             self.vfun_params_ph = self._create_placeholders_for_vars(scope=self.name + "/v_network")
             self.vfun_params_keys = self.vfun_params_ph.keys()
+            self.var_pred = compile_function([self.input_var], self.output_var)
 
     def log_diagnostics(self, paths, prefix=''):
         """
@@ -113,6 +114,10 @@ class ValueFunction(Serializable):
                                                 )
 
         return output_var
+
+    def value(self, input_array):
+        result = np.array(self.var_pred(input_array))
+        return result
 
     def distribution_info_keys(self, obs, state_infos):
         """

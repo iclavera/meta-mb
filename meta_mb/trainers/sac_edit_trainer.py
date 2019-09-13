@@ -31,13 +31,16 @@ class Trainer(object):
             self,
             algo,
             env,
-            env_sampler,
-            env_sample_processor,
+            train_env_sampler,
+            eval_env_sampler,
+            train_env_sample_processor,
+            eval_env_sample_processor,
             dynamics_model,
             policy,
             n_itr,
             rollout_length_params,
             sess=None,
+            # eval_policy=None,
             n_initial_exploration_steps=1e3,
             env_max_replay_buffer_size=1e6,
             model_max_replay_buffer_size=2e6,
@@ -58,11 +61,14 @@ class Trainer(object):
             ):
         self.algo = algo
         self.env = env
-        self.env_sampler = env_sampler
-        self.env_sample_processor = env_sample_processor
+        self.train_env_sampler = train_env_sampler
+        self.eval_env_sampler = eval_env_sampler
+        self.train_env_sample_processor = train_env_sample_processor
+        self.eval_env_sample_processor = eval_env_sample_processor
         self.dynamics_model = dynamics_model
-        self.baseline = env_sample_processor.baseline
+        self.baseline = train_env_sample_processor.baseline
         self.policy = policy
+        # self.eval_policy = eval_policy
         self.n_itr = n_itr
         self.rollout_length_params = rollout_length_params
         self.n_initial_exploration_steps = n_initial_exploration_steps
@@ -74,7 +80,7 @@ class Trainer(object):
         self.real_ratio = real_ratio
         self.num_eval_trajectories = num_eval_trajectories
         self.model_deterministic = model_deterministic
-        self.epoch_length = self.env_sampler.max_path_length - 1
+        self.epoch_length = self.train_env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
         self.dynamics_model_max_epochs = dynamics_model_max_epochs
         self.sampler_batch_size = sampler_batch_size
@@ -112,8 +118,8 @@ class Trainer(object):
             self.start_itr=0
             self.algo._update_target(tau=1.0)
             while self.env_replay_buffer._size < self.n_initial_exploration_steps:
-                paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
-                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
+                paths = self.train_env_sampler.obtain_samples(log=True, log_prefix='train-', random=True)
+                samples_data = self.train_env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
                 self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                    samples_data['dones'], samples_data['next_observations'])
 
@@ -128,8 +134,8 @@ class Trainer(object):
                 itr_start_time = time.time()
                 logger.log("\n ---------------- Iteration %d ----------------" % itr)
                 logger.log("Sampling set of tasks/goals for this meta-batch...")
-                paths = self.env_sampler.obtain_samples(log=True, log_prefix='train-')
-                samples_data = self.env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
+                paths = self.train_env_sampler.obtain_samples(log=True, log_prefix='train-')
+                samples_data = self.train_env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
 
                 fit_start = time.time()
                 all_samples = self.env_replay_buffer.all_samples()
@@ -174,13 +180,13 @@ class Trainer(object):
                             model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                             keys = env_batch.keys()
                             batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            if self.ground_truth:
-                                reward = []
-                                for t in range(self.T):
-                                    next_obs = batch['next_observations']
-                                    next_actions = self.policy.get_actions(next_obs)[0]
-                                    result = self.env.step_batch(next_obs, next_actions, t, reward)
-                                batch.update(result)
+                            # if self.ground_truth:
+                            #     reward = []
+                            #     for t in range(self.T):
+                            #         next_obs = batch['next_observations']
+                            #         next_actions = self.policy.get_actions(next_obs)[0]
+                            #         result = self.env.step_batch(next_obs, next_actions, t, reward)
+                            #     batch.update(result)
                             self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -188,15 +194,20 @@ class Trainer(object):
                                                    samples_data['rewards'],
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
-                multiple_trajectories = self.env_sampler.obtain_samples(log=True, log_prefix='eval-', deterministic=True, multiple_trajectory = self.num_eval_trajectories)
-                _ = self.env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
+                multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
+                                                                             deterministic=True,
+                                                                             eval=True,
+                                                                             log_prefix='eval-',
+                                                                             multiple_trajectory = self.num_eval_trajectories,
+                                                                             dynamics_model = self.dynamics_model)
+                _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
 
-                self.log_diagnostics(paths[0], prefix='train-')
+                # self.log_diagnostics(paths[0], prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
                 logger.logkv('rollout_length', self.rollout_length)
-                logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
+                logger.logkv('n_timesteps', self.train_env_sampler.total_timesteps_sampled)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
                 logger.logkv('SAC Training Time', sum(sac_time))
                 logger.logkv('Model Rollout Time', sum(expand_model_replay_buffer_time))
@@ -229,6 +240,7 @@ class Trainer(object):
         assert self.dynamics_type in [0, 3]
         if self.dynamics_type == 0 or self.dynamics_type == 3:
             next_observation = self.dynamics_model.predict(obs, actions)
+            # next_observation = np.ones(obs.shape)
             rewards = self.env.reward(obs, actions, next_observation)
             dones = self.env.termination_fn(obs, actions, next_observation)
 
