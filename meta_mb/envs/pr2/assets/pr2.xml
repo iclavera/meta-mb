@@ -17,7 +17,7 @@
 				coordinate="local"
 				angle="radian"/>
 
-	<option timestep="0.05" gravity="0 0 0" collision="all"/>
+	<option timestep="0.05" gravity="0 0 0" collision="all"/> 
 	<asset>
 		<mesh file="base_L.stl"/>
 		<mesh file="caster_L.stl"/>
@@ -69,9 +69,15 @@
             <body name="base_link" pos="0 0 0.051">
                 <inertial pos="-0.061 0 0.293" quat="0.973598 0.001764 -0.228065 -0.009443" mass="116" diaginertia="6.293885 5.669245 3.041772" />
                 <geom name="base" rgba="1 1 1 1" mesh="base_L" contype="0"/>
-                <body name="torso_lift_link" pos="-0.05 0 0.739675">
+                <body name="torso_lift_link" pos="-0.05 0 1.049675">
                     <inertial pos="-0.1 0 -0.0885" quat="0.999335 0.007626 0.035453 0.003712" mass="36.248046" diaginertia="2.783075 2.510450 0.514581" />
                     <geom name="geom15" rgba="0.9 0.9 0.9 1" mesh="torso_lift_L" contype="0"/>
+                    <geom name="laser" rgba="0.9 0.9 0.9 1" pos="0.1 0 0.225" mesh="tilting_hokuyo_L" contype="0"/>
+                    <geom name="pan" rgba="0.9 0.9 0.9 1" pos="0 0 0.375" mesh="head_pan_L" contype="0"/>
+                    <body name="head_tilt">
+                        <geom name="tilt" rgba="0.9 0.9 0.9 1" pos="0.075 0 0.375" mesh="head_tilt_L" contype="0"/>
+                        <camera pos="0.125 0.025 0.5" fovy="65" euler="0  -0.785 1.5707" name="stereo"/>
+                    </body>
                     <body name="r_shoulder_pan_link" pos="0 -0.188 0">
                         <inertial pos="-0.001201 0.024513 -0.098231" quat="0.927482 -0.087656 0.074060 -0.355821" mass="25.799322" diaginertia="0.934201 0.837701 0.242033" />
                         <geom name="geom32" rgba="0.7 0.7 0.7 1" mesh="shoulder_pan" contype="0"/>
@@ -192,6 +198,7 @@
                                                                 <body name="l_gripper_r_finger_tip_link" pos="0.09137 -0.00495 0">
                                                                     <inertial pos="0.00423 -0.00284 0" quat="-0.249588 0.661594 0.249588 0.661594" mass="0.04419" diaginertia="0.000015 0.000015 0.000003" />
                                                                     <geom name="l_gripper_r_finger_tip" euler="3.14 0 0" rgba="0.7 0.7 0.7 1" mesh="l_finger_tip" />
+                                                                    <site name="ee_pos" pos="0.03275 0.0154 -0.003275" rgba="1 0 0 1" size="0.01"/>        
                                                                 </body>
                                                             </body>
                                                         </body>

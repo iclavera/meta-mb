@@ -11,7 +11,7 @@ import os
 
 class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self,
-                 exp_type='peg',
+                 exp_type='reach',
                  max_torques=[3, 3, 2, 1, 1, 0.5, 1],
                  vel_penalty=1.25e-2,
                  ctrl_penalty=1.25e-1,
@@ -28,6 +28,8 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         self.obs_dim = 17
         self.act_dim = 7
 
+        print("EXPTYPE:", self.exp_type)
+
         self.init_qpos = np.zeros(7)
         self.init_qvel = np.zeros(7)
         self.alpha = 10e-5
@@ -36,7 +38,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         self._high = self.max_torques
         self.reached = False
         if self.exp_type == 'reach':
-            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2_new.xml')
+            xml_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'assets', 'pr2.xml')
             if self.joint:
                 self.goal = np.array([3.85207921e-01, -1.41945343e-01, 1.64343706e+00, -1.51601210e+00,
                                    1.31405443e+00, -1.54883181e+00, 1.43069760e-01])
@@ -181,7 +183,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     @property
     def get_ee_pos(self):
-        return self.get_body_com('ee_pos')
+        return self.sim.model.site_pos[-1]
 
     def g1(self):
         x = 0.092
@@ -202,7 +204,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         return np.array([x, y, z])
 
 if __name__ == "__main__":
-    env = PR2ReacherEnv(exp_type='peg')
+    env = PR2ReacherEnv(exp_type='reach')
     file = 'pr2_'
     while True:
         env.reset()

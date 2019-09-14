@@ -58,7 +58,7 @@ class RandomEnv(MetaEnv, MujocoEnv):
     RAND_PARAMS = ['body_mass', 'body_inertia', 'dof_damping', 'geom_friction', 'jnt_stiffness']
     RAND_PARAMS_EXTENDED = RAND_PARAMS + ['geom_size', 'body_pos']
 
-    def __init__(self, log_scale_limit, *args, rand_params=RAND_PARAMS_EXTENDED, **kwargs):
+    def __init__(self, log_scale_limit, *args, rand_params=RAND_PARAMS, **kwargs):
         super(RandomEnv, self).__init__(*args, **kwargs)
         assert set(rand_params) <= set(self.RAND_PARAMS_EXTENDED), \
             "rand_params must be a subset of " + str(self.RAND_PARAMS_EXTENDED)

@@ -9,12 +9,13 @@ from meta_mb.meta_envs.mujoco.ant_rand_direc import AntRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_direc import HalfCheetahRandDirecEnv
 from meta_mb.meta_envs.mujoco.half_cheetah_rand_vel import HalfCheetahRandVelEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc import HumanoidRandDirecEnv
-from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
-from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
+#from rand_param_envs.hopper_rand_params import HopperRandParamsEnv
+#from rand_param_envs.walker2d_rand_params import Walker2DRandParamsEnv
 from meta_mb.meta_envs.mujoco.ant_rand_goal import AntRandGoalEnv
-from rand_param_envs.pr2_env_reach import PR2Env
+#from rand_param_envs.pr2_env_reach import PR2Env
+from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
 from meta_mb.meta_envs.mujoco.humanoid_rand_direc_2d import HumanoidRandDirec2DEnv
-from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
+#from meta_mb.envs.jelly.walk_jelly import WalkJellyEnv
 from meta_mb.envs.blue.blue_env import BlueEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.meta_algos.ppo_maml import PPOMAML
@@ -25,7 +26,7 @@ from meta_mb.policies.meta_gaussian_mlp_policy import MetaGaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'promp-reach-blue-right'
+EXP_NAME = 'promp-pr2-reach-0'
 
 
 def run_experiment(**config):
@@ -37,8 +38,12 @@ def run_experiment(**config):
     set_seed(config['seed'])
 
     baseline = config['baseline']()
+    env = normalize(config['env'](max_torques=config['max_torques'],
+                                 exp_type=config['exp_type'],
+                                 ctrl_penalty=config['ctrl_penalty'],
+                                 vel_penalty=config['vel_penalty']))
 
-    env = normalize(config['env']()) # Wrappers?
+    #env = normalize(config['env']()) # Wrappers?
 
     policy = MetaGaussianMLPPolicy(
         name="meta-policy",
@@ -109,7 +114,13 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [BlueEnv],
+        'env': [PR2ReacherEnv],
+        'exp_type': ['reach'],
+        'max_torques': [(3, 3, 2, 1, 1, 0.5, 1)],
+        'ctrl_penalty': [1.25e-1],
+        'vel_penalty': [1.25e-3, 1.25e-2],
+        'log_rand' : [0, 1, 2, 3, 4],
+        'joint': [False],
 
         'rollouts_per_meta_task': [20],
         'max_path_length': [200],

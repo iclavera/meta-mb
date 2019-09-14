@@ -20,13 +20,14 @@ class BaseSampler(object):
 
     def __init__(self, env, policy,
                  num_rollouts,
-                 max_path_length, sleep_reset=0.):
+                 max_path_length, sleep_reset=0.,
+                 ignore_done=False):
         assert hasattr(env, 'reset') and hasattr(env, 'step')
 
         self.env = env
         self.policy = policy
         self.max_path_length = max_path_length
-
+        self.ignore_done = ignore_done
         self.total_samples = num_rollouts * max_path_length
         self.total_timesteps_sampled = 0
         self.sleep_reset = sleep_reset
@@ -84,7 +85,7 @@ class BaseSampler(object):
             next_obs, reward, done, env_info = self.env.step(action)
 
             ts += 1
-            done = done or ts >= self.max_path_length
+            done = done and not self.ignore_done or ts >= self.max_path_length#done = done or ts >= self.max_path_length
             if done:
                 if not ignore_reset:
                     time.sleep(self.sleep_reset)
