@@ -32,7 +32,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'rl2-pr2-peg-randomization'
+EXP_NAME = 'rl2-pr2-reach-randomization-0'
 
 def run_experiment(**config):
     exp_name = EXP_NAME + '-' + str(random.randint(0, 1e9))
@@ -54,7 +54,7 @@ def run_experiment(**config):
         exp_type = config['exp_type']
         print(exp_type)
         env = rl2env(normalize(config['env'](max_torques=config['max_torques'],
-                                             exp_type='peg',
+                                             exp_type='reach',
                                              ctrl_penalty=config['ctrl_penalty'],
                                              vel_penalty=config['vel_penalty'],
                                              joint=config['joint'])))
@@ -115,9 +115,9 @@ if __name__ == '__main__':
 
         'baseline': [LinearFeatureBaseline],
         'env': [PR2ReacherEnv],
-        'exp_type': ['peg'],
+        'exp_type': ['reach'],
         'max_torques': [(3, 3, 2, 1, 1, 0.5, 1)],
-        'ctrl_penalty': [1.25e-2],
+        'ctrl_penalty': [1.25e-1],
         'vel_penalty': [1.25e-3, 1.25e-2],
         'log_rand' : [0, 1, 2, 3, 4],
         'joint': [False],
