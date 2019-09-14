@@ -80,5 +80,4 @@ def tf_cg(f_Ax, b, cg_iters=10, residual_tol=1e-10):
 
     p, r, x, rdotr = tf.while_loop(body=body, cond=cond, loop_vars=loop_vars, maximum_iterations=cg_iters)
     accept = tf.less(rdotr, residual_tol)
-    # accept = tf.Print(accept, ['accepted', accept])
     return accept, x
