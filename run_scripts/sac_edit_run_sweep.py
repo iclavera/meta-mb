@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "q5"
+EXP_NAME = "q7"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -264,7 +264,7 @@ if __name__ == '__main__':
         # Value Function
         'vfun_hidden_nonlineariy': ['tanh', 'relu'],
         'q_target_type': [0],
-        'q_function_type': [5],
+        'q_function_type': [7],
         'model_used_ratio': [0.5],
 
         # CEM
