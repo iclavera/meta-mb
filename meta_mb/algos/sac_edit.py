@@ -368,16 +368,13 @@ class SAC_MB(Algo):
             assert self.T >= 0
             obs = observations_ph
             actions = actions_var
+            reward_values = 0
             for i in range(self.T+1):
                 next_observation, next_actions_var, rewards, dones_next, dist_info_sym = self.step(obs, actions)
-                if i == 0 :
-                    reward_values = (self.discount**(i)) * self.reward_scale * rewards
-                else:
-                    reward_values = (self.discount**(i)) * self.reward_scale * (1 - dones) * rewards + reward_values
-                dones = dones_next # This is a bug. You should accumulate the dones
+                reward_values += (self.discount**(i)) * self.reward_scale * rewards
                 obs, actions = next_observation, next_actions_var
             input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [(self.discount ** (self.T + 1)) * (1-dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+            next_q_values = [(self.discount ** (self.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
 
