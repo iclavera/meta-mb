@@ -136,7 +136,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
             raise NotImplementedError
 
     def reset_model(self):
-        qpos = np.array([0.43909722, 0.07478191, 1.25008667, -1.3573434, 1.67461532, -1.64366539, 12.61531702])
+        qpos = np.array([ 0.43271341,  0.07884247,  0.9869444,  -1.53700385,  1.47712537, -2.00212515, 0.09811261])
         #self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
         #gravity = np.random.randint(-1, 1)  # randomize environment gravity
         #self.model.opt.gravity[2] = gravity
@@ -147,7 +147,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
             if np.linalg.norm(self.goal) < 2:
                 break
         if self.exp_type == 'reach':
-            self.goal = np.array([x, y, z])
+            self.goal = np.array([0.61925865, 0.11996082, 0.96922978])
         elif self.exp_type == 'shape':
             raise NotImplementedError
         elif self.exp_type == 'peg':
@@ -158,7 +158,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         else:
             raise NotImplementedError
         qvel = self.init_qvel
-        self.set_state(np.zeros(7), qvel)
+        self.set_state(qpos, qvel)
         return self._get_obs()
 
     def _get_obs(self):
@@ -183,7 +183,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     @property
     def get_ee_pos(self):
-        return self.sim.model.site_pos[-1]
+        return self.sim.data.get_site_xpos("ee_pos")
 
     def g1(self):
         x = 0.092
