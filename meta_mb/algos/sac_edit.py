@@ -479,7 +479,7 @@ class SAC_MB(Algo):
             return None
 
         if self.reparameterize:
-            policy_kl_losses = (self.alpha * log_pis_var - min_q_val_var - policy_prior_log_probs)
+            policy_kl_losses = tf.reduce_mean(self.alpha * log_pis_var) - min_q_val_var - tf.reduce_mean(policy_prior_log_probs)
         else:
             raise NotImplementedError
 

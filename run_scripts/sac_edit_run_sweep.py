@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "traj-q3-and-q7"
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = "traj-q3-and-q7-2"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -27,7 +27,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDyna
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='all')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -229,7 +229,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90, 230],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv, AntEnv, HalfCheetahEnv],
+        'env': [AntEnv, HalfCheetahEnv],
         'n_itr': [1000],
 
         # Policy
@@ -248,9 +248,9 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 
         # Training
-        'model_type': [0, 3],
+        'model_type': [3],
         'n_train_repeats': [8],
-        'rollout_length_params': ['default', 1],
+        'rollout_length_params': ['1'],
         'model_train_freq': [250],
         'rollout_batch_size': [100e3],
         'num_actions_per_next_observation': [10],
@@ -264,7 +264,7 @@ if __name__ == '__main__':
         # Value Function
         'vfun_hidden_nonlineariy': ['tanh', 'relu'],
         'q_target_type': [0],
-        'q_function_type': [3, 5, 7],
+        'q_function_type': [7],
         'model_used_ratio': [0.5],
 
         # CEM
@@ -284,7 +284,7 @@ if __name__ == '__main__':
         # Dynamics Model
         'max_epochs_since_update': [8],
         'num_models': [4],
-        'q_loss_importance': [0.25], # training the model
+        'q_loss_importance': [0., 0.25, 1.], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
