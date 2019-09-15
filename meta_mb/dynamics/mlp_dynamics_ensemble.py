@@ -495,6 +495,7 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
                         logger.log('Stopping all DynamicsEnsemble Training before reaching max_num_epochs')
                     break
                 valid_loss_rolling_average_prev = valid_loss_rolling_average
+
             elif self.early_stopping == 1:
                 updated = False
                 for m in range(self.num_models):

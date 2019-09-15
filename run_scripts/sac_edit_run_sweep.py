@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "mpc-hopper-1"
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = "traj-q3-and-q7"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -21,10 +21,8 @@ from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
-# from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
+from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 # from meta_mb.dynamics.done_predictor import DonePredictor
-
-
 
 
 def run_experiment(**kwargs):
@@ -35,6 +33,19 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
+    if isinstance(kwargs['env'](), HopperEnv):
+        if kwargs['rollout_length_params'] == 'default':
+            rollout_length_params = [20, 100, 1, 15]
+        else:
+            rollout_length_params = [20, 100, 1, 1]
+    elif isinstance(kwargs['env'](), AntEnv):
+        if kwargs['rollout_length_params'] == 'default':
+            rollout_length_params = [20, 100, 1, 25]
+        else:
+            rollout_length_params = [20, 100, 1, 1]
+    else:
+        rollout_length_params = [20, 100, 1, 1]
+
 
     with sess.as_default() as sess:
 
@@ -69,8 +80,6 @@ def run_experiment(**kwargs):
             squashed=True
         )
 
-
-
         if kwargs['policy_hidden_sizes'] == ():
             ground_truth = True
         else:
@@ -92,8 +101,6 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-
-
         eval_env_sample_processor = ModelSampleProcessor(
             baseline=baseline,
             discount=kwargs['discount'],
@@ -102,9 +109,6 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-
-
-        assert kwargs['model_type'] in [0, 3]
         if kwargs['model_type'] == 0:
             dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
                                                     env=env,
@@ -115,34 +119,10 @@ def run_experiment(**kwargs):
                                                     batch_size=kwargs['dynamics_batch_size'],
                                                     learning_rate=kwargs['model_learning_rate'],
                                                     buffer_size=kwargs['dynamics_buffer_size'],
-    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                     early_stopping=kwargs['early_stopping'],
                                                     )
-            algo = SAC_MB(
-                policy=policy,
-                discount=kwargs['discount'],
-                learning_rate=kwargs['learning_rate'],
-                target_entropy=kwargs['target_entropy'],
-                env=env,
-                dynamics_model=dynamics_model,
-                obs_dim = obs_dim,
-                action_dim = action_dim,
-                Qs=Qs,
-                Q_targets=Q_targets,
-                reward_scale=kwargs['reward_scale'],
-                num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-                prediction_type=kwargs['prediction_type'],
-                T=kwargs['T'],
-    			q_function_type=kwargs['q_function_type'],
-    			q_target_type=kwargs['q_target_type'],
-    			H=kwargs['H'],
-    			model_used_ratio=kwargs['model_used_ratio'],
-    			experiment_name=EXP_NAME,
-    			exp_dir=exp_dir,
-                target_update_interval=kwargs['n_train_repeats'],
-                dynamics_type=kwargs['model_type'],
-                ground_truth=ground_truth,
-            )
+
         elif kwargs['model_type'] == 3:
             dynamics_model = ProbMLPDynamicsEnsembleTry('dynamics-ensemble',
                                                     env=env,
@@ -153,41 +133,43 @@ def run_experiment(**kwargs):
                                                     batch_size=kwargs['dynamics_batch_size'],
                                                     learning_rate=kwargs['model_learning_rate'],
                                                     buffer_size=kwargs['dynamics_buffer_size'],
-    												rolling_average_persitency=kwargs['rolling_average_persitency'],
+                                                    rolling_average_persitency=kwargs['rolling_average_persitency'],
                                                     q_loss_importance=kwargs['q_loss_importance'],
                                                     Qs=Qs,
-                                                    Q_targets=Q_targets,
                                                     policy=policy,
                                                     T=kwargs['T'],
-                                                    reward_scale=kwargs['reward_scale'],
                                                     discount=kwargs['discount'],
                                                     normalize_input=kwargs['normalize_input'],
                                                     type=3,
                                                     )
-            algo = SAC_MB(
-                policy=policy,
-                discount=kwargs['discount'],
-                learning_rate=kwargs['learning_rate'],
-                target_entropy=kwargs['target_entropy'],
-                env=env,
-                dynamics_model=dynamics_model,
-                obs_dim = obs_dim,
-                action_dim = action_dim,
-                reward_scale=kwargs['reward_scale'],
-                num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-                prediction_type=kwargs['prediction_type'],
-                T=kwargs['T'],
-    			q_function_type=kwargs['q_function_type'],
-    			q_target_type=kwargs['q_target_type'],
-    			H=kwargs['H'],
-    			model_used_ratio=kwargs['model_used_ratio'],
-    			experiment_name=EXP_NAME,
-    			exp_dir=exp_dir,
-                target_update_interval=kwargs['n_train_repeats'],
-                dynamics_type=kwargs['model_type'],
-                ground_truth=ground_truth,
-                actor_H=kwargs['actor_H'],
-            )
+
+        else:
+            raise NotImplementedError
+
+        algo = SAC_MB(
+            policy=policy,
+            discount=kwargs['discount'],
+            learning_rate=kwargs['learning_rate'],
+            target_entropy=kwargs['target_entropy'],
+            env=env,
+            dynamics_model=dynamics_model,
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            Qs=Qs,
+            Q_targets=Q_targets,
+            num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
+            prediction_type=kwargs['prediction_type'],
+            T=kwargs['T'],
+            q_function_type=kwargs['q_function_type'],
+            q_target_type=kwargs['q_target_type'],
+            H=kwargs['H'],
+            model_used_ratio=kwargs['model_used_ratio'],
+            experiment_name=EXP_NAME,
+            exp_dir=exp_dir,
+            target_update_interval=kwargs['n_train_repeats'],
+            dynamics_type=kwargs['model_type'],
+            ground_truth=ground_truth,
+        )
 
         eval_policy = MPCController(
             name="mpc",
@@ -210,7 +192,6 @@ def run_experiment(**kwargs):
 
         )
 
-
         trainer = Trainer(
             algo=algo,
             env=env,
@@ -226,13 +207,13 @@ def run_experiment(**kwargs):
             n_initial_exploration_steps=kwargs['n_initial_exploration_steps'],
             env_max_replay_buffer_size=kwargs['env_replay_buffer_max_size'],
             model_max_replay_buffer_size=kwargs['model_replay_buffer_max_size'],
-            rollout_length_params=kwargs['rollout_length_params'],
+            rollout_length_params=rollout_length_params,
             rollout_batch_size=kwargs['rollout_batch_size'],
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
             real_ratio=kwargs['real_ratio'],
-			dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
-			sampler_batch_size=kwargs['sampler_batch_size'],
+            dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
+            sampler_batch_size=kwargs['sampler_batch_size'],
             dynamics_type=kwargs['model_type'],
             T=kwargs['T'],
             ground_truth=ground_truth,
@@ -248,55 +229,49 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90, 230],
         'baseline': [LinearFeatureBaseline],
-        'env': [HopperEnv],
+        'env': [HopperEnv, AntEnv, HalfCheetahEnv],
+        'n_itr': [1000],
+
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-
-        # Env Sampling
-        'num_rollouts': [1],
-        'model_type': [0],
-
-        # replay_buffer
-		'n_initial_exploration_steps': [5e3],
-        'env_replay_buffer_max_size': [1e6],
-        'model_replay_buffer_max_size': [2e6],
-		'n_itr': [1000],
-        'n_train_repeats': [8],
-        'max_path_length': [1001],
-		'rollout_length_params': [[20, 100, 1, 15]],
-        'model_train_freq': [250],
-        'early_stopping': [1],
-		'rollout_batch_size': [100e3],
-		'dynamics_model_max_epochs': [200],
-		'rolling_average_persitency':[0.9],
-		'q_function_type':[5],
-		'q_target_type': [1],
-		'num_actions_per_next_observation':[10],
-        'max_epochs_since_update': [5, 8],
-        'H': [2],
-        'T': [3],
-        'actor_H': [1],
-		'reward_scale': [1],
-		'target_entropy': [1],
-		'num_models': [4],
-		'model_used_ratio': [0.5],
-		'dynamics_buffer_size': [1e4],
-        'q_loss_importance': [1],
-        'method': [4],
-        'num_eval_trajectories': [1],
-
         'policy_hidden_nonlinearity': ['tanh'],
 
+        # Env Sampling
+        'n_initial_exploration_steps': [5e3],
+        'max_path_length': [1001],
+        'num_rollouts': [1],
+
+        # replay_buffer
+        'env_replay_buffer_max_size': [1e6],
+        'model_replay_buffer_max_size': [2e6],
+
+        # Training
+        'model_type': [0, 3],
+        'n_train_repeats': [8],
+        'rollout_length_params': ['default', 1],
+        'model_train_freq': [250],
+        'rollout_batch_size': [100e3],
+        'num_actions_per_next_observation': [10],
+        'H': [2],  # Critic
+        'T': [3, 5],  # Actor
+        'actor_H': [1],  # Not used. It's for multiple steps for actor update
+        'target_entropy': [1],
+        'method': [4], # Number for the plot
+        'num_eval_trajectories': [1],
+
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
-        'n_candidates': [100, 50], # K
-        'horizon': [5, 3], # Tau
+        'vfun_hidden_nonlineariy': ['tanh', 'relu'],
+        'q_target_type': [0],
+        'q_function_type': [3, 5, 7],
+        'model_used_ratio': [0.5],
+
+        # CEM
+        'n_candidates': [100], # K
+        'horizon': [5], # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
-        'normalize_input': [True],
-
 
         # Problem Conf
         'discount': [0.99],
@@ -304,17 +279,24 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-		'prediction_type':['none', 'rand'],
+        'prediction_type': ['none'],
 
         # Dynamics Model
-		'sampler_batch_size': [256],
-        'real_ratio': [0.05],
-
-        'model_learning_rate': [1e-3],
+        'max_epochs_since_update': [8],
+        'num_models': [4],
+        'q_loss_importance': [0.25], # training the model
+        'normalize_input': [True],
+        'dynamics_buffer_size': [1e6],
+        'dynamics_model_max_epochs': [200],
+        'rolling_average_persitency': [0.9],
+        'early_stopping': [1],
+        'sampler_batch_size': [256],
+        'real_ratio': [.05],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
+        'model_learning_rate': [1e-3],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_batch_size': [256],
-        }
+    }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

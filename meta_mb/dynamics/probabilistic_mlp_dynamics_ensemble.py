@@ -317,7 +317,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         next_obs = tf.clip_by_value(next_obs, -1e2, 1e2)
         return next_obs
 
-
     def predict_sym_all(self, obs_ph, act_ph, reg_str=None, pred_type='all'):
         """
         Same batch fed into all models. Randomly output one of the predictions for each observation.

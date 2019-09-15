@@ -3,13 +3,13 @@ import tensorflow as tf
 import numpy as np
 from meta_mb.utils.serializable import Serializable
 from meta_mb.utils import compile_function
-from meta_mb.dynamics.mlp_dynamics_ensemble_try import MLPDynamicsEnsembleTry
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
 from pdb import set_trace as st
 from collections import OrderedDict
 from meta_mb.utils.utils import remove_scope_from_name
 
 
-class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
+class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsemble):
     """
     Class for MLP continous dynamics model
     """
@@ -19,7 +19,6 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                  env,
                  discount = 1,
                  Qs=None,
-                 Q_targets=None,
                  policy=None,
                  reward_scale=1,
                  num_models=5,
@@ -37,6 +36,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                  T=0,
                  buffer_size=50000,
                  type=1,
+                 early_stopping=0,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -44,6 +44,7 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
         max_logvar = .5
         min_logvar = -10
 
+        self.early_stopping = early_stopping
         self.normalization = None
         self.normalize_input = normalize_input
         self.next_batch = None
@@ -71,20 +72,12 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
         self.env = env
         if type == 3:
             self.Qs = Qs
-            if Q_targets is None:
-                self.Q_targets = Qs
-            else:
-                self.Q_targets = Q_targets
             self.policy = policy
             self.reward_scale = reward_scale
             self.discount = discount
             self.T = T
-            self.discount=discount
+            self.discount = discount
             self.q_loss_importance = q_loss_importance
-            log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
-            alpha = tf.exp(log_alpha)
-            self.log_alpha = log_alpha
-            self.alpha = alpha
 
         hidden_nonlinearity = self._activations[hidden_nonlinearity]
         output_nonlinearity = self._activations[output_nonlinearity]
@@ -143,69 +136,12 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                 var_preds.append(var)
                 invar_preds.append(inv_var)
 
-            self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            self.logvar_pred = tf.stack(logvar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            self.invar_pred = tf.stack(invar_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
-            if type == 3:
-                obs = self.obs_ph
-                dist_info_sym = self.policy.distribution_info_sym(obs)
-                actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                for t in range(self.T+1):
-                    next_observation = self.predict_sym(obs, actions)
-                    dist_info_sym = self.policy.distribution_info_sym(next_observation)
-                    next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                    rewards = self.env.tf_reward(obs, actions, next_observation)
-                    rewards = tf.expand_dims(rewards, axis=-1)
-                    dones_next = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
-                    if t == 0 :
-                        reward_values = (self.discount**(t)) * self.reward_scale * rewards
-                    else:
-                        reward_values = (self.discount**(t)) * self.reward_scale * rewards * (1 - dones) + reward_values
-                        input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-                    dones = dones_next
-                    obs, actions = next_observation, next_actions_var
-                next_q_values = [(self.discount ** (self.T + 1)) * (1- dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-                q_values = [reward_values + value for value in next_q_values]
+        self.delta_pred = tf.stack(delta_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
+        self.var_pred = tf.stack(var_preds, axis=2)  # shape: (batch_size, ndim_obs, n_models)
 
-                # define loss and train_op
-                input_q_fun = tf.concat([(self.obs_ph-self._mean_obs_ph)/self._std_obs_ph+ 1e-8, (self.act_ph-self._mean_act_ph)/self._std_act_ph + 1e-8], axis=-1)
-
-                q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-
-                q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k], predictions=q_values_var[k], weights=0.5)
-                                            for k in range(2)]
-                # q_losses = [loss/tf.math.reduce_std(loss) + 1e-8 for loss in q_losses]
-
-                self.loss = [tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
-                                           + self.logvar_pred)
-                                           + 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
-                                           + self.q_loss_importance * q_losses[k]
-                                           for k in range(2)]
-
-                self.optimizer = [optimizer(learning_rate=self.learning_rate) for _ in range(2)]
-
-                current_scope = name
-                trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
-                self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
-                keys = []
-                for key in self.vfun_params.keys():
-                    if key[:6] == "policy" or key[:5] == "q_fun":
-                        keys.append(key)
-                for key in keys:
-                    self.vfun_params.pop(key)
-                vars = list(self.vfun_params.values())
-                self.train_op = [self.optimizer[k].minimize(self.loss[k], var_list = vars) for k in range(2)]
-            else:
-                self.loss = tf.reduce_mean(tf.square(self.delta_ph[:, :, None] - self.delta_pred) * self.invar_pred
-                                           + self.logvar_pred)
-                self.loss += 0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar)
-                self.optimizer = optimizer(learning_rate=self.learning_rate)
-                self.train_op = self.optimizer.minimize(self.loss)
-
-            # tensor_utils
-            self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
-            self.f_var_pred = compile_function([self.obs_ph, self.act_ph], self.var_pred)
+        # tensor_utils
+        self.f_delta_pred = compile_function([self.obs_ph, self.act_ph], self.delta_pred)
+        self.f_var_pred = compile_function([self.obs_ph, self.act_ph], self.var_pred)
 
         """ computation graph for inference where each of the models receives a different batch"""
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
@@ -225,28 +161,31 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
             self.obs_next_pred = []
             self.loss_model_batches = []
             self.train_op_model_batches = []
-            if type == 3:
-                obs = self.obs_model_batches_stack_ph
-                dist_info_sym = self.policy.distribution_info_sym(obs)
-                actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                for t in range(self.T+1):
-                    next_observation = self.predict_sym(obs, actions)
-                    dist_info_sym = self.policy.distribution_info_sym(next_observation)
-                    next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                    rewards = self.env.tf_reward(obs, actions, next_observation)
-                    rewards = tf.expand_dims(rewards, axis=-1)
-                    dones_next = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
-                    if t == 0 :
-                        reward_values = (self.discount**(t)) * self.reward_scale * rewards
-                    else:
-                        reward_values = (self.discount**(t)) * self.reward_scale * rewards * (1 - dones) + reward_values
-                    dones = dones_next
-                    obs, actions = next_observation, next_actions_var
-                input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-                next_q_values = [(self.discount ** (self.T + 1)) * (1- dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-                q_values = [reward_values + value for value in next_q_values]
-                q_values = [tf.split(q_value, self.num_models, axis = 0) for q_value in q_values]
-            for i in range(num_models):
+
+        if type == 3:
+            obs = self.obs_model_batches_stack_ph
+            dist_info_sym = self.policy.distribution_info_sym(obs)
+            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+            for t in range(self.T+1):
+                next_observation = self.predict_sym(obs, actions)
+                dist_info_sym = self.policy.distribution_info_sym(next_observation)
+                next_actions_var, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                rewards = self.env.tf_reward(obs, actions, next_observation)
+                rewards = tf.expand_dims(rewards, axis=-1)
+                dones_next = tf.cast(self.env.tf_termination_fn(obs, actions, next_observation), rewards.dtype)
+                if t == 0 :
+                    reward_values = (self.discount**(t)) * self.reward_scale * rewards
+                else:
+                    reward_values = (self.discount**(t)) * self.reward_scale * rewards * (1 - dones) + reward_values
+                dones = dones_next
+                obs, actions = next_observation, next_actions_var
+
+        input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
+        next_q_values = [(self.discount ** (self.T + 1)) * (1- dones) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        q_values = [reward_values + value for value in next_q_values]
+        q_values = [tf.split(q_value, self.num_models, axis=0) for q_value in q_values]
+        for i in range(num_models):
+            with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
                 with tf.variable_scope('model_{}'.format(i), reuse=True):
                     # concatenate action and observation --> NN input
                     nn_input = tf.concat([self.obs_model_batches[i], self.act_model_batches[i]], axis=1)
@@ -265,60 +204,49 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
                 var = tf.exp(logvar)
                 inv_var = tf.exp(-logvar)
 
-                if type == 3:
-                    # define loss and train_op
-                    # normalize
-                    in_obs_var = (self.obs_model_batches[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
-                    in_act_var = (self.act_model_batches[i] - self._mean_act_var[i])/(self._std_act_var[i] + 1e-8)
-                    input_q_fun = tf.concat([in_obs_var, in_act_var], axis = -1)
-                    q_values_var = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-
-                    q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k][i], predictions=q_values_var[k], weights=0.5)
-                                                for k in range(2)]
-
-                    q_losses = [loss/tf.math.reduce_mean(loss) for loss in q_losses]
-
-                    current_scope = name
-                    trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
-                    self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
-                    keys = []
-                    for key in self.vfun_params.keys():
-                        if key[:6] == "policy" or key[:5] == "q_fun":
-                            keys.append(key)
-                    for key in keys:
-                        self.vfun_params.pop(key)
-                    vars = list(self.vfun_params.values())
-                    loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
-                    loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
-                    loss += tf.reduce_min(q_losses, axis = 0)
-
-                    self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss, var_list = vars))
-
-                    self.loss_model_batches.append(loss)
-                else:
+            if type == 3:
                 # define loss and train_op
+                # normalize
+                in_obs_var = (self.obs_model_batches[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
+                in_act_var = (self.act_model_batches[i] - self._mean_act_var[i])/(self._std_act_var[i] + 1e-8)
+                input_q_fun = tf.concat([in_obs_var, in_act_var], axis=-1)
+                q_values_var = [tf.stop_gradient(Q.value_sym(input_var=input_q_fun)) for Q in self.Qs]
+
+                q_losses = [self.q_loss_importance * tf.losses.mean_squared_error(labels=q_values[k][i],
+                                                                                  predictions=q_values_var[k],
+                                                                                  weights=0.5)
+                            for k in range(2)]
+                q_losses = [loss/tf.reduce_mean(tf.abs(q_values_var)) for loss in q_losses]
+
+                with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
                     loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
                     loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
+                    loss += tf.reduce_min(q_losses, axis=0)
 
-                    self.loss_model_batches.append(loss)
-                    self.train_op_model_batches.append(optimizer(learning_rate=self.learning_rate).minimize(loss))
+            else:
+                loss = tf.reduce_mean(tf.square(self.delta_model_batches[i] - mean) * inv_var + logvar)
+                loss += (0.01 * tf.reduce_mean(self.max_logvar) - 0.01 * tf.reduce_mean(self.min_logvar))
+
+            with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+                self.loss_model_batches.append(loss)
+                self.train_op_model_batches.append(optimizer(
+                    learning_rate=self.learning_rate).minimize(loss, var_list=mlp.get_params()))
                 delta_preds.append(mean)
                 var_preds.append(var)
 
-            self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
-            self.var_pred_model_batches_stack = tf.concat(var_preds, axis=0)
+        self.delta_pred_model_batches_stack = tf.concat(delta_preds, axis=0) # shape: (batch_size_per_model*num_models, ndim_obs)
+        self.var_pred_model_batches_stack = tf.concat(var_preds, axis=0)
 
-            # tensor_utils
-            self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
-                                                                self.act_model_batches_stack_ph],
-                                                                self.delta_pred_model_batches_stack)
+        # tensor_utils
+        self.f_delta_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
+                                                            self.act_model_batches_stack_ph],
+                                                            self.delta_pred_model_batches_stack)
 
-            self.f_var_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
-                                                                self.act_model_batches_stack_ph],
-                                                                self.var_pred_model_batches_stack)
+        self.f_var_pred_model_batches = compile_function([self.obs_model_batches_stack_ph,
+                                                            self.act_model_batches_stack_ph],
+                                                            self.var_pred_model_batches_stack)
 
         self._networks = mlps
-
 
     def predict_sym(self, obs_ph, act_ph, shuffle=True):
         """
@@ -336,9 +264,9 @@ class ProbMLPDynamicsEnsembleTry(MLPDynamicsEnsembleTry):
         obs_ph, act_ph = tf.split(obs_ph, self.num_models, axis=0), tf.split(act_ph, self.num_models, axis=0)
 
         delta_preds = []
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+        with tf.variable_scope(self.name, reuse=True):
             for i in range(self.num_models):
-                with tf.variable_scope('model_{}'.format(i), reuse=tf.AUTO_REUSE):
+                with tf.variable_scope('model_{}'.format(i), reuse=True):
                     assert self.normalize_input
                     in_obs_var = (obs_ph[i] - self._mean_obs_var[i])/(self._std_obs_var[i] + 1e-8)
                     in_act_var = (act_ph[i] - self._mean_act_var[i]) / (self._std_act_var[i] + 1e-8)

@@ -46,7 +46,7 @@ class Trainer(object):
             model_max_replay_buffer_size=2e6,
             rollout_batch_size=100,
             n_train_repeats=1,
-            real_ratio = 1,
+            real_ratio=1,
             rollout_length = 1,
             model_deterministic = False,
             model_train_freq=250,
@@ -111,8 +111,9 @@ class Trainer(object):
         saver = tf.train.Saver()
         with self.sess.as_default() as sess:
             # initialize uninitialized vars  (only initialize vars that were not loaded)
-            uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            sess.run(tf.variables_initializer(uninit_vars))
+            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
+            # sess.run(tf.variables_initializer(uninit_vars))
+            sess.run(tf.global_variables_initializer())
             start_time = time.time()
 
             self.start_itr=0
@@ -122,7 +123,9 @@ class Trainer(object):
                 samples_data = self.train_env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
                 self.env_replay_buffer.add_samples(samples_data['observations'], samples_data['actions'], samples_data['rewards'],
                                                    samples_data['dones'], samples_data['next_observations'])
-
+                self.dynamics_model.update_buffer(samples_data['observations'],
+                                           samples_data['actions'],
+                                           samples_data['next_observations'])
             if self.algo.obs_dim > 50:
                 self.deal_with_oom = 16
             else:
@@ -138,17 +141,13 @@ class Trainer(object):
                 samples_data = self.train_env_sample_processor.process_samples(paths, log='all', log_prefix='train-')[0]
 
                 fit_start = time.time()
-                all_samples = self.env_replay_buffer.all_samples()
                 logger.log("Training models...")
-                if self.dynamics_type == 0:
-                    self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
-                                            epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-',
-                                            max_epochs_since_update=self.max_epochs_since_update)
-                elif self.dynamics_type == 3:
-                    self.dynamics_model.fit(all_samples[0], all_samples[1], all_samples[2],
-                                            epochs=self.dynamics_model_max_epochs, verbose=False,
-                                            log_tabular=True, prefix='Model-')
+                self.dynamics_model.fit(samples_data['observations'],
+                                        samples_data['actions'],
+                                        samples_data['next_observations'],
+                                        epochs=self.dynamics_model_max_epochs, verbose=False,
+                                        log_tabular=True, prefix='Model-',
+                                        max_epochs_since_update=self.max_epochs_since_update)
                 logger.logkv('Fit model time', time.time() - fit_start)
                 logger.log("Done training models...")
                 expand_model_replay_buffer_time = []
@@ -156,51 +155,46 @@ class Trainer(object):
 
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
-                    for _ in range(self.rollout_length):
-                        for _ in range(self.deal_with_oom):
-                            samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
-                            random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
-                            actions_from_policy = self.policy.get_actions(random_states)[0]
-                            next_obs, rewards, term = self.step(random_states, actions_from_policy)
-                            self.model_replay_buffer.add_samples(random_states,
-                                                                 actions_from_policy,
-                                                                 rewards,
-                                                                 term,
-                                                                 next_obs)
+                    for _ in range(self.rollout_length * self.deal_with_oom):
+                        samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
+                        random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
+                        actions_from_policy = self.policy.get_actions(random_states)[0]
+                        next_obs, rewards, term = self.step(random_states, actions_from_policy)
+                        self.model_replay_buffer.add_samples(random_states,
+                                                             actions_from_policy,
+                                                             rewards,
+                                                             term,
+                                                             next_obs)
                     self.set_rollout_length(itr)
                     expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
 
                     sac_start = time.time()
-                    for _ in range(self.model_train_freq):
-                        for _ in range(self.n_train_repeats):
-                            batch_size = self.sampler_batch_size
-                            env_batch_size = int(batch_size * self.real_ratio)
-                            model_batch_size = batch_size - env_batch_size
-                            env_batch = self.env_replay_buffer.random_batch(env_batch_size)
-                            model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
-                            keys = env_batch.keys()
-                            batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                            # if self.ground_truth:
-                            #     reward = []
-                            #     for t in range(self.T):
-                            #         next_obs = batch['next_observations']
-                            #         next_actions = self.policy.get_actions(next_obs)[0]
-                            #         result = self.env.step_batch(next_obs, next_actions, t, reward)
-                            #     batch.update(result)
-                            self.algo.do_training(time_step, batch, log=True)
+
+                    for _ in range(self.model_train_freq * self.n_train_repeats):
+                        batch_size = self.sampler_batch_size
+                        env_batch_size = int(batch_size * self.real_ratio)
+                        model_batch_size = batch_size - env_batch_size
+                        env_batch = self.env_replay_buffer.random_batch(env_batch_size)
+                        model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
+                        keys = env_batch.keys()
+                        batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+                        self.algo.do_training(time_step, batch, log=True)
+
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
                                                    samples_data['actions'],
                                                    samples_data['rewards'],
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
-                multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
-                                                                             deterministic=True,
-                                                                             eval=True,
-                                                                             log_prefix='eval-',
-                                                                             multiple_trajectory = self.num_eval_trajectories,
-                                                                             dynamics_model = self.dynamics_model)
-                _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
+
+                # JUST COMMENTED THIS
+                # multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
+                #                                                              deterministic=True,
+                #                                                              eval=True,
+                #                                                              log_prefix='eval-',
+                #                                                              multiple_trajectory = self.num_eval_trajectories,
+                #                                                              dynamics_model = self.dynamics_model)
+                # _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
 
                 # self.log_diagnostics(paths[0], prefix='train-')
 
