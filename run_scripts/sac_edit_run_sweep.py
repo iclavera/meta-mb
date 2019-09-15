@@ -230,7 +230,7 @@ if __name__ == '__main__':
         'seed': [90, 230],
         'baseline': [LinearFeatureBaseline],
         'env': [AntEnv, HalfCheetahEnv],
-        'n_itr': [1000],
+        'n_itr': [200],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
