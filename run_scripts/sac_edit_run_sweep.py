@@ -26,7 +26,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDyna
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='all')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
