@@ -91,7 +91,9 @@ class BaseSampler(object):
                             action = action[None]
                         observation = dynamics_model.predict(observation, action)
                         observation = observation.reshape((-1))
-                    action = self.mpc.get_cem_action(obs[None], mean_list, std_list)
+                    action, _ = self.mpc.get_actions(obs[None], mean_list, std_list)
+                    if action.ndim == 2:
+                        action = action[0]
                 else:
                     if random:
                         action = self.env.action_space.sample()
