@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "q5-2"
+EXP_NAME = "q5-3"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -283,7 +283,7 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'max_epochs_since_update': [8],
-        'num_models': [4],
+        'num_models': [8],
         'q_loss_importance': [0., 0.1], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
