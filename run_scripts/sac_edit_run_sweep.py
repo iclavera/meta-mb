@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "q7"
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = "q5-3"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -27,7 +27,7 @@ from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDyna
 
 def run_experiment(**kwargs):
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='all')
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='gap', snapshot_gap=5)
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -229,14 +229,14 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90, 230],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv, HalfCheetahEnv],
+        'env': [HalfCheetahEnv],
         'n_itr': [200],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['tanh'],
+        'policy_hidden_nonlinearity': ['tanh', 'relu'],
 
         # Env Sampling
         'n_initial_exploration_steps': [5e3],
@@ -255,7 +255,7 @@ if __name__ == '__main__':
         'rollout_batch_size': [100e3],
         'num_actions_per_next_observation': [10],
         'H': [2],  # Critic
-        'T': [3, 5],  # Actor
+        'T': [3, 5, 10],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
@@ -264,7 +264,7 @@ if __name__ == '__main__':
         # Value Function
         'vfun_hidden_nonlineariy': ['tanh', 'relu'],
         'q_target_type': [0],
-        'q_function_type': [7],
+        'q_function_type': [5],
         'model_used_ratio': [0.5],
 
         # CEM
@@ -283,8 +283,8 @@ if __name__ == '__main__':
 
         # Dynamics Model
         'max_epochs_since_update': [8],
-        'num_models': [4],
-        'q_loss_importance': [0., 0.25, 1.], # training the model
+        'num_models': [8],
+        'q_loss_importance': [0., 0.1], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
