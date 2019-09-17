@@ -51,7 +51,7 @@ def hessian_wrapper(y, x, dim_y, dim_x=None):
     if isinstance(x, list):
         hess_array_by_dim = []
         for i in range(dim_y):
-            hess_array_by_dim.append(tf.hessians(y=y[i], xs=x))
+            hess_array_by_dim.append(tf.hessians(ys=y[i], xs=x))
         hess_array = list(zip(*hess_array_by_dim))
         return list(map(lambda hess_i: tf.stack(hess_i, axis=0), hess_array))
 
@@ -98,6 +98,11 @@ def tf_cg(f_Ax, b, cg_iters=20, residual_tol=1e-10):
     accept = tf.less(tf.reduce_max(rdotr), residual_tol)
     # x = tf.Print(x, data=['residual', rdotr])
     return accept, x
+
+def flatten_jac_sym(jac_list, dim_y):
+    jac_flatten_list = list(map(lambda jac: tf.reshape(jac, (dim_y, -1)), jac_list))
+    jac_flatten = tf.concat(jac_flatten_list, axis=-1)
+    return jac_flatten
 
 def flatten_params_sym(params):
     return tf.concat([tf.reshape(param, (-1,)) for param in params.values()], axis=0)

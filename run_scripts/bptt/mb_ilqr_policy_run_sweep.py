@@ -109,9 +109,6 @@ def run_experiment(**config):
             c_1=config['c_1'],
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
-            n_candidates=config['n_candidates'],
-            num_cem_iters=config['num_cem_iters_for_init'],
-            cem_deterministic_policy='cem_deterministic_policy',
         )
 
         # if config['on_policy_freq'] > 1:
@@ -187,24 +184,24 @@ if __name__ == '__main__':
         'delta_init': [1.0],
         'alpha_init': [1e-1],
         'alpha_decay_factor': [3.0],
-        'c_1': [0.3],  # 1e-3
+        'c_1': [0.1],  # 1e-3
         'max_forward_iters': [10],
         'max_backward_iters': [10],
         'use_hessian_f': [False],
         'num_cem_iters_for_init': [5],
 
-        # CEM
-        'n_candidates': [100],
-        'num_cem_iters': [5],
-        'cem_deterministic_policy': [True],
-        'cem_num_rollouts': [20],
+        # # CEM
+        # 'n_candidates': [100],
+        # 'num_cem_iters': [5],
+        # 'cem_deterministic_policy': [True],
+        # 'cem_num_rollouts': [20],
 
         # Training
-        'num_rollouts': [20],
+        'num_rollouts': [5],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
-        'step_per_iter': [1],
+        'steps_per_iter': [1],
 
         # Policy
         'policy_hidden_sizes': [(64, 64)],
