@@ -87,7 +87,7 @@ class BPTTTrainer(object):
                     env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sinusoid=True)
                 elif itr % self.on_policy_freq == 0:
                     logger.log("Obtaining samples from the environment using the policy...")
-                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='')
+                    env_paths = self.sampler.obtain_samples(log=True, log_prefix='', sample_with_noise=True)
                 else:
                     logger.log("Obtaining samples from the environment usnig cem policy...")
                     env_paths= self.cem_sampler.obtain_samples(log=True, log_prefix='')
@@ -99,7 +99,7 @@ class BPTTTrainer(object):
                 # first processing just for logging purposes
                 time_env_samp_proc = time.time()
                 samples_data = self.dynamics_sample_processor.process_samples(env_paths,
-                                                                              log=True, log_prefix='EnvTrajs-')
+                                                                              log=True, log_prefix='EnvTrajs-', log_first=True)
                 logger.record_tabular('Time-EnvSampleProc', time.time() - time_env_samp_proc)
 
                 if self.fit_model:

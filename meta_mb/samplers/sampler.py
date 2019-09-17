@@ -48,7 +48,7 @@ class Sampler(BaseSampler):
         pass
 
     def obtain_samples(self, log=False, log_prefix='', random=False, sinusoid=False, deterministic=False,
-                       verbose=True, plot_first_rollout=False):
+                       verbose=True, plot_first_rollout=False, sample_with_noise=False):
         """
         Collect batch_size trajectories from each task
 
@@ -96,6 +96,10 @@ class Sampler(BaseSampler):
             else:
                 obses = np.array(obses)
                 actions, agent_infos = policy.get_actions(obses)
+                if sample_with_noise:
+                    noise = np.random.normal(loc=np.zeros_like(actions), scale=0.2)
+                    noise[0, :] = 0
+                    actions += noise
                 assert len(actions) == len(obses)  # (num_rollouts, space_dims)
             policy_time += time.time() - t
 

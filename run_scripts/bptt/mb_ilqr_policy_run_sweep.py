@@ -1,10 +1,7 @@
-from meta_mb.trainers.bptt_trainer import BPTTTrainer
-from meta_mb.policies.bptt_controllers.mpc_controller import MPCController
+from meta_mb.trainers.ilqr_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
-from meta_mb.policies.bptt_controllers.ilqr_controller import iLQRController
-from meta_mb.policies.planners.ilqr_tf_planner import iLQRPlanner
-# from meta_mb.policies.planners.ilqr_planner import iLQRPlanner
-# from meta_mb.samplers.ipopt_sampler import IpoptSampler
+from meta_mb.algos.ilqr import iLQR
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
 from meta_mb.logger import logger
@@ -16,6 +13,7 @@ import json
 import joblib
 import os
 import tensorflow as tf
+import numpy as np
 
 
 EXP_NAME = 'bptt-mb-ilqr'
@@ -45,7 +43,6 @@ def run_experiment(**config):
         config['initializer_str'] = 'zeros'
         config['cem_num_rollouts'] = config['num_rollouts']
         config['initial_random_samples'] = False
-        config['initial_sinusoid_samples'] = False
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + config.get('exp_name', '') + repr
     print(f'===================================== exp_dir = {exp_dir} =====================')
@@ -83,10 +80,20 @@ def run_experiment(**config):
 
         sample_processor = ModelSampleProcessor()
 
-        planner = iLQRPlanner(
+        policy = GaussianMLPPolicy(
+            name="policy",
+            obs_dim=np.prod(env.observation_space.shape),
+            action_dim=np.prod(env.action_space.shape),
+            hidden_sizes=config['policy_hidden_sizes'],
+            learn_std=config['policy_learn_std'],
+            hidden_nonlinearity=config['policy_hidden_nonlinearity'],
+            output_nonlinearity=config['policy_output_nonlinearity'],
+        )
+
+        algo = iLQR(
             env=env,
             dynamics_model=dynamics_model,
-            num_envs=config['num_rollouts'],
+            policy=policy,
             horizon=config['horizon'],
             initializer_str=config['initializer_str'],
             use_hessian_f=config['use_hessian_f'],
@@ -107,34 +114,27 @@ def run_experiment(**config):
             cem_deterministic_policy='cem_deterministic_policy',
         )
 
-        if config['on_policy_freq'] > 1:
-            cem_policy = MPCController(
-                env=env,
-                dynamics_model=dynamics_model,
-                method_str='cem',
-                num_rollouts=config['cem_num_rollouts'],
-                discount=config['discount'],
-                n_candidates=config['n_candidates'],
-                horizon=config['horizon'],
-                num_cem_iters=config['num_cem_iters'],
-                deterministic_policy=config['cem_deterministic_policy'],
-            )
-
-            cem_sampler = Sampler(
-                env=env,
-                policy=cem_policy,
-                num_rollouts=config['cem_num_rollouts'],
-                max_path_length=config['max_path_length'],
-            )
-        else:
-            cem_sampler = None
-
-        policy = iLQRController(
-            env=env,
-            planner=planner,
-            horizon=config['horizon'],
-            num_rollouts=config['num_rollouts'],
-        )
+        # if config['on_policy_freq'] > 1:
+        #     cem_policy = MPCController(
+        #         env=env,
+        #         dynamics_model=dynamics_model,
+        #         method_str='cem',
+        #         num_rollouts=config['cem_num_rollouts'],
+        #         discount=config['discount'],
+        #         n_candidates=config['n_candidates'],
+        #         horizon=config['horizon'],
+        #         num_cem_iters=config['num_cem_iters'],
+        #         deterministic_policy=config['cem_deterministic_policy'],
+        #     )
+        #
+        #     cem_sampler = Sampler(
+        #         env=env,
+        #         policy=cem_policy,
+        #         num_rollouts=config['cem_num_rollouts'],
+        #         max_path_length=config['max_path_length'],
+        #     )
+        # else:
+        #     cem_sampler = None
 
         sampler = Sampler(
             env=env,
@@ -143,22 +143,20 @@ def run_experiment(**config):
             max_path_length=config['max_path_length'],
         )
 
-        algo = BPTTTrainer(
+        trainer = Trainer(
+            algo=algo,
             env=env,
+            env_sampler=sampler,
             policy=policy,
             dynamics_model=dynamics_model,
-            sampler=sampler,
             dynamics_sample_processor=sample_processor,
             n_itr=config['n_itr'],
+            steps_per_iter=config['steps_per_iter'],
             initial_random_samples=config['initial_random_samples'],
-            initial_sinusoid_samples=config['initial_sinusoid_samples'],
             dynamics_model_max_epochs=config['dynamic_model_epochs'],
             sess=sess,
-            fit_model=config['fit_model'],
-            on_policy_freq=config['on_policy_freq'],
-            cem_sampler=cem_sampler,
         )
-        algo.train()
+        trainer.train()
 
 
 if __name__ == '__main__':
@@ -170,12 +168,12 @@ if __name__ == '__main__':
         'on_policy_freq': [1],
 
         # Problem
-        'env': [HalfCheetahEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [InvertedPendulumEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [101],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [15],  # 5
+        'horizon': [5],  # FIXME: 15
 
         # Policy
         'initializer_str': ['zeros',],
@@ -189,9 +187,9 @@ if __name__ == '__main__':
         'delta_init': [1.0],
         'alpha_init': [1e-1],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-3],  # 1e-3
+        'c_1': [0.3],  # 1e-3
         'max_forward_iters': [10],
-        'max_backward_iters': [30],
+        'max_backward_iters': [10],
         'use_hessian_f': [False],
         'num_cem_iters_for_init': [5],
 
@@ -202,11 +200,17 @@ if __name__ == '__main__':
         'cem_num_rollouts': [20],
 
         # Training
-        'num_rollouts': [1],
+        'num_rollouts': [20],
         'valid_split_ratio': [0.1],
-        'rolling_average_persitency': [0.5],
+        'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
-        'initial_sinusoid_samples': [False],
+        'step_per_iter': [1],
+
+        # Policy
+        'policy_hidden_sizes': [(64, 64)],
+        'policy_learn_std': [True],
+        'policy_hidden_nonlinearity': [tf.tanh],
+        'policy_output_nonlinearity': [None],
 
         # Dynamics Model
         'num_models': [5],

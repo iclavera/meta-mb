@@ -190,9 +190,15 @@ class GaussianMLPPolicy(Policy):
         """
         return self._dist
 
-    def get_actions_sym(self, obs):
-        dist_info = self.distribution_info_sym(obs)
-        return self._dist.sample_sym(dist_info)
+    def get_actions_sym(self, obs, params=None):
+        if obs.get_shape().ndims == 2:
+            dist_info = self.distribution_info_sym(obs, params)
+            act, _ = self._dist.sample_sym(dist_info)
+            return act
+        elif obs.get_shape().ndims == 1:
+            dist_info = self.distribution_info_sym(obs[None], params)
+            act, _ = self._dist.sample_sym(dist_info)
+            return act[0]
 
     def distribution_info_sym(self, obs_var, params=None):
         """
