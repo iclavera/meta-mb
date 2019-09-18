@@ -28,12 +28,15 @@ def run_experiment(**config):
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
+        config['policy_damping_factor'] = 5e-1
     elif config['env'] is InvertedPendulumSwingUpEnv:
         repr += 'ipup'
         config['max_path_length'] = 100
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = 50
+        config['policy_damping_factor'] = 1e1
+        config['alpha_init'] = 1e-2
 
     repr += f"-{config['horizon']}-{config['num_ilqr_iters']}-{config['c_1']}-{config['num_models']}"
 
@@ -102,6 +105,7 @@ def run_experiment(**config):
             mu_min=config['mu_min'],
             mu_max=config['mu_max'],
             mu_init=config['mu_init'],
+            policy_damping_factor=config['policy_damping_factor'],
             delta_0=config['delta_0'],
             delta_init=config['delta_init'],
             alpha_init=config['alpha_init'],
@@ -109,6 +113,7 @@ def run_experiment(**config):
             c_1=config['c_1'],
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
+            policy_buffer_size=config['policy_buffer_size'],
         )
 
         # if config['on_policy_freq'] > 1:
@@ -172,11 +177,9 @@ if __name__ == '__main__':
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
         'horizon': [5],  # FIXME: 15
 
-        # Policy
-        'initializer_str': ['zeros',],
-
         # iLQR
-        'num_ilqr_iters': [5, 10],
+        'initializer_str': ['zeros',],
+        'num_ilqr_iters': [5], #[5, 10],
         'mu_min': [1e-6],
         'mu_max': [1e10],
         'mu_init': [1e-5],
@@ -184,7 +187,7 @@ if __name__ == '__main__':
         'delta_init': [1.0],
         'alpha_init': [1e-1],
         'alpha_decay_factor': [3.0],
-        'c_1': [0.1],  # 1e-3
+        'c_1': [1e-1],  # 1e-3
         'max_forward_iters': [10],
         'max_backward_iters': [10],
         'use_hessian_f': [False],
@@ -204,10 +207,11 @@ if __name__ == '__main__':
         'steps_per_iter': [1],
 
         # Policy
-        'policy_hidden_sizes': [(64, 64)],
+        'policy_hidden_sizes': [(32,)], #[tuple()], #[(64, 64)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
+        'policy_buffer_size': [10,],  # FIXME
 
         # Dynamics Model
         'num_models': [5],

@@ -60,7 +60,7 @@ def hessian_wrapper(y, x, dim_y, dim_x=None):
         hess, = tf.hessians(ys=y[i], xs=[x])  # (dim_x, dim_x)
         assert hess is not None
         hess_array.append(hess)
-        assert hess.get_shape().as_list() == [dim_x, dim_x]
+        # assert hess.get_shape().as_list() == [dim_x, dim_x]
     return tf.stack(hess_array, axis=0)  # (dim_y, dim_x, dim_x)
 
 def tf_batch_inner(a, b):

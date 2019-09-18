@@ -1,5 +1,6 @@
 from meta_mb.logger import logger
 import tensorflow as tf
+import numpy as np
 import time
 import copy
 from meta_mb.policies import utils
@@ -9,8 +10,8 @@ class iLQR(object):
     def __init__(self, env, dynamics_model, policy, horizon, initializer_str,
                  num_ilqr_iters, reg_str='V', use_hessian_f=False, discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0,
-                 alpha_init=1.0, alpha_decay_factor=3.0,
-                 c_1=0.3, max_forward_iters=10, max_backward_iters=20,
+                 alpha_init=1.0, alpha_decay_factor=3.0, policy_damping_factor=1e0,
+                 c_1=0.3, max_forward_iters=10, max_backward_iters=20, policy_buffer_size=10,
                  verbose=True):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
@@ -28,11 +29,13 @@ class iLQR(object):
         self.mu_init = mu_init
         self.alpha_init = alpha_init
         self.alpha_decay_factor = alpha_decay_factor
+        self.policy_damping_factor = policy_damping_factor
         self.delta_0 = delta_0
         self.delta_init = delta_init
         self.c_1 = c_1
         self.cg_iters = max_backward_iters
         self.max_forward_iters = max_forward_iters
+        self.policy_buffer_size = policy_buffer_size
         self.verbose = verbose
 
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
@@ -57,6 +60,10 @@ class iLQR(object):
         horizon = self.horizon
         obs_dim, act_dim = self.obs_dim, self.act_dim
         policy = self.policy
+        policy_params = policy.get_params()
+        policy_params_values = list(policy_params.values())
+        policy_params_values_flatten = utils.flatten_params_sym(policy_params)
+        policy_params_values_flatten_unflatten = utils.unflatten_params_sym(policy_params_values_flatten, policy_params)
 
         '''--------------- Compute gradients, x_ho, disc_reward ----------------------'''
 
@@ -67,8 +74,12 @@ class iLQR(object):
         disc_reward = tf.zeros(())
 
         for i in range(horizon):
-            if self.use_hessian_f:
+            if i == 0:
+                u = policy.get_actions_sym(x, policy_params_values_flatten_unflatten)
+            else:
                 u = policy.get_actions_sym(x)
+
+            if self.use_hessian_f:
                 x_u_concat = tf.concat([x, u], axis=0)
                 x, u = x_u_concat[:obs_dim], x_u_concat[-act_dim:]
                 x_prime = self.dynamics_model.predict_sym(
@@ -83,7 +94,6 @@ class iLQR(object):
                 f_ux = (hess[:, -act_dim:, :obs_dim] + tf.transpose(hess[:, :obs_dim, -act_dim:], perm=[0, 2, 1])) * 0.5
 
             else:
-                u = policy.get_actions_sym(x)
                 x_prime = self.dynamics_model.predict_sym(
                     x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32)
                 )[0]
@@ -112,12 +122,10 @@ class iLQR(object):
 
         ''' ------------------------- Compute policy gradients --------------------------'''
 
-        policy_params = policy.get_params()
-        policy_params_values = list(policy_params.values())
-        policy_params_flatten = utils.flatten_params_sym(policy_params)
         u = u_ha[0]
-        u_theta = utils.jacobian_wrapper(u, x=policy_params_values, dim_y=act_dim)
-        u_theta = utils.flatten_jac_sym(u_theta, act_dim)
+        u_theta = utils.jacobian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
+        u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
+        # u_theta = utils.flatten_jac_sym(u_theta, act_dim)
         # flatten first, then call hessian_wrapper
         # u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values, dim_y=act_dim)
         # u_theta_theta = utils.flatten_hess_sym(u_theta_theta, act_dim)
@@ -134,6 +142,7 @@ class iLQR(object):
             dtype=tf.float32, size=horizon, element_shape=(act_dim, obs_dim), tensor_array_name='closed_K', clear_after_read=False,
         )
         delta_J_1, delta_J_2 = tf.zeros(()), tf.zeros(())
+        backward_reject = False
 
         for i in range(horizon-1, -1, -1):
             # f_x, f_u, f_xx, f_uu, f_ux, l_x, l_u, l_xx, l_uu, l_ux = [gradients_list[grad_idx].read(i) for grad_idx in range(10)]
@@ -147,16 +156,16 @@ class iLQR(object):
                 else:
                     Q_uu = l_uu + tf.transpose(f_u) @ V_prime_xx @ f_u
                 Q_theta = tf.linalg.matvec(tf.transpose(u_theta), Q_u)
-                Q_theta_theta = tf.transpose(u_theta) @ Q_uu @ u_theta #+ tf.tensordot(Q_u, u_theta_theta)  # FIXME
+                Q_theta_theta = tf.transpose(u_theta) @ Q_uu @ u_theta + tf.tensordot(Q_u, u_theta_theta, axes=1)  # FIXME
 
                 if self.verbose:
                     eig_vals = tf.linalg.eigvalsh(Q_theta_theta)
-                    Q_theta_theta = tf.Print(Q_theta_theta, data=['eig_vals', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
-                Q_theta_theta_reg = Q_theta_theta + tf.eye(tf.shape(Q_theta)[0]) * 1e-3
-                accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_theta_theta_reg, k), b=-Q_theta, cg_iters=self.cg_iters, residual_tol=1e-10)
+                    Q_theta_theta = tf.Print(Q_theta_theta, data=['eig_vals_theta', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
+                Q_theta_theta_reg = Q_theta_theta + tf.eye(tf.shape(Q_theta)[0]) * self.policy_damping_factor
+                accept, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_theta_theta_reg, k), b=-Q_theta, cg_iters=self.cg_iters, residual_tol=1e-10)
 
                 if self.verbose:
-                    k = tf.Print(k, data=['backward accept', accept_k, 'i', i])
+                    k = tf.Print(k, data=['backward accept', accept])
 
                 k_first = k
                 delta_J_1 += tf.tensordot(k, Q_theta, axes=1)
@@ -177,11 +186,19 @@ class iLQR(object):
                     Q_ux = l_ux + tf.transpose(f_u) @ V_prime_xx @ f_x
 
                 # use conjugate gradient method to solve for k, K
-                accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
-                accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
-
                 if self.verbose:
-                    k = tf.Print(k, data=['backward accept', tf.logical_and(accept_k, accept_K), 'i', i])
+                    eig_vals = tf.linalg.eigvalsh(Q_uu)
+                    Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
+                Q_uu_reg = Q_uu + tf.eye(act_dim) * 1e-3
+                accept, Q_uu_reg_inv = utils.tf_cg(f_Ax=lambda Q: Q @ Q_uu_reg, b=tf.eye(act_dim), cg_iters=self.cg_iters, residual_tol=1e-10)
+                k = - tf.linalg.matvec(Q_uu_reg_inv, Q_u)
+                K = - Q_uu_reg_inv @ Q_ux
+
+                # accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu_reg, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
+                # accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu_reg @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
+                #
+                # if self.verbose:
+                #     k = tf.Print(k, data=['backward accept', tf.logical_and(accept_k, accept_K), 'i', i])
 
                 open_k_array = open_k_array.write(i, k)
                 closed_K_array = closed_K_array.write(i, K)
@@ -195,6 +212,8 @@ class iLQR(object):
                 # prepare for next iteration
                 V_prime_x, V_prime_xx = V_x, V_xx
 
+            backward_reject = tf.logical_or(backward_reject, tf.logical_not(accept))
+
         ''' ----------------------------- Forward Pass --------------------------------'''
 
         def body(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha, prev_opt_policy_param_values):
@@ -202,7 +221,7 @@ class iLQR(object):
             delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             disc_reward = tf.zeros(())
             opt_u_ha = [None] * horizon
-            opt_policy_params = utils.unflatten_params_sym(policy_params_flatten + alpha * k_first, policy_params)
+            opt_policy_params = utils.unflatten_params_sym(policy_params_values_flatten + alpha * k_first, policy_params)
 
             for i in range(horizon):
                 if i == 0:
@@ -228,10 +247,15 @@ class iLQR(object):
         # cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha, prev_opt_policy_params: tf.math.logical_not(
         #     tf.greater(J_val, prev_opt_J_val)
         # )
-        # 2)
-        cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, *args: tf.math.logical_not(
-            tf.math.logical_and(tf.greater(0., prev_delta_J_alpha), tf.greater(J_val-prev_opt_J_val, -self.c_1*prev_delta_J_alpha))
+        # 2) stop if backward pass rejected or linear search stopping condition satisfied
+        # line search condition could be true only if backward pass is accepted
+        line_search_accept = lambda alpha, opt_J_val, delta_J_alpha, *args: tf.math.logical_and(
+            tf.greater(0., delta_J_alpha), tf.greater(J_val-opt_J_val, -self.c_1*delta_J_alpha)
         )
+        cond = lambda *args: tf.math.logical_not(tf.math.logical_or(
+            backward_reject,
+            line_search_accept(*args),
+        ))
 
         # loop_vars: loop vars with opt_J_val:= J_val, prev_delta_J_alpha:= 0, opt_u_ha:= u_ha
         loop_vars = (self.alpha_init, J_val, 0., u_ha, policy_params_values)
@@ -241,7 +265,7 @@ class iLQR(object):
         )
         # if forward_stop is True, forward pass is accepted, update policy parameters
         # otherwise set opt_J_val, opt_u_ha back to J_val, u_ha
-        forward_accept = tf.math.logical_not(cond(*terminal_loop_vars))
+        forward_accept = line_search_accept(*terminal_loop_vars)
         _, opt_J_val, _, opt_u_ha, opt_policy_params_values = tf.cond(
             pred=forward_accept,
             true_fn=lambda: terminal_loop_vars,
@@ -259,23 +283,27 @@ class iLQR(object):
         loc = (self.act_high + self.act_low) * 0.5
         return tf.tanh((u-loc)/scale) * scale + loc
 
-    def optimize_policy(self, samples_data, log=True, prefix='', verbose=False):
+    def optimize_policy(self, samples_data, log=True, prefix='', verbose=True):
+        t = time.time()
         observations = samples_data['observations']
+        idx = np.random.choice(len(observations), self.policy_buffer_size)
         sess = tf.get_default_session()
 
-        for obs in observations:
+        for obs in observations[idx]:
             for itr in range(self.num_ilqr_iters):
                 opt_params_values, opt_disc_reward, eff_diff, opt_accept = sess.run(
                     [self.opt_params_values_var, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var], feed_dict={self.x_ph_o: obs}
                 )
                 if verbose:
-                    logger.logkv(f'RetDyn-{itr}', opt_disc_reward)
-                    logger.logkv(f'RetImpv-{itr}', eff_diff)
+                    logger.logkv(f'{prefix}RetDyn-{itr}', opt_disc_reward)
+                    logger.logkv(f'{prefix}RetImpv-{itr}', eff_diff)
 
                 if opt_accept:
                     self.policy.set_params(opt_params_values)
                 else:
-                    break
+                    pass
+                    # break
 
             if verbose:
+                logger.logkv(prefix + 'OptPolicyTime', time.time() - t)
                 logger.dumpkvs()
