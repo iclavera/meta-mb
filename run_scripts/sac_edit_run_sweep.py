@@ -229,7 +229,7 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90],
         'baseline': [LinearFeatureBaseline],
-        'env': [DoubleIntegratorEnv],
+        'env': [AntEnv],
         'n_itr': [200],
 
         # Policy
