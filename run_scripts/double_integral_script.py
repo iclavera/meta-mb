@@ -9,20 +9,17 @@ from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.double_integral import DoubleIntegratorEnv
 from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_edit_trainer import Trainer
+from meta_mb.trainers.double_integral_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
-from meta_mb.policies.mpc_controller import MPCController
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 
 from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble import ProbMLPDynamicsEnsemble
-from meta_mb.dynamics.probabilistic_mlp_dynamics_ensemble_try import ProbMLPDynamicsEnsembleTry
 
 
 def run_experiment(**kwargs):
@@ -33,18 +30,6 @@ def run_experiment(**kwargs):
     config.gpu_options.allow_growth = True
     config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
     sess = tf.Session(config=config)
-    if isinstance(kwargs['env'](), HopperEnv):
-        if kwargs['rollout_length_params'] == 'default':
-            rollout_length_params = [20, 100, 1, 15]
-        else:
-            rollout_length_params = [20, 100, 1, 1]
-    elif isinstance(kwargs['env'](), AntEnv):
-        if kwargs['rollout_length_params'] == 'default':
-            rollout_length_params = [20, 100, 1, 25]
-        else:
-            rollout_length_params = [20, 100, 1, 1]
-    else:
-        rollout_length_params = [20, 100, 1, 1]
 
 
     with sess.as_default() as sess:
@@ -80,10 +65,6 @@ def run_experiment(**kwargs):
             squashed=True
         )
 
-        if kwargs['policy_hidden_sizes'] == ():
-            ground_truth = True
-        else:
-            ground_truth = False
 
         train_env_sampler = BaseSampler(
             env=env,
@@ -168,27 +149,14 @@ def run_experiment(**kwargs):
             exp_dir=exp_dir,
             target_update_interval=kwargs['n_train_repeats'],
             dynamics_type=kwargs['model_type'],
-            ground_truth=ground_truth,
         )
 
-        eval_policy = MPCController(
-            name="mpc",
-            env=env,
-            dynamics_model=dynamics_model,
-            discount=kwargs['discount'],
-            n_candidates=kwargs['n_candidates'],
-            horizon=kwargs['horizon'],
-            use_cem=kwargs['use_cem'],
-            num_cem_iters=kwargs['num_cem_iters'],
-            Qs=Qs,
-        )
 
         eval_env_sampler = BaseSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
-            mpc=eval_policy,
 
         )
 
@@ -201,13 +169,11 @@ def run_experiment(**kwargs):
             eval_env_sample_processor=eval_env_sample_processor,
             dynamics_model=dynamics_model,
             policy=policy,
-            # eval_policy=eval_policy,
             n_itr=kwargs['n_itr'],
             sess=sess,
             n_initial_exploration_steps=kwargs['n_initial_exploration_steps'],
             env_max_replay_buffer_size=kwargs['env_replay_buffer_max_size'],
             model_max_replay_buffer_size=kwargs['model_replay_buffer_max_size'],
-            rollout_length_params=rollout_length_params,
             rollout_batch_size=kwargs['rollout_batch_size'],
             model_train_freq=kwargs['model_train_freq'],
             n_train_repeats=kwargs['n_train_repeats'],
@@ -216,7 +182,6 @@ def run_experiment(**kwargs):
             sampler_batch_size=kwargs['sampler_batch_size'],
             dynamics_type=kwargs['model_type'],
             T=kwargs['T'],
-            ground_truth=ground_truth,
             max_epochs_since_update=kwargs['max_epochs_since_update'],
             num_eval_trajectories=kwargs['num_eval_trajectories'],
         )
@@ -233,7 +198,7 @@ if __name__ == '__main__':
         'n_itr': [200],
 
         # Policy
-        'policy_hidden_sizes': [(256, 256)],
+        'policy_hidden_sizes': [()],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
         'policy_hidden_nonlinearity': ['tanh'],
@@ -250,7 +215,6 @@ if __name__ == '__main__':
         # Training
         'model_type': [0],
         'n_train_repeats': [8],
-        'rollout_length_params': ['1'],
         'model_train_freq': [25],
         'rollout_batch_size': [1e3],
         'num_actions_per_next_observation': [1],

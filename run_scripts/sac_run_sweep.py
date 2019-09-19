@@ -11,6 +11,7 @@ from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.normalized_env import normalize
+from meta_mb.envs.mb_envs.double_integral import DoubleIntegratorEnv
 from meta_mb.trainers.sac_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
@@ -102,18 +103,18 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1, 11],
+        'seed': [1],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv, AntEnv, HopperEnv, Walker2dEnv],
+        'env': [DoubleIntegratorEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['tanh', 'relu'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh','relu'],
+        'vfun_hidden_nonlineariy': ['relu'],
 
 
         # Env Sampling

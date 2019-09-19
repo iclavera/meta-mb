@@ -58,7 +58,6 @@ class SAC_MB(Algo):
             model_used_ratio=1.0,
             experiment_name=None,
             exp_dir=None,
-            ground_truth=False,
             actor_H=1,
             **kwargs
     ):
@@ -118,7 +117,6 @@ class SAC_MB(Algo):
         self.q_target_type = q_target_type
         self.experiment_name = experiment_name
         self.exp_dir = exp_dir
-        self.ground_truth = ground_truth
         self.saver = tf.train.Saver()
 
         self.build_graph()
@@ -134,9 +132,6 @@ class SAC_MB(Algo):
         self._init_actor_update()
         self._init_critic_update()
         self._init_diagnostics_ops()
-        # if self.restore:
-        #     sess = tf.get_default_session()
-        #     self.saver.restore(sess, osp.join(logger.get_dir(), "model.ckpt"))
 
 
     def _init_global_step(self):
@@ -153,38 +148,37 @@ class SAC_MB(Algo):
             (tuple) : a tuple containing lists of placeholders for each input type and meta task,
             and for convenience, a list containing all placeholders created
         """
-        if not self.ground_truth:
-            dist_info_specs = self.policy.distribution.dist_info_specs
-            all_phs_dict = OrderedDict()
+        dist_info_specs = self.policy.distribution.dist_info_specs
+        all_phs_dict = OrderedDict()
 
-            # observation ph
+        # observation ph
+        obs_shape = [None, self.policy.obs_dim]
+        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+        all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+
+        # action ph
+        action_shape = [None, self.policy.action_dim]
+        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+        all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
+
+        """add the placeholder for terminal here"""
+        terminal_shape = [None] if not recurrent else [None, None]
+        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+        all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
+
+        rewards_shape = [None] if not recurrent else [None, None]
+        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+        all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
+
+        if not next_obs:
+            return obs_ph, action_ph, all_phs_dict
+
+        else:
             obs_shape = [None, self.policy.obs_dim]
-            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
-            all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
 
-            # action ph
-            action_shape = [None, self.policy.action_dim]
-            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
-            all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
-
-            """add the placeholder for terminal here"""
-            terminal_shape = [None] if not recurrent else [None, None]
-            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
-            all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
-
-            rewards_shape = [None] if not recurrent else [None, None]
-            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
-            all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
-
-            if not next_obs:
-                return obs_ph, action_ph, all_phs_dict
-
-            else:
-                obs_shape = [None, self.policy.obs_dim]
-                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
-                all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
-
-            return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
+        return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle=True, k = 1):
         next_observation = self.dynamics_model.predict_sym(obs, actions)
@@ -322,6 +316,11 @@ class SAC_MB(Algo):
 
         self.training_ops.update({'Q': tf.group(q_training_ops)})
 
+
+
+
+
+
     def _init_actor_update(self):
         """Create minimization operations for policy and entropy.
         Creates a `tf.optimizer.minimize` operations for updating
@@ -332,6 +331,7 @@ class SAC_MB(Algo):
         """
         observations_ph = self.op_phs_dict['observations']
         dist_info_sym = self.policy.distribution_info_sym(observations_ph)
+
         actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
         log_pis_var = self.policy.distribution.log_likelihood_sym(actions_var, dist_info_sym)
         log_pis_var = tf.expand_dims(log_pis_var, axis=1)
@@ -339,6 +339,7 @@ class SAC_MB(Algo):
 
         log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
+
 
         if isinstance(self.target_entropy, Number):
             alpha_loss = -tf.reduce_mean(
@@ -485,6 +486,8 @@ class SAC_MB(Algo):
 
         assert policy_kl_losses.shape.as_list() == [None, 1]
 
+
+
         self.policy_losses = policy_kl_losses
         policy_loss = tf.reduce_mean(policy_kl_losses)
 
@@ -496,29 +499,37 @@ class SAC_MB(Algo):
             loss=policy_loss,
             var_list=list(self.policy.policy_params.values()))
 
+        self.Q_grad = self.policy_optimizer.compute_gradients(min_q_val_var, var_list=list(self.policy.policy_params.values()))[0][0]
+
+
+
+        # test_Q_gradient = True
+        # if test_Q_gradient:
+        #     P, _ = self.approximate_gradient(observations_ph)
+        #     obs = tf.expand_dims(observations_ph, axis = -1)
+        #     x = tf.matmul(P, tf.transpose(observations_ph))
+        #     y = tf.matmul(observations_ph, x)
+        #     highest_reward = self.training_environment.tf_reward(observations_ph, actions_var)
+        #     approximate_Q = highest_reward + tf.reshape(tf.reduce_sum(tf.matmul(tf.identity(y), y), axis = 0), [-1, 1])
+        #     gt_gradient = self.policy_optimizer.compute_gradients(approximate_Q, var_list=list(self.policy.policy_params.values()))
+        #     gt_gradient = [g[0] for g in gt_gradient]
+        #     approximated_gradient = self.policy_optimizer.compute_gradients(min_q_val_var, var_list=list(self.policy.policy_params.values()))
+        #     approximated_gradient = [g[0] for g in approximated_gradient]
+        #     self.q_differenece = [tf.losses.mean_squared_error(gt_gradient[i], approximated_gradient[i]) for i in range(len(gt_gradient))]
+
         self.training_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):
-        if self.ground_truth:
-            diagnosables = OrderedDict((
-                ('Q_value', self.q_values_var),
-                ('Q_loss', self.q_losses),
-                ('policy_loss', self.policy_losses),
-                ('Q_targets', self.q_target),
-                ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
-                ('gradient_loss1', self.gradient_loss1),
-                ('gradient_loss2', self.gradient_loss2)
-            ))
-        else:
-            diagnosables = OrderedDict((
-                ('Q_value', self.q_values_var),
-                ('Q_loss', self.q_losses),
-                ('policy_loss', self.policy_losses),
-                ('alpha', self.alpha),
-                ('Q_targets', self.q_target),
-                ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
-                ('log_pis', self.log_pis_var)
-            ))
+
+        diagnosables = OrderedDict((
+            ('Q_value', self.q_values_var),
+            ('Q_loss', self.q_losses),
+            ('policy_loss', self.policy_losses),
+            ('alpha', self.alpha),
+            ('Q_targets', self.q_target),
+            ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
+            ('log_pis', self.log_pis_var),
+        ))
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),

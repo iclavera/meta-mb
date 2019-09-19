@@ -1,32 +1,12 @@
-import tensorflow as tf
 import numpy as np
-import time
-from meta_mb.logger import logger
-
-import abc
-from collections import OrderedDict
-from distutils.version import LooseVersion
-from itertools import count
-import math
-import os
 from pdb import set_trace as st
+from meta_mb.logger import logger
 from meta_mb.replay_buffers import SimpleReplayBuffer
+import tensorflow as tf
+from meta_mb.utils import create_feed_dict
+import time
 
 class Trainer(object):
-    """
-    Performs steps for MAML
-    Args:
-        algo (Algo) :
-        env (Env) :
-        env_sampler (Sampler) :
-        env_sample_processor (SampleProcessor) :
-        baseline (Baseline) :
-        policy (Policy) :
-        n_itr (int) : Number of iterations to train for
-        start_itr (int) : Number of iterations policy has already trained for, if reloading
-        num_inner_grad_steps (int) : Number of inner steps per maml iteration
-        sess (tf.Session) : current tf session (if we loaded policy, for example)
-    """
     def __init__(
             self,
             algo,
@@ -38,9 +18,7 @@ class Trainer(object):
             dynamics_model,
             policy,
             n_itr,
-            rollout_length_params,
             sess=None,
-            # eval_policy=None,
             n_initial_exploration_steps=1e3,
             env_max_replay_buffer_size=1e6,
             model_max_replay_buffer_size=2e6,
@@ -58,6 +36,7 @@ class Trainer(object):
             ground_truth=False,
             max_epochs_since_update=5,
             num_eval_trajectories=5,
+            estimated_iteration = 100,
             ):
         self.algo = algo
         self.env = env
@@ -68,9 +47,7 @@ class Trainer(object):
         self.dynamics_model = dynamics_model
         self.baseline = train_env_sample_processor.baseline
         self.policy = policy
-        # self.eval_policy = eval_policy
         self.n_itr = n_itr
-        self.rollout_length_params = rollout_length_params
         self.n_initial_exploration_steps = n_initial_exploration_steps
         self.env_replay_buffer = SimpleReplayBuffer(self.env, env_max_replay_buffer_size)
         self.model_replay_buffer = SimpleReplayBuffer(self.env, model_max_replay_buffer_size)
@@ -90,10 +67,85 @@ class Trainer(object):
         self.T = T
         self.ground_truth = ground_truth
         self.max_epochs_since_update = max_epochs_since_update
+        self.estimated_iteration = estimated_iteration
 
         if sess is None:
             sess = tf.Session()
         self.sess = sess
+        self.get_matrices()
+        self.build_training_graph()
+
+    def get_matrices(self):
+        R = np.eye(self.action_dim)
+        Q = np.eye(self.obs_dim)
+        A = np.array([[1., self.env.dt], [0., 1.]])
+        B = np.array([[0.], [self.env.dt]])
+        self.A_array, self.Q_array, self.B_array, self.R_array = A, Q, B, R
+        P = Q
+        self.p_loss = 1
+        itr_count = 0
+        while self.p_loss > 0:
+            itr_count += 1
+            P_new = Q + np.matmul(A.T, np.matmul(P, A)) - np.matmul(A.T,
+                      np.matmul(P,
+                      np.matmul(B,
+                      np.matmul(np.linalg.inv(np.matmul(B.T, np.matmul(P, B)) + R),
+                      np.matmul(B.T, np.matmul(P, A))))))
+            self.p_loss = ((P - P_new)**2).mean(axis = None)
+            P = P_new
+        logger.log('P converges after ', itr_count, ' iterations.')
+        self.P_array = P
+        self.K_array = np.matmul(np.linalg.inv(R + np.matmul(B.T, np.matmul(P, B))), np.matmul(B.T, np.matmul(P, A)))
+
+    def build_training_graph(self):
+        with tf.variable_scope('double_integral_policy', reuse=False):
+            self.K = tf.get_variable("K", initializer = self.K_array)
+            self.K = tf.cast(self.K, tf.float32)
+            self.optimal_policy = self.K
+            self.P = tf.convert_to_tensor(self.P_array, dtype = tf.float32)
+            self.A = tf.convert_to_tensor(self.A_array, dtype = tf.float32)
+            self.B = tf.convert_to_tensor(self.B_array, dtype = tf.float32)
+            self.Q = tf.convert_to_tensor(self.Q_array, dtype = tf.float32)
+            self.R = tf.convert_to_tensor(self.R_array, dtype = tf.float32)
+
+            self.obs_ph = tf.placeholder(tf.float32, shape=[None, self.obs_dim], name='obs')
+
+        self.optimal_Q = self.get_optimal_Q()
+        self.estimated_Q = self.get_estimated_Q()
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.algo.policy_lr, name="optimizer")
+        optimal_grads = self.optimizer.compute_gradients(self.optimal_Q, var_list=[self.K])[0][0]
+        estimated_grads = self.optimizer.compute_gradients(self.estimated_Q, var_list=[self.K])[0][0]
+        self.Q_grad_loss = tf.losses.mean_squared_error(optimal_grads, estimated_grads)
+
+    def calculate(self, x, A):
+        x = tf.matmul(x, tf.matmul(A, tf.transpose(x)))
+        V = tf.reshape(tf.reduce_sum(tf.matmul(tf.identity(x), x), axis = 1), [-1, 1])
+        return V
+
+    def optimal_action(self, observations):
+        return tf.tanh(-tf.matmul(observations, tf.transpose(self.K)))
+
+    def get_optimal_Q(self):
+        best_action = self.optimal_action(self.obs_ph)
+        reward = self.env.tf_reward(self.obs_ph, best_action)
+        return reward + self.algo.discount * (-0.5) * self.calculate(self.obs_ph, self.P)
+
+    def get_estimated_Q(self):
+        result = 0
+        obs = self.obs_ph
+        act = self.optimal_action(obs)
+        for i in range(self.estimated_iteration):
+            result += (-0.5) * (self.algo.discount)** i * self.calculate(obs, self.Q) + self.calculate(act, self.R)
+            obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(act)))
+            act = self.optimal_action(obs)
+        return result
+
+    def gradient(self, batch):
+        observations = batch['observations']
+
+        sess = tf.get_default_session()
+        feed_dict = {self.obs_ph: observations}
+        return sess.run(self.Q_grad_loss, feed_dict)
 
 
     def train(self):
@@ -110,9 +162,6 @@ class Trainer(object):
 
         saver = tf.train.Saver()
         with self.sess.as_default() as sess:
-            # initialize uninitialized vars  (only initialize vars that were not loaded)
-            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            # sess.run(tf.variables_initializer(uninit_vars))
             sess.run(tf.global_variables_initializer())
             start_time = time.time()
 
@@ -126,10 +175,6 @@ class Trainer(object):
                 self.dynamics_model.update_buffer(samples_data['observations'],
                                            samples_data['actions'],
                                            samples_data['next_observations'])
-            if self.algo.obs_dim > 50:
-                self.deal_with_oom = 16
-            else:
-                self.deal_with_oom = 1
 
             time_step = 0
             for itr in range(self.start_itr, self.n_itr):
@@ -155,17 +200,15 @@ class Trainer(object):
 
                 for _ in range(self.epoch_length // self.model_train_freq):
                     expand_model_replay_buffer_start = time.time()
-                    for _ in range(self.rollout_length * self.deal_with_oom):
-                        samples_num = int(self.rollout_batch_size)//(self.deal_with_oom)
-                        random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
-                        actions_from_policy = self.policy.get_actions(random_states)[0]
-                        next_obs, rewards, term = self.step(random_states, actions_from_policy)
-                        self.model_replay_buffer.add_samples(random_states,
-                                                             actions_from_policy,
-                                                             rewards,
-                                                             term,
-                                                             next_obs)
-                    self.set_rollout_length(itr)
+                    samples_num = int(self.rollout_batch_size)
+                    random_states = self.env_replay_buffer.random_batch_simple(samples_num)['observations']
+                    actions_from_policy = self.policy.get_actions(random_states)[0]
+                    next_obs, rewards, term = self.step(random_states, actions_from_policy)
+                    self.model_replay_buffer.add_samples(random_states,
+                                                         actions_from_policy,
+                                                         rewards,
+                                                         term,
+                                                         next_obs)
                     expand_model_replay_buffer_time.append(time.time() - expand_model_replay_buffer_start)
 
                     sac_start = time.time()
@@ -178,7 +221,10 @@ class Trainer(object):
                         model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                         keys = env_batch.keys()
                         batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                        self.algo.do_training(time_step, batch, log=True)
+                        Q_grad_loss = self.gradient(batch)
+                        # self.algo.do_training(time_step, batch, log=True)
+
+                    logger.logkv('Q_grad_loss', Q_grad_loss)
 
                     sac_time.append(time.time() - sac_start)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
@@ -187,20 +233,9 @@ class Trainer(object):
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
 
-                # JUST COMMENTED THIS
-                # multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
-                #                                                              deterministic=True,
-                #                                                              eval=True,
-                #                                                              log_prefix='eval-',
-                #                                                              multiple_trajectory = self.num_eval_trajectories,
-                #                                                              dynamics_model = self.dynamics_model)
-                # _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
-
-                # self.log_diagnostics(paths[0], prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
-                logger.logkv('rollout_length', self.rollout_length)
                 logger.logkv('n_timesteps', self.train_env_sampler.total_timesteps_sampled)
                 logger.logkv('ItrTime', time.time() - itr_start_time)
                 logger.logkv('SAC Training Time', sum(sac_time))
@@ -219,16 +254,6 @@ class Trainer(object):
         logger.log("Training finished")
         self.sess.close()
 
-    def set_rollout_length(self, itr):
-        min_epoch, max_epoch, min_length, max_length = self.rollout_length_params
-        if itr <= min_epoch:
-            y = min_length
-        else:
-            dx = (itr - min_epoch) / (max_epoch - min_epoch)
-            dx = min(dx, 1)
-            y = dx * (max_length - min_length) + min_length
-
-        self.rollout_length = int(y)
 
     def step(self, obs, actions):
         assert self.dynamics_type in [0, 3]
@@ -252,10 +277,3 @@ class Trainer(object):
                     dynamics=self.dynamics_model,
                     vfun=self.algo.Qs,
                 )
-
-    def log_diagnostics(self, paths, prefix):
-        # TODO: we aren't using it so far
-        self.env.log_diagnostics(paths, prefix)
-        # if not self.ground_truth:
-        self.policy.log_diagnostics(paths, prefix)
-        self.baseline.log_diagnostics(paths, prefix)
