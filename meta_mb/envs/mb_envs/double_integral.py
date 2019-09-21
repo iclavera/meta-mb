@@ -18,18 +18,16 @@ class DoubleIntegratorEnv(Env):
         self._fig = None
         self.discount = discount
         self.vectorized = True
-        self.action_space = spaces.Box(low=np.array((-3,)), high=np.array((3,)), dtype=np.float64)
-        self.observation_space = spaces.Box(low=np.array((-4, -4)), high=np.array((4, 4)), dtype=np.float64)
+        self.action_space = spaces.Box(low=np.array((-1,)), high=np.array((1,)), dtype=np.float64)
+        self.observation_space = spaces.Box(low=np.array((-1e6, -1e6)), high=np.array((1e6, 1e6)), dtype=np.float64)
 
     def step(self, action):
         next_state = self._state + np.array([self._state[1], action[0]]) * self.dt
         reward = -0.5 * (self._state[0] ** 2 + self._state[1] ** 2 + action ** 2)
-        # done = (next_state < self.observation_space.low).any() or (next_state > self.observation_space.high).any()
         done = False
+        # done = False
         env_info = dict()
         self._state = next_state
-        if done:
-            reward /= (1 - self.discount)
         return next_state.copy(), reward, done, env_info
 
     def reset(self):
@@ -47,14 +45,15 @@ class DoubleIntegratorEnv(Env):
     def tf_termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
         done = tf.tile(tf.constant([False]), [tf.shape(obs)[0]])
-        # done = tf.logical_or(tf.reduce_any(next_obs < self.observation_space.low), tf.reduce_any(next_obs > self.observation_space.high))
+        # done = tf.logical_or(tf.reduce_any(next_obs < self.observation_space.low, axis = -1),
+        #                      tf.reduce_any(next_obs > self.observation_space.high, axis = -1))
         done = done[:,None]
         return done
 
     def termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
         done = np.array([False]).repeat(obs.shape[0])
-        # done = (next_obs < self.observation_space.low).any() or (next_obs > self.observation_space.high).any()
+        # done = np.any(next_obs < self.observation_space.low, axis = -1) or np.any(next_obs > self.observation_space.high, axis = -1)
         done = done[:,None]
         return done
 

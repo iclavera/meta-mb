@@ -188,6 +188,7 @@ class Trainer(object):
                                                    samples_data['next_observations'])
 
                 # JUST COMMENTED THIS
+                # mpc_start = time.time()
                 # multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
                 #                                                              deterministic=True,
                 #                                                              eval=True,
@@ -195,8 +196,9 @@ class Trainer(object):
                 #                                                              multiple_trajectory = self.num_eval_trajectories,
                 #                                                              dynamics_model = self.dynamics_model)
                 # _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
+                # logger.logkv('MPC_time', time.time() - mpc_start)
 
-                # self.log_diagnostics(paths[0], prefix='train-')
+                self.log_diagnostics(paths[0], prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
@@ -251,6 +253,7 @@ class Trainer(object):
                     baseline=self.baseline,
                     dynamics=self.dynamics_model,
                     vfun=self.algo.Qs,
+                    vtar=self.algo.Q_targets,
                 )
 
     def log_diagnostics(self, paths, prefix):

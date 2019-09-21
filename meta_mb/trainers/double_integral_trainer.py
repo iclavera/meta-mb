@@ -93,15 +93,14 @@ class Trainer(object):
                       np.matmul(B.T, np.matmul(P, A))))))
             self.p_loss = ((P - P_new)**2).mean(axis = None)
             P = P_new
+        self.K = np.matmul(np.linalg.inv(R + np.matmul(B.T, np.matmul(P, B))), np.matmul(B.T, np.matmul(P, A)))
         logger.log('P converges after ', itr_count, ' iterations.')
         self.P_array = P
-        self.K_array = np.matmul(np.linalg.inv(R + np.matmul(B.T, np.matmul(P, B))), np.matmul(B.T, np.matmul(P, A)))
 
     def build_training_graph(self):
         with tf.variable_scope('double_integral_policy', reuse=False):
-            self.K = tf.get_variable("K", initializer = self.K_array)
+            self.K = tf.get_variable("K", initializer = self.K)
             self.K = tf.cast(self.K, tf.float32)
-            self.optimal_policy = self.K
             self.P = tf.convert_to_tensor(self.P_array, dtype = tf.float32)
             self.A = tf.convert_to_tensor(self.A_array, dtype = tf.float32)
             self.B = tf.convert_to_tensor(self.B_array, dtype = tf.float32)
@@ -112,8 +111,8 @@ class Trainer(object):
 
         self.optimal_Q = self.get_optimal_Q()
         self.estimated_Q = self.get_estimated_Q()
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.algo.policy_lr, name="optimizer")
-        optimal_grads = self.optimizer.compute_gradients(self.optimal_Q, var_list=[self.K])[0][0]
+        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.algo.policy_lr, name="optimizer")
+        # optimal_grads = self.optimizer.compute_gradients(self.optimal_Q, var_list=[self.K])[0][0]
         estimated_grads = self.optimizer.compute_gradients(self.estimated_Q, var_list=[self.K])[0][0]
         self.Q_grad_loss = tf.losses.mean_squared_error(optimal_grads, estimated_grads)
 
@@ -122,8 +121,8 @@ class Trainer(object):
         V = tf.reshape(tf.reduce_sum(tf.matmul(tf.identity(x), x), axis = 1), [-1, 1])
         return V
 
-    def optimal_action(self, observations):
-        return tf.tanh(-tf.matmul(observations, tf.transpose(self.K)))
+    def optimal_action(self, observations, i = 0):
+        return -tf.matmul(observations, tf.transpose(self.K))
 
     def get_optimal_Q(self):
         best_action = self.optimal_action(self.obs_ph)
@@ -133,11 +132,10 @@ class Trainer(object):
     def get_estimated_Q(self):
         result = 0
         obs = self.obs_ph
-        act = self.optimal_action(obs)
         for i in range(self.estimated_iteration):
-            result += (-0.5) * (self.algo.discount)** i * self.calculate(obs, self.Q) + self.calculate(act, self.R)
+            act = self.optimal_action(obs, i)
+            result += (self.algo.discount)**i * (-0.5) * self.calculate(obs, self.Q) + self.calculate(act, self.R)
             obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(act)))
-            act = self.optimal_action(obs)
         return result
 
     def gradient(self, batch):

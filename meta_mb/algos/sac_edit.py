@@ -50,7 +50,6 @@ class SAC_MB(Algo):
             sampler_batch_size=64,
             session=None,
             num_actions_per_next_observation=1,
-            prediction_type = 'none',
             T = 0,
             q_function_type=0,
             q_target_type=0,
@@ -105,7 +104,6 @@ class SAC_MB(Algo):
         self.Qs = Qs
         self.Q_targets = Q_targets
         self.reward_scale = reward_scale
-        self.prediction_type = prediction_type
         self.target_update_interval = target_update_interval
         self.num_actions_per_next_observation = num_actions_per_next_observation
         self.action_prior = action_prior
@@ -500,23 +498,6 @@ class SAC_MB(Algo):
             var_list=list(self.policy.policy_params.values()))
 
         self.Q_grad = self.policy_optimizer.compute_gradients(min_q_val_var, var_list=list(self.policy.policy_params.values()))[0][0]
-
-
-
-        # test_Q_gradient = True
-        # if test_Q_gradient:
-        #     P, _ = self.approximate_gradient(observations_ph)
-        #     obs = tf.expand_dims(observations_ph, axis = -1)
-        #     x = tf.matmul(P, tf.transpose(observations_ph))
-        #     y = tf.matmul(observations_ph, x)
-        #     highest_reward = self.training_environment.tf_reward(observations_ph, actions_var)
-        #     approximate_Q = highest_reward + tf.reshape(tf.reduce_sum(tf.matmul(tf.identity(y), y), axis = 0), [-1, 1])
-        #     gt_gradient = self.policy_optimizer.compute_gradients(approximate_Q, var_list=list(self.policy.policy_params.values()))
-        #     gt_gradient = [g[0] for g in gt_gradient]
-        #     approximated_gradient = self.policy_optimizer.compute_gradients(min_q_val_var, var_list=list(self.policy.policy_params.values()))
-        #     approximated_gradient = [g[0] for g in approximated_gradient]
-        #     self.q_differenece = [tf.losses.mean_squared_error(gt_gradient[i], approximated_gradient[i]) for i in range(len(gt_gradient))]
-
         self.training_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):

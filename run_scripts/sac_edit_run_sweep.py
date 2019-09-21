@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "q5-3"
+EXP_NAME = "save-hc"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -158,7 +158,6 @@ def run_experiment(**kwargs):
             Qs=Qs,
             Q_targets=Q_targets,
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-            prediction_type=kwargs['prediction_type'],
             T=kwargs['T'],
             q_function_type=kwargs['q_function_type'],
             q_target_type=kwargs['q_target_type'],
@@ -229,18 +228,18 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90],
         'baseline': [LinearFeatureBaseline],
-        'env': [AntEnv],
+        'env': [HalfCheetahEnv],
         'n_itr': [200],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Env Sampling
-        'n_initial_exploration_steps': [500],
-        'max_path_length': [101],
+        'n_initial_exploration_steps': [5000],
+        'max_path_length': [1001],
         'num_rollouts': [1],
 
         # replay_buffer
@@ -250,26 +249,26 @@ if __name__ == '__main__':
         # Training
         'model_type': [0],
         'n_train_repeats': [8],
-        'rollout_length_params': ['1'],
-        'model_train_freq': [25],
-        'rollout_batch_size': [1e3],
-        'num_actions_per_next_observation': [1],
+        'rollout_length_params': ['default'],
+        'model_train_freq': [250],
+        'rollout_batch_size': [100e3],
+        'num_actions_per_next_observation': [5, 10],
         'H': [2],  # Critic
-        'T': [2],  # Actor
+        'T': [3],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
         'num_eval_trajectories': [1],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
-        'q_target_type': [0],
-        'q_function_type': [3],
+        'vfun_hidden_nonlineariy': ['relu'],
+        'q_target_type': [1],
+        'q_function_type': [5],
         'model_used_ratio': [0.5],
 
         # CEM
-        'n_candidates': [100], # K
-        'horizon': [5], # Tau
+        'n_candidates': [1000], # K
+        'horizon': [10], # Tau
         'use_cem': [True],
         'num_cem_iters': [5],
 
@@ -279,7 +278,6 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'prediction_type': ['none'],
 
         # Dynamics Model
         'max_epochs_since_update': [8],
@@ -289,12 +287,12 @@ if __name__ == '__main__':
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
         'rolling_average_persitency': [0.9],
-        'early_stopping': [1],
+        'early_stopping': [0],
         'sampler_batch_size': [256],
         'real_ratio': [.05],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'model_learning_rate': [1e-3],
-        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_hidden_nonlinearity': ['relu', 'swish'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_batch_size': [256],
     }
