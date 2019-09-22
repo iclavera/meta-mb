@@ -12,6 +12,7 @@ class iLQR(object):
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0,
                  alpha_init=1.0, alpha_decay_factor=3.0, policy_damping_factor=1e0,
                  c_1=0.3, max_forward_iters=10, max_backward_iters=20, policy_buffer_size=10,
+                 use_hessian_policy=False,
                  verbose=True):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
@@ -36,6 +37,7 @@ class iLQR(object):
         self.cg_iters = max_backward_iters
         self.max_forward_iters = max_forward_iters
         self.policy_buffer_size = policy_buffer_size
+        self.use_hessian_policy = use_hessian_policy
         self.verbose = verbose
 
         self.act_low, self.act_high = env.action_space.low, env.action_space.high
@@ -118,17 +120,20 @@ class iLQR(object):
             u_ha.append(u)
             x_ho.append(x)
             x = x_prime
-        J_val = -disc_reward
+
+        if self.verbose:
+            print_ops = [tf.print('\n----disc_reward before opt', disc_reward)]
+        else:
+            print_ops = []
+        with tf.control_dependencies(print_ops):
+            J_val = -disc_reward
 
         ''' ------------------------- Compute policy gradients --------------------------'''
 
         u = u_ha[0]
         u_theta = utils.jacobian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
-        u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
-        # u_theta = utils.flatten_jac_sym(u_theta, act_dim)
-        # flatten first, then call hessian_wrapper
-        # u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values, dim_y=act_dim)
-        # u_theta_theta = utils.flatten_hess_sym(u_theta_theta, act_dim)
+        if self.use_hessian_policy:
+            u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
 
         ''' -------------------- Backward Pass ---------------------------------'''
 
@@ -137,7 +142,6 @@ class iLQR(object):
         open_k_array = tf.TensorArray(
             dtype=tf.float32, size=horizon, element_shape=(act_dim,), tensor_array_name='open_k', clear_after_read=False,
         )
-        k_first = None
         closed_K_array = tf.TensorArray(
             dtype=tf.float32, size=horizon, element_shape=(act_dim, obs_dim), tensor_array_name='closed_K', clear_after_read=False,
         )
@@ -156,12 +160,17 @@ class iLQR(object):
                 else:
                     Q_uu = l_uu + tf.transpose(f_u) @ V_prime_xx @ f_u
                 Q_theta = tf.linalg.matvec(tf.transpose(u_theta), Q_u)
-                Q_theta_theta = tf.transpose(u_theta) @ Q_uu @ u_theta + tf.tensordot(Q_u, u_theta_theta, axes=1)  # FIXME
+                if self.use_hessian_policy:
+                    Q_theta_theta = tf.transpose(u_theta) @ Q_uu @ u_theta + tf.tensordot(Q_u, u_theta_theta, axes=1)  # FIXME
+                    Q_theta_theta_reg = Q_theta_theta + tf.eye(tf.shape(Q_theta)[0]) * self.policy_damping_factor
+                else:
+                    Q_theta_theta = tf.transpose(u_theta) @ Q_uu @ u_theta
+                    Q_theta_theta_reg = Q_theta_theta + tf.eye(tf.shape(Q_theta)[0]) * self.mu_init
 
                 if self.verbose:
                     eig_vals = tf.linalg.eigvalsh(Q_theta_theta)
                     Q_theta_theta = tf.Print(Q_theta_theta, data=['eig_vals_theta', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
-                Q_theta_theta_reg = Q_theta_theta + tf.eye(tf.shape(Q_theta)[0]) * self.policy_damping_factor
+                # mu = tf.maximum(-tf.reduce_min(eig_vals)+1, 0)
                 accept, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_theta_theta_reg, k), b=-Q_theta, cg_iters=self.cg_iters, residual_tol=1e-10)
 
                 if self.verbose:
@@ -186,13 +195,15 @@ class iLQR(object):
                     Q_ux = l_ux + tf.transpose(f_u) @ V_prime_xx @ f_x
 
                 # use conjugate gradient method to solve for k, K
-                if self.verbose:
-                    eig_vals = tf.linalg.eigvalsh(Q_uu)
-                    Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
-                Q_uu_reg = Q_uu + tf.eye(act_dim) * 1e-3
+                # if self.verbose:
+                #     eig_vals = tf.linalg.eigvalsh(Q_uu)
+                #     Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
+                Q_uu_reg = Q_uu + tf.eye(act_dim) * self.mu_init
                 accept, Q_uu_reg_inv = utils.tf_cg(f_Ax=lambda Q: Q @ Q_uu_reg, b=tf.eye(act_dim), cg_iters=self.cg_iters, residual_tol=1e-10)
                 k = - tf.linalg.matvec(Q_uu_reg_inv, Q_u)
                 K = - Q_uu_reg_inv @ Q_ux
+                # k = tf.Print(k, data=['k', k, 'i', i])
+                # K = tf.Print(K, data=['K', K, 'i', i])
 
                 # accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu_reg, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
                 # accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu_reg @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
@@ -227,7 +238,15 @@ class iLQR(object):
                 if i == 0:
                     u = policy.get_actions_sym(x, opt_policy_params)
                 else:
-                    u = u_ha[i] + alpha * open_k_array.read(i) + tf.linalg.matvec(closed_K_array.read(i), (x - x_ho[i]))
+                    open_term = alpha * open_k_array.read(i)
+                    closed_term = tf.linalg.matvec(closed_K_array.read(i), x - x_ho[i])
+                    # u = u_ha[i] + alpha * open_k_array.read(i) + tf.linalg.matvec(closed_K_array.read(i), (x - x_ho[i]))
+                    if self.verbose:
+                        print_ops = [tf.print('i', i, 'alpha', alpha, 'open', open_term, 'closed', closed_term, 'K', closed_K_array.read(i))]
+                    else:
+                        print_ops = []
+                    with tf.control_dependencies(print_ops):
+                        u = u_ha[i] + open_term + closed_term
 
                 u = self._activate_u(u)
                 opt_u_ha[i] = u

@@ -20,6 +20,9 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         )
         utils.EzPickle.__init__(self)
 
+        self.obs_dim = self.observation_space.shape[0]
+        self.act_dim = self.action_space.shape[0]
+
     def step(self, action):
         old_ob = self._get_obs()
         self.do_simulation(action, self.frame_skip)
@@ -68,12 +71,44 @@ class HopperEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
         return reward
 
     def tf_reward(self, obs, acts, next_obs):
-        reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
-        reward_run = obs[:, 5]
-        reward_height = -3.0 * tf.square(obs[:, 0] - 1.3)
+        if obs.get_shape().ndims == 2:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts), axis=1)
+            reward_run = obs[:, 5]
+            reward_height = -3.0 * tf.square(obs[:, 0] - 1.3)
+        else:
+            reward_ctrl = -0.1 * tf.reduce_sum(tf.square(acts))
+            reward_run = obs[5]
+            reward_height = -3.0 * tf.square(obs[0] - 1.3)
         reward = reward_run + reward_ctrl + reward_height + 1.0
         return reward
 
+    def tf_dl(self, obs, act, next_obs):
+        assert obs.get_shape().ndims == 1
+        # l_x
+        e_5 = np.zeros((self.obs_dim,))
+        e_5[5] = 1
+        e_0 = np.zeros((self.obs_dim,))
+        e_0[0] = 1
+        r_x = e_5 - 6*(obs[0]-1.3)*e_0
+        l_x = -r_x
+
+        # l_u
+        r_u = -0.2 * act
+        l_u = -r_u
+
+        # l_xx
+        r_xx = np.zeros((self.obs_dim, self.obs_dim))
+        r_xx[0][0] = -6
+        l_xx = -r_xx
+
+        # l_ux
+        l_ux = tf.zeros((self.act_dim, self.obs_dim))
+
+        # l_uu
+        r_uu = -0.2 * np.eye(self.act_dim)
+        l_uu = -r_uu
+
+        return l_x, l_u, l_xx, l_uu, l_ux
 
 if __name__ == "__main__":
     env = HopperEnv()

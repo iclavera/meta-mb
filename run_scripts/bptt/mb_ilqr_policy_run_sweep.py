@@ -16,7 +16,7 @@ import tensorflow as tf
 import numpy as np
 
 
-EXP_NAME = 'bptt-mb-ilqr'
+EXP_NAME = 'bptt-mb-ilqr-policy'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -25,24 +25,26 @@ def run_experiment(**config):
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = 100
+        # config['policy_damping_factor'] = 5e1
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
-        config['policy_damping_factor'] = 5e-1
+        config['policy_damping_factor'] = 2e-1
     elif config['env'] is InvertedPendulumSwingUpEnv:
         repr += 'ipup'
         config['max_path_length'] = 100
     elif config['env'] is ReacherEnv:
         repr += 'reacher'
         config['max_path_length'] = 50
-        config['policy_damping_factor'] = 1e1
-        config['alpha_init'] = 1e-2
+        # config['policy_damping_factor'] = 1e2
+    elif config['env'] is HopperEnv:
+        repr += 'hopper'
+        config['max_path_length'] = 100
 
     repr += f"-{config['horizon']}-{config['num_ilqr_iters']}-{config['c_1']}-{config['num_models']}"
 
     if config.get('model_path', None) is not None:
         repr += '-pretrain'
-        # config['fit_model'] = False
         config['initializer_str'] = 'zeros'
         config['cem_num_rollouts'] = config['num_rollouts']
         config['initial_random_samples'] = False
@@ -114,29 +116,9 @@ def run_experiment(**config):
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
             policy_buffer_size=config['policy_buffer_size'],
+            use_hessian_policy=config['use_hessian_policy'],
+            verbose=config['verbose'],
         )
-
-        # if config['on_policy_freq'] > 1:
-        #     cem_policy = MPCController(
-        #         env=env,
-        #         dynamics_model=dynamics_model,
-        #         method_str='cem',
-        #         num_rollouts=config['cem_num_rollouts'],
-        #         discount=config['discount'],
-        #         n_candidates=config['n_candidates'],
-        #         horizon=config['horizon'],
-        #         num_cem_iters=config['num_cem_iters'],
-        #         deterministic_policy=config['cem_deterministic_policy'],
-        #     )
-        #
-        #     cem_sampler = Sampler(
-        #         env=env,
-        #         policy=cem_policy,
-        #         num_rollouts=config['cem_num_rollouts'],
-        #         max_path_length=config['max_path_length'],
-        #     )
-        # else:
-        #     cem_sampler = None
 
         sampler = Sampler(
             env=env,
@@ -165,53 +147,47 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'seed': [1, 2],
-        'fit_model': [True],
-        'on_policy_freq': [1],
+        'seed': [1,],
 
         # Problem
-        'env': [InvertedPendulumEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HopperEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [101],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
-        'horizon': [5],  # FIXME: 15
+        'horizon': [5, 15,],
+        'verbose': [False],
 
         # iLQR
         'initializer_str': ['zeros',],
-        'num_ilqr_iters': [5], #[5, 10],
-        'mu_min': [1e-6],
-        'mu_max': [1e10],
-        'mu_init': [1e-5],
-        'delta_0': [2],
-        'delta_init': [1.0],
-        'alpha_init': [1e-1],
+        'num_ilqr_iters': [1],
+        'mu_min': [1e-6],  # UNUSED
+        'mu_max': [1e10],  # UNUSED
+        'mu_init': [1e-5, 1e-3],
+        'delta_0': [2],  # UNUSED
+        'delta_init': [1.0],  # UNUSED
+        'alpha_init': [1e-2,],
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-1],  # 1e-3
+        'c_1': [1e-1, 1e-3],
         'max_forward_iters': [10],
         'max_backward_iters': [10],
-        'use_hessian_f': [False],
-        'num_cem_iters_for_init': [5],
-
-        # # CEM
-        # 'n_candidates': [100],
-        # 'num_cem_iters': [5],
-        # 'cem_deterministic_policy': [True],
-        # 'cem_num_rollouts': [20],
+        'use_hessian_f': [False],  # False
+        'use_hessian_policy': [False],
+        'policy_damping_factor': [1e-4,],  # UNUSED if not use_hessian_policy
 
         # Training
         'num_rollouts': [5],
         'valid_split_ratio': [0.1],
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
-        'steps_per_iter': [1],
+        'steps_per_iter': [1,],
 
         # Policy
-        'policy_hidden_sizes': [(32,)], #[tuple()], #[(64, 64)],
+        'policy_hidden_sizes': [tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
-        'policy_buffer_size': [10,],  # FIXME
+        'policy_buffer_size': [100],
 
         # Dynamics Model
         'num_models': [5],
