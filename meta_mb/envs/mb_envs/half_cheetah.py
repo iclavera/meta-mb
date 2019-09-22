@@ -181,7 +181,6 @@ class HalfCheetahEnv(MetaEnv, mujoco_env.MujocoEnv, utils.EzPickle):
     #     reward = reward_run + reward_ctrl
     #     return reward
 
-    # FIXME: use tf.gradients instead
     def tf_dl(self, obs, act, next_obs):
         """
 

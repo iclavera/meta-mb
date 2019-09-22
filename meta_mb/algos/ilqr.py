@@ -12,7 +12,7 @@ class iLQR(object):
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0,
                  alpha_init=1.0, alpha_decay_factor=3.0, policy_damping_factor=1e0,
                  c_1=0.3, max_forward_iters=10, max_backward_iters=20, policy_buffer_size=10,
-                 use_hessian_policy=False,
+                 use_hessian_policy=False, damping_str='Q',
                  verbose=True):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
@@ -31,6 +31,7 @@ class iLQR(object):
         self.alpha_init = alpha_init
         self.alpha_decay_factor = alpha_decay_factor
         self.policy_damping_factor = policy_damping_factor
+        self.damping_str = damping_str
         self.delta_0 = delta_0
         self.delta_init = delta_init
         self.c_1 = c_1
@@ -223,6 +224,7 @@ class iLQR(object):
                 # prepare for next iteration
                 V_prime_x, V_prime_xx = V_x, V_xx
 
+            # TODO: if ever rejected, break out of the for loop
             backward_reject = tf.logical_or(backward_reject, tf.logical_not(accept))
 
         ''' ----------------------------- Forward Pass --------------------------------'''
@@ -240,14 +242,35 @@ class iLQR(object):
                 else:
                     open_term = alpha * open_k_array.read(i)
                     closed_term = tf.linalg.matvec(closed_K_array.read(i), x - x_ho[i])
-                    # u = u_ha[i] + alpha * open_k_array.read(i) + tf.linalg.matvec(closed_K_array.read(i), (x - x_ho[i]))
                     if self.verbose:
-                        print_ops = [tf.print('i', i, 'alpha', alpha, 'open', open_term, 'closed', closed_term, 'K', closed_K_array.read(i))]
+                        print_ops = [] #[tf.print('i', i, 'alpha', alpha, 'open', open_term, 'closed', closed_term, 'K', closed_K_array.read(i))]
                     else:
                         print_ops = []
                     with tf.control_dependencies(print_ops):
                         u = u_ha[i] + open_term + closed_term
 
+                u = self._activate_u(u)
+                opt_u_ha[i] = u
+
+                x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32))[0]
+                reward = self._env.tf_reward(x, u, x_prime)
+                disc_reward += self.discount**i * reward
+                x = x_prime
+
+            opt_J_val = -disc_reward
+
+            next_alpha = alpha / self.alpha_decay_factor
+            return (next_alpha, opt_J_val, delta_J_alpha, opt_u_ha, list(opt_policy_params.values()))
+
+        def body_2(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha, prev_opt_policy_param_values):
+            x = self.x_ph_o
+            delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
+            disc_reward = tf.zeros(())
+            opt_u_ha = [None] * horizon
+            opt_policy_params = utils.unflatten_params_sym(policy_params_values_flatten + alpha * k_first, policy_params)
+
+            for i in range(horizon):
+                u = policy.get_actions_sym(x, opt_policy_params)
                 u = self._activate_u(u)
                 opt_u_ha[i] = u
 

@@ -8,6 +8,7 @@ from meta_mb.logger import logger
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.envs.mb_envs import *
 from meta_mb.envs.mb_envs.inverted_pendulum import InvertedPendulumSwingUpEnv
+from meta_mb.envs.mb_envs.half_cheetah_quad_reward import HalfCheetahEnvQuadReward
 from meta_mb.utils.utils import ClassEncoder
 import json
 import joblib
@@ -25,7 +26,10 @@ def run_experiment(**config):
     if config['env'] is HalfCheetahEnv:
         repr += 'hc'
         config['max_path_length'] = 100
-        # config['policy_damping_factor'] = 5e1
+    elif config['env'] is HalfCheetahEnvQuadReward:
+        repr += 'hcq'
+        config['max_path_length'] = 100
+        config['policy_damping_factor'] = 5e0
     elif config['env'] is InvertedPendulumEnv:
         repr += 'ip'
         config['max_path_length'] = 100
@@ -39,6 +43,9 @@ def run_experiment(**config):
         # config['policy_damping_factor'] = 1e2
     elif config['env'] is HopperEnv:
         repr += 'hopper'
+        config['max_path_length'] = 100
+    elif config['env'] is AntEnv:
+        repr += 'ant'
         config['max_path_length'] = 100
 
     repr += f"-{config['horizon']}-{config['num_ilqr_iters']}-{config['c_1']}-{config['num_models']}"
@@ -108,6 +115,7 @@ def run_experiment(**config):
             mu_max=config['mu_max'],
             mu_init=config['mu_init'],
             policy_damping_factor=config['policy_damping_factor'],
+            damping_str=config['damping_str'],
             delta_0=config['delta_0'],
             delta_init=config['delta_init'],
             alpha_init=config['alpha_init'],
@@ -150,23 +158,23 @@ if __name__ == '__main__':
         'seed': [1,],
 
         # Problem
-        'env': [HopperEnv,], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [AntEnv, HalfCheetahEnvQuadReward], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         # HalfCheetah
         # 'model_path': ['/home/yunzhi/mb/meta-mb/data/pretrain-mb-ppo/hc-1002019_09_04_21_10_23_0/params.pkl'],
         'n_itr': [101],
         'discount': [1],  # FIXME: does not support discount < 1!! need to modify J_val_1, J_val_2
         'horizon': [5, 15,],
-        'verbose': [False],
+        'verbose': [False],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
 
         # iLQR
         'initializer_str': ['zeros',],
         'num_ilqr_iters': [1],
         'mu_min': [1e-6],  # UNUSED
         'mu_max': [1e10],  # UNUSED
-        'mu_init': [1e-5, 1e-3],
+        'mu_init': [1e-5,], # 1e1
         'delta_0': [2],  # UNUSED
         'delta_init': [1.0],  # UNUSED
-        'alpha_init': [1e-2,],
+        'alpha_init': [1e-2, 1e-3],
         'alpha_decay_factor': [3.0],
         'c_1': [1e-1, 1e-3],
         'max_forward_iters': [10],
@@ -174,6 +182,7 @@ if __name__ == '__main__':
         'use_hessian_f': [False],  # False
         'use_hessian_policy': [False],
         'policy_damping_factor': [1e-4,],  # UNUSED if not use_hessian_policy
+        'damping_str': ['Q'],
 
         # Training
         'num_rollouts': [5],
