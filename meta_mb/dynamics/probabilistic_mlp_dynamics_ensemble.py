@@ -230,7 +230,6 @@ class ProbMLPDynamicsEnsemble(MLPDynamicsEnsemble):
         delta_pred = tf.batch_gather(delta_pred, tf.reshape(model_idx, [-1, 1]))
         delta_pred = tf.squeeze(delta_pred, axis=1)
         return obs_ph + delta_pred
-
     def distribution_info_sym(self, obs_var, act_var):
         means = []
         log_stds = []

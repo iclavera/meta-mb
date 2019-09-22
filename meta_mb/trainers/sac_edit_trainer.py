@@ -32,9 +32,9 @@ class Trainer(object):
             algo,
             env,
             train_env_sampler,
-            eval_env_sampler,
+            # eval_env_sampler,
             train_env_sample_processor,
-            eval_env_sample_processor,
+            # eval_env_sample_processor,
             dynamics_model,
             policy,
             n_itr,
@@ -62,9 +62,9 @@ class Trainer(object):
         self.algo = algo
         self.env = env
         self.train_env_sampler = train_env_sampler
-        self.eval_env_sampler = eval_env_sampler
+        # self.eval_env_sampler = eval_env_sampler
         self.train_env_sample_processor = train_env_sample_processor
-        self.eval_env_sample_processor = eval_env_sample_processor
+        # self.eval_env_sample_processor = eval_env_sample_processor
         self.dynamics_model = dynamics_model
         self.baseline = train_env_sample_processor.baseline
         self.policy = policy
@@ -188,7 +188,6 @@ class Trainer(object):
                                                    samples_data['next_observations'])
 
                 # JUST COMMENTED THIS
-                # mpc_start = time.time()
                 # multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
                 #                                                              deterministic=True,
                 #                                                              eval=True,
@@ -196,9 +195,8 @@ class Trainer(object):
                 #                                                              multiple_trajectory = self.num_eval_trajectories,
                 #                                                              dynamics_model = self.dynamics_model)
                 # _ = self.eval_env_sample_processor.process_samples(multiple_trajectories, log='all', log_prefix='eval-')
-                # logger.logkv('MPC_time', time.time() - mpc_start)
 
-                self.log_diagnostics(paths[0], prefix='train-')
+                # self.log_diagnostics(paths[0], prefix='train-')
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Itr', itr)
@@ -236,6 +234,7 @@ class Trainer(object):
         assert self.dynamics_type in [0, 3]
         if self.dynamics_type == 0 or self.dynamics_type == 3:
             next_observation = self.dynamics_model.predict(obs, actions)
+            # next_observation = np.ones(obs.shape)
             rewards = self.env.reward(obs, actions, next_observation)
             dones = self.env.termination_fn(obs, actions, next_observation)
 
@@ -253,7 +252,6 @@ class Trainer(object):
                     baseline=self.baseline,
                     dynamics=self.dynamics_model,
                     vfun=self.algo.Qs,
-                    vtar=self.algo.Q_targets,
                 )
 
     def log_diagnostics(self, paths, prefix):

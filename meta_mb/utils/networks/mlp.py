@@ -11,7 +11,8 @@ def create_mlp(name,
                input_var=None,
                w_init=tf.contrib.layers.xavier_initializer(),
                b_init=tf.zeros_initializer(),
-               reuse=False
+               reuse=False,
+               use_bias=True,
                ):
     """
     Creates a MLP network
@@ -57,6 +58,7 @@ def create_mlp(name,
                                      kernel_initializer=w_init,
                                      bias_initializer=b_init,
                                      reuse=reuse,
+                                     use_bias=use_bias,
                                      )
 
     return input_var, output_var

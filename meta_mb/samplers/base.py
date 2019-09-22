@@ -73,40 +73,40 @@ class BaseSampler(object):
 
                 # execute policy
                 t = time.time()
-                if eval:
-                    H = self.mpc.horizon
-                    mean_list = []
-                    std_list = []
-                    observation = obs
-                    for t in range(H+1):
-                        action, agent_info = policy.get_action(observation)
-                        action = agent_info['mean']
-                        mean_list.append(action)
-                        std_list.append(agent_info['log_std'])
-                        if self.policy.squashed:
-                            action = np.tanh(action)
-                        if observation.ndim == 1:
-                            observation = observation[None]
-                        if action.ndim == 1:
-                            action = action[None]
-                        observation = dynamics_model.predict(observation, action)
-                        observation = observation.reshape((-1))
-                    action, _ = self.mpc.get_actions(obs[None], mean_list, std_list)
+                # if eval:
+                #     H = self.mpc.horizon
+                #     mean_list = []
+                #     std_list = []
+                #     observation = obs
+                #     for t in range(H+1):
+                #         action, agent_info = policy.get_action(observation)
+                #         action = agent_info['mean']
+                #         mean_list.append(action)
+                #         std_list.append(agent_info['log_std'])
+                #         if self.policy.squashed:
+                #             action = np.tanh(action)
+                #         if observation.ndim == 1:
+                #             observation = observation[None]
+                #         if action.ndim == 1:
+                #             action = action[None]
+                #         observation = dynamics_model.predict(observation, action)
+                #         observation = observation.reshape((-1))
+                #     action, _ = self.mpc.get_actions(obs[None], mean_list, std_list)
+                #     if action.ndim == 2:
+                #         action = action[0]
+                # else:
+                if random:
+                    action = self.env.action_space.sample()
+                    agent_info = {}
+                elif deterministic:
+                    action, agent_info = policy.get_action(obs)
+                    action = agent_info['mean']
+                    if self.policy.squashed:
+                        action = np.tanh(action)
+                else:
+                    action, agent_info = policy.get_action(obs)
                     if action.ndim == 2:
                         action = action[0]
-                else:
-                    if random:
-                        action = self.env.action_space.sample()
-                        agent_info = {}
-                    elif deterministic:
-                        action, agent_info = policy.get_action(obs)
-                        action = agent_info['mean']
-                        if self.policy.squashed:
-                            action = np.tanh(action)
-                    else:
-                        action, agent_info = policy.get_action(obs)
-                        if action.ndim == 2:
-                            action = action[0]
                 policy_time += time.time() - t
 
                 # step environments

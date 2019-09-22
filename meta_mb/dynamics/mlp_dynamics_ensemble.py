@@ -713,7 +713,6 @@ class MLPDynamicsEnsemble(MLPDynamicsModel):
         return pred_obs_batches
 
     """
-
     def distribution_info_sym(self, obs_ph, act_ph):
         # shuffle
         perm = tf.range(0, limit=tf.shape(obs_ph)[0], dtype=tf.int32)

@@ -12,9 +12,9 @@ class Trainer(object):
             algo,
             env,
             train_env_sampler,
-            eval_env_sampler,
+            # eval_env_sampler,
             train_env_sample_processor,
-            eval_env_sample_processor,
+            # eval_env_sample_processor,
             dynamics_model,
             policy,
             n_itr,
@@ -35,15 +35,14 @@ class Trainer(object):
             T=1,
             ground_truth=False,
             max_epochs_since_update=5,
-            num_eval_trajectories=5,
             estimated_iteration = 100,
             ):
         self.algo = algo
         self.env = env
         self.train_env_sampler = train_env_sampler
-        self.eval_env_sampler = eval_env_sampler
+        # self.eval_env_sampler = eval_env_sampler
         self.train_env_sample_processor = train_env_sample_processor
-        self.eval_env_sample_processor = eval_env_sample_processor
+        # self.eval_env_sample_processor = eval_env_sample_processor
         self.dynamics_model = dynamics_model
         self.baseline = train_env_sample_processor.baseline
         self.policy = policy
@@ -55,7 +54,6 @@ class Trainer(object):
         self.rollout_length = rollout_length
         self.n_train_repeats = n_train_repeats
         self.real_ratio = real_ratio
-        self.num_eval_trajectories = num_eval_trajectories
         self.model_deterministic = model_deterministic
         self.epoch_length = self.train_env_sampler.max_path_length - 1
         self.model_train_freq = model_train_freq
@@ -99,7 +97,7 @@ class Trainer(object):
 
     def build_training_graph(self):
         with tf.variable_scope('double_integral_policy', reuse=False):
-            self.K = tf.get_variable("K", initializer = self.K)
+            self.K = tf.get_variable("K", initializer = -self.K)
             self.K = tf.cast(self.K, tf.float32)
             self.P = tf.convert_to_tensor(self.P_array, dtype = tf.float32)
             self.A = tf.convert_to_tensor(self.A_array, dtype = tf.float32)
@@ -111,10 +109,13 @@ class Trainer(object):
 
         self.optimal_Q = self.get_optimal_Q()
         self.estimated_Q = self.get_estimated_Q()
+        self.mbpo_Q = self.get_mbpo_Q()
+        self.our_Q = self.get_our_Q()
+        self.expanded_gt_Q = self.expanded_gt_Q()
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.algo.policy_lr, name="optimizer")
-        # optimal_grads = self.optimizer.compute_gradients(self.optimal_Q, var_list=[self.K])[0][0]
-        estimated_grads = self.optimizer.compute_gradients(self.estimated_Q, var_list=[self.K])[0][0]
-        self.Q_grad_loss = tf.losses.mean_squared_error(optimal_grads, estimated_grads)
+        self.estimated_grads = self.optimizer.compute_gradients(self.estimated_Q, var_list=[self.K])[0][0]
+        self.grad_losses()
+
 
     def calculate(self, x, A):
         x = tf.matmul(x, tf.matmul(A, tf.transpose(x)))
@@ -122,7 +123,7 @@ class Trainer(object):
         return V
 
     def optimal_action(self, observations, i = 0):
-        return -tf.matmul(observations, tf.transpose(self.K))
+        return tf.matmul(observations, tf.transpose(self.K))
 
     def get_optimal_Q(self):
         best_action = self.optimal_action(self.obs_ph)
@@ -138,12 +139,82 @@ class Trainer(object):
             obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(act)))
         return result
 
+    def get_mbpo_Q(self):
+        dist_info_sym = self.policy.distribution_info_sym(self.obs_ph)
+        actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+        input_q_fun = tf.concat([self.obs_ph, actions_var], axis=-1)
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+        min_q_val_var = tf.reduce_min(next_q_values, axis=0)
+        return min_q_val_var
+
+    def get_our_Q(self):
+        obs = self.obs_ph
+        obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
+        reward_values = 0
+        for i in range(self.algo.T+1):
+            dist_info_sym = self.policy.distribution_info_sym(obs)
+            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+            next_obs = self.dynamics_model.predict_sym(obs, actions)
+            rewards = self.env.tf_reward(obs, actions, next_obs)
+            rewards = tf.expand_dims(rewards, axis=-1)
+            reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
+            obs = next_obs
+
+        dist_info_sym = self.policy.distribution_info_sym(obs)
+        actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+        input_q_fun = tf.concat([obs, actions], axis=-1)
+
+        next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+        q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+        min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        return min_q_val_var
+
+    def expanded_gt_Q(self):
+        obs = self.obs_ph
+        obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
+        reward_values = 0
+        for i in range(self.algo.T+1):
+            dist_info_sym = self.policy.distribution_info_sym(obs)
+            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+            next_obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(actions)))
+            rewards = self.env.tf_reward(obs, actions, next_obs)
+            rewards = tf.expand_dims(rewards, axis=-1)
+            reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
+            obs = next_obs
+
+        dist_info_sym = self.policy.distribution_info_sym(obs)
+        actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+        input_q_fun = tf.concat([obs, actions], axis=-1)
+
+        next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+        q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+        min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+        return min_q_val_var
+
+    def grad_losses(self):
+        mbpo_grad = self.optimizer.compute_gradients(self.mbpo_Q, var_list=list(self.policy.policy_params.values()))[0][0]
+        our_grad = self.optimizer.compute_gradients(self.our_Q, var_list=list(self.policy.policy_params.values()))[0][0]
+        expanded_gt_grad = self.optimizer.compute_gradients(self.expanded_gt_Q, var_list=[self.K])[0][0]
+        st()
+
+
+
     def gradient(self, batch):
         observations = batch['observations']
 
         sess = tf.get_default_session()
         feed_dict = {self.obs_ph: observations}
-        return sess.run(self.Q_grad_loss, feed_dict)
+        return sess.run(self.estimated_grads, feed_dict)
+
+    def mbpo_gradient(self, batch):
+        observations = batch['observations']
+        actions = batch['actions']
+        input_q_fun = tf.concat([observations, actions], axis=-1)
+        next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
+        min_q_val_var = tf.reduce_min(next_q_values, axis=0)
+
+    # def compare(self):
+
 
 
     def train(self):
@@ -219,8 +290,8 @@ class Trainer(object):
                         model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                         keys = env_batch.keys()
                         batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
-                        Q_grad_loss = self.gradient(batch)
-                        # self.algo.do_training(time_step, batch, log=True)
+                        self.algo.do_training(time_step, batch, log=True)
+                        Q_grad = self.gradient(batch)
 
                     logger.logkv('Q_grad_loss', Q_grad_loss)
 

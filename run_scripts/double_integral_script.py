@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "q5-3"
+EXP_NAME = "double"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -14,7 +14,7 @@ from meta_mb.envs.normalized_env import normalize
 from meta_mb.trainers.double_integral_trainer import Trainer
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+from meta_mb.policies.linear_policy import LinearPolicy
 from meta_mb.logger import logger
 from meta_mb.value_functions.value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -54,7 +54,7 @@ def run_experiment(**kwargs):
                                    action_dim=action_dim,
                                    hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
 
-        policy = GaussianMLPPolicy(
+        policy = LinearPolicy(
             name="policy",
             obs_dim=np.prod(env.observation_space.shape),
             action_dim=np.prod(env.action_space.shape),
@@ -82,13 +82,13 @@ def run_experiment(**kwargs):
             positive_adv=kwargs['positive_adv'],
         )
 
-        eval_env_sample_processor = ModelSampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
+        # eval_env_sample_processor = ModelSampleProcessor(
+        #     baseline=baseline,
+        #     discount=kwargs['discount'],
+        #     gae_lambda=kwargs['gae_lambda'],
+        #     normalize_adv=kwargs['normalize_adv'],
+        #     positive_adv=kwargs['positive_adv'],
+        # )
 
         if kwargs['model_type'] == 0:
             dynamics_model = ProbMLPDynamicsEnsemble('dynamics-ensemble',
@@ -152,21 +152,21 @@ def run_experiment(**kwargs):
         )
 
 
-        eval_env_sampler = BaseSampler(
-            env=env,
-            policy=policy,
-            num_rollouts=kwargs['num_rollouts'],
-            max_path_length=kwargs['max_path_length'],
-
-        )
+        # eval_env_sampler = BaseSampler(
+        #     env=env,
+        #     policy=policy,
+        #     num_rollouts=kwargs['num_rollouts'],
+        #     max_path_length=kwargs['max_path_length'],
+        #
+        # )
 
         trainer = Trainer(
             algo=algo,
             env=env,
             train_env_sampler=train_env_sampler,
-            eval_env_sampler=eval_env_sampler,
+            # eval_env_sampler=eval_env_sampler,
             train_env_sample_processor=train_env_sample_processor,
-            eval_env_sample_processor=eval_env_sample_processor,
+            # eval_env_sample_processor=eval_env_sample_processor,
             dynamics_model=dynamics_model,
             policy=policy,
             n_itr=kwargs['n_itr'],
@@ -183,7 +183,6 @@ def run_experiment(**kwargs):
             dynamics_type=kwargs['model_type'],
             T=kwargs['T'],
             max_epochs_since_update=kwargs['max_epochs_since_update'],
-            num_eval_trajectories=kwargs['num_eval_trajectories'],
         )
 
         trainer.train()
@@ -201,11 +200,11 @@ if __name__ == '__main__':
         'policy_hidden_sizes': [()],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Env Sampling
         'n_initial_exploration_steps': [500],
-        'max_path_length': [101],
+        'max_path_length': [201],
         'num_rollouts': [1],
 
         # replay_buffer
