@@ -5,6 +5,7 @@ import json
 from collections import OrderedDict, defaultdict
 
 import matplotlib.pyplot as plt
+from pdb import set_trace as st
 
 def load_exps_data(exp_folder_paths):
     assert type(exp_folder_paths) is list

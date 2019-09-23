@@ -191,7 +191,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90],
+        'seed': [90, 100],
         'baseline': [LinearFeatureBaseline],
         'env': [DoubleIntegratorEnv],
         'n_itr': [200],
@@ -200,7 +200,7 @@ if __name__ == '__main__':
         'policy_hidden_sizes': [()],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['relu', 'tanh'],
 
         # Env Sampling
         'n_initial_exploration_steps': [500],
@@ -214,21 +214,21 @@ if __name__ == '__main__':
         # Training
         'model_type': [0],
         'n_train_repeats': [8],
-        'model_train_freq': [25],
+        'model_train_freq': [100],
         'rollout_batch_size': [1e3],
         'num_actions_per_next_observation': [1],
         'H': [2],  # Critic
-        'T': [2],  # Actor
+        'T': [10, 5, 20],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
         'num_eval_trajectories': [1],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['tanh'],
-        'q_target_type': [0],
-        'q_function_type': [3],
-        'model_used_ratio': [0.5],
+        'vfun_hidden_nonlineariy': ['relu'],
+        'q_target_type': [1, 0],
+        'q_function_type': [5],
+        'model_used_ratio': [1],
 
         # CEM
         'n_candidates': [100], # K
@@ -242,17 +242,17 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'prediction_type': ['none'],
+        'prediction_type': ['rand'],
 
         # Dynamics Model
         'max_epochs_since_update': [8],
-        'num_models': [8],
+        'num_models': [4],
         'q_loss_importance': [1], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
         'rolling_average_persitency': [0.9],
-        'early_stopping': [1],
+        'early_stopping': [0],
         'sampler_batch_size': [256],
         'real_ratio': [.05],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],

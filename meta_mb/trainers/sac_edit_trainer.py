@@ -178,6 +178,7 @@ class Trainer(object):
                         model_batch = self.model_replay_buffer.random_batch(int(model_batch_size))
                         keys = env_batch.keys()
                         batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+                        # batch = env_batch
                         self.algo.do_training(time_step, batch, log=True)
 
                     sac_time.append(time.time() - sac_start)

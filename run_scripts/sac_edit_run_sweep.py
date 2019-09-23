@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = "train3-hc"
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = "train3-mbpo-walker"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -229,14 +229,14 @@ if __name__ == '__main__':
     sweep_params = {
         'seed': [90, 190],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [Walker2dEnv],
         'n_itr': [200],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['relu'],
+        'policy_hidden_nonlinearity': ['tanh'],
 
         # Env Sampling
         'n_initial_exploration_steps': [5e3],
@@ -250,21 +250,21 @@ if __name__ == '__main__':
         # Training
         'model_type': [0],
         'n_train_repeats': [8],
-        'rollout_length_params': ['1'],
+        'rollout_length_params': ['default'],
         'model_train_freq': [250],
         'rollout_batch_size': [100e3],
         'num_actions_per_next_observation': [5],
         'H': [2],  # Critic
-        'T': [3],  # Actor
+        'T': [2],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
         'num_eval_trajectories': [1],
 
         # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
-        'q_target_type': [1],
-        'q_function_type': [5],
+        'vfun_hidden_nonlineariy': ['tanh'],
+        'q_target_type': [0],
+        'q_function_type': [0],
         'model_used_ratio': [1],
 
         # CEM
@@ -282,16 +282,16 @@ if __name__ == '__main__':
         'prediction_type': ['none'],
 
         # Dynamics Model
-        'max_epochs_since_update': [8, 5],
-        'num_models': [8],
+        'max_epochs_since_update': [8],
+        'num_models': [4],
         'q_loss_importance': [0], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
         'rolling_average_persitency': [0.4],
-        'early_stopping': [1],
+        'early_stopping': [0],
         'sampler_batch_size': [256],
-        'real_ratio': [.05, .3],
+        'real_ratio': [.05],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'model_learning_rate': [1e-3],
         'dyanmics_hidden_nonlinearity': ['relu'],

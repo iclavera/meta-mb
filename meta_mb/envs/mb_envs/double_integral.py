@@ -40,7 +40,7 @@ class DoubleIntegratorEnv(Env):
         return -0.5 * ((observation[:, 0] ** 2 + observation[:, 1] ** 2)[:, None] + action ** 2)
 
     def tf_reward(self, observation, action, next_obs = None):
-        return -0.5 * (tf.expand_dims(observation[:, 0] ** 2 + observation[:, 1] ** 2, axis = -1) + action ** 2)
+        return tf.reshape(-0.5 * (tf.expand_dims(observation[:, 0] ** 2 + observation[:, 1] ** 2, axis = -1) + action ** 2), [-1])
 
     def tf_termination_fn(self, obs, act, next_obs):
         assert len(obs.shape) == len(next_obs.shape) == len(act.shape) == 2
