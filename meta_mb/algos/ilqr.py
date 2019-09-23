@@ -47,14 +47,11 @@ class iLQR(object):
         self.x_ph_o = tf.placeholder(
             dtype=tf.float32, shape=(self.obs_dim,), name='x_o',
         )
-        self.opt_params_values_var, self.opt_u_var_ha, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var = self._build_action_graph()
-
-        self.x_ph_no = tf.placeholder(
-            dtype=tf.float32, shape=(1, self.obs_dim,), name='x_no',
-        )
+        self.opt_params_values_var, self.opt_u_var_ha, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var, self.alpha_var \
+            = self._build_opt_graph()
         logger.log('TimeBuildGraph', build_time - time.time())
 
-    def _build_action_graph(self):
+    def _build_opt_graph(self):
         """
 
         :return: build action graph for one environment
@@ -73,12 +70,16 @@ class iLQR(object):
         u_ha, x_ho = [], []
         # gradients_list = [tf.TensorArray(dtype=tf.float32, size=horizon, clear_after_read=True) for _ in range(10)]
         gradients_list = [[None for _ in range(horizon)] for _ in range(10)]
+        u_theta, u_theta_theta = None, None
         x = self.x_ph_o
         disc_reward = tf.zeros(())
 
         for i in range(horizon):
             if i == 0:
                 u = policy.get_actions_sym(x, policy_params_values_flatten_unflatten)
+                u_theta = utils.jacobian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
+                if self.use_hessian_policy:
+                    u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
             else:
                 u = policy.get_actions_sym(x)
 
@@ -129,17 +130,11 @@ class iLQR(object):
         with tf.control_dependencies(print_ops):
             J_val = -disc_reward
 
-        ''' ------------------------- Compute policy gradients --------------------------'''
-
-        u = u_ha[0]
-        u_theta = utils.jacobian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
-        if self.use_hessian_policy:
-            u_theta_theta = utils.hessian_wrapper(u, x=policy_params_values_flatten, dim_y=act_dim)
-
         ''' -------------------- Backward Pass ---------------------------------'''
 
         # define variables for backward while loop
         V_prime_xx, V_prime_x = tf.zeros((obs_dim, obs_dim)), tf.zeros((obs_dim,))
+        k_first = None
         open_k_array = tf.TensorArray(
             dtype=tf.float32, size=horizon, element_shape=(act_dim,), tensor_array_name='open_k', clear_after_read=False,
         )
@@ -200,15 +195,11 @@ class iLQR(object):
                 #     eig_vals = tf.linalg.eigvalsh(Q_uu)
                 #     Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
                 Q_uu_reg = Q_uu + tf.eye(act_dim) * self.mu_init
+                Q_ux_reg = Q_ux
                 accept, Q_uu_reg_inv = utils.tf_cg(f_Ax=lambda Q: Q @ Q_uu_reg, b=tf.eye(act_dim), cg_iters=self.cg_iters, residual_tol=1e-10)
                 k = - tf.linalg.matvec(Q_uu_reg_inv, Q_u)
-                K = - Q_uu_reg_inv @ Q_ux
-                # k = tf.Print(k, data=['k', k, 'i', i])
-                # K = tf.Print(K, data=['K', K, 'i', i])
+                K = - Q_uu_reg_inv @ Q_ux_reg
 
-                # accept_k, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_uu_reg, k), b=-Q_u, cg_iters=self.cg_iters, residual_tol=1e-10)
-                # accept_K, K = utils.tf_cg(f_Ax=lambda K: Q_uu_reg @ K, b=-Q_ux, cg_iters=self.cg_iters, residual_tol=1e-10)  # TODO: b=-Q_ux_reg?
-                #
                 # if self.verbose:
                 #     k = tf.Print(k, data=['backward accept', tf.logical_and(accept_k, accept_K), 'i', i])
 
@@ -284,13 +275,7 @@ class iLQR(object):
             next_alpha = alpha / self.alpha_decay_factor
             return (next_alpha, opt_J_val, delta_J_alpha, opt_u_ha, list(opt_policy_params.values()))
 
-        # # if the previous iteration improves, break the while loop
-        # # 1)
-        # cond = lambda alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha, prev_opt_policy_params: tf.math.logical_not(
-        #     tf.greater(J_val, prev_opt_J_val)
-        # )
-        # 2) stop if backward pass rejected or linear search stopping condition satisfied
-        # line search condition could be true only if backward pass is accepted
+        # break if backward pass is rejected or linear search condition is satisfied
         line_search_accept = lambda alpha, opt_J_val, delta_J_alpha, *args: tf.math.logical_and(
             tf.greater(0., delta_J_alpha), tf.greater(J_val-opt_J_val, -self.c_1*delta_J_alpha)
         )
@@ -308,7 +293,7 @@ class iLQR(object):
         # if forward_stop is True, forward pass is accepted, update policy parameters
         # otherwise set opt_J_val, opt_u_ha back to J_val, u_ha
         forward_accept = line_search_accept(*terminal_loop_vars)
-        _, opt_J_val, _, opt_u_ha, opt_policy_params_values = tf.cond(
+        next_alpha, opt_J_val, _, opt_u_ha, opt_policy_params_values = tf.cond(
             pred=forward_accept,
             true_fn=lambda: terminal_loop_vars,
             false_fn=lambda: loop_vars,
@@ -317,7 +302,7 @@ class iLQR(object):
         if self.verbose:
             opt_J_val = tf.Print(opt_J_val, data=['forward accepted', forward_accept])
 
-        return opt_policy_params_values, opt_u_ha, -opt_J_val, J_val-opt_J_val, forward_accept
+        return opt_policy_params_values, opt_u_ha, -opt_J_val, J_val-opt_J_val, forward_accept, next_alpha*self.alpha_decay_factor
 
     def _activate_u(self, u):
         # u = tf.clip_by_value(u, self.act_low, self.act_high)
@@ -333,8 +318,8 @@ class iLQR(object):
 
         for obs in observations[idx]:
             for itr in range(self.num_ilqr_iters):
-                opt_params_values, opt_disc_reward, eff_diff, opt_accept = sess.run(
-                    [self.opt_params_values_var, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var], feed_dict={self.x_ph_o: obs}
+                alpha, opt_params_values, opt_disc_reward, eff_diff, opt_accept = sess.run(
+                    [self.alpha_var, self.opt_params_values_var, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var], feed_dict={self.x_ph_o: obs}
                 )
                 if verbose:
                     logger.logkv(f'{prefix}RetDyn-{itr}', opt_disc_reward)

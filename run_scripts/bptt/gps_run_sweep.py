@@ -1,6 +1,6 @@
 from meta_mb.trainers.ilqr_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
-from meta_mb.algos.ilqr import iLQR
+from meta_mb.algos.gps import GPS
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -17,7 +17,7 @@ import tensorflow as tf
 import numpy as np
 
 
-EXP_NAME = 'bptt-mb-ilqr-policy'
+EXP_NAME = 'baseline-gps'
 INSTANCE_TYPE = 'c4.2xlarge'
 
 
@@ -111,7 +111,7 @@ def run_experiment(**config):
             output_nonlinearity=config['policy_output_nonlinearity'],
         )
 
-        algo = iLQR(
+        algo = GPS(
             env=env,
             dynamics_model=dynamics_model,
             policy=policy,
@@ -134,6 +134,8 @@ def run_experiment(**config):
             max_backward_iters=config['max_backward_iters'],
             policy_buffer_size=config['policy_buffer_size'],
             use_hessian_policy=config['use_hessian_policy'],
+            learning_rate=config['policy_learning_rate'],
+            num_gradient_steps=config['num_gradient_steps'],
             verbose=config['verbose'],
         )
 
@@ -165,7 +167,7 @@ if __name__ == '__main__':
 
     config = {
         'env': [InvertedPendulumEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        'verbose': [False],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
+        'verbose': [True],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
         'use_saved_params': [False],
         'n_itr': [301],
 
@@ -198,6 +200,7 @@ if __name__ == '__main__':
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'steps_per_iter': [1,],
+        'num_gradient_steps': [30],
 
         # Policy
         'policy_hidden_sizes': [tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
@@ -205,6 +208,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
         'policy_buffer_size': [100],
+        'policy_learning_rate': [1e-3,],
 
         # Dynamics Model
         'num_models': [5],

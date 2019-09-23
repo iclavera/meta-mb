@@ -5,7 +5,7 @@ import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv, InvertedPendulumEnv, ReacherEnv
+from meta_mb.envs.mb_envs import Walker2dEnv, HopperEnv, AntEnv, HalfCheetahEnv, InvertedPendulumEnv, ReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.trainers.metrpo_trainer import Trainer
@@ -18,11 +18,28 @@ from meta_mb.logger import logger
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
 INSTANCE_TYPE = 'c4.4xlarge'
-EXP_NAME = 'pretrain-mb-ppo'
+EXP_NAME = 'baseline-me-ppo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + 'hc-100' + kwargs.get('exp_name', '')
+    if kwargs['env'] is HalfCheetahEnv:
+        env_str = 'hc-100'
+        kwargs['max_path_length'] = 100
+    elif kwargs['env'] is InvertedPendulumEnv:
+        env_str = 'ip-100'
+        kwargs['max_path_length'] = 100
+        # kwargs['policy_damping_factor'] = 2e-1
+    elif kwargs['env'] is ReacherEnv:
+        env_str = 'reacher-50'
+        kwargs['max_path_length'] = 50
+    elif kwargs['env'] is HopperEnv:
+        env_str = 'hopper-100'
+        kwargs['max_path_length'] = 100
+    elif kwargs['env'] is AntEnv:
+        env_str = 'ant-100'
+        kwargs['max_path_length'] = 100
+        
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + env_str + kwargs.get('exp_name', '')
     print(f'================ starting exp {exp_dir} ==================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -126,11 +143,11 @@ if __name__ == '__main__':
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv], #[InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv],
+        'env': [InvertedPendulumEnv], #[InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv],
 
         # Problem Conf
         'n_itr': [201],
-        'max_path_length': [100],
+        'max_path_length': [50],
         'discount': [0.99],
         'gae_lambda': [1],
         'normalize_adv': [True],
