@@ -1,11 +1,13 @@
 import os
 import json
+import random
 import tensorflow as tf
 import numpy as np
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import set_seed, ClassEncoder
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.cassie.cassie_env import CassieEnv
+#from meta_mb.envs.cassie.cassie_env import CassieEnv
+from meta_mb.envs.pr2.pr2_env import PR2ReacherEnv
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.algos.ppo import PPO
 from meta_mb.envs.blue.full_blue_env import FullBlueEnv
@@ -16,12 +18,12 @@ from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.logger import logger
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'cassie-balancing-entropy'
+EXP_NAME = 'PR2-PPO-REACH-RAND-0'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    exp_dir = os.getcwd() + '/data/' + EXP_NAME + '-' + str(random.randint(0, 1e9))
+    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='all')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -34,7 +36,12 @@ def run_experiment(**kwargs):
 
         baseline = kwargs['baseline']()
 
-        env = normalize(kwargs['env']())
+        env = normalize(kwargs['env'](max_torques=kwargs['max_torques'],
+                                      exp_type=kwargs['exp_type'],
+                                      ctrl_penalty=kwargs['ctrl_penalty'],
+                                      vel_penalty=kwargs['vel_penalty'],
+                                      log_rand=kwargs['log_rand'],
+                                      joint=kwargs['joint']))
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -88,18 +95,24 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['ppo'],
-        'seed': [1, 2],
+        'seed': [1],
 
         'baseline': [LinearFeatureBaseline],
 
-        'env': [An],
+        'env': [PR2ReacherEnv],
+        'exp_type': ['reach'],
+        'max_torques': [(3, 3, 3, 3, 3, 3, 3)],
+        'ctrl_penalty': [1.25e-3],
+        'vel_penalty': [1.25e-3],
+        'log_rand': [10],
+        'joint': [False],
 
-        'num_rollouts': [100],
-        'max_path_length': [200, 300],
-        'n_parallel': [10],
+        'num_rollouts': [102],
+        'max_path_length': [60],
+        'n_parallel': [3],
 
         'discount': [0.99],
-        'gae_lambda': [.975, 0.5],
+        'gae_lambda': [.975],
         'normalize_adv': [True],
         'positive_adv': [False],
 
@@ -113,9 +126,9 @@ if __name__ == '__main__':
         'num_ppo_steps': [2, 5],
         'num_minibatches': [1],
         'clip_eps': [.3],
-        'entropy_bonus': [1e-2, 1e-3, 1e-4, 1e-5],
+        'entropy_bonus': [1e-2],
 
-        'n_itr': [5000],
+        'n_itr': [2600],
         'scope': [None],
 
         'exp_tag': ['v0']
