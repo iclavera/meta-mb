@@ -4,6 +4,7 @@ import numpy as np
 import time
 import copy
 from meta_mb.policies import utils
+from collections import Counter
 
 
 class iLQR(object):
@@ -47,8 +48,7 @@ class iLQR(object):
         self.x_ph_o = tf.placeholder(
             dtype=tf.float32, shape=(self.obs_dim,), name='x_o',
         )
-        self.opt_params_values_var, self.opt_u_var_ha, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var, self.alpha_var \
-            = self._build_opt_graph()
+        self.opt_params_values_var, self.opt_u_var_ha, self.opt_accept_var, self.alpha_var = self._build_opt_graph()
         logger.log('TimeBuildGraph', build_time - time.time())
 
     def _build_opt_graph(self):
@@ -123,12 +123,7 @@ class iLQR(object):
             x_ho.append(x)
             x = x_prime
 
-        if self.verbose:
-            print_ops = [tf.print('\n----disc_reward before opt', disc_reward)]
-        else:
-            print_ops = []
-        with tf.control_dependencies(print_ops):
-            J_val = -disc_reward
+        J_val = -disc_reward
 
         ''' -------------------- Backward Pass ---------------------------------'''
 
@@ -191,17 +186,14 @@ class iLQR(object):
                     Q_ux = l_ux + tf.transpose(f_u) @ V_prime_xx @ f_x
 
                 # use conjugate gradient method to solve for k, K
-                # if self.verbose:
-                #     eig_vals = tf.linalg.eigvalsh(Q_uu)
-                #     Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
+                if self.verbose:
+                    eig_vals = tf.linalg.eigvalsh(Q_uu)
+                    Q_uu = tf.Print(Q_uu, data=['eig_vals_u', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
                 Q_uu_reg = Q_uu + tf.eye(act_dim) * self.mu_init
                 Q_ux_reg = Q_ux
                 accept, Q_uu_reg_inv = utils.tf_cg(f_Ax=lambda Q: Q @ Q_uu_reg, b=tf.eye(act_dim), cg_iters=self.cg_iters, residual_tol=1e-10)
                 k = - tf.linalg.matvec(Q_uu_reg_inv, Q_u)
                 K = - Q_uu_reg_inv @ Q_ux_reg
-
-                # if self.verbose:
-                #     k = tf.Print(k, data=['backward accept', tf.logical_and(accept_k, accept_K), 'i', i])
 
                 open_k_array = open_k_array.write(i, k)
                 closed_K_array = closed_K_array.write(i, K)
@@ -300,9 +292,10 @@ class iLQR(object):
         )
 
         if self.verbose:
-            opt_J_val = tf.Print(opt_J_val, data=['forward accepted', forward_accept])
+            data = ['---------------accept', forward_accept, 'reward', -J_val,  'opt_reward', -opt_J_val, 'diff', J_val-opt_J_val]
+            forward_accept = tf.Print(forward_accept, data=data)
 
-        return opt_policy_params_values, opt_u_ha, -opt_J_val, J_val-opt_J_val, forward_accept, next_alpha*self.alpha_decay_factor
+        return opt_policy_params_values, opt_u_ha, forward_accept, next_alpha*self.alpha_decay_factor
 
     def _activate_u(self, u):
         # u = tf.clip_by_value(u, self.act_low, self.act_high)
@@ -310,27 +303,31 @@ class iLQR(object):
         loc = (self.act_high + self.act_low) * 0.5
         return tf.tanh((u-loc)/scale) * scale + loc
 
-    def optimize_policy(self, samples_data, log=True, prefix='', verbose=True):
-        t = time.time()
+    def optimize_policy(self, samples_data):
         observations = samples_data['observations']
         idx = np.random.choice(len(observations), self.policy_buffer_size)
         sess = tf.get_default_session()
 
+        step_size = []
+        accept_ctr = 0
         for obs in observations[idx]:
             for itr in range(self.num_ilqr_iters):
-                alpha, opt_params_values, opt_disc_reward, eff_diff, opt_accept = sess.run(
-                    [self.alpha_var, self.opt_params_values_var, self.opt_disc_reward_var, self.eff_diff_var, self.opt_accept_var], feed_dict={self.x_ph_o: obs}
+                opt_params_values, opt_accept, _step_size = sess.run(
+                    [self.opt_params_values_var, self.opt_accept_var, self.alpha_var], feed_dict={self.x_ph_o: obs}
                 )
-                if verbose:
-                    logger.logkv(f'{prefix}RetDyn-{itr}', opt_disc_reward)
-                    logger.logkv(f'{prefix}RetImpv-{itr}', eff_diff)
 
                 if opt_accept:
-                    self.policy.set_params(opt_params_values)
+                    if not 0 < _step_size < 1:
+                        logger.warn('STEP SIZE OVERFLOW????????????')
+                    else:
+                        step_size.append(_step_size)
+                        accept_ctr += 1
+                        self.policy.set_params(opt_params_values)
                 else:
                     pass
                     # break
 
-            if verbose:
-                logger.logkv(prefix + 'OptPolicyTime', time.time() - t)
-                logger.dumpkvs()
+        step_size = Counter(step_size)
+        for k, v in step_size.items():
+            logger.logkv(f'AvgStepSize{k}', v)
+        logger.logkv('AcceptPct', accept_ctr/(self.num_ilqr_iters*self.policy_buffer_size))

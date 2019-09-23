@@ -47,6 +47,11 @@ def run_experiment(**config):
     elif config['env'] is AntEnv:
         repr += 'ant'
         config['max_path_length'] = 100
+    elif config['env'] is Walker2dEnv:
+        repr += 'walker2d'
+        config['max_path_length'] = 100
+    else:
+        raise NotImplementedError
 
     if config['use_saved_params']:
         params_path = f'/home/yunzhi/mb/meta-mb/data/bptt-mb-ilqr-policy/params/{repr}.json'
@@ -164,7 +169,7 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'env': [InvertedPendulumEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [Walker2dEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'verbose': [False],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
         'use_saved_params': [False],
         'n_itr': [301],
@@ -176,20 +181,20 @@ if __name__ == '__main__':
 
         # iLQR
         'initializer_str': ['zeros',],
-        'num_ilqr_iters': [1],
+        'num_ilqr_iters': [1, 2],
         'mu_min': [1e-6],  # UNUSED
         'mu_max': [1e10],  # UNUSED
-        'mu_init': [1e-5,], # 1e1
+        'mu_init': [5e-5,], # 1e1
         'delta_0': [2],  # UNUSED
         'delta_init': [1.0],  # UNUSED
-        'alpha_init': [1e-2, 1e-3],
+        'alpha_init': [1e-1, 1e-2],  # TUNE THIS
         'alpha_decay_factor': [3.0],
-        'c_1': [1e-1, 1e-3],
+        'c_1': [8e-1, 5e-1, 1e-1],  # TUNE THIS
         'max_forward_iters': [10],
-        'max_backward_iters': [10],
-        'use_hessian_f': [False],  # False
+        'max_backward_iters': [5],
+        'use_hessian_f': [False],
         'use_hessian_policy': [False],
-        'policy_damping_factor': [1e-4,],  # UNUSED if not use_hessian_policy
+        'policy_damping_factor': [1e-4,],  # UNUSED unless use_hessian_policy
         'damping_str': ['Q'],
 
         # Training
@@ -200,11 +205,11 @@ if __name__ == '__main__':
         'steps_per_iter': [1,],
 
         # Policy
-        'policy_hidden_sizes': [tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
+        'policy_hidden_sizes': [tuple(), (16,),],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
-        'policy_buffer_size': [100],
+        'policy_buffer_size': [100, 200],
 
         # Dynamics Model
         'num_models': [5],
