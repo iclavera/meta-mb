@@ -28,7 +28,6 @@ def run_experiment(**kwargs):
     elif kwargs['env'] is InvertedPendulumEnv:
         env_str = 'ip-100'
         kwargs['max_path_length'] = 100
-        # kwargs['policy_damping_factor'] = 2e-1
     elif kwargs['env'] is ReacherEnv:
         env_str = 'reacher-50'
         kwargs['max_path_length'] = 50
@@ -38,7 +37,12 @@ def run_experiment(**kwargs):
     elif kwargs['env'] is AntEnv:
         env_str = 'ant-100'
         kwargs['max_path_length'] = 100
-        
+    elif kwargs['env'] is Walker2dEnv:
+        env_str = 'walker2d-100'
+        kwargs['max_path_length'] = 100
+    else:
+        raise NotImplementedError
+
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + env_str + kwargs.get('exp_name', '')
     print(f'================ starting exp {exp_dir} ==================')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
@@ -143,7 +147,7 @@ if __name__ == '__main__':
 
         'algo': ['meppo'],
         'baseline': [LinearFeatureBaseline],
-        'env': [InvertedPendulumEnv], #[InvertedPendulumEnv, HalfCheetahEnv, ReacherEnv],
+        'env': [AntEnv],
 
         # Problem Conf
         'n_itr': [201],
@@ -177,10 +181,10 @@ if __name__ == '__main__':
         'policy_output_nonlinearity': [None],
 
         # Algo
-        'clip_eps': [0.2,],# 0.3, 0.1],
-        'learning_rate': [1e-3],# 5e-4],
+        'clip_eps': [0.2, 0.1],
+        'learning_rate': [1e-3, 5e-4],
         'num_ppo_steps': [5],
-        'imagined_num_rollouts': [20], #50],
+        'imagined_num_rollouts': [20, 50],
         'scope': [None],
         'exp_tag': ['me_ppo'],  # For changes besides hyperparams
     }

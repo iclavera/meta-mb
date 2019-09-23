@@ -135,6 +135,7 @@ def run_experiment(**config):
             policy_buffer_size=config['policy_buffer_size'],
             use_hessian_policy=config['use_hessian_policy'],
             learning_rate=config['policy_learning_rate'],
+            batch_size=config['batch_size'],
             num_gradient_steps=config['num_gradient_steps'],
             verbose=config['verbose'],
         )
@@ -188,7 +189,7 @@ if __name__ == '__main__':
         'alpha_decay_factor': [3.0],
         'c_1': [1e-1, 1e-3],
         'max_forward_iters': [10],
-        'max_backward_iters': [10],
+        'max_backward_iters': [5],
         'use_hessian_f': [False],  # False
         'use_hessian_policy': [False],
         'policy_damping_factor': [1e-4,],  # UNUSED if not use_hessian_policy
@@ -200,15 +201,16 @@ if __name__ == '__main__':
         'rolling_average_persitency': [0.99],
         'initial_random_samples': [True],
         'steps_per_iter': [1,],
-        'num_gradient_steps': [30],
+        'batch_size': [200],
 
         # Policy
-        'policy_hidden_sizes': [tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
+        'policy_hidden_sizes': [(64, 64)], #[tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
-        'policy_buffer_size': [100],
+        'policy_buffer_size': [200],
         'policy_learning_rate': [1e-3,],
+        'num_gradient_steps': [10],
 
         # Dynamics Model
         'num_models': [5],

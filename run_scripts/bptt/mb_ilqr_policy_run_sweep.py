@@ -169,10 +169,10 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'env': [Walker2dEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [ReacherEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'verbose': [False],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
         'use_saved_params': [False],
-        'n_itr': [301],
+        'n_itr': [201],
 
         # Problem
         'seed': [1,],
@@ -189,7 +189,7 @@ if __name__ == '__main__':
         'delta_init': [1.0],  # UNUSED
         'alpha_init': [1e-1, 1e-2],  # TUNE THIS
         'alpha_decay_factor': [3.0],
-        'c_1': [8e-1, 5e-1, 1e-1],  # TUNE THIS
+        'c_1': [5e-1, 1e-1, 5e-2],  # TUNE THIS
         'max_forward_iters': [10],
         'max_backward_iters': [5],
         'use_hessian_f': [False],
@@ -206,7 +206,7 @@ if __name__ == '__main__':
 
         # Policy
         'policy_hidden_sizes': [tuple(), (16,),],
-        'policy_learn_std': [True],
+        'policy_learn_std': [True, False],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
         'policy_buffer_size': [100, 200],

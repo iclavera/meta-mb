@@ -329,5 +329,5 @@ class iLQR(object):
 
         step_size = Counter(step_size)
         for k, v in step_size.items():
-            logger.logkv(f'AvgStepSize{k}', v)
+            logger.logkv(f'StepSize{k}', v)
         logger.logkv('AcceptPct', accept_ctr/(self.num_ilqr_iters*self.policy_buffer_size))

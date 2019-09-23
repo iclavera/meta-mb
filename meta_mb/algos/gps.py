@@ -13,7 +13,7 @@ class GPS(object):
                  alpha_init=1.0, alpha_decay_factor=3.0, policy_damping_factor=1e0,
                  c_1=0.3, max_forward_iters=10, max_backward_iters=20, policy_buffer_size=10,
                  use_hessian_policy=False, damping_str='Q', learning_rate=1e-3,
-                 num_gradient_steps=10,
+                 batch_size=10, num_gradient_steps=5,
                  verbose=True):
         self._env = copy.deepcopy(env)
         self.dynamics_model = dynamics_model
@@ -41,6 +41,7 @@ class GPS(object):
         self.policy_buffer_size = policy_buffer_size
         self.use_hessian_policy = use_hessian_policy
         self.learning_rate = learning_rate
+        self.batch_size = batch_size
         self.num_gradient_steps = num_gradient_steps
         self.verbose = verbose
 
@@ -282,21 +283,21 @@ class GPS(object):
 
         return opt_u_ha, opt_x_ho, -opt_J_val, J_val-opt_J_val, forward_accept
 
-    def _build_policy_loss(self):
-        acts = self.policy.get_actions_sym(self.exp_obs_ph_no)
-        loss = tf.losses.mean_squared_error(labels=self.exp_acts_ph_na, predictions=acts)
-        if self.verbose:
-            loss = tf.Print(loss, data=['loss_before', loss])
-        optimizer = tf.train.AdamOptimizer(self.learning_rate)
-        train_op = optimizer.minimize(loss, var_list=self.policy.get_params())
-
-        return loss, train_op
-
     def _activate_u(self, u):
         # u = tf.clip_by_value(u, self.act_low, self.act_high)
         scale = (self.act_high - self.act_low) * 0.5  # + 1e-8
         loc = (self.act_high + self.act_low) * 0.5
         return tf.tanh((u-loc)/scale) * scale + loc
+
+    def _build_policy_loss(self):
+        acts = self.policy.get_actions_sym(self.exp_obs_ph_no)
+        loss = tf.losses.mean_squared_error(labels=self.exp_acts_ph_na, predictions=acts)
+        # if self.verbose:
+        with tf.control_dependencies([tf.print('loss before', loss)]):
+            optimizer = tf.train.AdamOptimizer(self.learning_rate)
+            train_op = optimizer.minimize(loss, var_list=self.policy.get_params())
+
+        return loss, train_op
 
     def optimize_policy(self, samples_data, log=True, prefix='', verbose=True):
         t = time.time()
@@ -336,12 +337,20 @@ class GPS(object):
         obs_buffer = np.concatenate(obs_buffer, axis=0)
         acts_buffer = np.concatenate(acts_buffer, axis=0)
 
-        for i in range(self.num_gradient_steps):
-            loss, _ = sess.run(
-                [self.loss, self.train_op], feed_dict={self.exp_acts_ph_na: acts_buffer, self.exp_obs_ph_no: obs_buffer},
-            )
-            if verbose:
-                logger.logkv(prefix + 'Loss', loss)
+        for _ in range(self.num_gradient_steps):
+
+            np.random.shuffle(obs_buffer)
+            np.random.shuffle(acts_buffer)
+
+            i = 0
+            while i < len(obs_buffer):
+                acts = acts_buffer[i:i+self.batch_size]
+                obs = obs_buffer[i:i+self.batch_size]
+                _, = sess.run(
+                    [self.train_op],
+                    feed_dict={self.exp_acts_ph_na: acts, self.exp_obs_ph_no: obs},
+                )
+                i += self.batch_size
 
         if log or verbose:
             logger.logkv(prefix + 'OptPolicyTime', time.time() - t)
