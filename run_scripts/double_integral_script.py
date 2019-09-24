@@ -217,7 +217,7 @@ if __name__ == '__main__':
         'rollout_batch_size': [1e2],
         'num_actions_per_next_observation': [1],
         'H': [2],  # Critic
-        'T': [3],  # Actor
+        'T': [10],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
-        'q_target_type': [0],
+        'q_target_type': [0, 1],
         'q_function_type': [5],
         'model_used_ratio': [1],
 

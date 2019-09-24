@@ -209,7 +209,7 @@ class Trainer(object):
                 min_q_val_var = tf.reduce_min(q_values_var, axis=0)
                 result.append(min_q_val_var)
         return tf.reduce_mean(result, axis = 0)
-    #
+
     def grad_losses(self):
         var_list = list(self.policy.policy_params.values())
         self.mbpo_grad = tf.gradients(self.mbpo_Q, var_list)
