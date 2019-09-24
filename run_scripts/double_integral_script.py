@@ -217,7 +217,7 @@ if __name__ == '__main__':
         'rollout_batch_size': [1e2],
         'num_actions_per_next_observation': [1],
         'H': [2],  # Critic
-        'T': [10],  # Actor
+        'T': [2],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot

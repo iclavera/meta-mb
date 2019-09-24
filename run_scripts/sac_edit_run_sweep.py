@@ -227,7 +227,7 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [90, 190],
+        'seed': [90],
         'baseline': [LinearFeatureBaseline],
         'env': [Walker2dEnv],
         'n_itr': [200],
@@ -259,7 +259,7 @@ if __name__ == '__main__':
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
-        'num_eval_trajectories': [1],
+        'num_eval_trajectories': [5],
 
         # Value Function
         'vfun_hidden_nonlineariy': ['tanh'],

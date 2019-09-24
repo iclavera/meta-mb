@@ -54,7 +54,7 @@ class MPCController(Serializable):
         if use_graph:
             self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_space_dims), name='obs')
             self.mean = tf.placeholder(dtype=tf.float32, shape=(self.horizon + 1, self.action_space_dims), name = 'mean')
-            self.std = tf.placeholder(dtype=tf.float32, shape=(self.horizon + 1, self.action_space_dims), name = 'mean')
+            self.std = tf.placeholder(dtype=tf.float32, shape=(self.horizon + 1, self.action_space_dims), name = 'std')
             self.optimal_action = None
             if not use_cem:
                 self.build_rs_graph()
@@ -152,7 +152,6 @@ class MPCController(Serializable):
             std = tf.sqrt(constrained_var)
             act = mean + tf.random.normal(shape=[self.horizon + 1, tf.shape(self.obs_ph)[0], n,
                                                  self.action_space_dims]) * std
-            act = tf.clip_by_value(act, self.env.action_space.low, self.env.action_space.high)
             returns = 0
             observation = tf.reshape(
                 tf.tile(tf.expand_dims(self.obs_ph, -1), [1, n, 1]),
@@ -163,7 +162,7 @@ class MPCController(Serializable):
             for t in range(h):
                 next_observation = self.dynamics_model.predict_sym(observation, tf.tanh(act[t]))
                 assert self.reward_model is None
-                rewards = self.unwrapped_env.tf_reward(observation, act[t], next_observation)
+                rewards = self.unwrapped_env.tf_reward(observation, tf.tanh(act[t]), next_observation)
                 returns += self.discount ** t * rewards
                 observation = next_observation
             returns = tf.reshape(returns, [-1, 1])

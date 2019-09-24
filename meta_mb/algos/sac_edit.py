@@ -104,7 +104,10 @@ class SAC_MB(Algo):
         self.session = session or tf.keras.backend.get_session()
         self.actor_H = actor_H
         self.Qs = Qs
-        self.Q_targets = Q_targets
+        if Q_targets == None:
+            self.Q_targets = self.Qs
+        else:
+            self.Q_targets = Q_targets
         self.reward_scale = reward_scale
         self.target_update_interval = target_update_interval
         self.num_actions_per_next_observation = num_actions_per_next_observation
