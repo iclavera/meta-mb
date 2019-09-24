@@ -1,6 +1,7 @@
 from meta_mb.trainers.ilqr_trainer import Trainer
 from meta_mb.samplers.sampler import Sampler
 from meta_mb.algos.ilqr import iLQR
+from meta_mb.algos.ilqr_v2 import iLQRV2
 from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
 from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 from meta_mb.dynamics.mlp_dynamics_ensemble_refactor import MLPDynamicsEnsemble
@@ -169,8 +170,8 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'env': [ReacherEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
-        'verbose': [False],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
+        'env': [HopperEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'verbose': [True],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
         'use_saved_params': [False],
         'n_itr': [201],
 
@@ -187,9 +188,9 @@ if __name__ == '__main__':
         'mu_init': [5e-5,], # 1e1
         'delta_0': [2],  # UNUSED
         'delta_init': [1.0],  # UNUSED
-        'alpha_init': [1e-1, 1e-2],  # TUNE THIS
+        'alpha_init': [1e-2, 1e-1],  # TUNE THIS
         'alpha_decay_factor': [3.0],
-        'c_1': [5e-1, 1e-1, 5e-2],  # TUNE THIS
+        'c_1': [1e-1, 5e-2],  # TUNE THIS
         'max_forward_iters': [10],
         'max_backward_iters': [5],
         'use_hessian_f': [False],
@@ -210,6 +211,7 @@ if __name__ == '__main__':
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
         'policy_buffer_size': [100, 200],
+        'init_std': [1e-2],
 
         # Dynamics Model
         'num_models': [5],

@@ -204,7 +204,7 @@ if __name__ == '__main__':
         'batch_size': [200],
 
         # Policy
-        'policy_hidden_sizes': [(64, 64)], #[tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
+        'policy_hidden_sizes': [tuple(), (16,),],# [tuple()], #[(64, 64)],[(32,)], #
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],

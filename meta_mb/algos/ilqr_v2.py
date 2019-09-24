@@ -7,7 +7,7 @@ from meta_mb.policies import utils
 from collections import Counter
 
 
-class iLQR(object):
+class iLQRV2(object):
     def __init__(self, env, dynamics_model, policy, horizon, initializer_str,
                  num_ilqr_iters, reg_str='V', use_hessian_f=False, discount=1,
                  mu_min=1e-6, mu_max=1e10, mu_init=1e-5, delta_0=2, delta_init=1.0,
@@ -48,7 +48,7 @@ class iLQR(object):
         self.x_ph_o = tf.placeholder(
             dtype=tf.float32, shape=(self.obs_dim,), name='x_o',
         )
-        self.opt_params_values_var, self.opt_u_var_ha, self.opt_accept_var, self.alpha_var = self._build_opt_graph()
+        self.opt_params_values_var, self.opt_accept_var, self.alpha_var = self._build_opt_graph()
         logger.log('TimeBuildGraph', build_time - time.time())
 
     def _build_opt_graph(self):
@@ -63,6 +63,7 @@ class iLQR(object):
         policy_params = policy.get_params()
         policy_params_values = list(policy_params.values())
         policy_params_values_flatten = utils.flatten_params_sym(policy_params)
+        policy_params_values_flatten = tf.Print(policy_params_values_flatten, data=['params norm', tf.norm(policy_params_values_flatten)])
         policy_params_values_flatten_unflatten = utils.unflatten_params_sym(policy_params_values_flatten, policy_params)
 
         '''--------------- Compute gradients, x_ho, disc_reward ----------------------'''
@@ -130,14 +131,6 @@ class iLQR(object):
         # define variables for backward while loop
         V_prime_xx, V_prime_x = tf.zeros((obs_dim, obs_dim)), tf.zeros((obs_dim,))
         k_first = None
-        open_k_array = tf.TensorArray(
-            dtype=tf.float32, size=horizon, element_shape=(act_dim,), tensor_array_name='open_k', clear_after_read=False,
-        )
-        closed_K_array = tf.TensorArray(
-            dtype=tf.float32, size=horizon, element_shape=(act_dim, obs_dim), tensor_array_name='closed_K', clear_after_read=False,
-        )
-        delta_J_1, delta_J_2 = tf.zeros(()), tf.zeros(())
-        delta_J_1_split, delta_J_2_split = [None] * horizon, [None] * horizon
         delta_J_params = [[] for _ in range(horizon)]
         backward_reject = False
 
@@ -162,18 +155,16 @@ class iLQR(object):
 
                 # if self.verbose:
                 #     eig_vals = tf.linalg.eigvalsh(Q_theta_theta)
-                #     Q_theta_theta_reg = tf.Print(Q_theta_theta_reg, data=['eig_vals_theta', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
+                #     Q_theta_theta = tf.Print(Q_theta_theta, data=['eig_vals_theta', tf.reduce_min(eig_vals), tf.reduce_max(eig_vals)])
                 accept, k = utils.tf_cg(f_Ax=lambda k: tf.linalg.matvec(Q_theta_theta_reg, k), b=-Q_theta, cg_iters=self.cg_iters, residual_tol=1e-10)
 
                 if self.verbose:
-                    k = tf.Print(k, data=['backward accept', accept])
+                    k = tf.Print(k, data=['backward accept', accept, 'k norm', tf.norm(k)])
 
                 k_first = k
-                # delta_J_1 += tf.tensordot(k, Q_theta, axes=1)
-                # delta_J_2 += tf.tensordot(k, tf.linalg.matvec(Q_theta_theta, k), axes=1)
-                delta_J_1_split[0] = tf.tensordot(k, Q_theta, axes=1)
-                delta_J_2_split[0] = tf.tensordot(k, tf.linalg.matvec(Q_theta_theta, k), axes=1)
-                delta_J_params[0] = [Q_u, Q_uu]
+                delta_J_params[0] = [None, Q_u, None, Q_uu, None]
+                # delta_J_1_first = tf.tensordot(k, Q_theta, axes=1)
+                # delta_J_2_first = tf.tensordot(k, tf.linalg.matvec(Q_theta_theta, k), axes=1)
 
             else:
                 Q_x = l_x + tf.linalg.matvec(tf.transpose(f_x), V_prime_x)
@@ -199,18 +190,13 @@ class iLQR(object):
                 k = - tf.linalg.matvec(Q_uu_reg_inv, Q_u)
                 K = - Q_uu_reg_inv @ Q_ux_reg
 
-                open_k_array = open_k_array.write(i, k)
-                closed_K_array = closed_K_array.write(i, K)
-                delta_J_1 += tf.tensordot(k, Q_u, axes=1)
-                delta_J_2 += tf.tensordot(k, tf.linalg.matvec(Q_uu, k), axes=1)
-                delta_J_1_split[i] = tf.tensordot(k, Q_u, axes=1)
-                delta_J_2_split[i] = tf.tensordot(k, tf.linalg.matvec(Q_uu, k), axes=1)
+                # open_k_array = open_k_array.write(i, k)
+                # closed_K_array = closed_K_array.write(i, K)
 
                 V_x = Q_x + tf.linalg.matvec(tf.transpose(K) @ Q_uu, k) + tf.linalg.matvec(tf.transpose(K), Q_u) + tf.linalg.matvec(tf.transpose(Q_ux), k)
                 V_xx = Q_xx + tf.transpose(K) @ Q_uu @ K + tf.transpose(K) @ Q_ux + tf.transpose(Q_ux) @ K
                 V_xx = (V_xx + tf.transpose(V_xx)) * 0.5
-
-                delta_J_params[i] = [V_x, V_xx]
+                delta_J_params[i] = [Q_x, Q_u, Q_xx, Q_uu, Q_ux]
 
                 # prepare for next iteration
                 V_prime_x, V_prime_xx = V_x, V_xx
@@ -220,43 +206,35 @@ class iLQR(object):
 
         ''' ----------------------------- Forward Pass --------------------------------'''
 
-        def body(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_u_ha, prev_opt_policy_param_values):
+        def body(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_policy_param_values):
             x = self.x_ph_o
-            delta_J_alpha = None
+            delta_J_alpha = tf.zeros(())
             disc_reward = tf.zeros(())
-            opt_u_ha = [None] * horizon
-            opt_policy_params = utils.unflatten_params_sym(policy_params_values_flatten + alpha * k_first, policy_params)
+            delta_theta = alpha * k_first
+            opt_policy_params = utils.unflatten_params_sym(policy_params_values_flatten + delta_theta, policy_params)
 
             for i in range(horizon):
-
-                if i == 0:
-                    u = policy.get_actions_sym(x, opt_policy_params)
-                    delta_u = u - u_ha[i]
-                    Q_u, Q_uu = delta_J_params[0]
-                    delta_J_0 = tf.tensordot(delta_u, Q_u, axes=1) + 0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1)
-                    # delta_J_0_alt = alpha * delta_J_1_split[0] + 0.5 * alpha**2 * delta_J_2_split[0]
-                    # delta_J_0 = tf.Print(delta_J_0, data=['assert', delta_J_0, delta_J_0_alt])
-                    delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2 + delta_J_0
-                else:
-                    open_term = alpha * open_k_array.read(i)
-                    closed_term = tf.linalg.matvec(closed_K_array.read(i), x - x_ho[i])
-                    u = u_ha[i] + open_term + closed_term
-
-                    # delta_u = u - u_ha[i]
-                    delta_x = x - x_ho[i]
-                    V_x, V_xx = delta_J_params[i]
-                    # delta_J_i = tf.tensordot(delta_x, Q_x, axes=1) + tf.tensordot(delta_u, Q_u, axes=1) + \
-                    #             0.5 * tf.tensordot(delta_x, tf.linalg.matvec(Q_xx, delta_x), axes=1) + \
-                    #             0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1) + \
-                    #             tf.tensordot(delta_u, tf.linalg.matvec(Q_ux, delta_x), axes=1)
-                    # delta_J_i_alt = alpha * delta_J_1_split[i] + 0.5 * alpha**2 * delta_J_2_split[i]
-                    delta_J_i_higher_order = tf.tensordot(delta_x, V_x, axes=1) + \
-                                             0.5 * tf.tensordot(delta_x, tf.linalg.matvec(V_xx, delta_x), axes=1)
-                    # u = tf.Print(u, data=['assert', delta_J_i, delta_J_i_alt + delta_J_i_higher_order])
-                    delta_J_alpha += delta_J_i_higher_order
-
+                u = policy.get_actions_sym(x, opt_policy_params)
+                # if i == 0:  # they are not closed at all
+                #     u = tf.Print(u, data=['assert close', u - u_ha[i], tf.linalg.matvec(u_theta, delta_theta)])
                 u = self._activate_u(u)
-                opt_u_ha[i] = u
+
+                delta_u = u - u_ha[i]
+                delta_x = x - x_ho[i]
+                Q_x, Q_u, Q_xx, Q_uu, Q_ux = delta_J_params[i]
+                if i == 0:
+                    delta_J_i = tf.tensordot(delta_u, Q_u, axes=1) + 0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1)
+                    # # delta_J_i_1 = delta_J_i_2 != delta_J_i
+                    # delta_J_i_1 = tf.tensordot(delta_theta, Q_theta, axes=1) + 0.5 * tf.tensordot(delta_theta, tf.linalg.matvec(Q_theta_theta, delta_theta), axes=1)
+                    # delta_J_i_2 = alpha * delta_J_1_first + 0.5 * alpha**2 * delta_J_2_first
+                    # delta_J_i_0 = tf.Print(delta_J_i_0, data=['assert close', delta_J_i_0, delta_J_i_2])
+                else:
+                    delta_J_i = tf.tensordot(delta_x, Q_x, axes=1) + tf.tensordot(delta_u, Q_u, axes=1) + \
+                                0.5 * tf.tensordot(delta_x, tf.linalg.matvec(Q_xx, delta_x), axes=1) + \
+                                0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1) + \
+                                tf.tensordot(delta_u, tf.linalg.matvec(Q_ux, delta_x), axes=1)
+
+                delta_J_alpha += delta_J_i
 
                 x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32))[0]
                 reward = self._env.tf_reward(x, u, x_prime)
@@ -267,19 +245,20 @@ class iLQR(object):
             alpha = tf.Print(alpha, data=['exp_diff', -delta_J_alpha, 'actual_diff', J_val - opt_J_val, 'opt_reward', -opt_J_val, 'alpha', alpha])
 
             next_alpha = alpha / self.alpha_decay_factor
-            return (next_alpha, opt_J_val, delta_J_alpha, opt_u_ha, list(opt_policy_params.values()))
+            return (next_alpha, opt_J_val, delta_J_alpha, list(opt_policy_params.values()))
 
         # break if backward pass is rejected or linear search condition is satisfied
         line_search_accept = lambda alpha, opt_J_val, delta_J_alpha, *args: tf.math.logical_and(
             tf.greater(0., delta_J_alpha), tf.greater(J_val-opt_J_val, -self.c_1*delta_J_alpha)
         )
+        # line_search_accept = lambda alpha, opt_J_val, delta_J_alpha, *args: tf.greater(J_val, opt_J_val)
         cond = lambda *args: tf.math.logical_not(tf.math.logical_or(
             backward_reject,
             line_search_accept(*args),
         ))
 
         # loop_vars: loop vars with opt_J_val:= J_val, prev_delta_J_alpha:= 0, opt_u_ha:= u_ha
-        loop_vars = (self.alpha_init, J_val, 0., u_ha, policy_params_values)
+        loop_vars = (self.alpha_init, J_val, 0., policy_params_values)
         # terminal_loop_vars: loop vars right before convergence or maximum iteration is reached
         terminal_loop_vars = tf.while_loop(
             cond=cond, body=body, loop_vars=loop_vars, maximum_iterations=self.max_forward_iters
@@ -287,17 +266,16 @@ class iLQR(object):
         # if forward_stop is True, forward pass is accepted, update policy parameters
         # otherwise set opt_J_val, opt_u_ha back to J_val, u_ha
         forward_accept = line_search_accept(*terminal_loop_vars)
-        next_alpha, opt_J_val, _, opt_u_ha, opt_policy_params_values = tf.cond(
+        next_alpha, opt_J_val, delta_J_alpha, opt_policy_params_values = tf.cond(
             pred=forward_accept,
             true_fn=lambda: terminal_loop_vars,
             false_fn=lambda: loop_vars,
         )
 
         if self.verbose:
-            # data = ['---------------accept', forward_accept, 'reward', -J_val,  'opt_reward', -opt_J_val, 'diff', J_val-opt_J_val]
-            forward_accept = tf.Print(forward_accept, data=['forward_accept', forward_accept])
+            forward_accept = tf.Print(forward_accept, data=['forward accept', forward_accept])
 
-        return opt_policy_params_values, opt_u_ha, forward_accept, next_alpha*self.alpha_decay_factor
+        return opt_policy_params_values, forward_accept, next_alpha*self.alpha_decay_factor
 
     def _activate_u(self, u):
         # u = tf.clip_by_value(u, self.act_low, self.act_high)
@@ -319,12 +297,9 @@ class iLQR(object):
                 )
 
                 if opt_accept:
-                    if not 0 < _step_size < 1:
-                        logger.warn('STEP SIZE OVERFLOW????????????')
-                    else:
-                        step_size.append(_step_size)
-                        accept_ctr += 1
-                        self.policy.set_params(opt_params_values)
+                    step_size.append(_step_size)
+                    accept_ctr += 1
+                    self.policy.set_params(opt_params_values)
                 else:
                     pass
                     # break
