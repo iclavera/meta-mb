@@ -3,7 +3,7 @@ import json
 import tensorflow as tf
 import numpy as np
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "double"
+EXP_NAME = "double3"
 
 from pdb import set_trace as st
 from meta_mb.algos.sac_edit import SAC_MB
@@ -139,7 +139,6 @@ def run_experiment(**kwargs):
             Qs=Qs,
             Q_targets=Q_targets,
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
-            prediction_type=kwargs['prediction_type'],
             T=kwargs['T'],
             q_function_type=kwargs['q_function_type'],
             q_target_type=kwargs['q_target_type'],
@@ -200,11 +199,11 @@ if __name__ == '__main__':
         'policy_hidden_sizes': [()],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['relu', 'tanh'],
+        'policy_hidden_nonlinearity': ['relu'],
 
         # Env Sampling
-        'n_initial_exploration_steps': [500],
-        'max_path_length': [201],
+        'n_initial_exploration_steps': [125],
+        'max_path_length': [26],
         'num_rollouts': [1],
 
         # replay_buffer
@@ -213,12 +212,12 @@ if __name__ == '__main__':
 
         # Training
         'model_type': [0],
-        'n_train_repeats': [8],
-        'model_train_freq': [100],
-        'rollout_batch_size': [1e3],
+        'n_train_repeats': [4],
+        'model_train_freq': [10],
+        'rollout_batch_size': [1e2],
         'num_actions_per_next_observation': [1],
         'H': [2],  # Critic
-        'T': [10, 5, 20],  # Actor
+        'T': [3],  # Actor
         'actor_H': [1],  # Not used. It's for multiple steps for actor update
         'target_entropy': [1],
         'method': [4], # Number for the plot
@@ -226,7 +225,7 @@ if __name__ == '__main__':
 
         # Value Function
         'vfun_hidden_nonlineariy': ['relu'],
-        'q_target_type': [1, 0],
+        'q_target_type': [0],
         'q_function_type': [5],
         'model_used_ratio': [1],
 
@@ -237,21 +236,20 @@ if __name__ == '__main__':
         'num_cem_iters': [5],
 
         # Problem Conf
-        'discount': [0.99],
+        'discount': [0.9],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
         'learning_rate': [3e-4],
-        'prediction_type': ['rand'],
 
         # Dynamics Model
         'max_epochs_since_update': [8],
-        'num_models': [4],
+        'num_models': [8],
         'q_loss_importance': [1], # training the model
         'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
-        'rolling_average_persitency': [0.9],
+        'rolling_average_persitency': [0.4],
         'early_stopping': [0],
         'sampler_batch_size': [256],
         'real_ratio': [.05],

@@ -33,7 +33,7 @@ class Trainer(object):
             T=1,
             ground_truth=False,
             max_epochs_since_update=5,
-            estimated_iteration = 2000,
+            estimated_iteration = 200,
             ):
         self.algo = algo
         self.env = env
@@ -77,6 +77,7 @@ class Trainer(object):
         self.A_array, self.Q_array, self.B_array, self.R_array = A, Q, B, R
         P = Q
         self.p_loss = 1
+        self.split_num = 2
         itr_count = 0
         while self.p_loss > 0:
             itr_count += 1
@@ -115,94 +116,106 @@ class Trainer(object):
 
     def calculate(self, x, A):
         x = tf.matmul(x, tf.matmul(A, tf.transpose(x)))
-        V = tf.reshape(tf.reduce_sum(tf.matmul(tf.identity(x), x), axis = 1), [-1, 1])
+        V = tf.reshape(tf.diag_part(x), [-1, 1])
         return V
 
     def optimal_action(self, observations, i = 0):
         return tf.matmul(observations, self.K)
 
     def get_optimal_Q(self):
-        best_action = self.optimal_action(self.obs_ph)
-        reward = self.env.tf_reward(self.obs_ph, best_action)
-        return reward + self.algo.discount * (-0.5) * self.calculate(self.obs_ph, self.P)
+        obs_batch = tf.split(self.obs_ph, self.split_num)
+        result = []
+        for obs in obs_batch:
+            best_action = self.optimal_action(obs)
+            reward = self.env.tf_reward(self.obs_ph, best_action)
+            result.append(reward + self.algo.discount * (-0.5) * self.calculate(self.obs_ph, self.P))
+        return tf.reduce_mean(result)
 
     def get_estimated_Q(self):
-        result = 0
-        obs = self.obs_ph
-        for i in range(self.estimated_iteration):
-            act = self.optimal_action(obs, i)
-            result += (self.algo.discount)**i * (-0.5) * self.calculate(obs, self.Q) + self.calculate(act, self.R)
-            obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(act)))
-        return result
+        value = 0
+        obs_batch = tf.split(self.obs_ph, self.split_num)
+        result = []
+        for obs in obs_batch:
+            for i in range(self.estimated_iteration):
+                act = self.optimal_action(obs)
+                value += (self.algo.discount)**i * (-0.5) * self.calculate(obs, self.Q) + self.calculate(act, self.R)
+                obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(act)))
+            result.append(value)
+        return tf.reduce_mean(result)
 
     def get_mbpo_Q(self):
+        obs_batch = tf.split(self.obs_ph, self.split_num)
         result = []
-        for _ in range(self.N):
-            dist_info_sym = self.policy.distribution_info_sym(self.obs_ph)
-            actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-            input_q_fun = tf.concat([self.obs_ph, actions_var], axis=-1)
-            next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
-            min_q_val_var = tf.reduce_min(next_q_values, axis=0)
-            result.append(min_q_val_var)
-        result = tf.reduce_mean(result, axis = 0)
-        return result
+        for obs in obs_batch:
+            for _ in range(self.N):
+                dist_info_sym = self.policy.distribution_info_sym(self.obs_ph)
+                actions_var, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
+                input_q_fun = tf.concat([self.obs_ph, actions_var], axis=-1)
+                next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+                min_q_val_var = tf.reduce_min(next_q_values, axis=0)
+                result.append(min_q_val_var)
+        return tf.reduce_mean(result, axis = 0)
 
     def get_our_Q(self):
+        obs_batch = tf.split(self.obs_ph, self.split_num)
         result = []
-        for _ in range(self.N):
-            obs = self.obs_ph
-            obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
-            reward_values = 0
-            for i in range(self.algo.T+1):
+        for obs in obs_batch:
+            for _ in range(self.N):
+                obs = self.obs_ph
+                obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
+                reward_values = 0
+                for i in range(self.algo.T+1):
+                    dist_info_sym = self.policy.distribution_info_sym(obs)
+                    actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                    next_obs = self.dynamics_model.predict_sym(obs, actions)
+                    rewards = self.env.tf_reward(obs, actions, next_obs)
+                    rewards = tf.expand_dims(rewards, axis=-1)
+                    reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
+                    obs = next_obs
+
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                next_obs = self.dynamics_model.predict_sym(obs, actions)
-                rewards = self.env.tf_reward(obs, actions, next_obs)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
-                obs = next_obs
+                input_q_fun = tf.concat([obs, actions], axis=-1)
 
-            dist_info_sym = self.policy.distribution_info_sym(obs)
-            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-            input_q_fun = tf.concat([obs, actions], axis=-1)
-
-            next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
-            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-            result.append(min_q_val_var)
+                next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+                result.append(min_q_val_var)
         return tf.reduce_mean(result, axis = 0)
 
     def expanded_gt_Q(self):
+        obs_batch = tf.split(self.obs_ph, self.split_num)
         result = []
-        for _ in range(self.N):
-            obs = self.obs_ph
-            obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
-            reward_values = 0
-            for i in range(self.algo.T+1):
+        for obs in obs_batch:
+            for _ in range(self.N):
+                obs = self.obs_ph
+                obs = tf.tile(obs, [self.algo.num_actions_per_next_observation, 1])
+                reward_values = 0
+                for i in range(self.algo.T+1):
+                    dist_info_sym = self.policy.distribution_info_sym(obs)
+                    actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
+                    next_obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(actions)))
+                    rewards = self.env.tf_reward(obs, actions, next_obs)
+                    rewards = tf.expand_dims(rewards, axis=-1)
+                    reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
+                    obs = next_obs
+
                 dist_info_sym = self.policy.distribution_info_sym(obs)
                 actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-                next_obs = tf.transpose(tf.matmul(self.A, tf.transpose(obs)) + tf.matmul(self.B, tf.transpose(actions)))
-                rewards = self.env.tf_reward(obs, actions, next_obs)
-                rewards = tf.expand_dims(rewards, axis=-1)
-                reward_values += (self.algo.discount**(i)) * self.algo.reward_scale * rewards
-                obs = next_obs
+                input_q_fun = tf.concat([obs, actions], axis=-1)
 
-            dist_info_sym = self.policy.distribution_info_sym(obs)
-            actions, _ = self.policy.distribution.sample_sym(dist_info_sym)
-            input_q_fun = tf.concat([obs, actions], axis=-1)
-
-            next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
-            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-            result.append(min_q_val_var)
+                next_q_values = [(self.algo.discount ** (self.algo.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.algo.Qs]
+                q_values_var = [reward_values + next_q_values[j] for j in range(2)]
+                min_q_val_var = tf.reduce_min(q_values_var, axis=0)
+                result.append(min_q_val_var)
         return tf.reduce_mean(result, axis = 0)
-
+    #
     def grad_losses(self):
         var_list = list(self.policy.policy_params.values())
-        mbpo_grad = tf.gradients(self.mbpo_Q, var_list)
+        self.mbpo_grad = tf.gradients(self.mbpo_Q, var_list)
         our_grad = tf.gradients(self.our_Q, var_list)
         expanded_gt_grad = tf.gradients(self.expanded_gt_Q, var_list)
-        loss1 = tf.losses.absolute_difference(tf.split(mbpo_grad, 2, axis=-1)[0], self.estimated_grads)
+        loss1 = tf.losses.absolute_difference(tf.split(self.mbpo_grad, 2, axis=-1)[0], self.estimated_grads)
         loss2 = tf.losses.absolute_difference(tf.split(our_grad, 2, axis=-1)[0], self.estimated_grads)
         loss3 = tf.losses.absolute_difference(tf.split(expanded_gt_grad, 2, axis=-1)[0], self.estimated_grads)
         self.norm = tf.norm(self.estimated_grads)
@@ -286,10 +299,11 @@ class Trainer(object):
                         self.algo.do_training(time_step, batch, log=True)
                     sac_time.append(time.time() - sac_start)
 
-                loss1, loss2, loss3, norm = sess.run([self.mbpo_grad_loss,
+                loss1, loss2, loss3, norm, estimated_grads = sess.run([self.mbpo_grad_loss,
                                                self.map_grad_loss,
                                                self.expanded_gt_grad_loss,
-                                               self.norm],
+                                               self.norm,
+                                               self.estimated_grads],
                                                feed_dict={self.obs_ph: batch['observations'][:32]})
                 logger.logkv("unnormalized_mbpo_grad_loss", loss1)
                 logger.logkv("unnormalized_map_grad_loss", loss2)
@@ -297,6 +311,7 @@ class Trainer(object):
                 logger.logkv("normalized_mbpo_grad_loss", loss1/norm)
                 logger.logkv("normalized_map_grad_loss", loss2/norm)
                 logger.logkv("normalized_gt_expanded_loss", loss3/norm)
+                logger.logkv("norm", norm)
                 self.env_replay_buffer.add_samples(samples_data['observations'],
                                                    samples_data['actions'],
                                                    samples_data['rewards'],

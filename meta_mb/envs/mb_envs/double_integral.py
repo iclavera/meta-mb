@@ -19,15 +19,17 @@ class DoubleIntegratorEnv(Env):
         self.discount = discount
         self.vectorized = True
         self.action_space = spaces.Box(low=np.array((-1,)), high=np.array((1,)), dtype=np.float64)
-        self.observation_space = spaces.Box(low=np.array((-1e6, -1e6)), high=np.array((1e6, 1e6)), dtype=np.float64)
+        self.observation_space = spaces.Box(low=np.array((-1, -1)), high=np.array((1e6, 1e6)), dtype=np.float64)
 
     def step(self, action):
         next_state = self._state + np.array([self._state[1], action[0]]) * self.dt
-        reward = -0.5 * (self._state[0] ** 2 + self._state[1] ** 2 + action ** 2)
+        reward = -0.05 * (self._state[0] ** 2 + self._state[1] ** 2 + action ** 2)
+        next_state = np.clip(next_state, self.observation_space.low, self.observation_space.high)
         done = False
         # done = False
         env_info = dict()
         self._state = next_state
+
         return next_state.copy(), reward, done, env_info
 
     def reset(self):

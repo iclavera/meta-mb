@@ -148,13 +148,16 @@ def correct_limit(ax, x, y_min, y_max):
     i = np.where((x > lims[0]) & (x < lims[1]))[0]
     return y_min[i].min(), y_max[i].max()
 
-def prepare_data_for_plot(exp_data, x_key='n_timesteps', y_key=None, sup_y_key=None, round_x=None):
+def prepare_data_for_plot(exp_data, x_key='n_timesteps', y_key=None, y_key2=None, sup_y_key=None, round_x=None):
     x_y_tuples = []
     for exp in exp_data:
         if sup_y_key is not None and sup_y_key in exp['progress'].keys():
             x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][sup_y_key])))
         else:
-            x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key])))
+            if y_key in exp['progress']:
+                x_y_tuples.extend(list(zip(exp['progress'][x_key]//2, exp['progress'][y_key])))
+            else:
+                x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key2])))
     x_y_dict = defaultdict(list)
     for k, v in x_y_tuples:
         if round_x is not None:
