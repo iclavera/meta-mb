@@ -24,6 +24,7 @@ class Sampler(BaseSampler):
 
     def __init__(
             self,
+            goal_sampler,
             env,
             policy,
             num_rollouts,
@@ -34,6 +35,7 @@ class Sampler(BaseSampler):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
+        self.goal_sampler = goal_sampler
         self.n_parallel = n_parallel
         self.vae = vae
 
@@ -47,77 +49,58 @@ class Sampler(BaseSampler):
     def update_tasks(self):
         pass
 
-    def obtain_samples(self, log=False, log_prefix='', random=False, sinusoid=False, deterministic=False,
-                       verbose=True, plot_first_rollout=False, sample_with_noise=False):
-        """
-        Collect batch_size trajectories from each task
+    def collect_init_obs(self):
+        self.policy.reset(dones=[True] * self.num_envs)
+        init_obs_no = self.vec_env.reset()
+        return init_obs_no
 
-        Args:
-            log (boolean): whether to log sampling times
-            log_prefix (str) : prefix for logger
-            random (boolean): whether the actions are random
-
-        Returns:
-            (dict) : A dict of paths of size [meta_batch_size] x (batch_size) x [5] x (max_path_length)
-        """
-
-        # assert deterministic is False
-
-        # initial setup / preparation
+    def collect_rollouts(
+            self, init_obs_no, agent_log_q, max_log_q, target_goals,
+            random=False, verbose=False, log=False, log_prefix='',
+    ):
+        policy = self.policy
         paths = []
-
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_envs)]
 
         if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
-        policy = self.policy
-        policy.reset(dones=[True] * self.num_envs)
-
-        # initial reset of meta_envs
-        obses = np.asarray(self.vec_env.reset())
+        # sample goals
+        obs_no = init_obs_no
+        goal_ng = np.random.choice(len(target_goals), size=self.num_envs, replace=True, p=max_log_q-agent_log_q)
 
         while n_samples < self.total_samples:
             # execute policy
             t = time.time()
             if self.vae is not None:
-                obses = np.array(obses)
-                obses = self.vae.encode(obses)
-
+                obs_no = np.array(obs_no)
+                obs_no = self.vae.encode(obs_no)
             if random:
-                actions = np.stack([self.env.action_space.sample() for _ in range(self.num_envs)], axis=0)
-                agent_infos = []
-            elif sinusoid:
-                action_space = self.env.action_space.shape[0]
-                num_envs = self.vec_env.num_envs
-                actions = np.stack([policy.get_sinusoid_actions(action_space, t/policy.horizon * 2 * np.pi) for _ in range(num_envs)], axis=0)
-                agent_infos = []
+                act_na = np.stack([self.env.action_space.sample() for _ in range(self.num_envs)], axis=0)
+                agent_info_n = []
             else:
-                obses = np.array(obses)
-                actions, agent_infos = policy.get_actions(obses)
-                if sample_with_noise:
-                    noise = np.random.normal(loc=np.zeros_like(actions), scale=0.2)
-                    noise[0, :] = 0
-                    actions += noise
-                assert len(actions) == len(obses)  # (num_rollouts, space_dims)
+                obs_no = np.array(obs_no)
+                act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
             policy_time += time.time() - t
 
             # step environments
             t = time.time()
-            next_obses, rewards, dones, env_infos = self.vec_env.step(actions)
+            next_obs_no, reward_n, done_n, env_info_n = self.vec_env.step(act_na, goal_ng)
             env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
-            agent_infos, env_infos = self._handle_info_dicts(agent_infos, env_infos)
+            agent_info_n, env_info_n = self._handle_info_dicts(agent_info_n, env_info_n)
 
             new_samples = 0
-            for idx, observation, action, reward, env_info, agent_info, done in zip(itertools.count(), obses, actions,
-                                                                                    rewards, env_infos, agent_infos,
-                                                                                    dones):
+            for idx, goal, observation, action, reward, env_info, agent_info, done in zip(
+                    np.arange(self.num_envs), goal_ng, obs_no, act_na,
+                    reward_n, env_info_n, agent_info_n, done_n,
+            ):
                 # append new samples to running paths
                 if isinstance(reward, np.ndarray):
                     reward = reward[0]
+                running_paths[idx]["goals"].append(goal)
                 running_paths[idx]["observations"].append(observation)
                 running_paths[idx]["actions"].append(action)
                 running_paths[idx]["rewards"].append(reward)
@@ -128,6 +111,7 @@ class Sampler(BaseSampler):
                 # if running path is done, add it to paths and empty the running path
                 if done:
                     paths.append(dict(
+                        goals=np.asarray(running_paths[idx]["goals"]),
                         observations=np.asarray(running_paths[idx]["observations"]),
                         actions=np.asarray(running_paths[idx]["actions"]),
                         rewards=np.asarray(running_paths[idx]["rewards"]),
@@ -140,7 +124,7 @@ class Sampler(BaseSampler):
 
             if verbose: pbar.update(self.vec_env.num_envs)
             n_samples += new_samples
-            obses = next_obses
+            obs_no = next_obs_no
 
         if verbose: pbar.stop()
 

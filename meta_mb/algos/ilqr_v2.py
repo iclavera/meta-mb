@@ -131,6 +131,7 @@ class iLQRV2(object):
         # define variables for backward while loop
         V_prime_xx, V_prime_x = tf.zeros((obs_dim, obs_dim)), tf.zeros((obs_dim,))
         k_first = None
+        delta_J_1, delta_J_2 = tf.zeros(()), tf.zeros(())
         delta_J_params = [[] for _ in range(horizon)]
         backward_reject = False
 
@@ -163,8 +164,8 @@ class iLQRV2(object):
 
                 k_first = k
                 delta_J_params[0] = [None, Q_u, None, Q_uu, None]
-                # delta_J_1_first = tf.tensordot(k, Q_theta, axes=1)
-                # delta_J_2_first = tf.tensordot(k, tf.linalg.matvec(Q_theta_theta, k), axes=1)
+                delta_J_1 += tf.tensordot(k, Q_theta, axes=1)
+                delta_J_2 += tf.tensordot(k, tf.linalg.matvec(Q_theta_theta, k), axes=1)
 
             else:
                 Q_x = l_x + tf.linalg.matvec(tf.transpose(f_x), V_prime_x)
@@ -192,6 +193,8 @@ class iLQRV2(object):
 
                 # open_k_array = open_k_array.write(i, k)
                 # closed_K_array = closed_K_array.write(i, K)
+                delta_J_1 += tf.tensordot(k, Q_u, axes=1)
+                delta_J_2 += tf.tensordot(k, tf.linalg.matvec(Q_uu, k), axes=1)
 
                 V_x = Q_x + tf.linalg.matvec(tf.transpose(K) @ Q_uu, k) + tf.linalg.matvec(tf.transpose(K), Q_u) + tf.linalg.matvec(tf.transpose(Q_ux), k)
                 V_xx = Q_xx + tf.transpose(K) @ Q_uu @ K + tf.transpose(K) @ Q_ux + tf.transpose(Q_ux) @ K
@@ -208,7 +211,8 @@ class iLQRV2(object):
 
         def body(alpha, prev_opt_J_val, prev_delta_J_alpha, prev_opt_policy_param_values):
             x = self.x_ph_o
-            delta_J_alpha = tf.zeros(())
+            # delta_J_alpha = tf.zeros(())
+            delta_J_alpha = alpha * delta_J_1 + 0.5 * alpha**2 * delta_J_2
             disc_reward = tf.zeros(())
             delta_theta = alpha * k_first
             opt_policy_params = utils.unflatten_params_sym(policy_params_values_flatten + delta_theta, policy_params)
@@ -219,22 +223,26 @@ class iLQRV2(object):
                 #     u = tf.Print(u, data=['assert close', u - u_ha[i], tf.linalg.matvec(u_theta, delta_theta)])
                 u = self._activate_u(u)
 
-                delta_u = u - u_ha[i]
-                delta_x = x - x_ho[i]
-                Q_x, Q_u, Q_xx, Q_uu, Q_ux = delta_J_params[i]
-                if i == 0:
-                    delta_J_i = tf.tensordot(delta_u, Q_u, axes=1) + 0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1)
-                    # # delta_J_i_1 = delta_J_i_2 != delta_J_i
-                    # delta_J_i_1 = tf.tensordot(delta_theta, Q_theta, axes=1) + 0.5 * tf.tensordot(delta_theta, tf.linalg.matvec(Q_theta_theta, delta_theta), axes=1)
-                    # delta_J_i_2 = alpha * delta_J_1_first + 0.5 * alpha**2 * delta_J_2_first
-                    # delta_J_i_0 = tf.Print(delta_J_i_0, data=['assert close', delta_J_i_0, delta_J_i_2])
-                else:
-                    delta_J_i = tf.tensordot(delta_x, Q_x, axes=1) + tf.tensordot(delta_u, Q_u, axes=1) + \
-                                0.5 * tf.tensordot(delta_x, tf.linalg.matvec(Q_xx, delta_x), axes=1) + \
-                                0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1) + \
-                                tf.tensordot(delta_u, tf.linalg.matvec(Q_ux, delta_x), axes=1)
-
-                delta_J_alpha += delta_J_i
+                # The following computation matches actual difference quite accurately.
+                # It means that the trajectory is not deviating too much and the quadratic approximation remains valid,
+                # but it might or might not be useful for determining line search condition.
+                #
+                # delta_u = u - u_ha[i]
+                # delta_x = x - x_ho[i]
+                # delta_x = tf.Print(delta_x, data=['norm of delta_u', tf.norm(delta_u), 'delta_x', tf.norm(delta_x)])
+                # Q_x, Q_u, Q_xx, Q_uu, Q_ux = delta_J_params[i]
+                # if i == 0:
+                #     delta_J_i = tf.tensordot(delta_u, Q_u, axes=1) + 0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1)
+                #     # # delta_J_i_1 = delta_J_i_2 != delta_J_i
+                #     # delta_J_i_1 = tf.tensordot(delta_theta, Q_theta, axes=1) + 0.5 * tf.tensordot(delta_theta, tf.linalg.matvec(Q_theta_theta, delta_theta), axes=1)
+                #     # delta_J_i_2 = alpha * delta_J_1_first + 0.5 * alpha**2 * delta_J_2_first
+                #     # delta_J_i_0 = tf.Print(delta_J_i_0, data=['assert close', delta_J_i_0, delta_J_i_2])
+                # else:
+                #     delta_J_i = tf.tensordot(delta_x, Q_x, axes=1) + tf.tensordot(delta_u, Q_u, axes=1) + \
+                #                 0.5 * tf.tensordot(delta_x, tf.linalg.matvec(Q_xx, delta_x), axes=1) + \
+                #                 0.5 * tf.tensordot(delta_u, tf.linalg.matvec(Q_uu, delta_u), axes=1) + \
+                #                 tf.tensordot(delta_u, tf.linalg.matvec(Q_ux, delta_x), axes=1)
+                # delta_J_alpha += delta_J_i
 
                 x_prime = self.dynamics_model.predict_sym(x[None], u[None], pred_type=tf.random.uniform(shape=(), maxval=num_models, dtype=tf.int32))[0]
                 reward = self._env.tf_reward(x, u, x_prime)

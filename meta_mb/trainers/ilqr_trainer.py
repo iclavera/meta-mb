@@ -125,7 +125,7 @@ class Trainer(object):
 
                 """ ------------------- Logging Stuff --------------------------"""
                 logger.logkv('Iteration', itr)
-                logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
+                # logger.logkv('n_timesteps', self.env_sampler.total_timesteps_sampled)
                 logger.logkv('Policy-TimeStep', time.time() - time_opt_start)
 
                 logger.logkv('Time', time.time() - start_time)

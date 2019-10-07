@@ -136,6 +136,7 @@ def run_experiment(**config):
             alpha_init=config['alpha_init'],
             alpha_decay_factor=config['alpha_decay_factor'],
             c_1=config['c_1'],
+            c_2=config['c_2'],
             max_forward_iters=config['max_forward_iters'],
             max_backward_iters=config['max_backward_iters'],
             policy_buffer_size=config['policy_buffer_size'],
@@ -170,10 +171,10 @@ if __name__ == '__main__':
     # -------------------- Define Variants -----------------------------------
 
     config = {
-        'env': [HopperEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
+        'env': [HopperEnv, ReacherEnv, AntEnv, ReacherEnv, InvertedPendulumEnv, Walker2dEnv], #ReacherEnv, InvertedPendulumEnv, InvertedPendulumSwingUpEnv], #[ReacherEnv, InvertedPendulumEnv,], #[HalfCheetahEnv],
         'verbose': [True],  # FIXME: TURN OFF BEFORE SENDING TO EC2!!!
         'use_saved_params': [False],
-        'n_itr': [201],
+        'n_itr': [301],
 
         # Problem
         'seed': [1,],
@@ -189,8 +190,9 @@ if __name__ == '__main__':
         'delta_0': [2],  # UNUSED
         'delta_init': [1.0],  # UNUSED
         'alpha_init': [1e-2, 1e-1],  # TUNE THIS
-        'alpha_decay_factor': [3.0],
+        'alpha_decay_factor': [5.0, 3.0],
         'c_1': [1e-1, 5e-2],  # TUNE THIS
+        'c_2': [1e1, 1e0],  # TUNE THIS
         'max_forward_iters': [10],
         'max_backward_iters': [5],
         'use_hessian_f': [False],
@@ -207,11 +209,11 @@ if __name__ == '__main__':
 
         # Policy
         'policy_hidden_sizes': [tuple(), (16,),],
-        'policy_learn_std': [True, False],
+        'policy_learn_std': [True,],  # False
         'policy_hidden_nonlinearity': [tf.tanh],
         'policy_output_nonlinearity': [None],
-        'policy_buffer_size': [100, 200],
-        'init_std': [1e-2],
+        'policy_buffer_size': [100,],  # 200
+        'init_std': [5e-1, 1e0],
 
         # Dynamics Model
         'num_models': [5],
