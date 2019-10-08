@@ -36,29 +36,22 @@ def init_vars(sender, config, policy, dynamics_model):
 
 
 def run_experiment(**kwargs):
-    kwargs['n_itr'] = ceil(8e4/(kwargs['num_data_workers']*kwargs['num_rollouts']*kwargs['max_path_length']))
+    kwargs['n_itr'] = ceil(4e4/(kwargs['num_data_workers']*kwargs['num_rollouts']*kwargs['max_path_length']))
 
     exp_dir = os.getcwd() + '/data/' + EXP_NAME + '/' + kwargs.get('exp_name', 'tmp') + "-" + str(kwargs['num_rollouts']*kwargs['num_data_workers']) + "-" + str(kwargs['num_model_workers']) + "-" + str(kwargs['num_policy_workers'])
     print("\n---------- experiment with dir {} ---------------------------".format(exp_dir))
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    if 'num_data_workers' in kwargs:
-        for idx in range(kwargs['num_data_workers']):
-            os.makedirs(exp_dir + f'/Data-{idx}/', exist_ok=True)
-            json.dump(kwargs, open(exp_dir + f'/Data-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-        for idx in range(kwargs['num_model_workers']):
-            os.makedirs(exp_dir + f'/Model-{idx}/', exist_ok=True)
-            json.dump(kwargs, open(exp_dir + f'/Model-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-        for idx in range(kwargs['num_policy_workers']):
-            os.makedirs(exp_dir + f'/Policy-{idx}/', exist_ok=True)
-            json.dump(kwargs, open(exp_dir + f'/Policy-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-    else:
-        os.makedirs(exp_dir + '/Data/', exist_ok=True)
-        os.makedirs(exp_dir + '/Model/', exist_ok=True)
-        os.makedirs(exp_dir + '/Policy/', exist_ok=True)
-        json.dump(kwargs, open(exp_dir + '/Data/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-        json.dump(kwargs, open(exp_dir + '/Model/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
-        json.dump(kwargs, open(exp_dir + '/Policy/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    for idx in range(kwargs['num_data_workers']):
+        os.makedirs(exp_dir + f'/Data-{idx}/', exist_ok=True)
+        json.dump(kwargs, open(exp_dir + f'/Data-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    for idx in range(kwargs['num_model_workers']):
+        os.makedirs(exp_dir + f'/Model-{idx}/', exist_ok=True)
+        json.dump(kwargs, open(exp_dir + f'/Model-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    for idx in range(kwargs['num_policy_workers']):
+        os.makedirs(exp_dir + f'/Policy-{idx}/', exist_ok=True)
+        json.dump(kwargs, open(exp_dir + f'/Policy-{idx}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+
     run_base(exp_dir, **kwargs)
 
 
@@ -191,18 +184,18 @@ if __name__ == '__main__':
         #     [False, False, False],
         # ],
         'rolling_average_persitency': [
-            0.4, 0.1, 0.99,
+            0.4, #0.1, 0.99,
         ],
 
         'seed': [1,],
-        'n_itr': [401],
-        'num_rollouts': [1, 2, 5, 10],
+        # 'n_itr': [101],
+        'num_rollouts': [1], #2, 5, 10],
 
         'simulation_sleep_frac': [1,],
         'num_data_workers': [1],
         'num_model_workers': [1,],
         'num_policy_workers': [1,],
-        'env': ['Walker2d'],
+        'env': ['HalfCheetah'],#''Walker2d', 'HalfCheetah', 'Hopper', 'Ant'],
 
         # Problem Conf
 
@@ -220,12 +213,12 @@ if __name__ == '__main__':
         'n_parallel': [1],
 
         # Dynamics Model
-        'num_models': [5],
+        'num_models': [1, 2],
         'dynamics_hidden_sizes': [(512, 512, 512)],
         'dyanmics_hidden_nonlinearity': ['relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_max_epochs': [50],  # UNUSED
-        'dynamics_learning_rate': [1e-4, 5e-4, 1e-3],
+        'dynamics_learning_rate': [1e-4], #5e-4, 1e-3],
         'dynamics_batch_size': [256,],
         'dynamics_buffer_size': [10000],
         'deterministic': [False],
@@ -244,8 +237,7 @@ if __name__ == '__main__':
         'step_size': [0.001],
         'imagined_num_rollouts': [50,],
         'scope': [None],
-        'exp_tag': ['parallel-metrpo'],  # For changes besides hyperparams
-
+        'exp_tag': ['num_models'],  # For changes besides hyperparams
     }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

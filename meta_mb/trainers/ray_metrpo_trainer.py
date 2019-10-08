@@ -7,21 +7,6 @@ from meta_mb.workers_multi_machines.metrpo.worker_policy import WorkerPolicy
 
 
 class RayTrainer(object):
-    """
-    Performs steps for MAML
-
-    Args:
-        algo (Algo) :
-        env (Env) :
-        sampler (Sampler) :
-        sample_processor (SampleProcessor) :
-        baseline (Baseline) :
-        policy (Policy) :
-        n_itr (int) : Number of iterations to train for
-        start_itr (int) : Number of iterations policy has already trained for, if reloading
-        num_inner_grad_steps (int) : Number of inner steps per maml iteration
-        sess (tf.Session) : current tf session (if we loaded policy, for example)
-    """
     def __init__(
             self,
             exp_dir,
@@ -73,7 +58,6 @@ class RayTrainer(object):
         assert all(ray.get(futures))
 
         self.workers = data_workers + model_workers + policy_workers
-        self.other_actor_handles = [stop_cond, *data_buffers, model_ps, policy_ps]
 
     def train(self):
         """

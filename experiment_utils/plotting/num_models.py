@@ -71,23 +71,20 @@ sampling_time = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 0.008,
                  'Hopper': 0.008,
                  }
 
-x_limits = {'Walker2d': [0, 1.6e7],
-            'HalfCheetah': [0, 1.6e7],
-            'Ant': [0, 1.6e7],
-            'Hopper': [0, 1.6e7],
+x_limits = {'Walker2d': [0, 6e4],
+            'HalfCheetah': [0, 6e4],
+            'Ant': [0, 6e4],
+            'Hopper': [0, 6e4],
             }
 
 def prepare_data_for_plot(exp_data,
-                          y_key=None,
-                          sup_y_key=None,
-                          round_x=None,
-                          add_sampling_time=False):
-    x_key = 'Data-EnvSampler-TimeStepsCtr'
+                          x_key,
+                          y_key,
+                          round_x=None):
     x_y_tuples = []
-    max_path_length = exp_data[0]['flat_params']['max_path_length']
     for exp in exp_data:
         if x_key in exp['progress']:
-            x_y_tuples.extend(list(zip(exp['progress'][x_key]*max_path_length, exp['progress'][y_key])))
+            x_y_tuples.extend(list(zip(exp['progress'][x_key], exp['progress'][y_key])))
     x_y_dict = defaultdict(list)
 
     env = exp_data[0]['flat_params']['env']
@@ -172,10 +169,7 @@ def plot_from_exps(exp_data,
         y_axis_max = -1e10
         for j, default_label in enumerate(sorted(plots_in_figure_exps, key=sorting_legend)):
             exps = plots_in_figure_exps[default_label]
-            x, y_mean, y_std, x_limits = prepare_data_for_plot(exps,
-                                                     y_key=y_key,
-                                                     sup_y_key=sup_y_key,
-                                                     round_x=round_x)
+            x, y_mean, y_std, x_limits = prepare_data_for_plot(exps, x_key=x_key, y_key=y_key, round_x=round_x)
 
             label = plot_labels[j] if plot_labels else default_label
             _label = label if i == 0 else "__nolabel__"
@@ -222,8 +216,8 @@ exps_data_filtered = filter(exps_data, filter_dict)
 plot_from_exps(exps_data,
                split_figures_by='env.$class',
                split_plots_by='num_models',
+               x_key='Data-EnvSampler-TimeStepsCtr',
                y_key='Data-EnvTrajs-AverageReturn',
-               x_key='Data-0-TotalStep',
                filters=filter_dict,
                # subfigure_titles=['HalfCheetah - output_bias_range [0.0, 0.1]',
                #                  'HalfCheetah - output_bias_range [0.0, 0.5]',
@@ -235,5 +229,5 @@ plot_from_exps(exps_data,
                num_rows=1,
                report_max_performance=False,
                log_scale=False,
-               round_x=6e5,
+               round_x=3e3,
                )
