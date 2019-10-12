@@ -71,10 +71,10 @@ sampling_time = {'meta_mb.envs.mb_envs.walker2d.Walker2dEnv': 0.008,
                  'Hopper': 0.008,
                  }
 
-x_limits = {'Walker2d': [0, 6e4],
-            'HalfCheetah': [0, 6e4],
-            'Ant': [0, 6e4],
-            'Hopper': [0, 6e4],
+x_limits = {'Walker2d': [0, 8e4],
+            'HalfCheetah': [0, 8e4],
+            'Ant': [0, 8e4],
+            'Hopper': [0, 8e4],
             }
 
 def prepare_data_for_plot(exp_data,

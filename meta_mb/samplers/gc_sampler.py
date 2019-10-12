@@ -1,12 +1,11 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
-from meta_mb.samplers.vectorized_env_executor import ParallelEnvExecutor, IterativeEnvExecutor
+from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 from pyprind import ProgBar
 import numpy as np
 import time
-import itertools
 
 
 class Sampler(BaseSampler):
@@ -14,17 +13,11 @@ class Sampler(BaseSampler):
     Sampler for Meta-RL
 
     Args:
-        env (meta_mb.meta_envs.base.MetaEnv) : environment object
-        policy (meta_mb.policies.base.Policy) : policy object
-        batch_size (int) : number of trajectories per task
-        meta_batch_size (int) : number of meta tasks
-        max_path_length (int) : max number of steps per trajectory
-        envs_per_task (int) : number of meta_envs to run vectorized for each task (influences the memory usage)
+        env :
     """
 
     def __init__(
             self,
-            goal_sampler,
             env,
             policy,
             num_rollouts,
@@ -35,40 +28,44 @@ class Sampler(BaseSampler):
         Serializable.quick_init(self, locals())
         super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
-        self.goal_sampler = goal_sampler
         self.n_parallel = n_parallel
         self.vae = vae
 
         # setup vectorized environment
 
         if self.n_parallel > 1:
-            self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            # self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            raise NotImplementedError
         else:
-            self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
+            self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
 
     def update_tasks(self):
         pass
 
-    def collect_init_obs(self):
-        self.policy.reset(dones=[True] * self.num_envs)
-        init_obs_no = self.vec_env.reset()
-        return init_obs_no
-
     def collect_rollouts(
-            self, init_obs_no, agent_log_q, max_log_q, target_goals,
+            self, agent_q, max_q, target_goals,
             random=False, verbose=False, log=False, log_prefix='',
     ):
         policy = self.policy
         paths = []
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_envs)]
+        policy.reset(dones=[True] * self.num_envs)
+        init_obs_no = self.vec_env.reset()
 
         if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
         # sample goals
         obs_no = init_obs_no
-        goal_ng = np.random.choice(len(target_goals), size=self.num_envs, replace=True, p=max_log_q-agent_log_q)
+        if target_goals is None:
+            goal_ng = [self.env.observation_space.sample() for _ in range(self.num_envs)]
+        else:
+            p = np.exp(max_q - agent_q)
+            p /= np.sum(p)
+            goal_ng = np.random.choice(len(target_goals), size=self.num_envs, replace=True, p=p)
+            goal_ng = target_goals[goal_ng]
+        self.vec_env.set_goal(goal_ng)
 
         while n_samples < self.total_samples:
             # execute policy
@@ -86,7 +83,7 @@ class Sampler(BaseSampler):
 
             # step environments
             t = time.time()
-            next_obs_no, reward_n, done_n, env_info_n = self.vec_env.step(act_na, goal_ng)
+            next_obs_no, reward_n, done_n, env_info_n = self.vec_env.step(act_na)
             env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
@@ -157,4 +154,4 @@ class Sampler(BaseSampler):
 
 
 def _get_empty_running_paths_dict():
-    return dict(observations=[], actions=[], rewards=[], dones=[], env_infos=[], agent_infos=[])
+    return dict(goals=[], observations=[], actions=[], rewards=[], dones=[], env_infos=[], agent_infos=[])

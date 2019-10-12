@@ -188,7 +188,7 @@ class SAC(Algo):
             next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
             all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
 
-        goal_shape = [None, self.training_environment.goal_shape]
+        goal_shape = [None, self.training_environment.goal_dim]
         goal_ph = tf.placeholder(dtype=tf.float32, shape=goal_shape, name=prefix + 'goals')
         all_phs_dict['%s%s' % (prefix, 'goals')] = goal_ph
 
@@ -346,7 +346,6 @@ class SAC(Algo):
             ]))
 
     def optimize_policy(self, buffer, timestep, grad_steps, log=True):
-        update_target = False
         sess = tf.get_default_session()
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
@@ -358,6 +357,3 @@ class SAC(Algo):
                     logger.logkv(k, v)
             if timestep % self.target_update_interval == 0:
                 self._update_target()
-                update_target = True
-
-        return update_target
