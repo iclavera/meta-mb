@@ -21,6 +21,7 @@ class Sampler(BaseSampler):
             env,
             policy,
             num_rollouts,
+            eval_goals,
             max_path_length,
             n_parallel=1,
             vae=None,
@@ -30,6 +31,7 @@ class Sampler(BaseSampler):
 
         self.n_parallel = n_parallel
         self.vae = vae
+        self.eval_goals = eval_goals
 
         # setup vectorized environment
 
@@ -43,7 +45,7 @@ class Sampler(BaseSampler):
         pass
 
     def collect_rollouts(
-            self, agent_q, max_q, target_goals,
+            self, agent_q, max_q, target_goals, eval=False,
             random=False, verbose=False, log=False, log_prefix='',
     ):
         policy = self.policy
@@ -58,8 +60,10 @@ class Sampler(BaseSampler):
 
         # sample goals
         obs_no = init_obs_no
-        if target_goals is None:
-            goal_ng = [self.env.observation_space.sample() for _ in range(self.num_envs)]
+        if eval:
+            goal_ng = self.eval_goals
+        elif target_goals is None:
+            goal_ng = self.env.sample_goals(self.num_envs)
         else:
             p = np.exp(max_q - agent_q)
             p /= np.sum(p)

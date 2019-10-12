@@ -28,6 +28,7 @@ class Trainer(object):
             agent_kwargs,
             env,
             num_target_goals,
+            num_envs,
             n_itr,
             exp_dir,
             n_initial_exploration_steps=1e3,
@@ -35,6 +36,7 @@ class Trainer(object):
         self.num_agents = num_agents
         self.env = env
         self.num_target_goals = num_target_goals
+        self.num_envs = num_envs
         self.n_itr = n_itr
         self.prepare_start_info = dict(seeds=seeds,
                                        agent_kwargs=agent_kwargs,
@@ -43,9 +45,11 @@ class Trainer(object):
 
     def train(self):
         agents = self.agents
+        eval_goals = self.env.sample_goals(self.num_envs)
         futures = [agent.prepare_start.remote(
             seed,
             self.prepare_start_info['n_initial_exploration_steps'],
+            eval_goals,
             self.prepare_start_info['agent_kwargs'],
         ) for agent, seed in zip(agents, self.prepare_start_info['seeds'])]
         ray.get(futures)

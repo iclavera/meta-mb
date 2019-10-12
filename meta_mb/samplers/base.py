@@ -236,6 +236,7 @@ class SampleProcessor(object):
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
 
         elif log == 'all' or log is True:
+            logger.logkv(log_prefix + 'LenTrajs', np.mean([len(path["rewards"]) for path in paths]))
             logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
             logger.logkv(log_prefix + 'NumTrajs', len(paths))

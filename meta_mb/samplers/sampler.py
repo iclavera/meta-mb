@@ -1,6 +1,7 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
 from meta_mb.samplers.vectorized_env_executor import ParallelEnvExecutor, IterativeEnvExecutor
+from meta_mb.envs.mb_envs.maze import ParticleMazeEnv, ParticleEnv, ParticleFixedEnv
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 from pyprind import ProgBar
@@ -39,10 +40,14 @@ class Sampler(BaseSampler):
 
         # setup vectorized environment
 
-        if self.n_parallel > 1:
-            self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+        if isinstance(env, ParticleEnv) or isinstance(env, ParticleMazeEnv) or isinstance(env, ParticleFixedEnv):
+            from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor as MazeEnvExecutor
+            self.vec_env = MazeEnvExecutor(env, num_rollouts, max_path_length)
         else:
-            self.vec_env = IterativeEnvExecutor(env, num_rollouts, self.max_path_length)
+            if self.n_parallel > 1:
+                self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            else:
+                self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
 
     def update_tasks(self):
         pass

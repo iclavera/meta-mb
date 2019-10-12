@@ -4,6 +4,7 @@ import numpy as np
 import copy
 from meta_mb.envs.mb_envs.pmaze_grids import grids
 
+
 class ParticleEnv(object):
     def __init__(self):
         self.obs_dim = obs_dim = 2
@@ -20,8 +21,8 @@ class ParticleEnv(object):
         self.start_state = self.observation_space.sample()
         _ = self.reset()
 
-    def reset(self): # specify what the goal is here?
-        self.state = np.random.uniform(low=self.observation_space.low, high=self.observation_space.high)
+    def reset(self):
+        self.state = self.start_state
         self.goal = None
         return self._get_ob()
 
@@ -47,6 +48,25 @@ class ParticleEnv(object):
         rew_run = -np.sum(np.square(next_ob - self.goal))
         rew_ctrl = -0.1 * np.sum(np.square(act))
         return rew_run + rew_ctrl
+
+    def log_diagnostics(self, *args, **kwargs):
+        pass
+
+
+class ParticleFixedEnv(ParticleEnv):
+    def __init__(self):
+        super().__init__()
+        self.goal = self.observation_space.sample()
+
+    def reset(self):
+        self.state = self.start_state
+        return self._get_ob()
+
+    def sample_goals(self, num_goals):
+        return np.empty((num_goals, self.goal_dim))
+
+    def set_goal(self, goal):
+        pass
 
 class ParticleMazeEnv(ParticleEnv):
     def __init__(self, grid_name='1'):
@@ -104,7 +124,7 @@ class ParticleMazeEnv(ParticleEnv):
             print('substep', substep, 'index', self._get_index(next_ob))
             if self._is_wall(next_ob):
                 collision = True
-                # ob, *_ = self.step(-0.1*action)
+                ob, *_ = self.step(-0.1*action)
                 break
             else:
                 ob = self._set_state(next_ob)
