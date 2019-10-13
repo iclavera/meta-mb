@@ -26,42 +26,40 @@ class Trainer(object):
             self,
             num_agents,
             seeds,
-            agent_kwargs,
+            instance_kwargs,
             env,
             num_target_goals,
             num_eval_goals_sqrt,
-            num_envs,
             n_itr,
             exp_dir,
             goal_update_interval,
-            eval_interval=50,
+            snapshot_gap=100,
             n_initial_exploration_steps=1e3,
         ):
-        self.num_agents = num_agents
         self.env = env
         self.num_target_goals = num_target_goals
         self.goal_update_interval = goal_update_interval
-        self.eval_interval=eval_interval
-        self.num_envs = num_envs
         self.n_itr = n_itr
-        self.prepare_start_info = dict(seeds=seeds,
-                                       agent_kwargs=agent_kwargs,
-                                       n_initial_exploration_steps=n_initial_exploration_steps,
-                                       num_eval_goals_sqrt=num_eval_goals_sqrt)
+
         env_pickled = pickle.dumps(env)
-        self.agents = [Agent.remote(i, exp_dir, env_pickled) for i in range(self.num_agents)]
+        eval_goals = self.env.sample_grid_goals(num_eval_goals_sqrt)
+        self.agents = [Agent.remote(i, exp_dir, snapshot_gap) for i in range(num_agents)]
+
+        futures = [agent.prepare_start.remote(
+            seed,
+            env_pickled,
+            n_initial_exploration_steps,
+            eval_goals,
+            instance_kwargs,
+            instance_kwargs.get('gpu_frac', 0.95)
+        ) for agent, seed in zip(self.agents, seeds)]
+
+        ray.get(futures)
 
     def train(self):
         agents = self.agents
-        eval_goals = self.env.sample_grid_goals(self.prepare_start_info['num_eval_goals_sqrt'])
-        futures = [agent.prepare_start.remote(
-            seed,
-            self.prepare_start_info['n_initial_exploration_steps'],
-            eval_goals,
-            self.prepare_start_info['agent_kwargs'],
-        ) for agent, seed in zip(agents, self.prepare_start_info['seeds'])]
 
-        ray.get(futures)
+        ray.get([agent.print_fields.remote() for agent in agents])
 
         for itr in range(self.n_itr):
 
@@ -78,7 +76,7 @@ class Trainer(object):
                 futures = []
 
             for agent_q, agent in zip(q_list, agents):
-                futures.extend([agent.update_replay_buffer.remote(itr%self.eval_interval==0), agent.update_policy.remote()])
+                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote()])
             ray.get(futures)
 
             if itr == 0:
