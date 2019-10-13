@@ -1,6 +1,8 @@
 from meta_mb.agents.sac_agent import Agent
+from meta_mb.logger import logger
 import numpy as np
 import ray
+import pickle
 
 
 print(ray.init())
@@ -28,24 +30,29 @@ class Trainer(object):
             agent_kwargs,
             env,
             num_target_goals,
+            num_eval_goals_sqrt,
             num_envs,
             n_itr,
             exp_dir,
+            goal_update_interval,
             n_initial_exploration_steps=1e3,
             ):
         self.num_agents = num_agents
         self.env = env
         self.num_target_goals = num_target_goals
+        self.goal_update_interval = goal_update_interval
         self.num_envs = num_envs
         self.n_itr = n_itr
         self.prepare_start_info = dict(seeds=seeds,
                                        agent_kwargs=agent_kwargs,
-                                       n_initial_exploration_steps=n_initial_exploration_steps)
-        self.agents = [Agent.remote(i, exp_dir) for i in range(self.num_agents)]
+                                       n_initial_exploration_steps=n_initial_exploration_steps,
+                                       num_eval_goals_sqrt=num_eval_goals_sqrt)
+        env_pickled = pickle.dumps(env)
+        self.agents = [Agent.remote(i, exp_dir, env_pickled) for i in range(self.num_agents)]
 
     def train(self):
         agents = self.agents
-        eval_goals = self.env.sample_goals(self.num_envs)
+        eval_goals = self.env.sample_grid_goals(self.prepare_start_info['num_eval_goals_sqrt'])
         futures = [agent.prepare_start.remote(
             seed,
             self.prepare_start_info['n_initial_exploration_steps'],
@@ -59,13 +66,18 @@ class Trainer(object):
             """----------------------- Compute q values to approximate goal distribution ------------------------"""
 
             target_goals = self.env.sample_goals(self.num_target_goals)
-            futures = [agent.prepare_sample_collection.remote(target_goals) for agent in agents]
+            futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
             q_list = ray.get(futures)
+            logger.log('q_list', q_list)
             max_q = np.max(q_list, axis=0)
 
-            futures = []
+            if itr % self.goal_update_interval == 0:
+                futures = [agent.update_goal_buffer.remote(target_goals, agent_q, max_q, q_list) for agent_q, agent in zip(q_list, agents)]
+            else:
+                futures = []
+
             for agent_q, agent in zip(q_list, agents):
-                futures.extend([agent.update_replay_buffer.remote(agent_q, max_q, target_goals), agent.update_policy.remote()])
+                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote()])
             ray.get(futures)
 
             if itr == 0:

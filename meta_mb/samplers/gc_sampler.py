@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 
-class Sampler(BaseSampler):
+class GCSampler(BaseSampler):
     """
     Sampler for Meta-RL
 
@@ -20,18 +20,18 @@ class Sampler(BaseSampler):
             self,
             env,
             policy,
+            goal_buffer,
             num_rollouts,
-            eval_goals,
             max_path_length,
             n_parallel=1,
             vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(Sampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
+        super(GCSampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
         self.n_parallel = n_parallel
+        self.goal_buffer = goal_buffer
         self.vae = vae
-        self.eval_goals = eval_goals
 
         # setup vectorized environment
 
@@ -41,13 +41,19 @@ class Sampler(BaseSampler):
         else:
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
 
-    def update_tasks(self):
-        pass
+    def collect_rollouts(self, eval=False, *args, **kwargs):
+        batch_gen = self.goal_buffer.get_batch_generator(eval=eval, batch_size=self.num_envs)
+        paths = []
+        try:
+            _paths = self._collect_rollouts(next(batch_gen), *args, **kwargs)
+            paths.extend(_paths)
+        except StopIteration:
+            pass
 
-    def collect_rollouts(
-            self, agent_q, max_q, target_goals, eval=False,
-            random=False, verbose=False, log=False, log_prefix='',
-    ):
+        return paths
+
+    def _collect_rollouts(self, goals, random=False, verbose=False, log=False, log_prefix=''):
+        assert goals.ndim == 2 and goals.shape[0] == self.num_envs, goals.shape
         policy = self.policy
         paths = []
         n_samples = 0
@@ -60,15 +66,7 @@ class Sampler(BaseSampler):
 
         # sample goals
         obs_no = init_obs_no
-        if eval:
-            goal_ng = self.eval_goals
-        elif target_goals is None:
-            goal_ng = self.env.sample_goals(self.num_envs)
-        else:
-            p = np.exp(max_q - agent_q)
-            p /= np.sum(p)
-            goal_ng = np.random.choice(len(target_goals), size=self.num_envs, replace=True, p=p)
-            goal_ng = target_goals[goal_ng]
+        goal_ng = goals
         self.vec_env.set_goal(goal_ng)
 
         while n_samples < self.total_samples:

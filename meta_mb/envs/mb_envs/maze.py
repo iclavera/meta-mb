@@ -32,8 +32,14 @@ class ParticleEnv(object):
     def set_goal(self, goal):
         self.goal = goal
 
-    def sample_goals(self, num_goals):
-        return np.random.uniform(low=self.obs_low, high=self.obs_high, size=(num_goals, self.obs_dim))
+    def sample_goals(self, num_samples):
+        return np.random.uniform(low=self.obs_low, high=self.obs_high, size=(num_samples, self.obs_dim))
+
+    def sample_grid_goals(self, num_samples_sqrt):
+        x = np.linspace(-.95, .95, num_samples_sqrt, endpoint=True)
+        xx, yy = np.meshgrid(x, x)
+        grid_goals = list(zip(xx.ravel(), yy.ravel()))
+        return grid_goals
 
     def step(self, action):
         ob = self._get_ob()
@@ -62,8 +68,8 @@ class ParticleFixedEnv(ParticleEnv):
         self.state = self.start_state
         return self._get_ob()
 
-    def sample_goals(self, num_goals):
-        return np.empty((num_goals, self.goal_dim))
+    def sample_goals(self, num_samples):
+        return np.stack([self.goal for _ in range(num_samples)], axis=0)
 
     def set_goal(self, goal):
         pass
@@ -177,8 +183,8 @@ class IterativeEnvExecutor(object):
 
 if __name__ == "__main__":
     env = ParticleEnv()
-    env.set_goal(env.observation_space.sample())
-    env.sample_goals(2)
-    env.step(env.action_space.sample())
+    # env.set_goal(env.observation_space.sample())
+    env.sample_grid_goals(2)
+    # env.step(env.action_space.sample())
 
 
