@@ -1,5 +1,4 @@
 from meta_mb.agents.sac_agent import Agent
-from meta_mb.logger import logger
 import numpy as np
 import ray
 import pickle
@@ -35,12 +34,14 @@ class Trainer(object):
             n_itr,
             exp_dir,
             goal_update_interval,
+            eval_interval=50,
             n_initial_exploration_steps=1e3,
-            ):
+        ):
         self.num_agents = num_agents
         self.env = env
         self.num_target_goals = num_target_goals
         self.goal_update_interval = goal_update_interval
+        self.eval_interval=eval_interval
         self.num_envs = num_envs
         self.n_itr = n_itr
         self.prepare_start_info = dict(seeds=seeds,
@@ -59,6 +60,7 @@ class Trainer(object):
             eval_goals,
             self.prepare_start_info['agent_kwargs'],
         ) for agent, seed in zip(agents, self.prepare_start_info['seeds'])]
+
         ray.get(futures)
 
         for itr in range(self.n_itr):
@@ -68,7 +70,6 @@ class Trainer(object):
             target_goals = self.env.sample_goals(self.num_target_goals)
             futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
             q_list = ray.get(futures)
-            logger.log('q_list', q_list)
             max_q = np.max(q_list, axis=0)
 
             if itr % self.goal_update_interval == 0:
@@ -77,7 +78,7 @@ class Trainer(object):
                 futures = []
 
             for agent_q, agent in zip(q_list, agents):
-                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote()])
+                futures.extend([agent.update_replay_buffer.remote(itr%self.eval_interval==0), agent.update_policy.remote()])
             ray.get(futures)
 
             if itr == 0:

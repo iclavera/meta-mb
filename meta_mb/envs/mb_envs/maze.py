@@ -2,7 +2,7 @@ from gym import spaces
 
 import numpy as np
 import copy
-from meta_mb.envs.mb_envs.pmaze_grids import grids
+from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 
 
 class ParticleEnv(object):
@@ -18,15 +18,16 @@ class ParticleEnv(object):
         self.observation_space = spaces.Box(low=self.obs_low, high=self.obs_high)
         self.action_space = spaces.Box(low=self.act_low, high=self.act_high)
 
-        self.start_state = self.observation_space.sample()
+        # self.start_state = self.observation_space.sample()
+        self._start_state = np.array([-0.4, -0.3], dtype=np.float32)
         _ = self.reset()
 
     def reset(self):
-        self.state = self.start_state
+        self.state = self._start_state
         self.goal = None
-        return self._get_ob()
+        return self._get_obs()
 
-    def _get_ob(self):
+    def _get_obs(self):
         return self.state
 
     def set_goal(self, goal):
@@ -42,7 +43,7 @@ class ParticleEnv(object):
         return grid_goals
 
     def step(self, action):
-        ob = self._get_ob()
+        ob = self._get_obs()
         act = np.clip(action, self.action_space.low, self.action_space.high)
         next_ob = ob + act * self.dt
         next_ob = np.clip(next_ob, self.observation_space.low, self.action_space.high)
@@ -55,6 +56,10 @@ class ParticleEnv(object):
         rew_ctrl = -0.1 * np.sum(np.square(act))
         return rew_run + rew_ctrl
 
+    @property
+    def start_state(self):
+        return self._start_state
+
     def log_diagnostics(self, *args, **kwargs):
         pass
 
@@ -66,7 +71,7 @@ class ParticleFixedEnv(ParticleEnv):
 
     def reset(self):
         self.state = self.start_state
-        return self._get_ob()
+        return self._get_obs()
 
     def sample_goals(self, num_samples):
         return np.stack([self.goal for _ in range(num_samples)], axis=0)
@@ -74,72 +79,107 @@ class ParticleFixedEnv(ParticleEnv):
     def set_goal(self, goal):
         pass
 
-class ParticleMazeEnv(ParticleEnv):
-    def __init__(self, grid_name='1'):
-        super().__init__()
-        
+class ParticleMazeEnv(object):
+    def __init__(self, grid_name='1', dense=True):
+        self.obs_dim = obs_dim = 2
+        self.act_dim = act_dim = 2
+        self.goal_dim = 2
+
+        self.dt = 0.1
+
+        self.obs_low, self.obs_high = np.ones(obs_dim) * (-1.0), np.ones(obs_dim) * (1.0)
+        self.act_low, self.act_high = np.ones(act_dim) * (-1.0), np.ones(act_dim) * (1.0)
+        self.observation_space = spaces.Box(low=self.obs_low, high=self.obs_high)
+        self.action_space = spaces.Box(low=self.act_low, high=self.act_high)
+
+        self.dense = dense
         self.num_substeps = 10
         self.ddt = self.dt / self.num_substeps
-        self.grid = grids[grid_name]
+        self.grid = maze_layouts[grid_name]
 
         self._reset_grid()
 
     def _reset_grid(self):
         # transform str grid to np array
         _grid = self.grid.replace('\n', '')
-        self.grid_size = int(np.sqrt(len(_grid)))
+        self.grid_size = grid_size = int(np.sqrt(len(_grid)))
 
         start_ind = _grid.index('S')
-        start_ind = np.array([start_ind // self.grid_size, start_ind % self.grid_size])
         _grid = _grid.replace('S', ' ')
-        self.start_state = self._get_coords(start_ind)
+        start_ind = np.array([start_ind // grid_size, start_ind % grid_size])
+        self._start_state = self._get_coords(start_ind)
 
-        self.grid = np.reshape(list(_grid), (self.grid_size, self.grid_size))
+        self.grid = np.reshape(np.asarray(list(_grid)) != ' ', (grid_size, grid_size))
+        self.grid_free_coords = np.asarray(list(map(self._get_coords, np.argwhere(np.logical_not(self.grid)))))
 
-    def reset(self):
-        ob = self._set_state(self.start_state)
-        self.goal = None
-        return ob
+        self.reset()
+
+        assert not self._is_wall(self._get_obs())
+
+    def set_goal(self, goal):
+        assert not self._is_wall(goal)
+        self.goal = goal
+
+    def sample_goals(self, num_samples):
+        sample_ind = np.random.choice(len(self.grid_free_coords), num_samples)
+        return self.grid_free_coords[sample_ind]
+
+    def sample_grid_goals(self, num_samples_sqrt):
+        return self.sample_goals(num_samples_sqrt)
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)
         return self.grid[ind[0], ind[1]]
 
     def _get_coords(self, ind):
-        return ((ind + 0.5) / self.grid_size) * 2.0 - 1.0
+        return (((ind + 0.5) / self.grid_size) * 2 - 1).astype(np.float32)
 
     def _get_index(self, coords):
-        return np.clip((((coords + 1.0) * 0.5) * (self.grid_size)) + 0.0, 0, self.grid_size-1).astype(np.int8)
+        return np.clip((((coords + 1) * 0.5) * (self.grid_size)) + 0, 0, self.grid_size-1).astype(np.int8)
 
     def _set_state(self, ob):
-        self.state = np.clip(ob, self.observation_space.low, self.observation_space.high)
+        self.state = np.clip(ob, self.obs_low, self.obs_high)
         return self.state
 
-    def step(self, action):
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        init_ob = ob = self._get_ob()
-        print('taking step from ', ob, self._get_index(ob), 'action', action)
-        if self._is_wall(init_ob):
-            print('resetting')
-            self.reset()
+    def _get_obs(self):
+        return self.state
 
-        # substep collision detection
+    def reward(self, obs, act, next_obs):
+        if self.dense:
+            return - np.sum(np.square(next_obs - self.goal))
+        return int(np.sum(np.square(next_obs - self.goal)) < 0.1)
+
+    def reset(self):
+        self.state = self._start_state
+        self.goal = None
+        return self._get_obs()
+
+    def step(self, action):
+        action = np.clip(action, self.act_low, self.act_high)
+        init_obs = obs = self._get_obs()
+        assert not self._is_wall(init_obs)
+
+        # collision detection
         collision = False
         for substep in range(self.num_substeps):
-            next_ob = ob + action * self.ddt
-            print('substep', substep, 'index', self._get_index(next_ob))
-            if self._is_wall(next_ob):
+            next_obs = obs + action * self.ddt
+            if self._is_wall(next_obs):
                 collision = True
-                ob, *_ = self.step(-0.1*action)
                 break
             else:
-                ob = self._set_state(next_ob)
+                obs = next_obs
 
-        reward = self.reward(init_ob, action, ob) - int(collision)
-        done = False  # FIXME
+        obs = self._set_state(obs)
+        assert not self._is_wall(obs)
+        reward = self.reward(init_obs, action, obs) - int(collision)
+        done = False
         info = {}
 
-        return ob, reward, done, info
+        return obs, reward, done, info
+
+    @property
+    def start_state(self):
+        return self._start_state
 
 
 class IterativeEnvExecutor(object):

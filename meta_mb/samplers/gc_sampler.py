@@ -42,13 +42,10 @@ class GCSampler(BaseSampler):
             self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
 
     def collect_rollouts(self, eval=False, *args, **kwargs):
-        batch_gen = self.goal_buffer.get_batch_generator(eval=eval, batch_size=self.num_envs)
         paths = []
-        try:
-            _paths = self._collect_rollouts(next(batch_gen), *args, **kwargs)
+        for batch in self.goal_buffer.get_batches(eval=eval, batch_size=self.num_envs):
+            _paths = self._collect_rollouts(batch, *args, **kwargs)
             paths.extend(_paths)
-        except StopIteration:
-            pass
 
         return paths
 
