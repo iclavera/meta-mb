@@ -11,7 +11,6 @@ from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 
 import ray
 import pickle
-from itertools import count
 import numpy as np
 
 
@@ -167,8 +166,9 @@ class Agent(object):
         logger.dumpkvs()
 
     def save_snapshot(self):
-        params = self._get_itr_snapshot(self.itr)
-        logger.save_itr_params(self.itr, params)
+        with self.sess.as_default():
+            params = self._get_itr_snapshot(self.itr)
+            logger.save_itr_params(self.itr, params)
 
     def _get_itr_snapshot(self, itr):
         return dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets))

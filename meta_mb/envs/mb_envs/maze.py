@@ -80,7 +80,7 @@ class ParticleFixedEnv(ParticleEnv):
         pass
 
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name='1', dense=True):
+    def __init__(self, grid_name='1', reward_str='L1'):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2
@@ -92,12 +92,14 @@ class ParticleMazeEnv(object):
         self.observation_space = spaces.Box(low=self.obs_low, high=self.obs_high)
         self.action_space = spaces.Box(low=self.act_low, high=self.act_high)
 
-        self.dense = dense
+        self.reward_str = reward_str
         self.num_substeps = 10
         self.ddt = self.dt / self.num_substeps
         self.grid = maze_layouts[grid_name]
 
         self._reset_grid()
+
+        self.trace = []
 
     def _reset_grid(self):
         # transform str grid to np array
@@ -145,9 +147,12 @@ class ParticleMazeEnv(object):
         return self.state
 
     def reward(self, obs, act, next_obs):
-        if self.dense:
-            return - np.sum(np.square(next_obs - self.goal))
-        return int(np.sum(np.square(next_obs - self.goal)) < 0.1)
+        if self.reward_str == 'L1':
+            return - np.sum(np.abs(next_obs - self.goal))
+        if self.reward_str == 'L2':
+            return - np.linalg.norm(next_obs - self.goal)
+        if self.reward_str == 'sparse':
+            return int(np.sum(np.square(next_obs - self.goal)) < 0.1)
 
     def reset(self):
         self.state = self._start_state

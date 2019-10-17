@@ -12,7 +12,7 @@ LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 
 
-class TanhGaussianMLPPolicy(Policy):
+class TanhGaussianMLPPolicy(Policy, Serializable):
     """
     Gaussian multi-layer perceptron policy (diagonal covariance matrix)
     Provides functions for executing and updating policy parameters
@@ -29,18 +29,14 @@ class TanhGaussianMLPPolicy(Policy):
         min_std( float): minimal policy standard deviation
     """
 
-    def __init__(self, *args,
-                 goal_dim,
-                 init_std=1.,
-                 min_std=1e-6,
-                 **kwargs):
+    def __init__(self, *args, **kwargs):
         # store the init args for serialization and call the super constructors
         Serializable.quick_init(self, locals())
         Policy.__init__(self, *args, **kwargs)
 
-        self.goal_dim = goal_dim
-        self.min_log_std = np.log(min_std)
-        self.init_log_std = np.log(init_std)
+        self.goal_dim = kwargs["goal_dim"]
+        self.min_log_std = np.log(kwargs.get('init_std', 1.))
+        self.init_log_std = np.log(kwargs.get('min_std', 1e-6))
 
         self.init_policy = None
         self.policy_params = None
@@ -201,26 +197,6 @@ class TanhGaussianMLPPolicy(Policy):
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
         raise ["mean", "log_std"]
-
-    """
-    should not overwrite parent
-    def __getstate__(self):
-        # state = LayersPowered.__getstate__(self)
-        state = dict()
-        state['init_args'] = Serializable.__getstate__(self)
-        state['policy_params'] = self.get_param_values()
-        return state
-    def __setstate__(self, state):
-        # LayersPowered.__setstate__(self, state)
-        Serializable.__setstate__(self, state['init_args'])
-        '''
-        sess = tf.get_default_session()
-        if sess is None:
-            sess = tf.Session()
-        '''
-        tf.get_default_session().run(tf.variables_initializer(self.get_params().values()))
-        self.set_params(state['policy_params'])
-    """
 
     def get_shared_param_values(self):
         state = dict()

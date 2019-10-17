@@ -1,9 +1,5 @@
 import os
 import json
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sac'
-GLOBAL_SEED = 1
-
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
@@ -13,6 +9,11 @@ from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.envs.normalized_env import normalize
 from meta_mb.utils.utils import set_seed
+
+
+INSTANCE_TYPE = 'c4.xlarge'
+EXP_NAME = 'sac'
+GLOBAL_SEED = 1
 
 
 def run_experiment(**kwargs):
@@ -27,7 +28,7 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}")
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -35,7 +36,7 @@ def run_experiment(**kwargs):
         os.makedirs(exp_dir + f'/agent_{i}', exist_ok=True)
         json.dump(kwargs, open(exp_dir + f'/agent_{i}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = normalize(kwargs['env']())
+    env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
     trainer = Trainer(
         num_agents=kwargs['num_agents'],
         seeds=kwargs['seeds'],
@@ -56,6 +57,8 @@ if __name__ == '__main__':
         'seeds': [(1,2)],
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv],
+        'grid_name': ['28'],
+        'reward_str': ['sparse'],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -67,7 +70,7 @@ if __name__ == '__main__':
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [10],
-        'goal_buffer_eps': [0.1],
+        'goal_buffer_eps': [1],
         'goal_update_interval': [2],
         'num_eval_goals_sqrt': [3],
 

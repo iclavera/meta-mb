@@ -237,8 +237,9 @@ class SampleProcessor(object):
 
         elif log == 'all' or log is True:
             if eval:
-                for i, undiscounted_return in enumerate(undiscounted_returns):
+                for i, (undiscounted_return, path) in enumerate(zip(undiscounted_returns, paths)):
                     logger.logkv(log_prefix + f"Return-{i}", undiscounted_return)
+                    logger.logkv(log_prefix + f"DiscountedReturn-{i}", path["returns"][0])
             logger.logkv(log_prefix + 'LenTrajs', np.mean([len(path["rewards"]) for path in paths]))
             logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))

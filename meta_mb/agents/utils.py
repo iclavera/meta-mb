@@ -37,22 +37,12 @@ class GoalBuffer(object):
     def _build(self):
         ob_no = tf.tile(self.env.start_state[None], (tf.shape(self.goal_ph)[0], 1))
         dist_info_sym = self.policy.distribution_info_sym(tf.concat([ob_no, self.goal_ph], axis=1))
-        actions_na, _ = self.policy.distribution.sample_sym(dist_info_sym)
-        input_q_fun = tf.concat([ob_no, actions_na, self.goal_ph], axis=1)
+        act_na, _ = self.policy.distribution.sample_sym(dist_info_sym)
+        input_q_fun = tf.concat([ob_no, act_na, self.goal_ph], axis=1)
 
         # agent_q_var = (num_q, num_target_goals)
-        min_q_var = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in self.q_ensemble], axis=0)
-        return tf.reduce_min(min_q_var, axis=0)
-
-    # def _build(self):
-    #     ob_no = tf.stack([self.env.start_state for _ in range(self.num_target_goals)], axis=0)
-    #     dist_info_sym = self.policy.distribution_info_sym(tf.concat([ob_no, self.target_goal_ph_no], axis=1))
-    #     actions_var_na, _ = self.policy.distribution.sample_sym(dist_info_sym)
-    #     input_q_fun = tf.concat([ob_no, actions_var_na, self.target_goal_ph_no], axis=1)
-    #
-    #     # agent_q_var = (num_q, num_target_goals)
-    #     min_q_var = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in self.q_ensemble], axis=0)
-    #     return tf.reduce_min(min_q_var, axis=0)
+        q_vals = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in self.q_ensemble], axis=0)
+        return tf.reduce_min(q_vals, axis=0)
 
     def compute_min_q(self, target_goals):
         feed_dict = {self.goal_ph: target_goals}

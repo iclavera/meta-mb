@@ -352,6 +352,7 @@ class SAC(Algo):
                                          value_dict=buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
+                logger.logkv('train-Itr', timestep)
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
                     logger.logkv(k, v)

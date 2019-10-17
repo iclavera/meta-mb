@@ -33,7 +33,7 @@ class Trainer(object):
             n_itr,
             exp_dir,
             goal_update_interval,
-            snapshot_gap=100,
+            snapshot_gap=500,
             n_initial_exploration_steps=1e3,
         ):
         self.env = env
@@ -76,7 +76,7 @@ class Trainer(object):
                 futures = []
 
             for agent_q, agent in zip(q_list, agents):
-                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote()])
+                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()])
             ray.get(futures)
 
             if itr == 0:
