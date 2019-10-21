@@ -17,7 +17,7 @@
 				coordinate="local"
 				angle="radian"/>
 
-	<option timestep="0.05" gravity="0 0 0" collision="all"/> 
+	<option timestep="0.1" gravity="0 0 0" collision="all"/> 
 	<asset>
 		<mesh file="base_L.stl"/>
 		<mesh file="caster_L.stl"/>
@@ -226,5 +226,12 @@
         <motor joint="l_forearm_roll_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
         <motor joint="l_wrist_flex_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
         <motor joint="l_wrist_roll_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <!-- <position joint="l_shoulder_pan_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_shoulder_lift_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_upper_arm_roll_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_elbow_flex_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_forearm_roll_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_wrist_flex_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/>
+        <position joint="l_wrist_roll_joint" ctrlrange="-3.0 3.0" ctrllimited="false"/> -->
     </actuator>
 </mujoco>
