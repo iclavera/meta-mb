@@ -84,12 +84,12 @@ class RandomEnv(MetaEnv, MujocoEnv):
             new_params = {}
 
             if 'body_mass' in self.rand_params:
-                body_mass_multiplyers = np.array(1.3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit,  size=self.model.body_mass.shape)
+                body_mass_multiplyers = np.array(3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit,  size=self.model.body_mass.shape)
                 new_params['body_mass'] = self.init_params['body_mass'] * body_mass_multiplyers
 
             # body_inertia
             if 'body_inertia' in self.rand_params:
-                body_inertia_multiplyers = np.array(1.3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit,  size=self.model.body_inertia.shape)
+                body_inertia_multiplyers = np.array(3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit,  size=self.model.body_inertia.shape)
                 new_params['body_inertia'] = body_inertia_multiplyers * self.init_params['body_inertia']
             # body position
             if 'body_pos' in self.rand_params:
@@ -98,12 +98,12 @@ class RandomEnv(MetaEnv, MujocoEnv):
 
             # damping -> different multiplier for different dofs/joints
             if 'dof_damping' in self.rand_params:
-                dof_damping_multipliers = np.array(1.3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.dof_damping.shape)
+                dof_damping_multipliers = np.array(2) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.dof_damping.shape)
                 new_params['dof_damping'] = np.multiply(self.init_params['dof_damping'], dof_damping_multipliers)
 
             # friction at the body components
             if 'geom_friction' in self.rand_params:
-                geom_friction_multipliers = np.array(1.3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.geom_friction.shape)
+                geom_friction_multipliers = np.array(3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.geom_friction.shape)
                 new_params['geom_friction'] = np.multiply(self.init_params['geom_friction'], geom_friction_multipliers)
 
             if 'geom_size' in self.rand_params:
@@ -116,7 +116,7 @@ class RandomEnv(MetaEnv, MujocoEnv):
 
             # stiffness at the model's joints
             if 'jnt_stiffness' in self.rand_params:
-                jnt_stiffness_multpliers = np.array(1.3) * np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.jnt_stiffness.shape)
+                jnt_stiffness_multpliers = np.array(3) ** np.random.uniform(-self.log_scale_limit, self.log_scale_limit, size=self.model.jnt_stiffness.shape)
                 new_params['jnt_stiffness'] = np.multiply(self.init_params['jnt_stiffness'], jnt_stiffness_multpliers)
 
             param_sets.append(new_params)

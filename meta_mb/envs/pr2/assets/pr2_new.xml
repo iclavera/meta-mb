@@ -21,7 +21,7 @@
 				coordinate="local"
 				angle="radian"/>
 
-	<option timestep="0.01"
+	<option timestep="0.05"
 			gravity="0 0 0"/>
 
 	<asset>
@@ -184,7 +184,7 @@
                                                         <joint name="l_wrist_roll_joint" type="hinge"   pos="0 0 0" axis="1 0 0"/>
                                                         <body name="l_gripper_palm_link" pos="0 0 0" childclass="gripper">
                                                             <inertial pos="0.06623 0.00053 -0.00119" quat="-0.018184 0.706274 0.016077 0.707523" mass="0.58007" diaginertia="0.000866 0.000678 0.000351" />
-                                                            <geom name="geom59" rgba="0.8 0 0 1" mesh="gripper_palm" contype="0"/>
+                                                            <geom name="geom59" rgba="0.7 0.7 0.7 1" mesh="gripper_palm" pos="0 0 0"/>
                                                             <body name="sensor" pos="0.01 0 0">
                                                                 <geom name="sensor" rgba="0.7 0.7 0.7 1" type="cylinder" size="0.022 0.019" pos="0 0 0" quat="-0.018184 0.706274 0.016077 0.707523"/>
                                                             </body>
@@ -193,25 +193,26 @@
                                                             </body>
                                                             <body name="l_gripper_motor_accelerometer_link" pos="0 0 0">
                                                                 <inertial pos="0 0 0" mass="0.001" diaginertia="0.001 0.001 0.001" />
-                                                                <!--geom name="geom60" type="box" pos="0 0 0" size="0.0005 0.0005 0.0005" /-->
+                                                                <geom name="geom60" type="box" pos="0 0 0" size="0.0005 0.0005 0.0005" />
                                                             </body>
                                                                 <body name="l_gripper_tool_frame" pos="0.18 0 0">
                                                             </body>
-                                                            <!--geom name="geom59f" type="capsule" pos="0.07750326 -0.00000579 -0.00000142" quat="0.49981788 0.50015276 -0.49991269 0.50011660" size="0.05263874 0.00669171" rgba="0.8 0 0 1" group="1"/-->
-                                                            <body name="l_gripper_l_finger_link" pos="0.07691 0.01 0">
+                                                                <body name="l_gripper_l_finger_link" pos="0.07691 0.01 0">
                                                                 <inertial pos="0.03598 0.0173 -0.00164" quat="0.574440 0.429111 0.518782 0.465562" mass="0.17126" diaginertia="0.000198 0.000181 0.000077" />
                                                                 <geom name="geom61" rgba="0.7 0.7 0.7 1" mesh="l_finger" />
                                                                 <body name="l_gripper_l_finger_tip_link" pos="0.09137 0.00495 0">
                                                                     <inertial pos="0.00423 0.00284 0" quat="0.249588 0.661594 -0.249588 0.661594" mass="0.04419" diaginertia="0.000015 0.000015 0.000003" />
-                                                                    <geom name="l_gripper_l_finger_tip" rgba="0 0.8 0 1" mesh="l_finger_tip" />
+                                                                    <geom name="l_gripper_l_finger_tip" rgba="0.7 0.7 0.7 1" mesh="l_finger_tip" />
                                                                 </body>
                                                             </body>
                                                             <body name="l_gripper_r_finger_link" pos="0.07691 -0.01 0">
                                                                 <inertial pos="0.03576 -0.01736 -0.00095" quat="0.474684 0.510909 0.446353 0.560727" mass="0.17389" diaginertia="0.000199 0.000181 0.000077" />
                                                                 <geom name="geom63" euler="3.14 0 0" rgba="0.7 0.7 0.7 1" mesh="l_finger" />
+                                                                    <site name="tip" pos="0 0 0" size="0.01"/>
                                                                 <body name="l_gripper_r_finger_tip_link" pos="0.09137 -0.00495 0">
                                                                     <inertial pos="0.00423 -0.00284 0" quat="-0.249588 0.661594 0.249588 0.661594" mass="0.04419" diaginertia="0.000015 0.000015 0.000003" />
-                                                                    <geom name="l_gripper_r_finger_tip" euler="3.14 0 0" rgba="0 0.8 0 1" mesh="l_finger_tip" />
+                                                                    <geom name="l_gripper_r_finger_tip" euler="3.14 0 0" rgba="0.7 0.7 0.7 1" mesh="l_finger_tip" />
+
                                                                     <body name="ee_pos" pos="0.03275 0.0154 -0.003275">
                                                                         <geom name="ee_viz" pos="0 0 0" rgba="1 0 0 1" type="sphere" size="0.01"/>
                                                                     </body>

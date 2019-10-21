@@ -32,7 +32,7 @@ from meta_mb.utils.utils import set_seed, ClassEncoder
 import tensorflow as tf
 
 INSTANCE_TYPE = 'c4.2xlarge'
-EXP_NAME = 'rl2-pr2-reach-randomization-0'
+EXP_NAME = 'rl2-pr2-reach-rand-oldxml-new-0'
 
 def run_experiment(**config):
     exp_name = EXP_NAME + '-' + str(random.randint(0, 1e9))
@@ -121,6 +121,7 @@ if __name__ == '__main__':
         'vel_penalty': [1.25e-3, 1.25e-2],
         'log_rand' : [0, 1, 2, 3, 4],
         'joint': [False],
+
         'meta_batch_size': [100],
         "hidden_sizes": [(64,), (128,)],
         'backprop_steps': [100, 200],

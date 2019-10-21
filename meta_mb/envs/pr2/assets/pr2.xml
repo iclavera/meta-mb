@@ -163,12 +163,10 @@
                                                     <joint name="l_wrist_flex_joint" type="hinge" pos="0 0 0" axis="0 1 0" limited="true" range="-2.094 0" damping="0.1"/>
                                                     <geom name="geom57" rgba="0.7 0.7 0.7 1" mesh="wrist_flex" contype="0"/>
                                                     <body name="l_wrist_roll_link" pos="0 0 0">
+                                                        <site name="ee_pos" rgba="1 0 0 0" size="0.01"/>
                                                         <inertial pos="0 0 0" mass="0.1" diaginertia="0.01 0.01 0.01" />
                                                         <joint name="l_wrist_roll_joint" type="hinge"   pos="0 0 0" axis="1 0 0" damping="0.1"/>
                                                         <body name="l_gripper_palm_link" pos="0.038 0 0" childclass="gripper">
-                                                            <site name="p1" pos="0.02 -0.025 0.05" rgba="1 0 0 1" size="0.01"/>
-                                                            <site name="p2" pos="0.02 -0.025 -0.05" rgba="0 1 0 1" size="0.01"/>
-                                                            <site name="p3" pos="0.02 0.05 0.0" rgba="0 0 1 1" size="0.01"/>
                                                             <inertial pos="0.06623 0.00053 -0.00119" quat="-0.018184 0.706274 0.016077 0.707523" mass="0.58007" diaginertia="0.000866 0.000678 0.000351" />
                                                             <geom name="geom59" rgba="0.7 0.7 0.7 1" mesh="gripper_palm" pos="0 0 0"/>
                                                             <body name="sensor" pos="0.01 0 0">
@@ -198,7 +196,7 @@
                                                                 <body name="l_gripper_r_finger_tip_link" pos="0.09137 -0.00495 0">
                                                                     <inertial pos="0.00423 -0.00284 0" quat="-0.249588 0.661594 0.249588 0.661594" mass="0.04419" diaginertia="0.000015 0.000015 0.000003" />
                                                                     <geom name="l_gripper_r_finger_tip" euler="3.14 0 0" rgba="0.7 0.7 0.7 1" mesh="l_finger_tip" />
-                                                                    <site name="ee_pos" pos="0.03275 0.0154 -0.003275" rgba="1 0 0 1" size="0.01"/>        
+                                                                    <!--site name="ee_pos" pos="0.03275 0.0154 -0.003275" rgba="1 0 0 0" size="0.01"/-->
                                                                 </body>
                                                             </body>
                                                         </body>

@@ -59,7 +59,7 @@ actions = [[-0.29097845, -0.34692378,  -1.14745959, -1.11427337,  7.52388136, -1
 class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
     def __init__(self,
                  exp_type='reach',
-                 max_torques=[3, 3, 2, 1, 1, 0.5, 1],
+                 max_torques=[3, 3, 3, 3, 3, 3, 3],
                  vel_penalty=1.25e-2,
                  ctrl_penalty=1.25e-1,
                  log_rand=0,
@@ -112,7 +112,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
         gym.utils.EzPickle.__init__(self)
 
     def step(self, action):
-        action = np.clip(action, self._low, self._high)#.astype(np.float32) * self.gains
+        action = np.clip(action, self._low, self._high).astype(np.float32) * self.gains
         self.do_simulation(action, self.frame_skip)
         ob = self._get_obs()
         if self.exp_type == 'reach':
@@ -184,7 +184,7 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
 
     def reset_model(self):
         qpos = np.array([ 0.43271341,  0.07884247,  0.9869444,  -1.53700385,  1.47712537, -2.00212515, 0.09811261])
-        #self.frame_skip = np.random.randint(1, 5)  # randomize frameskips
+        self.frame_skip = np.random.randint(1, 6)  # randomize frameskips
         #gravity = np.random.randint(-1, 1)  # randomize environment gravity
         #self.model.opt.gravity[2] = gravity
         while True:
@@ -214,8 +214,8 @@ class PR2ReacherEnv(RandomEnv, gym.utils.EzPickle):
             self.sim.data.qvel.flat,
             self.get_ee_pos
         ])
-        #noise = np.random.uniform(low=0, high=0.1, size=len(ob))
-        return ob #+ noise
+        noise = np.random.uniform(low=0, high=0.1, size=len(ob))
+        return ob + noise
 
     def log_diagnostics(self, paths, prefix=''):
         dist = [path["env_infos"]['dist'] for path in paths]
