@@ -11,15 +11,14 @@ class GoalBuffer(object):
             policy,
             q_ensemble,
             eval_goals,
-            num_target_goals,
             max_buffer_size,
-            eps
+            eps,
+            sample_rule,
     ):
         self.env = env
         self.agent_index = agent_index
         self.policy = policy
         self.q_ensemble = q_ensemble
-        self.num_target_goals = num_target_goals
         self.max_buffer_size = max_buffer_size
         self.eps = eps
 
@@ -33,6 +32,8 @@ class GoalBuffer(object):
 
         self.buffer = env.sample_goals(max_buffer_size)
         self.eval_buffer = eval_goals
+
+        self.sample_rule = sample_rule
 
     def _build(self):
         ob_no = tf.tile(self.env.start_state[None], (tf.shape(self.goal_ph)[0], 1))
@@ -62,16 +63,36 @@ class GoalBuffer(object):
         :return:
         """
         samples = []
+        # if the current agent has the max q value, add the goal to the buffer,
+        # because it might be an overestimate due to distribution mismatch
         samples.extend(target_goals[np.where(agent_q == max_q)])
         if log:
             logger.logkv('q_leading-pct', len(samples) / len(agent_q))
 
-        log_p = np.max(q_list[:self.agent_index] + q_list[self.agent_index+1:], axis=0)  # - agent_q
-        p = np.exp(log_p - np.max(log_p))
-        p /= np.sum(p)
-        p = np.ones(len(target_goals)) / len(target_goals)
-        p /= np.sum(p)  # fix numeric error
-        indices = np.random.choice(len(target_goals), size=self.max_buffer_size - len(samples), replace=True, p=p)
+        if self.sample_rule == 'softmax':
+
+            """-------------- sample with softmax -------------"""
+
+            log_p = np.max(q_list[:self.agent_index] + q_list[self.agent_index+1:], axis=0)  # - agent_q
+            p = np.exp(log_p - np.max(log_p))
+            p /= np.sum(p)
+
+        elif self.sample_rule == 'norm_diff':
+
+            """------------- sample with normalized difference --------------"""
+
+            p = max_q - agent_q
+            logger.log('p before normalization', p)
+            if np.sum(p) > 1e-5:
+                p /= np.sum(p)
+
+        else:
+            raise ValueError
+
+        u = np.ones(len(target_goals)) / len(target_goals)
+        goal_dist = (1-self.eps) * p + self.eps * u
+        goal_dist /= np.sum(goal_dist)  # fix small numeric error
+        indices = np.random.choice(len(target_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
         samples.extend(target_goals[indices])
 
         self.buffer = samples

@@ -1,5 +1,5 @@
 from meta_mb.logger import logger
-from meta_mb.agents.utils import GoalBuffer
+from meta_mb.agents.goal_buffer import GoalBuffer
 from meta_mb.algos.gc_sac import SAC
 from meta_mb.utils.utils import set_seed
 from meta_mb.samplers.gc_sampler import GCSampler
@@ -21,14 +21,11 @@ class Agent(object):
     Args:
 
     """
-    def __init__(self, i, exp_dir, snapshot_gap):
-        self.agent_index = i
-        logger.configure(dir=exp_dir + f'/agent_{i}', format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap)
-
-        self.itr = -1
-
-    def prepare_start(
+    def __init__(
             self,
+            agent_idx,
+            exp_dir,
+            snapshot_gap,
             seed,
             env_pickled,
             n_initial_exploration_steps,
@@ -36,6 +33,9 @@ class Agent(object):
             instance_kwargs,
             gpu_frac
     ):
+
+        self.agent_index = agent_idx
+        logger.configure(dir=exp_dir + f'/agent_{agent_idx}', format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap)
 
         import tensorflow as tf
 
@@ -82,9 +82,9 @@ class Agent(object):
                 policy=policy,
                 q_ensemble=Q_targets,
                 eval_goals=eval_goals,
-                num_target_goals=instance_kwargs['num_target_goals'],
                 max_buffer_size=instance_kwargs['max_goal_buffer_size'],
                 eps=instance_kwargs['goal_buffer_eps'],
+                sample_rule=instance_kwargs['sample_rule'],
             )
 
             self.sampler = GCSampler(
@@ -120,6 +120,9 @@ class Agent(object):
             sess.run(tf.initializers.global_variables())
 
             """------------------------- initial exploration steps ----------------------------"""
+
+            self.itr = -1
+
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
                 while self.replay_buffer._size < n_initial_exploration_steps:
@@ -129,7 +132,8 @@ class Agent(object):
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
     def print_fields(self):
-        print(self.__dict__.keys())
+        # print(self.__dict__.keys())
+        pass
 
     def compute_q_values(self, target_goals):
         with self.sess.as_default():

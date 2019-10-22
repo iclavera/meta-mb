@@ -64,7 +64,7 @@ class MazeVisualizer(object):
 
         if ax is None:
             _, ax = plt.subplots(figsize=(7, 4))
-        ax.imshow(self.env.grid, extent=(-1, 1, -1, 1))
+        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
         # ax.set_xlim(-1, 1)
         # ax.set_ylim(-1, 1)
 
@@ -94,7 +94,7 @@ class MazeVisualizer(object):
                 z.append(discounted_return)
         z = np.asarray(z).reshape((points_per_dim, points_per_dim))
 
-        cb = plt.scatter(xx, yy, c=z, s=500, marker='s', cmap='plasma')
+        cb = plt.scatter(xx, yy, c=z, s=500, marker='s', cmap='winter')
         plt.colorbar(cb, shrink=0.5)
 
         plt.title(os.path.join(*pkl_path.split('/')[-4:]))
@@ -116,7 +116,7 @@ class MazeVisualizer(object):
 
         if ax is None:
             _, ax = plt.subplots(figsize=(7, 4))
-        ax.imshow(self.env.grid, extent=(-1, 1, -1, 1))
+        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
         # ax.set_xlim(-1, 1)
         # ax.set_ylim(-1, 1)
 
@@ -137,7 +137,7 @@ class MazeVisualizer(object):
         xx, yy = np.meshgrid(x, y)
         z = self._compute_min_q(self.env.start_state, list(zip(xx.ravel(), yy.ravel())), min_q_var).reshape((points_per_dim, points_per_dim))
 
-        cb = plt.scatter(xx, yy, c=z, s=200, marker='s', cmap='plasma')
+        cb = plt.scatter(xx, yy, c=z, s=200, marker='s', cmap='winter')
         plt.colorbar(cb, shrink=0.5)
 
         """
@@ -149,10 +149,10 @@ class MazeVisualizer(object):
                 terminal_obs = obs
                 break
             else:
-                ax.add_line(Line2D([obs[0], next_obs[0]], [obs[1], next_obs[1]], color='cyan', alpha=0.2))
+                ax.add_line(Line2D([obs[0], next_obs[0]], [obs[1], next_obs[1]], color='red', alpha=0.2))
 
-        ax.add_artist(plt.Circle(goal, radius=0.05, lw=2, fill=False, color='lime', zorder=1000))
-        ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='lime', zorder=100000))
+        ax.add_artist(plt.Circle(goal, radius=0.05, lw=2, fill=False, color='darkorange', zorder=1000))
+        ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='darkorange', zorder=100000))
 
         plt.title(os.path.join(*pkl_path.split('/')[-4:]))
 

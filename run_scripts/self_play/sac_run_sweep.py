@@ -28,7 +28,7 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}", kwargs.get('exp_name', ''))
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -41,6 +41,7 @@ def run_experiment(**kwargs):
         num_agents=kwargs['num_agents'],
         seeds=kwargs['seeds'],
         instance_kwargs=kwargs,
+        gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
         num_target_goals=kwargs['num_target_goals'],
         num_eval_goals_sqrt=kwargs['num_eval_goals_sqrt'],
@@ -54,11 +55,11 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seeds': [(1,2)],
+        'seeds': [(1,2,3,4,5)],
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv],
-        'grid_name': ['28'],
-        'reward_str': ['sparse'],
+        'grid_name': ['7'],
+        'reward_str': ['sparse', 'L1', 'L2'],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -70,16 +71,17 @@ if __name__ == '__main__':
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [10],
-        'goal_buffer_eps': [1],
+        'goal_buffer_eps': [0, 0.5, 1],
         'goal_update_interval': [2],
         'num_eval_goals_sqrt': [3],
+        'sample_rule': ['norm_diff', 'softmax'],
 
         # Problem Conf
-        'num_agents': [2],
+        'num_agents': [3],
         'num_target_goals': [5],
-        'n_itr': [3000],
+        'n_itr': [1001],
         'max_path_length': [50],
-        'discount': [0.99],
+        'discount': [0.99, 0.95],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],

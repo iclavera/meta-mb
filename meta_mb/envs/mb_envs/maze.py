@@ -148,11 +148,14 @@ class ParticleMazeEnv(object):
 
     def reward(self, obs, act, next_obs):
         if self.reward_str == 'L1':
-            return - np.sum(np.abs(next_obs - self.goal))
-        if self.reward_str == 'L2':
-            return - np.linalg.norm(next_obs - self.goal)
-        if self.reward_str == 'sparse':
-            return int(np.sum(np.square(next_obs - self.goal)) < 0.1)
+            _reward = - np.sum(np.abs(next_obs - self.goal))
+        elif self.reward_str == 'L2':
+            _reward = - np.linalg.norm(next_obs - self.goal)
+        elif self.reward_str == 'sparse':
+            _reward = int(np.sum(np.square(next_obs - self.goal)) < 0.1)
+        else:
+            raise ValueError
+        return _reward
 
     def reset(self):
         self.state = self._start_state
@@ -176,7 +179,7 @@ class ParticleMazeEnv(object):
 
         obs = self._set_state(obs)
         assert not self._is_wall(obs)
-        reward = self.reward(init_obs, action, obs) - int(collision)
+        reward = self.reward(init_obs, action, obs) - 0.1 * int(collision)
         done = False
         info = {}
 
