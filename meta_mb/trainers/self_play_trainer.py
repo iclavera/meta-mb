@@ -1,5 +1,9 @@
 from meta_mb.agents.sac_agent import Agent
+from meta_mb.logger import logger
+
+
 import numpy as np
+import time
 import ray
 import pickle
 
@@ -60,21 +64,24 @@ class Trainer(object):
 
         for itr in range(self.n_itr):
 
-            """----------------------- Compute q values to approximate goal distribution ------------------------"""
-
-            target_goals = self.env.sample_goals(self.num_target_goals)
-            futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
-            q_list = ray.get(futures)
-            max_q = np.max(q_list, axis=0)
+            t = time.time()
 
             if itr % self.goal_update_interval == 0:
+                target_goals = self.env.sample_goals(self.num_target_goals)
+                futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
+                q_list = ray.get(futures)
+                max_q = np.max(q_list, axis=0)
                 futures = [agent.update_goal_buffer.remote(target_goals, agent_q, max_q, q_list) for agent_q, agent in zip(q_list, agents)]
             else:
                 futures = []
 
-            for agent_q, agent in zip(q_list, agents):
+            for agent in agents:
                 futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()])
             ray.get(futures)
 
             if itr == 0:
                 ray.get([agent.finalize_graph.remote() for agent in agents])
+
+            logger.logkv('TimeItr', time.time() - t)
+            logger.logkv('Itr', itr)
+            logger.dumpkvs()

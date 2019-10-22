@@ -28,7 +28,7 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}", kwargs.get('exp_name', ''))
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs.get('exp_name', '')}")
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)

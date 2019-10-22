@@ -62,9 +62,9 @@ class GoalBuffer(object):
         :param num_samples:
         :return:
         """
-        samples = []
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
+        samples = []
         samples.extend(target_goals[np.where(agent_q == max_q)])
         if log:
             logger.logkv('q_leading-pct', len(samples) / len(agent_q))
@@ -82,7 +82,6 @@ class GoalBuffer(object):
             """------------- sample with normalized difference --------------"""
 
             p = max_q - agent_q
-            logger.log('p before normalization', p)
             if np.sum(p) > 1e-4:
                 p /= np.sum(p)
             else:

@@ -12,6 +12,7 @@ from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 import ray
 import pickle
 import numpy as np
+import time
 
 
 @ray.remote
@@ -142,9 +143,13 @@ class Agent(object):
         return min_q
 
     def update_goal_buffer(self, target_goals, agent_q, max_q, q_list):
+        t = time.time()
         self.goal_buffer.refresh(target_goals, agent_q, max_q, q_list)
+        logger.logkv('TimeGoalSampling', time.time() - t)
 
     def update_replay_buffer(self):
+        t = time.time()
+
         with self.sess.as_default():
 
             paths = self.sampler.collect_rollouts(log=True, log_prefix='train-')
@@ -156,17 +161,21 @@ class Agent(object):
 
             """-------------------------- Evaluation ------------------"""
 
-            q_list = self.goal_buffer.compute_min_q(self.goal_buffer.eval_buffer)
-            for i, q in enumerate(q_list):
-                logger.logkv(f"eval-q-{i}", q)
+            # q_list = self.goal_buffer.compute_min_q(self.goal_buffer.eval_buffer)
+            # for i, q in enumerate(q_list):
+            #     logger.logkv(f"eval-q-{i}", q)
             eval_paths = self.sampler.collect_rollouts(eval=True, log=True, log_prefix='eval-')
             _ = self.sample_processor.process_samples(eval_paths, log='all', log_prefix='eval-', eval=True)
 
+        logger.logkv('TimeSampling', time.time() - t)
+
     def update_policy(self):
+        t = time.time()
         self.itr += 1
         with self.sess.as_default():
             self.algo.optimize_policy(self.replay_buffer, self.itr, self.num_grad_steps)
 
+        logger.logkv('TimeTrainPolicy', time.time() - t)
         logger.dumpkvs()
 
     def save_snapshot(self):
