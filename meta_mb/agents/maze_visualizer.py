@@ -77,13 +77,10 @@ class MazeVisualizer(object):
 
     def _do_plot_eval_returns(self, policy, save_image=True, pkl_path=None):
         grid_size = self.env.grid_size
-        points_per_dim = POINTS_PER_DIM//10
+        points_per_dim = POINTS_PER_DIM//5
         wall_size = 2 / grid_size
 
         _, ax = plt.subplots(figsize=(7, 4))
-        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
-        # ax.set_xlim(-1, 1)
-        # ax.set_ylim(-1, 1)
 
         """
         Wall
@@ -97,8 +94,8 @@ class MazeVisualizer(object):
         """
         Value function heatmap
         """
-        x = np.linspace(-.8, .8, num=points_per_dim)
-        y = np.linspace(-.8, .8, num=points_per_dim)
+        x = np.linspace(-.99, .99, num=points_per_dim)
+        y = np.linspace(-.99, .99, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
         z = []
         for _x, _y in zip(xx.ravel(), yy.ravel()):
@@ -115,6 +112,11 @@ class MazeVisualizer(object):
         plt.colorbar(cb, shrink=0.5)
 
         plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+
+        plt.axis('equal')
+
+        plt.xlim(-1, 1)
+        plt.ylim(-1, 1)
 
         if save_image:
             image_path = pkl_path.replace(".pkl", "_eval_returns.png")
@@ -124,11 +126,10 @@ class MazeVisualizer(object):
 
     def _do_plot_p_dist(self, policy, save_image=True, pkl_path=None):
         grid_size = self.env.grid_size
-        points_per_dim = POINTS_PER_DIM//10
+        points_per_dim = POINTS_PER_DIM//5
         wall_size = 2 / grid_size
 
         _, ax = plt.subplots(figsize=(7, 4))
-        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
 
         """
         Wall
@@ -142,8 +143,8 @@ class MazeVisualizer(object):
         """
         Value function heatmap
         """
-        x = np.linspace(-.8, .8, num=points_per_dim)
-        y = np.linspace(-.8, .8, num=points_per_dim)
+        x = np.linspace(-.99, .99, num=points_per_dim)
+        y = np.linspace(-.99, .99, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
         z = []
         for _x, _y in zip(xx.ravel(), yy.ravel()):
@@ -160,6 +161,10 @@ class MazeVisualizer(object):
         plt.colorbar(cb, shrink=0.5)
 
         plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+        plt.axis('equal')
+
+        plt.xlim(-1, 1)
+        plt.ylim(-1, 1)
 
         if save_image:
             image_path = pkl_path.replace(".pkl", "_eval_returns.png")
@@ -177,9 +182,6 @@ class MazeVisualizer(object):
         wall_size = 2 / grid_size
 
         _, ax = plt.subplots(figsize=(7, 4))
-        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
-        # ax.set_xlim(-1, 1)
-        # ax.set_ylim(-1, 1)
 
         """
         Wall
@@ -193,8 +195,8 @@ class MazeVisualizer(object):
         """
         Value function heatmap
         """
-        x = np.linspace(-.8, .8, num=points_per_dim)
-        y = np.linspace(-.8, .8, num=points_per_dim)
+        x = np.linspace(-.99, .99, num=points_per_dim)
+        y = np.linspace(-.99, .99, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
 
         cb = plt.scatter(xx, yy, c=q_values.reshape((points_per_dim, points_per_dim)), s=200, marker='s', cmap='winter')
@@ -215,6 +217,10 @@ class MazeVisualizer(object):
         ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='darkorange', zorder=100000))
 
         plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+        plt.axis('equal')
+
+        plt.xlim(-1, 1)
+        plt.ylim(-1, 1)
 
         if save_image:
             image_path = pkl_path.replace(".pkl", f"_{goal_idx}.png")

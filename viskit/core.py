@@ -96,6 +96,35 @@ def load_exps_data(exp_folder_paths, disable_variant=False):
         exps += [x[0] for x in os.walk(exp_folder_path)]
     exps_data = []
     for exp in exps:
+        progress_csv_path_list = [os.path.join(exp, csv_fn) for csv_fn in os.listdir(exp) if csv_fn.endswith('.csv')]
+        try:
+            exp_path = exp
+            params_json_path = os.path.join(exp_path, "params.json")
+            variant_json_path = os.path.join(exp_path, "variant.json")
+            if disable_variant:
+                params = load_params(params_json_path)
+            else:
+                try:
+                    params = load_params(variant_json_path)
+                except IOError:
+                    params = load_params(params_json_path)
+            for progress_csv_path in progress_csv_path_list:
+                print(progress_csv_path)
+                progress = load_progress(progress_csv_path)
+                exps_data.append(AttrDict(
+                    progress=progress, params=params, flat_params=flatten_dict(params)))
+        except IOError as e:
+            print(e)
+    return exps_data
+
+
+# UNUSED
+def _load_exps_data(exp_folder_paths, disable_variant=False):
+    exps = []
+    for exp_folder_path in exp_folder_paths:
+        exps += [x[0] for x in os.walk(exp_folder_path)]
+    exps_data = []
+    for exp in exps:
         try:
             exp_path = exp
             params_json_path = os.path.join(exp_path, "params.json")

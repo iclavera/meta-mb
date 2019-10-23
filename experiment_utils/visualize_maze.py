@@ -14,6 +14,7 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ign
     for exp in exps:
         print('plotting', exp['exp_name'])
         vis = None
+        tf.reset_default_graph()
         with tf.Session():
             for pkl_path in exp['pkl']:
                 data = joblib.load(pkl_path)
