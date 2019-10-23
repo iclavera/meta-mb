@@ -82,7 +82,7 @@ class GoalBuffer(object):
             """------------- sample with normalized difference --------------"""
 
             p = max_q - agent_q
-            if np.sum(p) > 1e-4:
+            if np.sum(p) > 1e-3:
                 p /= np.sum(p)
             else:
                 p = np.ones_like(p)

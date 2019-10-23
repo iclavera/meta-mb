@@ -12,19 +12,20 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ign
     eval_goals = None
 
     for exp in exps:
+        print('plotting', exp['exp_name'])
         vis = None
-        if max_path_length is None:
-            max_path_length = exp['json']['max_path_length']
-        for pkl_path in exp['pkl']:
-            data = joblib.load(pkl_path)
+        with tf.Session():
+            for pkl_path in exp['pkl']:
+                data = joblib.load(pkl_path)
 
-            if eval_goals is None:
-                eval_goals = data['env'].sample_goals(num_rollouts)
-            if vis is None:
-                discount = exp['json']['discount']
-                vis = MazeVisualizer(data['env'], eval_goals, max_path_length, discount, ignore_done, stochastic)
+                if eval_goals is None:
+                    eval_goals = data['env'].sample_goals(num_rollouts)
+                if vis is None:
+                    discount = exp['json']['discount']
+                    _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
+                    vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount, ignore_done, stochastic)
 
-            vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], save_image=save_image, pkl_path=pkl_path)
+                q_values = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], save_image=save_image, pkl_path=pkl_path)
 
     plt.show()
 
@@ -45,9 +46,8 @@ if __name__ == "__main__":
                         help='Apply stochastic action instead of deterministic')
     args = parser.parse_args()
 
-    with tf.Session():
-        plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
-                  gap=args.gap_pkl, max=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic)
+    plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
+              gap=args.gap_pkl, max=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic)
 
 
 

@@ -122,12 +122,12 @@ class ParticleMazeEnv(object):
         assert not self._is_wall(goal)
         self.goal = goal
 
-    def sample_goals(self, num_samples):
-        sample_ind = np.random.choice(len(self.grid_free_coords), num_samples)
+    def sample_goals(self, num_samples, replace=True):
+        sample_ind = np.random.choice(len(self.grid_free_coords), num_samples, replace=replace)
         return self.grid_free_coords[sample_ind]
 
-    def sample_grid_goals(self, num_samples_sqrt):
-        return self.sample_goals(num_samples_sqrt)
+    def sample_grid_goals(self, num_samples):
+        return self.sample_goals(num_samples, replace=False)
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)
@@ -168,18 +168,18 @@ class ParticleMazeEnv(object):
         assert not self._is_wall(init_obs)
 
         # collision detection
-        collision = False
+        # collision = False
         for substep in range(self.num_substeps):
             next_obs = obs + action * self.ddt
             if self._is_wall(next_obs):
-                collision = True
+                # collision = True
                 break
             else:
                 obs = next_obs
 
         obs = self._set_state(obs)
         assert not self._is_wall(obs)
-        reward = self.reward(init_obs, action, obs) - 0.1 * int(collision)
+        reward = self.reward(init_obs, action, obs) # - 0.1 * int(collision)
         done = False
         info = {}
 

@@ -320,7 +320,7 @@ class Logger(object):
                     # So that you can still log to the terminal without setting up any output files
     CURRENT = None  # Current logger being used by the free functions above
 
-    def __init__(self, dir, output_formats, snapshot_mode='last', snapshot_gap=1):
+    def __init__(self, dir, output_formats, snapshot_mode='last', snapshot_gap=1, log_suffix=''):
         self.name2val = defaultdict(float)  # values this iteration
         self.name2cnt = defaultdict(int)
         self.level = INFO
@@ -328,6 +328,7 @@ class Logger(object):
         self.output_formats = output_formats
         self.snapshot_mode = snapshot_mode
         self.snapshot_gap = snapshot_gap
+        self.log_suffix = log_suffix
 
     # Logging API, forwarded
     # ----------------------------------------
@@ -376,19 +377,19 @@ class Logger(object):
     def save_itr_params(self, itr, params):
         if self.dir:
             if self.snapshot_mode == 'all':
-                file_name = osp.join(self.dir, 'itr_%d.pkl' % itr)
+                file_name = osp.join(self.dir, 'itr_%d%s.pkl' % (itr, self.log_suffix))
                 joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'last':
                 # override previous params
-                file_name = osp.join(self.dir, 'params.pkl')
+                file_name = osp.join(self.dir, 'params%s.pkl' % self.log_suffix)
                 joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == "gap":
                 if itr % self.snapshot_gap == 0:
-                    file_name = osp.join(self.dir, 'itr_%d.pkl' % itr)
+                    file_name = osp.join(self.dir, 'itr_%d%s.pkl' % (itr, self.log_suffix))
                     joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'last_gap':
                 if itr % self.snapshot_gap == 0:
-                    file_name = osp.join(self.dir, 'params.pkl')
+                    file_name = osp.join(self.dir, 'params%s.pkl' % self.log_suffix)
                     joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'none':
                 pass
@@ -398,7 +399,7 @@ class Logger(object):
 Logger.DEFAULT = Logger.CURRENT = Logger(dir=None, output_formats=[HumanOutputFormat(sys.stdout)])
 
 
-def configure(dir=None, format_strs=None, snapshot_mode='last', snapshot_gap=1):
+def configure(dir=None, format_strs=None, snapshot_mode='last', snapshot_gap=1, log_suffix=''):
     if dir is None:
         dir = os.getenv('OPENAI_LOGDIR')
     if dir is None:
@@ -407,7 +408,6 @@ def configure(dir=None, format_strs=None, snapshot_mode='last', snapshot_gap=1):
     assert isinstance(dir, str)
     os.makedirs(dir, exist_ok=True)
 
-    log_suffix = ''
     # from mpi4py import MPI
     # rank = MPI.COMM_WORLD.Get_rank()
     rank = 0
@@ -424,7 +424,7 @@ def configure(dir=None, format_strs=None, snapshot_mode='last', snapshot_gap=1):
 
     output_formats = [make_output_format(f, dir, log_suffix) for f in format_strs]
 
-    Logger.CURRENT = Logger(dir=dir, output_formats=output_formats, snapshot_mode=snapshot_mode, snapshot_gap=snapshot_gap)
+    Logger.CURRENT = Logger(dir=dir, output_formats=output_formats, snapshot_mode=snapshot_mode, snapshot_gap=snapshot_gap, log_suffix=log_suffix)
     log('Logging to %s' % dir)
 
 

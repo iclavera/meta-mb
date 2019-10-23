@@ -227,7 +227,7 @@ class SampleProcessor(object):
 
         return samples_data, paths
 
-    def _log_path_stats(self, paths, log=False, log_prefix='', eval=False):
+    def _log_path_stats(self, paths, log=False, log_prefix='', log_all=False):
         # compute log stats
         average_discounted_return = np.mean([path["returns"][0] for path in paths])
         undiscounted_returns = [sum(path["rewards"]) for path in paths]
@@ -236,7 +236,7 @@ class SampleProcessor(object):
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
 
         elif log == 'all' or log is True:
-            if eval:
+            if log_all:
                 for i, (undiscounted_return, path) in enumerate(zip(undiscounted_returns, paths)):
                     logger.logkv(log_prefix + f"Return-{i}", undiscounted_return)
                     logger.logkv(log_prefix + f"DiscountedReturn-{i}", path["returns"][0])

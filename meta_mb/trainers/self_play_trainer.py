@@ -1,14 +1,10 @@
 from meta_mb.agents.sac_agent import Agent
 from meta_mb.logger import logger
 
-
 import numpy as np
 import time
 import ray
 import pickle
-
-
-print(ray.init())
 
 
 class Trainer(object):
@@ -34,26 +30,30 @@ class Trainer(object):
             gpu_frac,
             env,
             num_target_goals,
-            num_eval_goals_sqrt,
+            num_eval_goals,
             n_itr,
             exp_dir,
             goal_update_interval,
+            eval_interval,
             snapshot_gap=200,
             n_initial_exploration_steps=1e3,
         ):
+
         self.env = env
         self.num_target_goals = num_target_goals
         self.goal_update_interval = goal_update_interval
+        self.eval_interval = eval_interval
         self.n_itr = n_itr
 
         env_pickled = pickle.dumps(env)
-        eval_goals = self.env.sample_grid_goals(num_eval_goals_sqrt)
+        eval_goals = self.env.sample_grid_goals(num_eval_goals)
 
         self.agents = [None] * num_agents
 
         for i in range(num_agents):
             agent = Agent.remote(
-                i, exp_dir, snapshot_gap, seeds[i], env_pickled, n_initial_exploration_steps, eval_goals, instance_kwargs, gpu_frac,
+                i, exp_dir, snapshot_gap, gpu_frac, seeds[i],
+                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_goals, eval_interval,
             )
             self.agents[i] = agent
 
@@ -82,6 +82,7 @@ class Trainer(object):
             if itr == 0:
                 ray.get([agent.finalize_graph.remote() for agent in agents])
 
-            logger.logkv('TimeItr', time.time() - t)
-            logger.logkv('Itr', itr)
-            logger.dumpkvs()
+            if itr % self.eval_interval == 0:
+                logger.logkv('TimeItr', time.time() - t)
+                logger.logkv('Itr', itr)
+                logger.dumpkvs()

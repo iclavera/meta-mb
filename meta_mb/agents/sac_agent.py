@@ -27,16 +27,19 @@ class Agent(object):
             agent_idx,
             exp_dir,
             snapshot_gap,
+            gpu_frac,
             seed,
             env_pickled,
             n_initial_exploration_steps,
-            eval_goals,
             instance_kwargs,
-            gpu_frac
+            eval_goals,
+            eval_interval,
+            num_grad_step=None,
     ):
 
         self.agent_index = agent_idx
-        logger.configure(dir=exp_dir + f'/agent_{agent_idx}', format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap)
+        # logger.configure(dir=exp_dir + f'/agent_{agent_idx}', format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap)
+        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
 
         import tensorflow as tf
 
@@ -115,7 +118,8 @@ class Agent(object):
                 reward_scale=instance_kwargs['reward_scale']
             )
 
-            self.num_grad_steps = self.sampler.total_samples
+            self.eval_interval = eval_interval
+            self.num_grad_steps = self.sampler.total_samples if num_grad_step is None else num_grad_step
             self.replay_buffer = SimpleReplayBuffer(self.env, instance_kwargs['max_replay_buffer_size'])
 
             sess.run(tf.initializers.global_variables())
@@ -148,26 +152,23 @@ class Agent(object):
         logger.logkv('TimeGoalSampling', time.time() - t)
 
     def update_replay_buffer(self):
-        t = time.time()
-
         with self.sess.as_default():
 
+            t = time.time()
             paths = self.sampler.collect_rollouts(log=True, log_prefix='train-')
-
             samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
-
             self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                            samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
+            t = time.time() - t
+            logger.logkv('TimeSampling', time.time() - t)
 
             """-------------------------- Evaluation ------------------"""
 
-            # q_list = self.goal_buffer.compute_min_q(self.goal_buffer.eval_buffer)
-            # for i, q in enumerate(q_list):
-            #     logger.logkv(f"eval-q-{i}", q)
-            eval_paths = self.sampler.collect_rollouts(eval=True, log=True, log_prefix='eval-')
-            _ = self.sample_processor.process_samples(eval_paths, log='all', log_prefix='eval-', eval=True)
+            if self.itr % self.eval_interval == 0:
+                eval_paths = self.sampler.collect_rollouts(eval=True, log=True, log_prefix='eval-')
+                _ = self.sample_processor.process_samples(eval_paths, log='all', log_prefix='eval-', log_all=False)
 
-        logger.logkv('TimeSampling', time.time() - t)
+                logger.dumpkvs()
 
     def update_policy(self):
         t = time.time()
@@ -176,7 +177,6 @@ class Agent(object):
             self.algo.optimize_policy(self.replay_buffer, self.itr, self.num_grad_steps)
 
         logger.logkv('TimeTrainPolicy', time.time() - t)
-        logger.dumpkvs()
 
     def save_snapshot(self):
         with self.sess.as_default():

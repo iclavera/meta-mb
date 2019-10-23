@@ -1,5 +1,7 @@
 import os
 import json
+import ray
+from datetime import datetime
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
@@ -28,15 +30,21 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs.get('exp_name', '')}")
+    if kwargs.get('exp_name') is None:
+        timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+        kwargs['exp_name'] = "%s" % timestamp
+
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    for i in range(kwargs['num_agents']):
-        os.makedirs(exp_dir + f'/agent_{i}', exist_ok=True)
-        json.dump(kwargs, open(exp_dir + f'/agent_{i}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
+    # for i in range(kwargs['num_agents']):
+    #     os.makedirs(exp_dir + f'/agent_{i}', exist_ok=True)
+    #     json.dump(kwargs, open(exp_dir + f'/agent_{i}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
+
+    logger.log('ray init...', ray.init())
     trainer = Trainer(
         num_agents=kwargs['num_agents'],
         seeds=kwargs['seeds'],
@@ -44,13 +52,15 @@ def run_experiment(**kwargs):
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
         num_target_goals=kwargs['num_target_goals'],
-        num_eval_goals_sqrt=kwargs['num_eval_goals_sqrt'],
+        num_eval_goals=kwargs['num_eval_goals'],
+        eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
         goal_update_interval=kwargs['goal_update_interval']
     )
 
     trainer.train()
+    logger.log('ray shutdown...', ray.shutdown())
 
 if __name__ == '__main__':
     sweep_params = {
@@ -58,7 +68,7 @@ if __name__ == '__main__':
         'seeds': [(1,2,3,4,5)],
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv],
-        'grid_name': ['7'],
+        'grid_name': ['medium'],
         'reward_str': ['sparse', 'L1', 'L2'],
 
         # Policy
@@ -73,7 +83,8 @@ if __name__ == '__main__':
         'max_goal_buffer_size': [10],
         'goal_buffer_eps': [0, 0.5, 1],
         'goal_update_interval': [2],
-        'num_eval_goals_sqrt': [3],
+        'num_eval_goals': [20],
+        'eval_interval': [20],
         'sample_rule': ['norm_diff', 'softmax'],
 
         # Problem Conf

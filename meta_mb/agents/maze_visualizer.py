@@ -31,39 +31,56 @@ class MazeVisualizer(object):
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.env.obs_dim,), name='obs')
 
     def do_plots(self, policy, q_ensemble, save_image=True, pkl_path=None):
-        min_q_var = self._build(policy, q_ensemble)
+        q_values = self._compute_q_values(policy, q_ensemble)  # shape=(POINTS_PER_DIM*POINTS_PER_DIM,)
         for goal_idx, goal in enumerate(self.eval_goals):
             # fig, ax_arr = plt.subplots(nrows=1, ncols=2, figsize=(24, 12))
             # ax_arr = [None, None]
-            self._do_plot_q_values(goal, goal_idx, policy, min_q_var, save_image=save_image, pkl_path=pkl_path)
+            self._do_plot_q_values(goal, goal_idx, policy, q_values, save_image=save_image, pkl_path=pkl_path)
             self._do_plot_eval_returns(policy, save_image=save_image, pkl_path=pkl_path)
             # if save_image:
             #     image_path = pkl_path.replace(".pkl", f"_{goal_idx}.png")
             #     plt.savefig(image_path)
 
-    def _build(self, policy, q_ensemble):
+        return q_values
+
+    def _compute_q_values(self, policy, q_ensemble):
+        """
+        compute q values with grid goals
+        :param policy:
+        :param q_ensemble:
+        :return:
+        """
+        """---------build graph--------"""
+
         obs_no = tf.tile(self.obs_ph[None], (tf.shape(self.goal_ph)[0], 1))
         goal_ng = self.goal_ph
         dist_info_sym = policy.distribution_info_sym(tf.concat([obs_no, goal_ng], axis=1))
         act_na, _ = policy.distribution.sample_sym(dist_info_sym)
         input_q_fun = tf.concat([obs_no, act_na, goal_ng], axis=1)
 
-        q_vals = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in q_ensemble], axis=0)
-        return tf.reduce_min(q_vals, axis=0)
+        q_var = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in q_ensemble], axis=0)
+        q_var = tf.reduce_min(q_var, axis=0)
 
-    def _compute_min_q(self, obs, goals, min_q_var):
-        feed_dict = {self.goal_ph: goals, self.obs_ph: obs}
+        """---------create grid goals---------"""
+
+        x = np.linspace(-.8, .8, num=POINTS_PER_DIM)
+        y = np.linspace(-.8, .8, num=POINTS_PER_DIM)
+        xx, yy = np.meshgrid(x, y)
+
+        """---------run graph to compute q values------"""
+
+        feed_dict = {self.obs_ph: self.env.start_state, self.goal_ph: list(zip(xx.ravel(), yy.ravel()))}
         sess = tf.get_default_session()
-        min_q, = sess.run([min_q_var], feed_dict=feed_dict)
-        return min_q
+        q_values, = sess.run([q_var,], feed_dict=feed_dict)
 
-    def _do_plot_eval_returns(self, policy, save_image=True, pkl_path=None, ax=None):
+        return q_values
+
+    def _do_plot_eval_returns(self, policy, save_image=True, pkl_path=None):
         grid_size = self.env.grid_size
         points_per_dim = POINTS_PER_DIM//10
         wall_size = 2 / grid_size
 
-        if ax is None:
-            _, ax = plt.subplots(figsize=(7, 4))
+        _, ax = plt.subplots(figsize=(7, 4))
         ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
         # ax.set_xlim(-1, 1)
         # ax.set_ylim(-1, 1)
@@ -105,7 +122,52 @@ class MazeVisualizer(object):
             plt.clf()
             plt.close()
 
-    def _do_plot_q_values(self, goal, goal_idx, policy, min_q_var, save_image=True, pkl_path=None, ax=None):
+    def _do_plot_p_dist(self, policy, save_image=True, pkl_path=None):
+        grid_size = self.env.grid_size
+        points_per_dim = POINTS_PER_DIM//10
+        wall_size = 2 / grid_size
+
+        _, ax = plt.subplots(figsize=(7, 4))
+        ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
+
+        """
+        Wall
+        """
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if self.env.grid[i, j]:
+                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
+                                                width=wall_size, height=wall_size, fill=True, color='black'))
+
+        """
+        Value function heatmap
+        """
+        x = np.linspace(-.8, .8, num=points_per_dim)
+        y = np.linspace(-.8, .8, num=points_per_dim)
+        xx, yy = np.meshgrid(x, y)
+        z = []
+        for _x, _y in zip(xx.ravel(), yy.ravel()):
+            goal = np.asarray([_x, _y])
+            if self.env._is_wall(goal):
+                z.append(None)
+            else:
+                path = self._rollout(goal=np.asarray([_x, _y]), policy=policy)
+                discounted_return = path["discounted_return"]
+                z.append(discounted_return)
+        z = np.asarray(z).reshape((points_per_dim, points_per_dim))
+
+        cb = plt.scatter(xx, yy, c=z, s=500, marker='s', cmap='winter')
+        plt.colorbar(cb, shrink=0.5)
+
+        plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+
+        if save_image:
+            image_path = pkl_path.replace(".pkl", "_eval_returns.png")
+            plt.savefig(image_path)
+            plt.clf()
+            plt.close()
+
+    def _do_plot_q_values(self, goal, goal_idx, policy, q_values, save_image=True, pkl_path=None):
         path = self._rollout(goal, policy)
         observations = path["observations"]
         dones = path["dones"]
@@ -114,8 +176,7 @@ class MazeVisualizer(object):
         points_per_dim = POINTS_PER_DIM
         wall_size = 2 / grid_size
 
-        if ax is None:
-            _, ax = plt.subplots(figsize=(7, 4))
+        _, ax = plt.subplots(figsize=(7, 4))
         ax.imshow(np.zeros_like(self.env.grid), extent=(-1, 1, -1, 1))
         # ax.set_xlim(-1, 1)
         # ax.set_ylim(-1, 1)
@@ -135,9 +196,8 @@ class MazeVisualizer(object):
         x = np.linspace(-.8, .8, num=points_per_dim)
         y = np.linspace(-.8, .8, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
-        z = self._compute_min_q(self.env.start_state, list(zip(xx.ravel(), yy.ravel())), min_q_var).reshape((points_per_dim, points_per_dim))
 
-        cb = plt.scatter(xx, yy, c=z, s=200, marker='s', cmap='winter')
+        cb = plt.scatter(xx, yy, c=q_values.reshape((points_per_dim, points_per_dim)), s=200, marker='s', cmap='winter')
         plt.colorbar(cb, shrink=0.5)
 
         """
