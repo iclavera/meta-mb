@@ -3,17 +3,12 @@ from numbers import Number
 
 import numpy as np
 import tensorflow as tf
-# import tensorflow_probability as tfp
-# from flatten_dict import flatten
 from collections import OrderedDict
 from .base import Algo
-from meta_mb.utils import create_feed_dict
-"""===============added==========start============"""
+from meta_mb.utils import create_feed_dict, td_target
 from pdb import set_trace as st
-from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
 
-"""===========this should be put somewhere in the utils=============="""
 from tensorflow.python.training import training_util
 import time
 

@@ -110,9 +110,6 @@ class Trainer(object):
 
         saver = tf.train.Saver()
         with self.sess.as_default() as sess:
-            # initialize uninitialized vars  (only initialize vars that were not loaded)
-            # uninit_vars = [var for var in tf.global_variables() if not sess.run(tf.is_variable_initialized(var))]
-            # sess.run(tf.variables_initializer(uninit_vars))
             sess.run(tf.global_variables_initializer())
             start_time = time.time()
 

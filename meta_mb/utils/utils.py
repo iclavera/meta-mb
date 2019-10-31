@@ -4,6 +4,9 @@ import scipy.signal
 import json
 import tensorflow as tf
 
+def td_target(reward, discount, next_value):
+    return reward + discount * next_value
+
 def compile_function(inputs, outputs, log_name=None):
     def run(*input_vals):
         sess = tf.get_default_session()

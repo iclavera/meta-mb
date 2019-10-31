@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
 from .base import Algo
-from meta_mb.utils import create_feed_dict
+from meta_mb.utils import create_feed_dict, td_target
 from pdb import set_trace as st
 from meta_mb.logger import logger
 from tensorflow.python.training import training_util
@@ -14,19 +14,8 @@ import os.path as osp
 import copy
 
 
-def td_target(reward, discount, next_value):
-    return reward + discount * next_value
-
-
-class SAC_MB(Algo):
-    """Soft Actor-Critic (SAC)
-    References
-    ----------
-    [1] Tuomas Haarnoja*, Aurick Zhou*, Kristian Hartikainen*, George Tucker,
-        Sehoon Ha, Jie Tan, Vikash Kumar, Henry Zhu, Abhishek Gupta, Pieter
-        Abbeel, and Sergey Levine. Soft Actor-Critic Algorithms and
-        Applications. arXiv preprint arXiv:1812.05905. 2018.
-    """
+class MAAC(Algo):
+    """ Model-Augmented Actor-Critic (MAAC)"""
 
     def __init__(
             self,
@@ -38,7 +27,7 @@ class SAC_MB(Algo):
             Qs=None,
             Q_targets=None,
             discount=0.99,
-            name="sac-mb",
+            name="maac",
             learning_rate=3e-4,
             target_entropy=1.0,
             reward_scale=1.0,
@@ -52,14 +41,12 @@ class SAC_MB(Algo):
             num_actions_per_next_observation=1,
             prediction_type = 'none',
             T = 0,
-            q_function_type=0,
-            q_target_type=0,
+            actor_type=None,
+            critic_type=None,
             H=0,
             model_used_ratio=1.0,
             experiment_name=None,
             exp_dir=None,
-            ground_truth=False,
-            actor_H=1,
             **kwargs
     ):
         """
@@ -83,7 +70,7 @@ class SAC_MB(Algo):
                 the policy derived using the reparameterization trick. We use
                 a likelihood ratio based estimator otherwise.
         """
-        super(SAC_MB, self).__init__(policy)
+        super(MAAC, self).__init__(policy)
 
         self.name = name
         self.policy = policy
@@ -102,7 +89,6 @@ class SAC_MB(Algo):
         self.buffer_size = buffer_size
         self.sampler_batch_size = sampler_batch_size
         self.session = session or tf.keras.backend.get_session()
-        self.actor_H = actor_H
         self.Qs = Qs
         if Q_targets == None:
             self.Q_targets = self.Qs
@@ -113,14 +99,13 @@ class SAC_MB(Algo):
         self.num_actions_per_next_observation = num_actions_per_next_observation
         self.action_prior = action_prior
         self.reparameterize = reparameterize
-        self.q_function_type = q_function_type
+        self.actor_type = actor_type
         self.model_used_ratio = model_used_ratio
         self.T = T
         self.H = H
-        self.q_target_type = q_target_type
+        self.critic_type = critic_type
         self.experiment_name = experiment_name
         self.exp_dir = exp_dir
-        self.ground_truth = ground_truth
         self.saver = tf.train.Saver()
 
         self.build_graph()
@@ -136,9 +121,6 @@ class SAC_MB(Algo):
         self._init_actor_update()
         self._init_critic_update()
         self._init_diagnostics_ops()
-        # if self.restore:
-        #     sess = tf.get_default_session()
-        #     self.saver.restore(sess, osp.join(logger.get_dir(), "model.ckpt"))
 
 
     def _init_global_step(self):
@@ -155,38 +137,37 @@ class SAC_MB(Algo):
             (tuple) : a tuple containing lists of placeholders for each input type and meta task,
             and for convenience, a list containing all placeholders created
         """
-        if not self.ground_truth:
-            dist_info_specs = self.policy.distribution.dist_info_specs
-            all_phs_dict = OrderedDict()
+        dist_info_specs = self.policy.distribution.dist_info_specs
+        all_phs_dict = OrderedDict()
 
-            # observation ph
+        # observation ph
+        obs_shape = [None, self.policy.obs_dim]
+        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+        all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+
+        # action ph
+        action_shape = [None, self.policy.action_dim]
+        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+        all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
+
+        """add the placeholder for terminal here"""
+        terminal_shape = [None] if not recurrent else [None, None]
+        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+        all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
+
+        rewards_shape = [None] if not recurrent else [None, None]
+        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+        all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
+
+        if not next_obs:
+            return obs_ph, action_ph, all_phs_dict
+
+        else:
             obs_shape = [None, self.policy.obs_dim]
-            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
-            all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
+            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
 
-            # action ph
-            action_shape = [None, self.policy.action_dim]
-            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
-            all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
-
-            """add the placeholder for terminal here"""
-            terminal_shape = [None] if not recurrent else [None, None]
-            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
-            all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
-
-            rewards_shape = [None] if not recurrent else [None, None]
-            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
-            all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
-
-            if not next_obs:
-                return obs_ph, action_ph, all_phs_dict
-
-            else:
-                obs_shape = [None, self.policy.obs_dim]
-                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
-                all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
-
-            return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
+        return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
     def step(self, obs, actions, shuffle=True, k = 1):
         next_observation = self.dynamics_model.predict_sym(obs, actions)
@@ -219,14 +200,14 @@ class SAC_MB(Algo):
         rewards_ph = self.op_phs_dict['rewards']
         rewards_ph = tf.expand_dims(rewards_ph, axis=-1)
 
-        if self.q_target_type == 0:
+        if self.critic_type == None:
             target = self.q_target = td_target(
                 reward=self.reward_scale * rewards_ph,
                 discount=self.discount,
                 next_value=(1 - dones_ph) * next_values_var)
             return tf.stop_gradient(target)
 
-        elif self.q_target_type == 1:
+        elif self.critic_type == 'STEVE':
             num_models = self.dynamics_model.num_models
             obs = self.op_phs_dict['next_observations']
             dist_info_sym = self.policy.distribution_info_sym(obs)
@@ -298,8 +279,6 @@ class SAC_MB(Algo):
         Creates a `tf.optimizer.minimize` operation for updating
         critic Q-function with gradient descent, and appends it to
         `self._training_ops` attribute.
-        See Equations (5, 6) in [1], for further information of the
-        Q-function update rule.
         """
 
         q_target = self._get_q_target()
@@ -329,8 +308,6 @@ class SAC_MB(Algo):
         Creates a `tf.optimizer.minimize` operations for updating
         policy and entropy with gradient descent, and adds them to
         `self._training_ops` attribute.
-        See Section 4.2 in [1], for further information of the policy update,
-        and Section 5 in [1] for further information of the entropy update.
         """
         observations_ph = self.op_phs_dict['observations']
         dist_info_sym = self.policy.distribution_info_sym(observations_ph)
@@ -361,26 +338,13 @@ class SAC_MB(Algo):
         elif self.action_prior == 'uniform':
             policy_prior_log_probs = 0.0
 
-        if self.q_function_type == 0:
+        """If actor_type is set to None, it equals to MBPO"""
+        if self.actor_type == None:
             input_q_fun = tf.concat([observations_ph, actions_var], axis=-1)
             next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             min_q_val_var = tf.reduce_min(next_q_values, axis=0)
 
-        elif self.q_function_type == 3:
-            assert self.T >= 0
-            obs = observations_ph
-            actions = actions_var
-            reward_values = 0
-            for i in range(self.T+1):
-                next_observation, next_actions_var, rewards, dones_next, dist_info_sym = self.step(obs, actions)
-                reward_values += (self.discount**(i)) * self.reward_scale * rewards
-                obs, actions = next_observation, next_actions_var
-            input_q_fun = tf.concat([next_observation, next_actions_var], axis=-1)
-            next_q_values = [(self.discount ** (self.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-            q_values_var = [reward_values + next_q_values[j] for j in range(2)]
-            min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-
-        elif self.q_function_type == 5:
+        elif self.actor_type == 'MAAC':
             assert self.T >= 0
             obs = observations_ph
             obs = tf.tile(obs, [self.num_actions_per_next_observation, 1])
@@ -401,84 +365,6 @@ class SAC_MB(Algo):
             next_q_values = [(self.discount ** (self.T + 1)) * Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
             q_values_var = [reward_values + next_q_values[j] for j in range(2)]
             min_q_val_var = tf.reduce_min(q_values_var, axis=0)
-
-        # elif self.q_function_type == 7:
-        #     self.policy_optimizer = tf.train.AdamOptimizer(
-        #         learning_rate=self.policy_lr,
-        #         name="policy_optimizer")
-        #     var_list = list(self.policy.policy_params.values())
-        #     assert self.T >= 0
-        #     obs = observations_ph
-        #     actions = actions_var
-        #     num_models = self.dynamics_model.num_models
-        #     observations = tf.tile(obs, [num_models * self.num_actions_per_next_observation, 1]) # What is it better to compute more actions per step or per traj??
-        #     actions = tf.tile(actions, [num_models * self.num_actions_per_next_observation, 1])
-        #     q_vals = []
-        #     returns = 0
-        #
-        #     # T=-1
-        #     input_q_fun = tf.concat([observations, actions], axis=-1)
-        #     next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        #     next_q_values = tf.squeeze(tf.reduce_min(next_q_values, axis=0), axis=-1)
-        #     q_vals.append(next_q_values)
-        #
-        #     # Other T using the model
-        #     # I need to do the mean w.r.t the actions (right now just using 1 action)
-        #     # Fixme: Be more efficient. Hopefully we will need just this for loops but not the others
-        #     for t in range(self.T):
-        #         next_observations = self.dynamics_model.predict_batches_sym(observations, actions)
-        #         rewards = self.training_environment.tf_reward(observations, actions, next_observations)
-        #         returns += self.discount**t * self.reward_scale * rewards
-        #         dist_info_sym = self.policy.distribution_info_sym(next_observations)
-        #         next_actions, dist_info_sym = self.policy.distribution.sample_sym(dist_info_sym)
-        #         input_q_fun = tf.concat([next_observations, next_actions], axis=-1)
-        #         next_q_values = [Q.value_sym(input_var=input_q_fun) for Q in self.Qs]
-        #         next_q_values = tf.squeeze(tf.reduce_min(next_q_values, axis=0), axis=-1)
-        #         q_vals.append(returns + self.discount ** (t+1) * next_q_values)
-        #
-        #     all_q_vals = tf.transpose(tf.stack(tf.split(tf.stack(
-        #                               q_vals, axis=-1), num_models, axis=0), axis=-1), (1, 2, 0))
-        #     weights = []
-        #     means = []
-        #     for t in range(self.T+1):
-        #         grads = []
-        #         for i in range(num_models):
-        #             grad = self.policy_optimizer.compute_gradients(all_q_vals[t][i], var_list)
-        #             grads.append(tf.concat([tf.reshape(g, (-1,)) for g, var in grad], axis=0))
-        #         grads = tf.stack(grads, axis=0)
-        #         mean = tf.reduce_mean(grads, axis=0)
-        #         norm_var = tf.reduce_mean(tf.square(tf.linalg.norm(grads - mean, axis=-1)), axis=0)
-        #         weights.append(1/(norm_var+1e-8))
-        #         means.append(mean)
-        #
-        #     weights = tf.expand_dims(tf.stop_gradient(tf.stack(weights, axis=0)/tf.reduce_sum(weights)), axis=-1)
-        #     grads_q = tf.reduce_sum(weights * tf.stack(means, axis=0), axis=0)
-        #
-        #     if self.reparameterize:
-        #         policy_kl_losses = (self.alpha * log_pis_var - policy_prior_log_probs)
-        #     else:
-        #         raise NotImplementedError
-        #
-        #     assert policy_kl_losses.shape.as_list() == [None, 1]
-        #
-        #     self.policy_losses = policy_kl_losses
-        #     policy_loss = tf.reduce_mean(policy_kl_losses)
-        #     grads_and_vars_kl = self.policy_optimizer.compute_gradients(policy_loss, var_list=var_list)
-        #     var_idx = 0
-        #     grads_and_vars = []
-        #     for i, var in enumerate(var_list):
-        #         grad_kl = grads_and_vars_kl[i][0]
-        #         var_n_params = tf.reduce_prod(var.shape)
-        #         next_var_idx = var_idx + var_n_params
-        #         grad_q = tf.reshape(grads_q[var_idx:next_var_idx], var.shape)
-        #         grads_and_vars.append((grad_kl - grad_q, var))
-        #         var_idx = next_var_idx
-        #
-        #     policy_train_op = self.policy_optimizer.apply_gradients(grads_and_vars)
-        #
-        #     self.training_ops.update({'policy_train_op': policy_train_op})
-        #
-        #     return None
 
         if self.reparameterize:
             policy_kl_losses = tf.reduce_mean(self.alpha * log_pis_var) - min_q_val_var - tf.reduce_mean(policy_prior_log_probs)
@@ -501,26 +387,15 @@ class SAC_MB(Algo):
         self.training_ops.update({'policy_train_op': policy_train_op})
 
     def _init_diagnostics_ops(self):
-        if self.ground_truth:
-            diagnosables = OrderedDict((
-                ('Q_value', self.q_values_var),
-                ('Q_loss', self.q_losses),
-                ('policy_loss', self.policy_losses),
-                ('Q_targets', self.q_target),
-                ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
-                ('gradient_loss1', self.gradient_loss1),
-                ('gradient_loss2', self.gradient_loss2)
-            ))
-        else:
-            diagnosables = OrderedDict((
-                ('Q_value', self.q_values_var),
-                ('Q_loss', self.q_losses),
-                ('policy_loss', self.policy_losses),
-                ('alpha', self.alpha),
-                ('Q_targets', self.q_target),
-                ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
-                ('log_pis', self.log_pis_var)
-            ))
+        diagnosables = OrderedDict((
+            ('Q_value', self.q_values_var),
+            ('Q_loss', self.q_losses),
+            ('policy_loss', self.policy_losses),
+            ('alpha', self.alpha),
+            ('Q_targets', self.q_target),
+            ('scaled_rewards', self.reward_scale * self.op_phs_dict['rewards']),
+            ('log_pis', self.log_pis_var)
+        ))
 
         diagnostic_metrics = OrderedDict((
             ('mean', tf.reduce_mean),
@@ -547,8 +422,6 @@ class SAC_MB(Algo):
         feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                      value_dict=batch)
         sess.run(self.training_ops, feed_dict)
-        # for _ in range(self.actor_H):
-        #     sess.run(self.actor_ops, feed_dict)
 
         if log:
             diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
