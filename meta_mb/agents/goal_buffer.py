@@ -11,7 +11,7 @@ class GoalBuffer(object):
             policy,
             q_ensemble,
             max_buffer_size,
-            eps,
+            alpha,
             sample_rule,
     ):
         self.env = env
@@ -19,17 +19,16 @@ class GoalBuffer(object):
         self.policy = policy
         self.q_ensemble = q_ensemble
         self.max_buffer_size = max_buffer_size
-        self.eps = eps
+        self.alpha = alpha
 
         self.obs_dim = env.obs_dim
         self.act_dim = env.act_dim
         self.goal_dim = env.goal_dim
 
-        # self.target_goal_ph_no = tf.placeholder(dtype=tf.float32, shape=(num_target_goals, self.obs_dim), name='target_goal')
         self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goal')
         self.min_q_var = self._build()
 
-        self.buffer = env.sample_train_goals(max_buffer_size)
+        self.buffer = env.sample_goals(mode=None, num_samples=max_buffer_size)
         self.eval_buffer = env.eval_goals
 
         self.sample_rule = sample_rule
@@ -50,22 +49,44 @@ class GoalBuffer(object):
         min_q, = sess.run([self.min_q_var], feed_dict=feed_dict)
         return min_q
 
-    def refresh(self, target_goals, agent_q, max_q, q_list, log=True):
+    def refresh(self, sample_goals, max_q, q_list, log=True):
         """
-        g ~ (1 - eps) * P + eps * U
-        :param target_goals:
+        g ~ (1 - alpha) * P + alpha * U
+        U = X_E, where E is the target region in the maze, X is the indicator function
+        if alpha = 1, g ~ U, target_goals should all lie in E
+        otherwise target_goals lie in anywhere of the maze
+        :param sample_goals:
         :param agent_q:
         :param max_q:
         :param q_list:
         :param log:
         :return:
         """
-        u = np.ones(len(target_goals)) / len(target_goals)
+        assert sample_goals.ndim == 2 and sample_goals.shape[1] == self.goal_dim
+        assert sample_goals.shape[0] == q_list.shape[1]
+
+        if self.alpha == 1:
+            # uniform sampling, all sample_goals come from env.target_goals
+            self.buffer = sample_goals[np.random.choice(len(sample_goals), size=self.max_buffer_size, replace=True)]
+            return
+
+        """--------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
+        _target_goals_ind_list = self.env._target_goals_ind.tolist()
+        mask = np.array(list(map(lambda ind: ind.tolist() in _target_goals_ind_list, self.env._get_index(sample_goals))), dtype=np.int)
+        assert np.sum(mask) > 0
+        if np.sum(mask) > 0:
+            u = mask / np.sum(mask)
+        else:
+            u = np.zeros_like(mask)
+
+        agent_q = q_list[self.agent_index, :]
 
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
         samples = []
-        samples.extend(target_goals[np.where(agent_q == max_q)])
+        # samples.extend(sample_goals[np.where(agent_q == max_q)])
+        samples.extend(sample_goals[agent_q == max_q])
+
         if log:
             logger.logkv('q_leading-pct', len(samples) / len(agent_q))
 
@@ -83,18 +104,17 @@ class GoalBuffer(object):
 
             p = max_q - agent_q
             if np.sum(p) == 0:
-                p = u
+                p = np.ones_like(p) / len(p)
             else:
-                logger.log('max p', max(p), 'min p', min(p), 'max, agent q', max_q, agent_q)
                 p = p / np.sum(p)
 
         else:
             raise ValueError
 
-        goal_dist = (1 - self.eps) * p + self.eps * u
-        goal_dist /= np.sum(goal_dist)  # to avoid small numeric error
-        indices = np.random.choice(len(target_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
-        samples.extend(target_goals[indices])
+        goal_dist = (1 - self.alpha) * p + self.alpha * u
+        goal_dist /= np.sum(goal_dist)
+        indices = np.random.choice(len(sample_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
+        samples.extend(sample_goals[indices])
 
         self.buffer = samples
 

@@ -100,7 +100,7 @@ class ParticleMazeEnv(object):
     def _reset_grid(self):
         # transform grid to string with no line break
         _grid_flatten = self.grid.replace('\n', '')
-        _grid_flatten = np.asarray(list(_grid_flatten))
+        _grid_flatten = np.asarray(list(_grid_flatten))  # string of ' ', 'S', 'E', 'G', '+', '|', '-'
 
         self.grid_size = grid_size = int(np.sqrt(len(_grid_flatten)))
         _grid = np.reshape(_grid_flatten, (grid_size, grid_size))
@@ -109,33 +109,52 @@ class ParticleMazeEnv(object):
         assert len(start_ind) == 1
         self._start_state = self._get_coords(start_ind[0])
 
-        eval_goals_ind = np.argwhere(_grid == 'E')
-        self._eval_goals = np.asarray(list(map(self._get_coords, eval_goals_ind)))
+        # grid goals, for performance logging during training
+        grid_goals_ind = np.argwhere(_grid == 'E')
+        self._grid_goals = np.asarray(list(map(self._get_coords, grid_goals_ind)))
+        # clean 'E'
+        _grid_flatten[_grid_flatten == 'E'] = ' '
 
-        self._train_goals_ind = np.argwhere(_grid == 'G')
-        assert len(self._train_goals_ind) > 1
+        # target goals spreads across E, uniform distribution for the goal is defined to be normalize(X_E) the indicator function
+        self._target_goals_ind = np.argwhere(_grid == 'G')
+        self._non_target_goals_ind = np.argwhere(_grid == ' ')
+        # clean 'G'
+        _grid_flatten[_grid_flatten == 'G'] = ' '
 
-        _grid_flatten = np.where(_grid_flatten == 'S', ' ', _grid_flatten)
-        _grid_flatten = np.where(_grid_flatten == 'E', ' ', _grid_flatten)
-        _grid_flatten = np.where(_grid_flatten == 'G', ' ', _grid_flatten)
-        _grid = np.reshape(_grid_flatten, (grid_size, grid_size))
-
-        self.grid = _grid != ' '
+        # clean 'S'
+        _grid_flatten[_grid_flatten == 'S'] = ' '
+        self.grid = _grid != ' '  # boolean mask, True for blocks ('+', '|', '-')
+        self._free_ind = np.argwhere(_grid == ' ')  # np.array of indices with no blocks
 
         self.reset()
         assert not self._is_wall(self._get_obs())
+
+    @property
+    def target_percentage(self):
+        return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
 
     def set_goal(self, goal):
         assert not self._is_wall(goal)
         self.goal = goal
 
-    def sample_train_goals(self, num_samples):
-        sample_ind = np.random.choice(len(self._train_goals_ind), num_samples, replace=True)  # replace = False
-        return np.asarray(list(map(self._get_coords_uniform_noise, self._train_goals_ind[sample_ind])))
+    def sample_goals(self, mode, num_samples):
+        if mode is None:
+            num_target_goals = max(int(num_samples * self.target_percentage), 1)
+            _sample_ind = np.random.choice(len(self._target_goals_ind), num_target_goals, replace=True)
+            samples = list(map(self._get_coords_uniform_noise, self._target_goals_ind[_sample_ind]))
+            _sample_ind = np.random.choice(len(self._non_target_goals_ind), num_samples - num_target_goals, replace=True)
+            samples.extend(list(map(self._get_coords_uniform_noise, self._non_target_goals_ind[_sample_ind])))
 
-    def sample_eval_goals(self, num_samples):
-        sample_ind = np.random.choice(len(self._eval_goals), num_samples, replace=False)
-        return self._eval_goals[sample_ind]
+        elif mode == 'target':
+            _sample_ind = np.random.choice(len(self._target_goals_ind), num_samples, replace=True)
+            samples = list(map(self._get_coords_uniform_noise, self._target_goals_ind[_sample_ind]))
+        elif mode == 'non_target':
+            _sample_ind = np.random.choice(len(self._non_target_goals_ind), num_samples, replace=True)
+            samples = list(map(self._get_coords_uniform_noise, self._non_target_goals_ind[_sample_ind]))
+        else:
+            raise RuntimeError
+
+        return np.asarray(samples)
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)
@@ -204,7 +223,7 @@ class ParticleMazeEnv(object):
 
     @property
     def eval_goals(self):
-        return self._eval_goals
+        return self._grid_goals
 
 
 class IterativeEnvExecutor(object):

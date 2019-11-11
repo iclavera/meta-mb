@@ -34,7 +34,7 @@ def run_experiment(**kwargs):
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = "%s" % timestamp
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_eps']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -48,7 +48,8 @@ def run_experiment(**kwargs):
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
-        num_target_goals=kwargs['num_target_goals'],
+        num_sample_goals=kwargs['num_sample_goals'],
+        alpha=kwargs['goal_buffer_alpha'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
@@ -76,15 +77,15 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
-        'max_goal_buffer_size': [10],
-        'goal_buffer_eps': [0, 0.5, 1],
+        'max_goal_buffer_size': [30],
+        'num_sample_goals': [20],
+        'goal_buffer_alpha': [0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
         'eval_interval': [20],
         'sample_rule': ['norm_diff'], #'softmax'],
 
         # Problem Conf
         'num_agents': [3],
-        'num_target_goals': [5],
         'n_itr': [10001],
         'max_path_length': [50], #100],
         'discount': [0.95], #0.99],

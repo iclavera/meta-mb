@@ -29,7 +29,8 @@ class Trainer(object):
             instance_kwargs,
             gpu_frac,
             env,
-            num_target_goals,
+            num_sample_goals,
+            alpha,
             n_itr,
             exp_dir,
             goal_update_interval,
@@ -39,7 +40,8 @@ class Trainer(object):
         ):
 
         self.env = env
-        self.num_target_goals = num_target_goals
+        self.num_sample_goals = num_sample_goals
+        self.alpha = alpha
         self.goal_update_interval = goal_update_interval
         self.eval_interval = eval_interval
         self.n_itr = n_itr
@@ -63,11 +65,17 @@ class Trainer(object):
             t = time.time()
 
             if itr % self.goal_update_interval == 0:
-                target_goals = self.env.sample_train_goals(self.num_target_goals)
-                futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
-                q_list = ray.get(futures)
-                max_q = np.max(q_list, axis=0)
-                futures = [agent.update_goal_buffer.remote(target_goals, agent_q, max_q, q_list) for agent_q, agent in zip(q_list, agents)]
+                if self.alpha == 1:
+                    sample_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
+                    q_list, max_q = None, None
+                else:
+                    sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
+                    _t = time.time()
+                    _futures = [agent.compute_q_values.remote(sample_goals) for agent in agents]
+                    q_list = np.asarray(ray.get(_futures))
+                    logger.logkv('TimeCompQ', time.time() - _t)
+                    max_q = np.max(q_list, axis=0)
+                futures = [agent.update_goal_buffer.remote(sample_goals, max_q, q_list) for agent in agents]
             else:
                 futures = []
 

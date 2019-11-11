@@ -85,7 +85,7 @@ class Agent(object):
                 policy=policy,
                 q_ensemble=Q_targets,
                 max_buffer_size=instance_kwargs['max_goal_buffer_size'],
-                eps=instance_kwargs['goal_buffer_eps'],
+                alpha=instance_kwargs['goal_buffer_alpha'],
                 sample_rule=instance_kwargs['sample_rule'],
             )
 
@@ -135,15 +135,15 @@ class Agent(object):
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
-    def compute_q_values(self, target_goals):
+    def compute_q_values(self, sample_goals):
         with self.sess.as_default():
-            min_q = self.goal_buffer.compute_min_q(target_goals)
+            min_q = self.goal_buffer.compute_min_q(sample_goals)
 
         return min_q
 
-    def update_goal_buffer(self, target_goals, agent_q, max_q, q_list):
+    def update_goal_buffer(self, sample_goals, max_q, q_list):
         t = time.time()
-        self.goal_buffer.refresh(target_goals, agent_q, max_q, q_list)
+        self.goal_buffer.refresh(sample_goals, max_q, q_list)
         logger.logkv('TimeGoalSampling', time.time() - t)
 
     def update_replay_buffer(self):
