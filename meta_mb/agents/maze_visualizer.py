@@ -1,17 +1,17 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import os
-import moviepy.editor as mpy
 import numpy as np
 import tensorflow as tf
 
 
 POINTS_PER_DIM = 100
+FIGSIZE = (7, 7)
 
 
 class MazeVisualizer(object):
     def __init__(self, env, eval_goals, max_path_length, discount,
-                 ignore_done, stochastic):
+                 ignore_done, stochastic, parent_path):
         """
 
         :param env: meta_mb.envs.mb_envs.maze
@@ -26,22 +26,107 @@ class MazeVisualizer(object):
         self.discount = discount
         self.ignore_done = ignore_done
         self.stochastic = stochastic
+        self.parent_path = parent_path
 
         self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.env.goal_dim), name='goal')
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(self.env.obs_dim,), name='obs')
 
-    def do_plots(self, policy, q_ensemble, save_image=True, pkl_path=None):
-        q_values = self._compute_q_values(policy, q_ensemble)  # shape=(POINTS_PER_DIM*POINTS_PER_DIM,)
+        # utils variable for plotting heatmap
+        pos_lim = 1 - 2 / self.env.grid_size
+        x = np.linspace(-pos_lim, pos_lim, num=POINTS_PER_DIM)
+        y = np.linspace(-pos_lim, pos_lim, num=POINTS_PER_DIM)
+        xx, yy = np.meshgrid(x, y)
+        self.xx, self.yy = xx, yy
+        self.mask = list(map(
+            lambda _x, _y: self.env._get_index(_x, _y) in self.env._train_goals_ind,
+            zip(xx.ravel(), yy.ravel())
+        ))
+        # mask = np.reshape(np.asarray(mask), (POINTS_PER_DIM, POINTS_PER_DIM))
+
+    def do_plots(self, policy, q_ensemble, base_title):
+        q_values = self._compute_q_values(policy, q_ensemble)
+        self._do_plot_eval_returns(policy, title=f"{base_title}_eval_returns")
+
         for goal_idx, goal in enumerate(self.eval_goals):
             # fig, ax_arr = plt.subplots(nrows=1, ncols=2, figsize=(24, 12))
             # ax_arr = [None, None]
-            self._do_plot_q_values(goal, goal_idx, policy, q_values, save_image=save_image, pkl_path=pkl_path)
-            self._do_plot_eval_returns(policy, save_image=save_image, pkl_path=pkl_path)
+            self._do_plot_q_values(goal, policy, q_values, title=f"{base_title}_goal_{goal_idx}_q_values")
             # if save_image:
             #     image_path = pkl_path.replace(".pkl", f"_{goal_idx}.png")
             #     plt.savefig(image_path)
 
-        return q_values
+        q_values_train_goals = q_values[self.mask]
+
+        return q_values_train_goals
+
+    def plot_goal_distributions(self, agent_q_dict, sample_rule, eps, itr):
+        u = None
+
+
+        if sample_rule == 'softmax':
+            agent_q_values = list(agent_q_dict.values())
+            for agent_idx in agent_q_dict.keys():
+                log_p = np.max(agent_q_values[:agent_idx] + agent_q_values[agent_idx+1:], axis=0)  # - agent_q
+                p = np.exp(log_p - np.max(log_p))
+                p /= np.sum(p)
+
+                if u is None:
+                    u = np.ones(len(p)) / len(p)
+
+                p = eps * u + (1 - eps) * p
+                self._do_plot_p_dist(p, title=f'itr_{itr}_agent_{agent_idx}_p_dist')
+
+        elif sample_rule == 'norm_diff':
+            max_q = np.max(list(agent_q_dict.values()), axis=0)
+            for agent_idx, agent_q in agent_q_dict.items():
+                p = max_q - agent_q
+                if u is None:
+                    u = np.ones(len(p)) / len(p)
+                if np.sum(p) > 1e-3:
+                    p /= np.sum(p)
+                else:
+                    p = u
+
+                p = eps * u + (1 - eps) * p
+                self._do_plot_p_dist(p, title=f'itr_{itr}_agent_{agent_idx}_p_dist')
+
+        else:
+            raise ValueError
+
+    def _do_plot_p_dist(self, p, title):
+        print(f'plotting {title}')
+
+        grid_size = self.env.grid_size
+        wall_size = 2 / grid_size
+
+        _, ax = plt.subplots(figsize=FIGSIZE)
+
+        """
+        Wall
+        """
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if self.env.grid[i, j]:
+                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
+                                                width=wall_size, height=wall_size, fill=True, color='black'))
+
+        """
+        Value function heatmap
+        """
+        p_base = np.zeros((POINTS_PER_DIM, POINTS_PER_DIM))
+        p_base[np.where(self.mask)] = p
+        cb = plt.scatter(self.xx, self.yy, c=p_base, s=500, marker='s', cmap='winter')
+        plt.colorbar(cb, shrink=0.5)
+
+        plt.title(title)
+        plt.axis('equal')
+
+        plt.xlim(-1, 1)
+        plt.ylim(-1, 1)
+
+        plt.savefig(os.path.join(self.parent_path, f"{title}.png"))
+        plt.clf()
+        plt.close()
 
     def _compute_q_values(self, policy, q_ensemble):
         """
@@ -61,26 +146,25 @@ class MazeVisualizer(object):
         q_var = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in q_ensemble], axis=0)
         q_var = tf.reduce_min(q_var, axis=0)
 
-        """---------create grid goals---------"""
-
-        x = np.linspace(-.8, .8, num=POINTS_PER_DIM)
-        y = np.linspace(-.8, .8, num=POINTS_PER_DIM)
-        xx, yy = np.meshgrid(x, y)
-
         """---------run graph to compute q values------"""
 
-        feed_dict = {self.obs_ph: self.env.start_state, self.goal_ph: list(zip(xx.ravel(), yy.ravel()))}
+        feed_dict = {self.obs_ph: self.env.start_state, self.goal_ph: list(zip(self.xx.ravel(), self.yy.ravel()))}
         sess = tf.get_default_session()
         q_values, = sess.run([q_var,], feed_dict=feed_dict)
 
         return q_values
 
-    def _do_plot_eval_returns(self, policy, save_image=True, pkl_path=None):
+    def _do_plot_eval_returns(self, policy, title):
+        print(f'plotting {title}')
+        image_path = os.path.join(self.parent_path, f"{title}.png")
+        if os.path.exists(image_path):
+            return
+
         grid_size = self.env.grid_size
-        points_per_dim = POINTS_PER_DIM//5
+        points_per_dim = POINTS_PER_DIM//4
         wall_size = 2 / grid_size
 
-        _, ax = plt.subplots(figsize=(7, 4))
+        _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
         Wall
@@ -92,13 +176,10 @@ class MazeVisualizer(object):
                                                 width=wall_size, height=wall_size, fill=True, color='black'))
 
         """
-        Value function heatmap
+        Evaluated discounted returns heatmap
         """
-        x = np.linspace(-.99, .99, num=points_per_dim)
-        y = np.linspace(-.99, .99, num=points_per_dim)
-        xx, yy = np.meshgrid(x, y)
         z = []
-        for _x, _y in zip(xx.ravel(), yy.ravel()):
+        for _x, _y in zip(self.xx.ravel(), self.yy.ravel()):
             goal = np.asarray([_x, _y])
             if self.env._is_wall(goal):
                 z.append(None)
@@ -106,82 +187,35 @@ class MazeVisualizer(object):
                 path = self._rollout(goal=np.asarray([_x, _y]), policy=policy)
                 discounted_return = path["discounted_return"]
                 z.append(discounted_return)
-        z = np.asarray(z).reshape((points_per_dim, points_per_dim))
+        z = np.reshape(np.asarray(z), (points_per_dim, points_per_dim))
 
-        cb = plt.scatter(xx, yy, c=z, s=500, marker='s', cmap='winter')
+        cb = plt.scatter(self.xx, self.yy, c=z, s=500, marker='s', cmap='winter')
         plt.colorbar(cb, shrink=0.5)
 
-        plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+        plt.title(title)
 
         plt.axis('equal')
 
         plt.xlim(-1, 1)
         plt.ylim(-1, 1)
 
-        if save_image:
-            image_path = pkl_path.replace(".pkl", "_eval_returns.png")
-            plt.savefig(image_path)
-            plt.clf()
-            plt.close()
+        plt.savefig(image_path)
+        plt.clf()
+        plt.close()
 
-    def _do_plot_p_dist(self, policy, save_image=True, pkl_path=None):
-        grid_size = self.env.grid_size
-        points_per_dim = POINTS_PER_DIM//5
-        wall_size = 2 / grid_size
-
-        _, ax = plt.subplots(figsize=(7, 4))
-
-        """
-        Wall
-        """
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if self.env.grid[i, j]:
-                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
-                                                width=wall_size, height=wall_size, fill=True, color='black'))
-
-        """
-        Value function heatmap
-        """
-        x = np.linspace(-.99, .99, num=points_per_dim)
-        y = np.linspace(-.99, .99, num=points_per_dim)
-        xx, yy = np.meshgrid(x, y)
-        z = []
-        for _x, _y in zip(xx.ravel(), yy.ravel()):
-            goal = np.asarray([_x, _y])
-            if self.env._is_wall(goal):
-                z.append(None)
-            else:
-                path = self._rollout(goal=np.asarray([_x, _y]), policy=policy)
-                discounted_return = path["discounted_return"]
-                z.append(discounted_return)
-        z = np.asarray(z).reshape((points_per_dim, points_per_dim))
-
-        cb = plt.scatter(xx, yy, c=z, s=500, marker='s', cmap='winter')
-        plt.colorbar(cb, shrink=0.5)
-
-        plt.title(os.path.join(*pkl_path.split('/')[-4:]))
-        plt.axis('equal')
-
-        plt.xlim(-1, 1)
-        plt.ylim(-1, 1)
-
-        if save_image:
-            image_path = pkl_path.replace(".pkl", "_eval_returns.png")
-            plt.savefig(image_path)
-            plt.clf()
-            plt.close()
-
-    def _do_plot_q_values(self, goal, goal_idx, policy, q_values, save_image=True, pkl_path=None):
+    def _do_plot_q_values(self, goal, policy, q_values, title):
+        print(f'plotting {title}')
+        image_path = os.path.join(self.parent_path, f"{title}.png")
+        # if os.path.exists(image_path):
+        #     return
         path = self._rollout(goal, policy)
         observations = path["observations"]
         dones = path["dones"]
 
         grid_size = self.env.grid_size
-        points_per_dim = POINTS_PER_DIM
         wall_size = 2 / grid_size
 
-        _, ax = plt.subplots(figsize=(7, 4))
+        _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
         Wall
@@ -195,11 +229,7 @@ class MazeVisualizer(object):
         """
         Value function heatmap
         """
-        x = np.linspace(-.99, .99, num=points_per_dim)
-        y = np.linspace(-.99, .99, num=points_per_dim)
-        xx, yy = np.meshgrid(x, y)
-
-        cb = plt.scatter(xx, yy, c=q_values.reshape((points_per_dim, points_per_dim)), s=200, marker='s', cmap='winter')
+        cb = plt.scatter(self.xx, self.yy, c=q_values.reshape((POINTS_PER_DIM, POINTS_PER_DIM)), s=200, marker='s', cmap='winter')
         plt.colorbar(cb, shrink=0.5)
 
         """
@@ -216,17 +246,15 @@ class MazeVisualizer(object):
         ax.add_artist(plt.Circle(goal, radius=0.05, lw=2, fill=False, color='darkorange', zorder=1000))
         ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='darkorange', zorder=100000))
 
-        plt.title(os.path.join(*pkl_path.split('/')[-4:]))
+        plt.title(title)
         plt.axis('equal')
 
         plt.xlim(-1, 1)
         plt.ylim(-1, 1)
 
-        if save_image:
-            image_path = pkl_path.replace(".pkl", f"_{goal_idx}.png")
-            plt.savefig(image_path)
-            plt.clf()
-            plt.close()
+        plt.savefig(image_path)
+        plt.clf()
+        plt.close()
 
     def _make_gif(self, goal, observations, dones):
         for t in range(len(observations)):

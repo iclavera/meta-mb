@@ -85,8 +85,6 @@ class ParticleMazeEnv(object):
         self.act_dim = act_dim = 2
         self.goal_dim = 2
 
-        self.dt = 0.1
-
         self.obs_low, self.obs_high = np.ones(obs_dim) * (-1.0), np.ones(obs_dim) * (1.0)
         self.act_low, self.act_high = np.ones(act_dim) * (-1.0), np.ones(act_dim) * (1.0)
         self.observation_space = spaces.Box(low=self.obs_low, high=self.obs_high)
@@ -94,7 +92,7 @@ class ParticleMazeEnv(object):
 
         self.reward_str = reward_str
         self.num_substeps = 10
-        self.ddt = self.dt / self.num_substeps
+        self.ddt = 0.01  # dt = 0.1 = ddt * num_substeps
         self.grid = maze_layouts[grid_name]
 
         self._reset_grid()
@@ -102,32 +100,41 @@ class ParticleMazeEnv(object):
         self.trace = []
 
     def _reset_grid(self):
-        # transform str grid to np array
-        _grid = self.grid.replace('\n', '')
-        self.grid_size = grid_size = int(np.sqrt(len(_grid)))
+        # transform grid to string with no line break
+        _grid_flatten = self.grid.replace('\n', '')
+        _grid_flatten = np.asarray(list(_grid_flatten))
 
-        start_ind = _grid.index('S')
-        _grid = _grid.replace('S', ' ')
-        start_ind = np.array([start_ind // grid_size, start_ind % grid_size])
-        self._start_state = self._get_coords(start_ind)
+        self.grid_size = grid_size = int(np.sqrt(len(_grid_flatten)))
+        _grid = np.reshape(_grid_flatten, (grid_size, grid_size))
 
-        self.grid = np.reshape(np.asarray(list(_grid)) != ' ', (grid_size, grid_size))
-        self.grid_free_coords = np.asarray(list(map(self._get_coords, np.argwhere(np.logical_not(self.grid)))))
+        start_ind = np.argwhere(_grid == 'S')
+        assert len(start_ind) == 1
+        self._start_state = self._get_coords(start_ind[0])
+
+        eval_goals_ind = np.argwhere(_grid == 'E')
+        self._eval_goals = np.asarray(list(map(self._get_coords, eval_goals_ind)))
+
+        self._train_goals_ind = np.argwhere(_grid == 'G')
+        assert len(self._train_goals_ind) > 1
+
+        _grid_flatten = np.where(_grid_flatten == 'S', ' ', _grid_flatten)
+        _grid_flatten = np.where(_grid_flatten == 'E', ' ', _grid_flatten)
+        _grid_flatten = np.where(_grid_flatten == 'G', ' ', _grid_flatten)
+        _grid = np.reshape(_grid_flatten, (grid_size, grid_size))
+
+        self.grid = _grid != ' '
+        # self.grid_free_coords = np.asarray(list(map(self._get_coords, np.argwhere(np.logical_not(self.grid)))))
 
         self.reset()
-
         assert not self._is_wall(self._get_obs())
 
     def set_goal(self, goal):
         assert not self._is_wall(goal)
         self.goal = goal
 
-    def sample_goals(self, num_samples, replace=True):
-        sample_ind = np.random.choice(len(self.grid_free_coords), num_samples, replace=replace)
-        return self.grid_free_coords[sample_ind]
-
-    def sample_grid_goals(self, num_samples):
-        return self.sample_goals(num_samples, replace=False)
+    def sample_goals(self, num_samples):
+        sample_ind = np.random.choice(len(self._train_goals_ind), num_samples, replace=False)
+        return np.asarray(list(map(self._get_coords_uniform_noise, self._train_goals_ind[sample_ind])))
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)
@@ -135,6 +142,9 @@ class ParticleMazeEnv(object):
 
     def _get_coords(self, ind):
         return (((ind + 0.5) / self.grid_size) * 2 - 1).astype(np.float32)
+
+    def _get_coords_uniform_noise(self, ind):
+        return (((ind + np.random.uniform(low=.95, high=.95, size=np.shape(ind))) / self.grid_size) * 2 - 1).astype(np.float32)
 
     def _get_index(self, coords):
         return np.clip((((coords + 1) * 0.5) * (self.grid_size)) + 0, 0, self.grid_size-1).astype(np.int8)
@@ -146,13 +156,15 @@ class ParticleMazeEnv(object):
     def _get_obs(self):
         return self.state
 
-    def reward(self, obs, act, next_obs):
+    def reward(self, obs, act, next_obs, goal=None):
+        if goal is None:
+            goal = self.goal
         if self.reward_str == 'L1':
-            _reward = - np.sum(np.abs(next_obs - self.goal))
+            _reward = - np.sum(np.abs(obs - goal), axis=-1)
         elif self.reward_str == 'L2':
-            _reward = - np.linalg.norm(next_obs - self.goal)
+            _reward = - np.linalg.norm(obs - goal, axis=-1)
         elif self.reward_str == 'sparse':
-            _reward = int(np.sum(np.square(next_obs - self.goal)) < 0.1)
+            _reward = (np.linalg.norm(obs - goal, axis=-1) < 0.1).astype(int)
         else:
             raise ValueError
         return _reward
@@ -169,17 +181,17 @@ class ParticleMazeEnv(object):
 
         # collision detection
         # collision = False
-        for substep in range(self.num_substeps):
+        for _ in range(self.num_substeps):
             next_obs = obs + action * self.ddt
             if self._is_wall(next_obs):
                 # collision = True
                 break
-            else:
-                obs = next_obs
+
+            obs = next_obs
 
         obs = self._set_state(obs)
         assert not self._is_wall(obs)
-        reward = self.reward(init_obs, action, obs) # - 0.1 * int(collision)
+        reward = self.reward(init_obs, action, obs) # - 0.1 * int(collision)  # penalty for collision
         done = False
         info = {}
 
@@ -188,6 +200,10 @@ class ParticleMazeEnv(object):
     @property
     def start_state(self):
         return self._start_state
+
+    @property
+    def eval_goals(self):
+        return self._eval_goals
 
 
 class IterativeEnvExecutor(object):

@@ -32,7 +32,6 @@ class Agent(object):
             env_pickled,
             n_initial_exploration_steps,
             instance_kwargs,
-            eval_goals,
             eval_interval,
             num_grad_step=None,
     ):
@@ -85,7 +84,6 @@ class Agent(object):
                 agent_index=self.agent_index,
                 policy=policy,
                 q_ensemble=Q_targets,
-                eval_goals=eval_goals,
                 max_buffer_size=instance_kwargs['max_goal_buffer_size'],
                 eps=instance_kwargs['goal_buffer_eps'],
                 sample_rule=instance_kwargs['sample_rule'],
@@ -101,6 +99,7 @@ class Agent(object):
             )
 
             self.sample_processor = ModelSampleProcessor(
+                reward_fn=env.reward,
                 baseline=baseline,
                 discount=instance_kwargs['discount'],
                 gae_lambda=instance_kwargs['gae_lambda'],
@@ -136,10 +135,6 @@ class Agent(object):
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
-    def print_fields(self):
-        # print(self.__dict__.keys())
-        pass
-
     def compute_q_values(self, target_goals):
         with self.sess.as_default():
             min_q = self.goal_buffer.compute_min_q(target_goals)
@@ -156,7 +151,7 @@ class Agent(object):
 
             t = time.time()
             paths = self.sampler.collect_rollouts(log=True, log_prefix='train-')
-            samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
+            samples_data = self.sample_processor.process_samples(paths, replay_strategy='future', log='all', log_prefix='train-')
             self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                            samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
             t = time.time() - t
@@ -166,7 +161,7 @@ class Agent(object):
 
             if self.itr % self.eval_interval == 0:
                 eval_paths = self.sampler.collect_rollouts(eval=True, log=True, log_prefix='eval-')
-                _ = self.sample_processor.process_samples(eval_paths, log='all', log_prefix='eval-', log_all=False)
+                _ = self.sample_processor.process_samples(eval_paths, replay_strategy=None, log='all', log_prefix='eval-', log_all=False)
 
                 logger.dumpkvs()
 

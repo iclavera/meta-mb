@@ -38,9 +38,6 @@ def run_experiment(**kwargs):
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    # for i in range(kwargs['num_agents']):
-    #     os.makedirs(exp_dir + f'/agent_{i}', exist_ok=True)
-    #     json.dump(kwargs, open(exp_dir + f'/agent_{i}/params.json', 'w+'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
 
@@ -52,7 +49,6 @@ def run_experiment(**kwargs):
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
         num_target_goals=kwargs['num_target_goals'],
-        num_eval_goals=kwargs['num_eval_goals'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
@@ -68,8 +64,8 @@ if __name__ == '__main__':
         'seeds': [(1,2,3,4,5)],
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv],
-        'grid_name': ['medium'],
-        'reward_str': ['sparse', 'L1', 'L2'],
+        'grid_name': ['novel1'],
+        'reward_str': ['sparse'], #'L1', 'L2'],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -83,16 +79,15 @@ if __name__ == '__main__':
         'max_goal_buffer_size': [10],
         'goal_buffer_eps': [0, 0.5, 1],
         'goal_update_interval': [2],
-        'num_eval_goals': [20],
         'eval_interval': [20],
-        'sample_rule': ['norm_diff', 'softmax'],
+        'sample_rule': ['norm_diff'], #'softmax'],
 
         # Problem Conf
         'num_agents': [3],
         'num_target_goals': [5],
-        'n_itr': [1001],
-        'max_path_length': [50],
-        'discount': [0.99, 0.95],
+        'n_itr': [10001],
+        'max_path_length': [50], #100],
+        'discount': [0.95], #0.99],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],

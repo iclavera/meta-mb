@@ -10,7 +10,6 @@ class GoalBuffer(object):
             agent_index,
             policy,
             q_ensemble,
-            eval_goals,
             max_buffer_size,
             eps,
             sample_rule,
@@ -31,7 +30,7 @@ class GoalBuffer(object):
         self.min_q_var = self._build()
 
         self.buffer = env.sample_goals(max_buffer_size)
-        self.eval_buffer = eval_goals
+        self.eval_buffer = env.eval_goals
 
         self.sample_rule = sample_rule
 
@@ -54,14 +53,15 @@ class GoalBuffer(object):
     def refresh(self, target_goals, agent_q, max_q, q_list, log=True):
         """
         g ~ (1 - eps) * P + eps * U
-        :param alpha:
         :param target_goals:
         :param agent_q:
         :param max_q:
         :param q_list:
-        :param num_samples:
+        :param log:
         :return:
         """
+        u = np.ones(len(target_goals)) / len(target_goals)
+
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
         samples = []
@@ -82,17 +82,17 @@ class GoalBuffer(object):
             """------------- sample with normalized difference --------------"""
 
             p = max_q - agent_q
-            if np.sum(p) > 1e-3:
-                p /= np.sum(p)
+            if np.sum(p) == 0:
+                p = u
             else:
-                p = np.ones_like(p)
+                logger.log('max p', max(p), 'min p', min(p), 'max, agent q', max_q, agent_q)
+                p = p / np.sum(p)
 
         else:
             raise ValueError
 
-        u = np.ones(len(target_goals)) / len(target_goals)
-        goal_dist = (1-self.eps) * p + self.eps * u
-        goal_dist /= np.sum(goal_dist)  # fix small numeric error
+        goal_dist = (1 - self.eps) * p + self.eps * u
+        goal_dist /= np.sum(goal_dist)  # to avoid small numeric error
         indices = np.random.choice(len(target_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
         samples.extend(target_goals[indices])
 

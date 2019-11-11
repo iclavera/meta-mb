@@ -30,12 +30,11 @@ class Trainer(object):
             gpu_frac,
             env,
             num_target_goals,
-            num_eval_goals,
             n_itr,
             exp_dir,
             goal_update_interval,
             eval_interval,
-            snapshot_gap=200,
+            snapshot_gap=500,
             n_initial_exploration_steps=1e3,
         ):
 
@@ -46,21 +45,18 @@ class Trainer(object):
         self.n_itr = n_itr
 
         env_pickled = pickle.dumps(env)
-        eval_goals = self.env.sample_grid_goals(num_eval_goals)
 
         self.agents = [None] * num_agents
 
         for i in range(num_agents):
             agent = Agent.remote(
                 i, exp_dir, snapshot_gap, gpu_frac, seeds[i],
-                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_goals, eval_interval,
+                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_interval,
             )
             self.agents[i] = agent
 
     def train(self):
         agents = self.agents
-
-        ray.get([agent.print_fields.remote() for agent in agents])
 
         for itr in range(self.n_itr):
 

@@ -1,13 +1,17 @@
 import matplotlib.pyplot as plt
 import joblib
 import argparse
+import os
+import numpy as np
 import tensorflow as tf
+from collections import defaultdict
+
 from experiment_utils.utils import load_exps_data
 from meta_mb.agents.maze_visualizer import MazeVisualizer
 
 NUM_EVAL_GOALS = 1
 
-def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ignore_done=False, stochastic=False, save_image=True):
+def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ignore_done=False, stochastic=False):
     exps = load_exps_data(dir_path, gap=gap, max=max)
     eval_goals = None
 
@@ -16,17 +20,29 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ign
         vis = None
         tf.reset_default_graph()
         with tf.Session():
+            q_values_train_goals_dict = defaultdict(dict)
+
             for pkl_path in exp['pkl']:
+                parent_path = os.path.dirname(pkl_path)
+                base_name = os.path.splitext(os.path.basename(pkl_path))[0]
+                _, itr, _, agent_idx = base_name.split('_')
+                print(f'processing itr {itr}, agent {agent_idx}')
                 data = joblib.load(pkl_path)
 
                 if eval_goals is None:
+                    # eval_goals = [np.array([-0.85, 0])]# data['env'].sample_goals(num_rollouts)
                     eval_goals = data['env'].sample_goals(num_rollouts)
                 if vis is None:
                     discount = exp['json']['discount']
                     _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
-                    vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount, ignore_done, stochastic)
+                    vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount, ignore_done, stochastic, parent_path)
 
-                q_values = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], save_image=save_image, pkl_path=pkl_path)
+                q_values_train_goals = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}")
+                q_values_train_goals_dict[itr][agent_idx] = q_values_train_goals
+
+            # plot goal distribution, split by itr
+            for itr, agent_q_dict in q_values_train_goals_dict.items():
+                vis.plot_goal_distributions(agent_q_dict=agent_q_dict, sample_rule=exp['json']['sample_rule'], eps=exp['json']['goal_buffer_eps'], itr=itr)
 
     plt.show()
 
@@ -49,6 +65,4 @@ if __name__ == "__main__":
 
     plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
               gap=args.gap_pkl, max=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic)
-
-
 
