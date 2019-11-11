@@ -29,7 +29,7 @@ class GoalBuffer(object):
         self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goal')
         self.min_q_var = self._build()
 
-        self.buffer = env.sample_goals(max_buffer_size)
+        self.buffer = env.sample_train_goals(max_buffer_size)
         self.eval_buffer = env.eval_goals
 
         self.sample_rule = sample_rule

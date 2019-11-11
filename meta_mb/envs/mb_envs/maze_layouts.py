@@ -76,7 +76,7 @@ maze_layouts = {
 |E | E   | E|
 +  + G+GG+GG+
 |    G|GGGGG|
-|E   E|GGGGG|
+|E   G|GGGGG|
 +--+--+--+--+
 """,
 	'novel2': """

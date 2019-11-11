@@ -80,7 +80,7 @@ class ParticleFixedEnv(ParticleEnv):
         pass
 
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name='1', reward_str='L1'):
+    def __init__(self, grid_name, reward_str):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2
@@ -96,8 +96,6 @@ class ParticleMazeEnv(object):
         self.grid = maze_layouts[grid_name]
 
         self._reset_grid()
-
-        self.trace = []
 
     def _reset_grid(self):
         # transform grid to string with no line break
@@ -123,7 +121,6 @@ class ParticleMazeEnv(object):
         _grid = np.reshape(_grid_flatten, (grid_size, grid_size))
 
         self.grid = _grid != ' '
-        # self.grid_free_coords = np.asarray(list(map(self._get_coords, np.argwhere(np.logical_not(self.grid)))))
 
         self.reset()
         assert not self._is_wall(self._get_obs())
@@ -132,22 +129,26 @@ class ParticleMazeEnv(object):
         assert not self._is_wall(goal)
         self.goal = goal
 
-    def sample_goals(self, num_samples):
-        sample_ind = np.random.choice(len(self._train_goals_ind), num_samples, replace=False)
+    def sample_train_goals(self, num_samples):
+        sample_ind = np.random.choice(len(self._train_goals_ind), num_samples, replace=True)  # replace = False
         return np.asarray(list(map(self._get_coords_uniform_noise, self._train_goals_ind[sample_ind])))
+
+    def sample_eval_goals(self, num_samples):
+        sample_ind = np.random.choice(len(self._eval_goals), num_samples, replace=False)
+        return self._eval_goals[sample_ind]
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)
         return self.grid[ind[0], ind[1]]
 
     def _get_coords(self, ind):
-        return (((ind + 0.5) / self.grid_size) * 2 - 1).astype(np.float32)
+        return ((np.asarray(ind) + 0.5) / self.grid_size * 2 - 1).astype(np.float32)
 
     def _get_coords_uniform_noise(self, ind):
-        return (((ind + np.random.uniform(low=.95, high=.95, size=np.shape(ind))) / self.grid_size) * 2 - 1).astype(np.float32)
+        return (((np.asarray(ind) + np.random.uniform(low=.05, high=.95, size=np.shape(ind))) / self.grid_size) * 2 - 1).astype(np.float32)
 
     def _get_index(self, coords):
-        return np.clip((((coords + 1) * 0.5) * (self.grid_size)) + 0, 0, self.grid_size-1).astype(np.int8)
+        return np.clip((np.asarray(coords) + 1) * 0.5 * self.grid_size + 0, 0, self.grid_size-1).astype(np.int8)
 
     def _set_state(self, ob):
         self.state = np.clip(ob, self.obs_low, self.obs_high)

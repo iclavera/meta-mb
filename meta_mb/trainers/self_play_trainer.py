@@ -63,7 +63,7 @@ class Trainer(object):
             t = time.time()
 
             if itr % self.goal_update_interval == 0:
-                target_goals = self.env.sample_goals(self.num_target_goals)
+                target_goals = self.env.sample_train_goals(self.num_target_goals)
                 futures = [agent.compute_q_values.remote(target_goals) for agent in agents]
                 q_list = ray.get(futures)
                 max_q = np.max(q_list, axis=0)

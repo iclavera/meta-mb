@@ -11,8 +11,8 @@ from meta_mb.agents.maze_visualizer import MazeVisualizer
 
 NUM_EVAL_GOALS = 1
 
-def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ignore_done=False, stochastic=False):
-    exps = load_exps_data(dir_path, gap=gap, max=max)
+def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ignore_done=False, stochastic=False, plot_eval_returns=False):
+    exps = load_exps_data(dir_path, gap=1, max=max)
     eval_goals = None
 
     for exp in exps:
@@ -26,18 +26,19 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, max=None, ign
                 parent_path = os.path.dirname(pkl_path)
                 base_name = os.path.splitext(os.path.basename(pkl_path))[0]
                 _, itr, _, agent_idx = base_name.split('_')
+                if int(itr) % gap != 0:
+                    continue
                 print(f'processing itr {itr}, agent {agent_idx}')
                 data = joblib.load(pkl_path)
 
                 if eval_goals is None:
-                    # eval_goals = [np.array([-0.85, 0])]# data['env'].sample_goals(num_rollouts)
-                    eval_goals = data['env'].sample_goals(num_rollouts)
+                    eval_goals = data['env'].sample_train_goals(num_rollouts)
                 if vis is None:
                     discount = exp['json']['discount']
                     _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
                     vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount, ignore_done, stochastic, parent_path)
 
-                q_values_train_goals = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}")
+                q_values_train_goals = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}", plot_eval_returns=plot_eval_returns)
                 q_values_train_goals_dict[itr][agent_idx] = q_values_train_goals
 
             # plot goal distribution, split by itr
@@ -61,8 +62,10 @@ if __name__ == "__main__":
                         help='Whether stop animation when environment done or continue anyway')
     parser.add_argument('--stochastic', action='store_true',
                         help='Apply stochastic action instead of deterministic')
+    parser.add_argument('--plot_eval_returns', action='store_true',
+                        help='Plot evaluated returns by collecting on-policy rollouts')
     args = parser.parse_args()
 
     plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
-              gap=args.gap_pkl, max=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic)
+              gap=args.gap_pkl, max=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic, plot_eval_returns=args.plot_eval_returns)
 

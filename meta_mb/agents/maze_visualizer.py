@@ -19,7 +19,10 @@ class MazeVisualizer(object):
         :param q_ensemble: list
         :param eval_goals:
         """
-        self.env = env
+        # self.env = env
+        # FIXME: hacky fix for wrong .pkl
+        from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
+        self.env = ParticleMazeEnv(grid_name='novel1', reward_str='sparse')
         self.size = self.env.grid_size
         self.eval_goals = eval_goals
         self.max_path_length = max_path_length
@@ -37,15 +40,18 @@ class MazeVisualizer(object):
         y = np.linspace(-pos_lim, pos_lim, num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
         self.xx, self.yy = xx, yy
-        self.mask = list(map(
-            lambda _x, _y: self.env._get_index(_x, _y) in self.env._train_goals_ind,
-            zip(xx.ravel(), yy.ravel())
-        ))
-        # mask = np.reshape(np.asarray(mask), (POINTS_PER_DIM, POINTS_PER_DIM))
+        sweeping_indices = self.env._get_index(list(zip(xx.ravel(), yy.ravel())))
+        assert len(sweeping_indices) == POINTS_PER_DIM * POINTS_PER_DIM
+        _train_goals_ind_list = self.env._train_goals_ind.tolist()
+        self.mask = np.reshape(list(map(
+            lambda ind: ind.tolist() in _train_goals_ind_list,
+            sweeping_indices,
+        )), (POINTS_PER_DIM, POINTS_PER_DIM))
 
-    def do_plots(self, policy, q_ensemble, base_title):
+    def do_plots(self, policy, q_ensemble, base_title, plot_eval_returns):
         q_values = self._compute_q_values(policy, q_ensemble)
-        self._do_plot_eval_returns(policy, title=f"{base_title}_eval_returns")
+        if plot_eval_returns:
+            self._do_plot_eval_returns(policy, title=f"{base_title}_eval_returns")
 
         for goal_idx, goal in enumerate(self.eval_goals):
             # fig, ax_arr = plt.subplots(nrows=1, ncols=2, figsize=(24, 12))
@@ -55,13 +61,12 @@ class MazeVisualizer(object):
             #     image_path = pkl_path.replace(".pkl", f"_{goal_idx}.png")
             #     plt.savefig(image_path)
 
-        q_values_train_goals = q_values[self.mask]
+        q_values_train_goals = q_values[self.mask.ravel()]
 
         return q_values_train_goals
 
     def plot_goal_distributions(self, agent_q_dict, sample_rule, eps, itr):
         u = None
-
 
         if sample_rule == 'softmax':
             agent_q_values = list(agent_q_dict.values())
@@ -94,37 +99,31 @@ class MazeVisualizer(object):
             raise ValueError
 
     def _do_plot_p_dist(self, p, title):
-        print(f'plotting {title}')
+        image_path = os.path.join(self.parent_path, f"{title}.png")
+        # if os.path.exists(image_path):
+        #     return
 
-        grid_size = self.env.grid_size
-        wall_size = 2 / grid_size
+        print(f'plotting {title}')
 
         _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
-        Wall
-        """
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if self.env.grid[i, j]:
-                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
-                                                width=wall_size, height=wall_size, fill=True, color='black'))
-
-        """
         Value function heatmap
         """
-        p_base = np.zeros((POINTS_PER_DIM, POINTS_PER_DIM))
-        p_base[np.where(self.mask)] = p
-        cb = plt.scatter(self.xx, self.yy, c=p_base, s=500, marker='s', cmap='winter')
+        # p_base = np.ones((POINTS_PER_DIM, POINTS_PER_DIM)) * (-0.2)
+        p_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
+        p_base[self.mask] = p
+        cb = plt.scatter(self.xx, self.yy, c=p_base, s=8, marker='s', vmin=np.min(p), vmax=np.max(p))
         plt.colorbar(cb, shrink=0.5)
 
+        ax.set_facecolor('black')
         plt.title(title)
         plt.axis('equal')
 
         plt.xlim(-1, 1)
         plt.ylim(-1, 1)
 
-        plt.savefig(os.path.join(self.parent_path, f"{title}.png"))
+        plt.savefig(image_path)
         plt.clf()
         plt.close()
 
@@ -167,37 +166,34 @@ class MazeVisualizer(object):
         _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
-        Wall
-        """
-        for i in range(grid_size):
-            for j in range(grid_size):
-                if self.env.grid[i, j]:
-                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
-                                                width=wall_size, height=wall_size, fill=True, color='black'))
-
-        """
         Evaluated discounted returns heatmap
         """
+        pos_lim = 1 - wall_size
+        _train_goals_ind_list = self.env._train_goals_ind.tolist()
+
+        x = np.linspace(-pos_lim, pos_lim, num=points_per_dim)
+        y = np.linspace(-pos_lim, pos_lim, num=points_per_dim)
+        xx, yy = np.meshgrid(x, y)
         z = []
-        for _x, _y in zip(self.xx.ravel(), self.yy.ravel()):
+
+        for _x, _y in zip(xx.ravel(), yy.ravel()):
+            discounted_return = None
             goal = np.asarray([_x, _y])
-            if self.env._is_wall(goal):
-                z.append(None)
-            else:
-                path = self._rollout(goal=np.asarray([_x, _y]), policy=policy)
+            if self.env._get_index(goal).tolist() in _train_goals_ind_list:
+                path = self._rollout(goal=goal, policy=policy)
                 discounted_return = path["discounted_return"]
-                z.append(discounted_return)
+            z.append(discounted_return)
         z = np.reshape(np.asarray(z), (points_per_dim, points_per_dim))
 
-        cb = plt.scatter(self.xx, self.yy, c=z, s=500, marker='s', cmap='winter')
+        cb = plt.scatter(xx, yy, c=z, s=200, marker='s')
         plt.colorbar(cb, shrink=0.5)
 
+        ax.set_facecolor('black')
         plt.title(title)
-
         plt.axis('equal')
 
-        plt.xlim(-1, 1)
-        plt.ylim(-1, 1)
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
 
         plt.savefig(image_path)
         plt.clf()
@@ -206,8 +202,8 @@ class MazeVisualizer(object):
     def _do_plot_q_values(self, goal, policy, q_values, title):
         print(f'plotting {title}')
         image_path = os.path.join(self.parent_path, f"{title}.png")
-        # if os.path.exists(image_path):
-        #     return
+        if os.path.exists(image_path):
+            return
         path = self._rollout(goal, policy)
         observations = path["observations"]
         dones = path["dones"]
@@ -256,10 +252,10 @@ class MazeVisualizer(object):
         plt.clf()
         plt.close()
 
-    def _make_gif(self, goal, observations, dones):
-        for t in range(len(observations)):
-            # generate plots
-            self._do_plot(goal, observations[:t+1], dones[:t+1], save_image=True)
+    # def _make_gif(self, goal, observations, dones):
+    #     for t in range(len(observations)):
+    #         # generate plots
+    #         self._do_plot(goal, observations[:t+1], dones[:t+1], save_image=True)
 
         # plt.title('Ensemble stds on grid (time %d)' % t)
         # plt.axis('equal')
