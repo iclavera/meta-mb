@@ -11,42 +11,48 @@ from meta_mb.agents.maze_visualizer import MazeVisualizer
 
 NUM_EVAL_GOALS = 1
 
-def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None, max_pkl=None, ignore_done=False, stochastic=False, plot_eval_returns=False, force_reload=False):
+def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None, max_pkl=None,
+              ignore_done=False, stochastic=False, plot_eval_returns=False, force_reload=False):
     exps = load_exps_data(dir_path, gap=1, max=None)
     eval_goals = None
 
     for exp in exps:
         print('plotting', exp['exp_name'])
+
+        # group exp data by itr and agent index
+        group = defaultdict(dict)
+        for pkl_path in exp['pkl']:
+            base_name = os.path.splitext(os.path.basename(pkl_path))[0]
+            _, itr, _, agent_idx = base_name.split('_')
+            itr, agent_idx = int(itr), int(agent_idx)
+            if itr % gap != 0 or (min_pkl is not None and itr < min_pkl) or (max_pkl is not None and itr > max_pkl):
+                continue
+            group[itr][agent_idx] = pkl_path
+
         vis = None
         tf.reset_default_graph()
         with tf.Session():
-            q_values_train_goals_dict = defaultdict(dict)
+            q_values_dict = defaultdict(dict)
 
-            for pkl_path in exp['pkl']:
-                parent_path = os.path.dirname(pkl_path)
-                base_name = os.path.splitext(os.path.basename(pkl_path))[0]
-                _, itr, _, agent_idx = base_name.split('_')
-                if int(itr) % gap != 0 or (min_pkl is not None and int(itr) < min_pkl) or (max_pkl is not None and int(itr) > max_pkl):
-                    continue
-                print(f'processing itr {itr}, agent {agent_idx}')
-                data = joblib.load(pkl_path)
+            for itr in sorted(group.keys()):
+                for agent_idx in sorted(group[itr].keys()):
+                    pkl_path = group[itr][agent_idx]
+                    data = joblib.load(pkl_path)
 
-                # FIXME: hacky fix for wrong .pkl
-                from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
-                data['env'] = ParticleMazeEnv(grid_name='novel1', reward_str='sparse')
+                    if vis is None:
+                        if eval_goals is None:
+                            eval_goals = data['env'].sample_goals(mode=None, num_samples=num_rollouts)
+                        parent_path = os.path.dirname(pkl_path)
+                        discount = exp['json']['discount']
+                        _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
+                        vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount,
+                                             ignore_done, stochastic, parent_path, force_reload)
 
-                if eval_goals is None:
-                    eval_goals = data['env'].sample_goals(mode=None, num_samples=num_rollouts)
-                if vis is None:
-                    discount = exp['json']['discount']
-                    _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
-                    vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount, ignore_done, stochastic, parent_path, force_reload)
-
-                q_values_train_goals = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}", plot_eval_returns=plot_eval_returns)
-                q_values_train_goals_dict[itr][agent_idx] = q_values_train_goals
+                    q_values = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}", plot_eval_returns=plot_eval_returns)
+                    q_values_dict[itr][agent_idx] = q_values
 
             # plot goal distribution, split by itr
-            for itr, agent_q_dict in q_values_train_goals_dict.items():
+            for itr, agent_q_dict in q_values_dict.items():
                 vis.plot_goal_distributions(agent_q_dict=agent_q_dict, sample_rule=exp['json']['sample_rule'], alpha=exp['json']['goal_buffer_alpha'], itr=itr)
 
     plt.show()

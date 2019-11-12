@@ -62,13 +62,13 @@ class GoalBuffer(object):
         :param log:
         :return:
         """
-        assert sample_goals.ndim == 2 and sample_goals.shape[1] == self.goal_dim
-        assert sample_goals.shape[0] == q_list.shape[1]
-
         if self.alpha == 1:
             # uniform sampling, all sample_goals come from env.target_goals
             self.buffer = sample_goals[np.random.choice(len(sample_goals), size=self.max_buffer_size, replace=True)]
             return
+
+        assert sample_goals.ndim == 2 and sample_goals.shape[1] == self.goal_dim
+        assert sample_goals.shape[0] == q_list.shape[1]
 
         """--------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
         _target_goals_ind_list = self.env._target_goals_ind.tolist()

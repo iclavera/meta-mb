@@ -79,14 +79,14 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [30],
         'num_sample_goals': [20],
-        'goal_buffer_alpha': [0, 0.1, 0.5, 0.9, 1],
+        'goal_buffer_alpha': [1], #[0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
         'eval_interval': [20],
         'sample_rule': ['norm_diff'], #'softmax'],
 
         # Problem Conf
         'num_agents': [3],
-        'n_itr': [10001],
+        'n_itr': [3001],
         'max_path_length': [50], #100],
         'discount': [0.95], #0.99],
         'gae_lambda': [1.],
