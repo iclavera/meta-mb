@@ -66,9 +66,9 @@ class Trainer(object):
 
             if itr % self.goal_update_interval == 0:
                 if self.alpha == 1:
-                    # FIXME
-                    # sample_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
-                    sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
+                    sample_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
+                    # baseline: sample goals across all free area
+                    # sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
                     q_list = None
                 else:
                     sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
