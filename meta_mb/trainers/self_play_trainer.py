@@ -67,15 +67,14 @@ class Trainer(object):
             if itr % self.goal_update_interval == 0:
                 if self.alpha == 1:
                     sample_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
-                    q_list, max_q = None, None
+                    q_list = None
                 else:
                     sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
                     _t = time.time()
                     _futures = [agent.compute_q_values.remote(sample_goals) for agent in agents]
                     q_list = np.asarray(ray.get(_futures))
                     logger.logkv('TimeCompQ', time.time() - _t)
-                    max_q = np.max(q_list, axis=0)
-                futures = [agent.update_goal_buffer.remote(sample_goals, max_q, q_list) for agent in agents]
+                futures = [agent.update_goal_buffer.remote(sample_goals, q_list) for agent in agents]
             else:
                 futures = []
 

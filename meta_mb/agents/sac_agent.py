@@ -141,9 +141,9 @@ class Agent(object):
 
         return min_q
 
-    def update_goal_buffer(self, sample_goals, max_q, q_list):
+    def update_goal_buffer(self, sample_goals, q_list):
         t = time.time()
-        self.goal_buffer.refresh(sample_goals, max_q, q_list)
+        self.goal_buffer.refresh(sample_goals, q_list, log=True)
         logger.logkv('TimeGoalSampling', time.time() - t)
 
     def update_replay_buffer(self):

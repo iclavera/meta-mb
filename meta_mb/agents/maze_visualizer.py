@@ -51,15 +51,29 @@ class MazeVisualizer(object):
         )))  # length = number of free sweeping index pairs
         self.u = target_mask.ravel().astype(np.int) / np.sum(target_mask)
 
-    def do_plots(self, policy, q_ensemble, base_title, plot_eval_returns):
-        q_values = self._compute_q_values(policy, q_ensemble)
-        if plot_eval_returns:
-            self._do_plot_eval_returns(policy, title=f"{base_title}_eval_returns")
+    def do_plots(self, policy_arr, q_ensemble_arr, itr):
+        image_path = os.path.join(self.parent_path, f"itr_{itr}.png")
+        if not self.force_reload and os.path.exists(image_path):
+            return None
 
-        self._do_plot_q_values(policy, q_values, title=f"{base_title}_q_values")
-        return q_values[self.mask.ravel()]
+        q_values_arr = []
+        num_agents = len(policy_arr)
+        fig, ax_arr = plt.subplots(nrows=2, ncols=num_agents, figsize=(20, 10))
 
-    def plot_goal_distributions(self, agent_q_dict, sample_rule, alpha, itr):
+        for agent_idx in range(num_agents):
+            q_values = self._compute_q_values(policy_arr[agent_idx], q_ensemble_arr[agent_idx])
+            q_values_arr.append(q_values[self.mask.ravel()])
+
+            self._do_plot_eval_returns(fig, ax_arr[0, agent_idx], policy_arr[agent_idx])
+            self._do_plot_q_values(fig, ax_arr[1, agent_idx], policy_arr[agent_idx], q_values)
+
+        plt.savefig(image_path)
+        plt.clf()
+        plt.close()
+
+        return q_values_arr
+
+    def plot_goal_distributions(self, q_values_arr, sample_rule, alpha, itr):
         title = f"itr_{itr}_p_dist"
         image_path = os.path.join(self.parent_path, f"{title}.png")
         if not self.force_reload and os.path.exists(image_path):
@@ -67,37 +81,35 @@ class MazeVisualizer(object):
 
         print(f"plotting {title}")
 
+        num_agents = len(q_values_arr)
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
 
-        fig, ax_arr = plt.subplots(nrows=1, ncols=len(agent_q_dict.keys()), figsize=(40, 10))
+        fig, ax_arr = plt.subplots(nrows=1, ncols=num_agents, figsize=(20, 5))
 
         if sample_rule == 'softmax':
-            agent_q_values = list(agent_q_dict.values())
-
-            for agent_idx in agent_q_dict.keys():
+            for agent_idx in range(num_agents):
                 ax = ax_arr[int(agent_idx)]
-                log_p = np.max(agent_q_values[:agent_idx] + agent_q_values[agent_idx+1:], axis=0)  # - agent_q
+                log_p = np.max(q_values_arr[:agent_idx] + q_values_arr[agent_idx+1:], axis=0)  # - agent_q
                 p = np.exp(log_p - np.max(log_p))
                 p /= np.sum(p)
 
                 p = (1 - alpha) * p + alpha * self.u
                 p_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
                 p_base[self.mask] = p
-                cb = ax.scatter(xx, yy, c=p_base, s=10, marker='s', vmin=np.min(p), vmax=np.max(p))
+                cb = ax.scatter(xx, yy, c=p_base, s=3, marker='s', vmin=np.min(p), vmax=np.max(p))
                 fig.colorbar(cb, shrink=0.5, ax=ax)
 
                 ax.set_facecolor('black')
                 ax.axis('equal')
-                ax.set_xlim(-1, 1)
-                ax.set_ylim(-1, 1)
+                ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
         elif sample_rule == 'norm_diff':
-            max_q = np.max(list(agent_q_dict.values()), axis=0)
+            max_q = np.max(q_values_arr, axis=0)
 
-            for agent_idx, agent_q in agent_q_dict.items():
-                ax = ax_arr[int(agent_idx)]
-                p = max_q - agent_q
+            for agent_idx in range(num_agents):
+                ax = ax_arr[agent_idx]
+                p = max_q - q_values_arr[agent_idx]
                 if np.sum(p) == 0:
                     p = np.ones_like(p) / len(p)
                 else:
@@ -106,17 +118,17 @@ class MazeVisualizer(object):
                 p = (1 - alpha) * p + alpha * self.u
                 p_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
                 p_base[self.mask] = p
-                cb = ax.scatter(xx, yy, c=p_base, s=10, marker='s', vmin=np.min(p), vmax=np.max(p))
+                cb = ax.scatter(xx, yy, c=p_base, s=3, marker='s', vmin=np.min(p), vmax=np.max(p))
                 fig.colorbar(cb, shrink=0.5, ax=ax)
 
                 ax.set_facecolor('black')
                 ax.axis('equal')
-                ax.set_xlim(-1, 1)
-                ax.set_ylim(-1, 1)
+                ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
         else:
             raise ValueError
 
+        fig.suptitle(title)
         plt.savefig(image_path)
         plt.clf()
         plt.close()
@@ -149,15 +161,8 @@ class MazeVisualizer(object):
 
         return q_values
 
-    def _do_plot_eval_returns(self, policy, title):
-        print(f'plotting {title}')
-        image_path = os.path.join(self.parent_path, f"{title}.png")
-        if not self.force_reload and os.path.exists(image_path):
-            return
-
+    def _do_plot_eval_returns(self, fig, ax, policy):
         points_per_dim = POINTS_PER_DIM//5
-
-        _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
         Evaluated discounted returns heatmap
@@ -195,30 +200,17 @@ class MazeVisualizer(object):
         target_success_rate = target_success / target_counter
 
         z = np.reshape(z, (points_per_dim, points_per_dim))
-        cb = plt.scatter(xx, yy, c=z, s=200, marker='s')
-        plt.colorbar(cb, shrink=0.5)
+        cb = ax.scatter(xx, yy, c=z, s=200, marker='s')
+        fig.colorbar(cb, shrink=0.5, ax=ax)
 
         ax.set_facecolor('black')
-        plt.title(f"total_hit_{round(total_success_rate, 2)}_target_hit_{round(target_success_rate, 2)}_{title}")
-        plt.axis('equal')
+        ax.set_title(f"total_hit_{round(total_success_rate, 2)}_target_hit_{round(target_success_rate, 2)}")
+        ax.axis('equal')
+        ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(-1, 1)
-
-        plt.savefig(image_path)
-        plt.clf()
-        plt.close()
-
-    def _do_plot_q_values(self, policy, q_values, title):
-        print(f'plotting {title}')
-        image_path = os.path.join(self.parent_path, f"{title}.png")
-        if not self.force_reload and os.path.exists(image_path):
-            return
-
+    def _do_plot_q_values(self, fig, ax, policy, q_values):
         grid_size = self.env.grid_size
         wall_size = 2 / grid_size
-
-        _, ax = plt.subplots(figsize=FIGSIZE)
 
         """
         Wall
@@ -234,8 +226,8 @@ class MazeVisualizer(object):
         """
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
-        cb = plt.scatter(xx, yy, c=q_values.reshape((POINTS_PER_DIM, POINTS_PER_DIM)), s=200, marker='s', cmap='winter')
-        plt.colorbar(cb, shrink=0.5)
+        cb = ax.scatter(xx, yy, c=q_values.reshape((POINTS_PER_DIM, POINTS_PER_DIM)), s=40, marker='s', cmap='winter')
+        fig.colorbar(cb, shrink=0.5, ax=ax)
 
         """
         Trajectory 
@@ -256,15 +248,8 @@ class MazeVisualizer(object):
             ax.add_artist(plt.Circle(goal, radius=0.05, lw=2, fill=False, color='darkorange', zorder=1000))
             ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='darkorange', zorder=100000))
 
-        plt.title(title)
-        plt.axis('equal')
-
-        plt.xlim(-1, 1)
-        plt.ylim(-1, 1)
-
-        plt.savefig(image_path)
-        plt.clf()
-        plt.close()
+        ax.axis('equal')
+        ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
     # def _make_gif(self, goal, observations, dones):
     #     for t in range(len(observations)):

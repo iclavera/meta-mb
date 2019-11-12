@@ -49,7 +49,7 @@ class GoalBuffer(object):
         min_q, = sess.run([self.min_q_var], feed_dict=feed_dict)
         return min_q
 
-    def refresh(self, sample_goals, max_q, q_list, log=True):
+    def refresh(self, sample_goals, q_list, log=True):
         """
         g ~ (1 - alpha) * P + alpha * U
         U = X_E, where E is the target region in the maze, X is the indicator function
@@ -79,13 +79,16 @@ class GoalBuffer(object):
         else:
             u = np.zeros_like(mask)
 
-        agent_q = q_list[self.agent_index, :]
+        samples = []
 
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
-        samples = []
-        # samples.extend(sample_goals[np.where(agent_q == max_q)])
-        samples.extend(sample_goals[agent_q == max_q])
+        agent_q = q_list[self.agent_index, :]
+        max_q, min_q = np.max(q_list, axis=0), np.min(q_list, axis=0)
+        kth = len(agent_q)//2
+        curiosity_mask = np.full_like(agent_q, fill_value=True)
+        curiosity_mask[np.argpartition(max_q - min_q, kth=kth)[:kth]] = False
+        samples.extend(sample_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
 
         if log:
             logger.logkv('q_leading-pct', len(samples) / len(agent_q))

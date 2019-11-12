@@ -12,7 +12,7 @@ from meta_mb.agents.maze_visualizer import MazeVisualizer
 NUM_EVAL_GOALS = 1
 
 def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None, max_pkl=None,
-              ignore_done=False, stochastic=False, plot_eval_returns=False, force_reload=False):
+              ignore_done=False, stochastic=False, force_reload=False):
     exps = load_exps_data(dir_path, gap=1, max=None)
     eval_goals = None
 
@@ -32,9 +32,10 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None,
         vis = None
         tf.reset_default_graph()
         with tf.Session():
-            q_values_dict = defaultdict(dict)
+            q_values_dict = dict()
 
             for itr in sorted(group.keys()):
+                policy_arr, q_ensemble_arr = [], []
                 for agent_idx in sorted(group[itr].keys()):
                     pkl_path = group[itr][agent_idx]
                     data = joblib.load(pkl_path)
@@ -48,12 +49,16 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None,
                         vis = MazeVisualizer(data['env'], eval_goals, _max_path_length, discount,
                                              ignore_done, stochastic, parent_path, force_reload)
 
-                    q_values = vis.do_plots(policy=data['policy'], q_ensemble=data['Q_targets'], base_title=f"itr_{itr}_agent_{agent_idx}", plot_eval_returns=plot_eval_returns)
-                    q_values_dict[itr][agent_idx] = q_values
+                    policy_arr.append(data['policy'])
+                    q_ensemble_arr.append(data['Q_targets'])
+
+                q_values_arr = vis.do_plots(policy_arr=policy_arr, q_ensemble_arr=q_ensemble_arr, itr=itr)
+                if q_values_arr is not None:
+                    q_values_dict[itr] = q_values_arr
 
             # plot goal distribution, split by itr
-            for itr, agent_q_dict in q_values_dict.items():
-                vis.plot_goal_distributions(agent_q_dict=agent_q_dict, sample_rule=exp['json']['sample_rule'], alpha=exp['json']['goal_buffer_alpha'], itr=itr)
+            for itr, q_values_arr in q_values_dict.items():
+                vis.plot_goal_distributions(q_values_arr=q_values_arr, sample_rule=exp['json']['sample_rule'], alpha=exp['json']['goal_buffer_alpha'], itr=itr)
 
     plt.show()
 
@@ -74,13 +79,11 @@ if __name__ == "__main__":
                         help='Whether stop animation when environment done or continue anyway')
     parser.add_argument('--stochastic', action='store_true',
                         help='Apply stochastic action instead of deterministic')
-    parser.add_argument('--plot_eval_returns', action='store_true',
-                        help='Plot evaluated returns by collecting on-policy rollouts')
     parser.add_argument('--force_reload', action='store_true',
                         help='Force reloading images')
     args = parser.parse_args()
 
     plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
               gap=args.gap_pkl, min_pkl=args.min_pkl, max_pkl=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic,
-              plot_eval_returns=args.plot_eval_returns, force_reload=args.force_reload)
+              force_reload=args.force_reload)
 
