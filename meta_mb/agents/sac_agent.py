@@ -37,7 +37,6 @@ class Agent(object):
     ):
 
         self.agent_index = agent_idx
-        # logger.configure(dir=exp_dir + f'/agent_{agent_idx}', format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap)
         logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
 
         import tensorflow as tf

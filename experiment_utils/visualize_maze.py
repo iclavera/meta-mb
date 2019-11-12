@@ -38,6 +38,7 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None,
                 policy_arr, q_ensemble_arr = [], []
                 for agent_idx in sorted(group[itr].keys()):
                     pkl_path = group[itr][agent_idx]
+                    print(f"loading itr {itr}, agent_idx {agent_idx}...")
                     data = joblib.load(pkl_path)
 
                     if vis is None:

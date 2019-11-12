@@ -56,6 +56,8 @@ class MazeVisualizer(object):
         if not self.force_reload and os.path.exists(image_path):
             return None
 
+        print(f"plotting itr_{itr}")
+
         q_values_arr = []
         num_agents = len(policy_arr)
         fig, ax_arr = plt.subplots(nrows=2, ncols=num_agents, figsize=(20, 10))
@@ -74,41 +76,28 @@ class MazeVisualizer(object):
         return q_values_arr
 
     def plot_goal_distributions(self, q_values_arr, sample_rule, alpha, itr):
-        title = f"itr_{itr}_p_dist"
-        image_path = os.path.join(self.parent_path, f"{title}.png")
+        image_path = os.path.join(self.parent_path, f"itr_{itr}_p_dist.png")
         if not self.force_reload and os.path.exists(image_path):
             return
 
-        print(f"plotting {title}")
+        print(f"plotting itr_{itr}_p_dist")
 
         num_agents = len(q_values_arr)
-        x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
-        xx, yy = np.meshgrid(x, y)
+        max_q, min_q = np.max(q_values_arr, axis=0), np.min(q_values_arr, axis=0)
 
-        fig, ax_arr = plt.subplots(nrows=1, ncols=num_agents, figsize=(20, 5))
+        fig, ax_arr = plt.subplots(nrows=1, ncols=num_agents+1, figsize=(20, 5))
 
         if sample_rule == 'softmax':
             for agent_idx in range(num_agents):
-                ax = ax_arr[int(agent_idx)]
                 log_p = np.max(q_values_arr[:agent_idx] + q_values_arr[agent_idx+1:], axis=0)  # - agent_q
                 p = np.exp(log_p - np.max(log_p))
                 p /= np.sum(p)
 
                 p = (1 - alpha) * p + alpha * self.u
-                p_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
-                p_base[self.mask] = p
-                cb = ax.scatter(xx, yy, c=p_base, s=3, marker='s', vmin=np.min(p), vmax=np.max(p))
-                fig.colorbar(cb, shrink=0.5, ax=ax)
-
-                ax.set_facecolor('black')
-                ax.axis('equal')
-                ax.set(xlim=(-1, 1), ylim=(-1, 1))
+                self._goal_distribution_helper(fig, ax_arr[agent_idx], p)
 
         elif sample_rule == 'norm_diff':
-            max_q = np.max(q_values_arr, axis=0)
-
             for agent_idx in range(num_agents):
-                ax = ax_arr[agent_idx]
                 p = max_q - q_values_arr[agent_idx]
                 if np.sum(p) == 0:
                     p = np.ones_like(p) / len(p)
@@ -116,22 +105,31 @@ class MazeVisualizer(object):
                     p = p / np.sum(p)
 
                 p = (1 - alpha) * p + alpha * self.u
-                p_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
-                p_base[self.mask] = p
-                cb = ax.scatter(xx, yy, c=p_base, s=3, marker='s', vmin=np.min(p), vmax=np.max(p))
-                fig.colorbar(cb, shrink=0.5, ax=ax)
-
-                ax.set_facecolor('black')
-                ax.axis('equal')
-                ax.set(xlim=(-1, 1), ylim=(-1, 1))
+                self._goal_distribution_helper(fig, ax_arr[agent_idx], p)
 
         else:
             raise ValueError
 
-        fig.suptitle(title)
+        # plot curiosity
+        self._goal_distribution_helper(fig, ax_arr[-1], max_q - min_q)
+
+        fig.suptitle(f"itr_{itr}_p_dist")
         plt.savefig(image_path)
         plt.clf()
         plt.close()
+
+    def _goal_distribution_helper(self, fig, ax, value):
+        x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
+        xx, yy = np.meshgrid(x, y)
+
+        value_base = np.full((POINTS_PER_DIM, POINTS_PER_DIM), fill_value=np.nan)
+        value_base[self.mask] = value
+        cb = ax.scatter(xx, yy, c=value_base, s=10, marker='s', vmin=np.min(value), vmax=np.max(value))
+        fig.colorbar(cb, shrink=0.5, ax=ax)
+
+        ax.set_facecolor('black')
+        ax.axis('equal')
+        ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
     def _compute_q_values(self, policy, q_ensemble):
         """
