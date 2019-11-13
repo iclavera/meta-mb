@@ -86,6 +86,7 @@ class Agent(object):
                 max_buffer_size=instance_kwargs['max_goal_buffer_size'],
                 alpha=instance_kwargs['goal_buffer_alpha'],
                 sample_rule=instance_kwargs['sample_rule'],
+                curiosity_percentage=instance_kwargs['curiosity_percentage'],
             )
 
             self.sampler = GCSampler(
@@ -99,6 +100,7 @@ class Agent(object):
 
             self.sample_processor = ModelSampleProcessor(
                 reward_fn=env.reward,
+                achieved_goal_fn=env.get_achieved_goal,
                 baseline=baseline,
                 discount=instance_kwargs['discount'],
                 gae_lambda=instance_kwargs['gae_lambda'],

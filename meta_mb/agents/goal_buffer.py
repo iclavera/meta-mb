@@ -13,6 +13,7 @@ class GoalBuffer(object):
             max_buffer_size,
             alpha,
             sample_rule,
+            curiosity_percentage,
     ):
         self.env = env
         self.agent_index = agent_index
@@ -32,6 +33,7 @@ class GoalBuffer(object):
         self.eval_buffer = env.eval_goals
 
         self.sample_rule = sample_rule
+        self.curiosity_percentage = curiosity_percentage
 
     def _build(self):
         ob_no = tf.tile(self.env.init_obs[None], (tf.shape(self.goal_ph)[0], 1))
@@ -62,6 +64,9 @@ class GoalBuffer(object):
         :param log:
         :return:
         """
+
+        """----------------------- alpha = 1, g ~ U ---------------------------"""
+
         if self.alpha == 1:
             # uniform sampling, all sample_goals come from env.target_goals
             self.buffer = sample_goals[np.random.choice(len(sample_goals), size=self.max_buffer_size, replace=True)]
@@ -87,7 +92,7 @@ class GoalBuffer(object):
         # because it might be an overestimate due to distribution mismatch
         agent_q = q_list[self.agent_index, :]
         max_q, min_q = np.max(q_list, axis=0), np.min(q_list, axis=0)
-        kth = len(agent_q)//2
+        kth = int(len(agent_q) * (1 - self.curiosity_percentage))  # drop k goals with low disagreement
         curiosity_mask = np.full_like(agent_q, fill_value=True)
         curiosity_mask[np.argpartition(max_q - min_q, kth=kth)[:kth]] = False
         samples.extend(sample_goals[np.logical_and(agent_q == max_q, curiosity_mask)])

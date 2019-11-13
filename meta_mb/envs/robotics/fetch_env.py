@@ -66,11 +66,15 @@ class FetchEnv(robot_env.RobotEnv):
     # Env methods
     # ----------------------------
 
-    def reward(self, obs, act, next_obs, goal=None):
+    def get_achieved_goal(self, obs):
         if not self.has_object:
             achieved_goal = obs[..., :self._grip_pos_size]
         else:
-            achieved_goal = obs[..., self._grip_pos_size: self._grip_pos_size + np.sum(self._object_pos_size)].reshape(self._object_pos_size)
+            achieved_goal = obs[..., self._grip_pos_size: self._grip_pos_size + np.sum(self._object_pos_size)].reshape((-1, self._object_pos_size))
+        return achieved_goal
+
+    def reward(self, obs, act, next_obs, goal=None):
+        achieved_goal = self.get_achieved_goal(obs)
         if goal is None:
             goal = self.goal
 

@@ -104,10 +104,6 @@ class RobotEnv(gym.GoalEnv):
     def init_obs(self):
         return self._init_obs
 
-    # @property
-    # def target_percentage(self):
-    #     return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
-
     def sample_goals(self, mode, num_samples):
         """
 
