@@ -153,7 +153,7 @@ class MazeVisualizer(object):
 
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
-        feed_dict = {self.obs_ph: self.env.start_state, self.goal_ph: list(zip(xx.ravel(), yy.ravel()))}
+        feed_dict = {self.obs_ph: self.env.init_obs, self.goal_ph: list(zip(xx.ravel(), yy.ravel()))}
         sess = tf.get_default_session()
         q_values, = sess.run([q_var,], feed_dict=feed_dict)
 

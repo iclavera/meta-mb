@@ -6,6 +6,7 @@ from datetime import datetime
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
 from meta_mb.envs.mb_envs.maze import ParticleEnv, ParticleMazeEnv, ParticleFixedEnv
+from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.trainers.self_play_trainer import Trainer
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -27,6 +28,8 @@ def run_experiment(**kwargs):
         env_name = 'PFixedEnv'
     elif kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv'
+    elif kwargs['env'] is FetchReachEnv:
+        env_name = 'FReachEnv'
     else:
         raise NotImplementedError
 
@@ -34,12 +37,13 @@ def run_experiment(**kwargs):
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = "%s" % timestamp
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-{kwargs['reward_str']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
+    # env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
+    env = normalize(kwargs['env']())
 
     logger.log('ray init...', ray.init())
     trainer = Trainer(
@@ -64,9 +68,9 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv],
-        'grid_name': ['novel1'],
-        'reward_str': ['sparse'], #'L1', 'L2'],
+        'env': [FetchReachEnv], #[ParticleMazeEnv],
+        # 'grid_name': ['novel1'],
+        # 'reward_str': ['sparse'], #'L1', 'L2'],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],

@@ -1,6 +1,7 @@
 from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
-from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
+# from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
+from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 from pyprind import ProgBar

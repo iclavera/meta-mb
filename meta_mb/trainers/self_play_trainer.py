@@ -46,6 +46,7 @@ class Trainer(object):
         self.eval_interval = eval_interval
         self.n_itr = n_itr
 
+        # feed pickled env to all agents to guarantee identical environment (including env seed)
         env_pickled = pickle.dumps(env)
 
         self.agents = [None] * num_agents

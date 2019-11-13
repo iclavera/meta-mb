@@ -34,7 +34,7 @@ class GoalBuffer(object):
         self.sample_rule = sample_rule
 
     def _build(self):
-        ob_no = tf.tile(self.env.start_state[None], (tf.shape(self.goal_ph)[0], 1))
+        ob_no = tf.tile(self.env.init_obs[None], (tf.shape(self.goal_ph)[0], 1))
         dist_info_sym = self.policy.distribution_info_sym(tf.concat([ob_no, self.goal_ph], axis=1))
         act_na, _ = self.policy.distribution.sample_sym(dist_info_sym)
         input_q_fun = tf.concat([ob_no, act_na, self.goal_ph], axis=1)
@@ -71,13 +71,15 @@ class GoalBuffer(object):
         assert sample_goals.shape[0] == q_list.shape[1]
 
         """--------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
-        _target_goals_ind_list = self.env._target_goals_ind.tolist()
-        mask = np.array(list(map(lambda ind: ind.tolist() in _target_goals_ind_list, self.env._get_index(sample_goals))), dtype=np.int)
-        assert np.sum(mask) > 0
-        if np.sum(mask) > 0:
-            u = mask / np.sum(mask)
-        else:
-            u = np.zeros_like(mask)
+
+        # for maze env
+        # _target_goals_ind_list = self.env._target_goals_ind.tolist()
+        # mask = np.array(list(map(lambda ind: ind.tolist() in _target_goals_ind_list, self.env._get_index(sample_goals))), dtype=np.int)
+        # assert np.sum(mask) > 0
+        # if np.sum(mask) > 0:
+        #     u = mask / np.sum(mask)
+        # else:
+        #     u = np.zeros_like(mask)
 
         samples = []
 
@@ -114,8 +116,10 @@ class GoalBuffer(object):
         else:
             raise ValueError
 
+        u = np.ones_like(agent_q)
+        u = u / np.sum(u)
         goal_dist = (1 - self.alpha) * p + self.alpha * u
-        goal_dist /= np.sum(goal_dist)
+        goal_dist = goal_dist / np.sum(goal_dist)
         indices = np.random.choice(len(sample_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
         samples.extend(sample_goals[indices])
 

@@ -11,6 +11,7 @@ try:
 except ImportError as e:
     raise error.DependencyNotInstalled("{}. (HINT: you need to install mujoco_py, and also perform the setup instructions here: https://github.com/openai/mujoco-py/.)".format(e))
 
+NUM_EVAL_GOALS = 5
 
 class RobotEnv(gym.GoalEnv):
     def __init__(self, model_path, initial_qpos, n_actions, n_substeps):
@@ -42,6 +43,15 @@ class RobotEnv(gym.GoalEnv):
             achieved_goal=spaces.Box(-np.inf, np.inf, shape=obs['achieved_goal'].shape, dtype='float32'),
             observation=spaces.Box(-np.inf, np.inf, shape=obs['observation'].shape, dtype='float32'),
         ))
+
+        # dimension info
+        self.obs_dim = int(np.product(obs['observation'].shape))
+        self.act_dim = n_actions
+        self.goal_dim = int(np.product(obs['desired_goal'].shape))
+
+        # initial observation
+        self._init_obs = obs['observation'].astype(np.float32)
+        self._eval_goals = self._sample_goal_vec(NUM_EVAL_GOALS)
 
     @property
     def dt(self):
@@ -77,9 +87,35 @@ class RobotEnv(gym.GoalEnv):
         did_reset_sim = False
         while not did_reset_sim:
             did_reset_sim = self._reset_sim()
-        self.goal = self._sample_goal().copy()
+
+        # WARNING: self.goal is not reset
+        # self.goal = self._sample_goal().copy()
         obs = self._get_obs()
         return obs
+
+    def set_goal(self, goal):
+        self.goal = goal
+
+    @property
+    def eval_goals(self):
+        return self._eval_goals
+
+    @property
+    def init_obs(self):
+        return self._init_obs
+
+    # @property
+    # def target_percentage(self):
+    #     return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
+
+    def sample_goals(self, mode, num_samples):
+        """
+
+        :param mode: this argument is ignored
+        :param num_samples:
+        :return:
+        """
+        return self._sample_goal_vec(num_samples)
 
     def close(self):
         if self.viewer is not None:
@@ -135,6 +171,9 @@ class RobotEnv(gym.GoalEnv):
     def _sample_goal(self):
         """Samples a new goal and returns it.
         """
+        raise NotImplementedError()
+
+    def _sample_goal_vec(self, num_samples):
         raise NotImplementedError()
 
     def _env_setup(self, initial_qpos):

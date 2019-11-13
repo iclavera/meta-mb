@@ -57,22 +57,22 @@ class Agent(object):
             self.env = env = pickle.loads(env_pickled)
 
             Qs = [ValueFunction(name="q_fun_%d" % i,
-                                obs_dim=int(np.prod(env.observation_space.shape)),
-                                action_dim=int(np.prod(env.action_space.shape)),
+                                obs_dim=env.obs_dim,
+                                action_dim=env.act_dim,
                                 goal_dim=env.goal_dim,
                                 ) for i in range(2)]
 
             self.Q_targets = Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                       obs_dim=int(np.prod(env.observation_space.shape)),
-                                       action_dim=int(np.prod(env.action_space.shape)),
+                                       obs_dim=env.obs_dim,
+                                       action_dim=env.act_dim,
                                        goal_dim=env.goal_dim,
                                        ) for i in range(2)]
 
             self.policy = policy = TanhGaussianMLPPolicy(
                 goal_dim=env.goal_dim,
                 name="policy",
-                obs_dim=np.prod(env.observation_space.shape),
-                action_dim=np.prod(env.action_space.shape),
+                obs_dim=env.obs_dim,
+                action_dim=env.act_dim,
                 hidden_sizes=instance_kwargs['policy_hidden_sizes'],
                 learn_std=instance_kwargs['policy_learn_std'],
                 output_nonlinearity=instance_kwargs['policy_output_nonlinearity'],

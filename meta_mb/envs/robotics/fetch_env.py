@@ -1,6 +1,6 @@
 import numpy as np
 
-from gym.envs.robotics import rotations, robot_env, utils
+from meta_mb.envs.robotics import rotations, robot_env, utils
 
 
 def goal_distance(goal_a, goal_b):
@@ -47,6 +47,11 @@ class FetchEnv(robot_env.RobotEnv):
             model_path=model_path, n_substeps=n_substeps, n_actions=4,
             initial_qpos=initial_qpos)
 
+        # recover achieved goal from observation
+        self._grip_pos_size = len(self.sim.data.get_site_xpos('robot0:grip'))
+        if self.has_object:
+            self._object_pos_size = np.shape(np.squeeze(self.sim.data.get_site_xpos('object0')))
+
     # GoalEnv methods
     # ----------------------------
 
@@ -57,6 +62,19 @@ class FetchEnv(robot_env.RobotEnv):
             return -(d > self.distance_threshold).astype(np.float32)
         else:
             return -d
+
+    # Env methods
+    # ----------------------------
+
+    def reward(self, obs, act, next_obs, goal=None):
+        if not self.has_object:
+            achieved_goal = obs[..., :self._grip_pos_size]
+        else:
+            achieved_goal = obs[..., self._grip_pos_size: self._grip_pos_size + np.sum(self._object_pos_size)].reshape(self._object_pos_size)
+        if goal is None:
+            goal = self.goal
+
+        return self.compute_reward(achieved_goal, goal, info=dict())
 
     # RobotEnv methods
     # ----------------------------
@@ -161,6 +179,17 @@ class FetchEnv(robot_env.RobotEnv):
                 goal[2] += self.np_random.uniform(0, 0.45)
         else:
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(-0.15, 0.15, size=3)
+        return goal.copy()
+
+    def _sample_goal_vec(self, num_samples):
+        if self.has_object:
+            goal = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+            goal += self.target_offset
+            goal[:, 2] = self.height_offset
+            if self.target_in_the_air and self.np_random.uniform() < 0.5:
+                goal[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples)
+        else:
+            goal = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
         return goal.copy()
 
     def _is_success(self, achieved_goal, desired_goal):

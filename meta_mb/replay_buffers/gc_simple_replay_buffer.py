@@ -13,8 +13,8 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._env_spec = env_spec
         # self._observation_dim = env_spec.observation_space.flat_dim
         # self._action_dim = env_spec.action_space.flat_dim
-        self._observation_dim = int(np.prod(env_spec.observation_space.shape))
-        self._action_dim = int(np.prod(env_spec.action_space.shape))
+        self._observation_dim = env_spec.obs_dim
+        self._action_dim = env_spec.act_dim
         self._goal_dim = env_spec.goal_dim
         self._max_buffer_size = max_replay_buffer_size
         self._goals = np.zeros((max_replay_buffer_size, self._goal_dim))

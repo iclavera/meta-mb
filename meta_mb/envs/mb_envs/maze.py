@@ -218,7 +218,7 @@ class ParticleMazeEnv(object):
         return obs, reward, done, info
 
     @property
-    def start_state(self):
+    def init_obs(self):
         return self._start_state
 
     @property
