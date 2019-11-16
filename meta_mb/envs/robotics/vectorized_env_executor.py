@@ -34,14 +34,17 @@ class IterativeEnvExecutor(object):
 
         # stack results split to obs, rewards, ...
         obs, rewards, dones, env_infos = list(zip(*all_results))
-        obs = list(map(lambda obs_dict: obs_dict['observation'], obs))
+        if isinstance(obs[0], dict):
+            obs = list(map(lambda obs_dict: obs_dict['observation'], obs))
 
         # reset env when done or max_path_length reached
         self.ts += 1
-        dones = np.logical_or(self.ts >= self.max_path_length, np.asarray(dones))
+        dones = np.logical_or(self.ts >= self.max_path_length, np.asarray(dones)).tolist()
 
         for i in np.argwhere(dones).flatten():
-            obs[i] = self.envs[i].reset()['observation']  # env preserves goal state
+            obs[i] = self.envs[i].reset() # assume that env preserves goal state
+            if isinstance(obs[i], dict):
+                obs[i] = obs[i]['observation']
             self.ts[i] = 0
 
         return obs, rewards, dones, env_infos
@@ -51,18 +54,14 @@ class IterativeEnvExecutor(object):
             env.set_goal(goal)
 
     def reset(self):
-        init_ob_no = [env.reset()['observation'] for env in self.envs]
+        init_ob_no = [env.reset() for env in self.envs]
+        if isinstance(init_ob_no[0], dict):
+            init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
         self.ts[:] = 0
         return init_ob_no
 
     @property
     def num_envs(self):
-        """
-        Number of environments
-
-        Returns:
-            (int): number of environments
-        """
         return self._num_envs
 
 
@@ -83,14 +82,16 @@ class ParallelEnvExecutor(object):
     def __init__(self, env, n_parallel, num_rollouts, max_path_length):
         n_parallel = min(n_parallel, num_rollouts)
         assert num_rollouts % n_parallel == 0
-        self.envs_per_proc = int(num_rollouts/n_parallel)
-        self._num_envs = n_parallel * self.envs_per_proc
+        self._envs_per_proc = num_rollouts // n_parallel
+        self._num_envs = num_rollouts
         self.n_parallel = n_parallel
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
+
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
+
         self.ps = [
-            Process(target=worker, args=(work_remote, remote, pickle.dumps(env), self.envs_per_proc, max_path_length, seed))
+            Process(target=worker, args=(work_remote, remote, pickle.dumps(env), self._envs_per_proc, max_path_length, seed))
             for (work_remote, remote, seed) in zip(self.work_remotes, self.remotes, seeds)]  # Why pass work remotes?
 
         for p in self.ps:
@@ -114,7 +115,7 @@ class ParallelEnvExecutor(object):
 
         # split list of actions in list of list of actions per meta tasks
         # chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
-        actions_per_meta_task = chunks(actions, self.envs_per_proc)
+        actions_per_meta_task = chunks(actions, self._envs_per_proc)
 
         # step remote environments
         for remote, action_list in zip(self.remotes, actions_per_meta_task):
@@ -138,39 +139,6 @@ class ParallelEnvExecutor(object):
         for remote in self.remotes:
             remote.send(('reset', None))
         return sum([remote.recv() for remote in self.remotes], [])
-
-    # def reset_hard(self, init_obs_array=None):
-    #     if init_obs_array is None:
-    #         for remote in self.remotes:
-    #             remote.send(('reset_hard', None))
-    #     else:
-    #         init_obs_per_meta_task = chunks(init_obs_array, self.envs_per_proc)
-    #         for remote, init_obs in zip(self.remotes, init_obs_per_meta_task):
-    #             remote.send(('reset_hard', init_obs))
-    #
-    #     return sum([remote.recv() for remote in self.remotes], [])
-
-    def reset_from_pickles(self, pickled_states):
-        # for remote, envs, ts in zip(self.remotes, chunks(pickled_states['envs'], self.envs_per_proc), chunks(pickled_states['ts'], self.envs_per_proc)):
-        #     remote.send(('reset_from_pickles', dict(envs=envs, ts=ts)))
-        assert isinstance(pickled_states['envs'], list)
-        assert len(pickled_states['envs']) == self.n_parallel
-        for remote, env_state in zip(self.remotes, pickled_states['envs']):
-            remote.send(('reset_from_pickles', dict(envs=env_state)))
-
-        for remote in self.remotes:
-            remote.recv()
-        # return sum([remote.recv() for remote in self.remotes], [])
-
-    def get_pickles(self):
-        for remote in self.remotes:
-            remote.send(('get_pickles', None))
-        # return: [(pickled_envs, pickled_ts) for remote in self.remotes]
-        pickled_states_list = [remote.recv() for remote in self.remotes]
-        env_states = sum([pickled_states['env'] for pickled_states in pickled_states_list], [])
-        # ts = sum([pickled_states['ts'] for pickled_states in pickled_states_list], [])
-        # return dict(envs=envs, ts=ts)
-        return dict(envs=env_states)
 
     def set_tasks(self, tasks=None):
         """

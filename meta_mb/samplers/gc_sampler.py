@@ -1,15 +1,14 @@
-from meta_mb.samplers.base import BaseSampler
 from meta_mb.utils.serializable import Serializable
 # from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
 from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
-from pyprind import ProgBar
+# from pyprind import ProgBar
 import numpy as np
 import time
 
 
-class GCSampler(BaseSampler):
+class GCSampler(Serializable):
     """
     Sampler for Meta-RL
 
@@ -28,15 +27,21 @@ class GCSampler(BaseSampler):
             vae=None,
     ):
         Serializable.quick_init(self, locals())
-        super(GCSampler, self).__init__(env, policy, num_rollouts, max_path_length)  # changed from n_parallel to num_rollouts
 
-        self.n_parallel = n_parallel
+        self.env = env
+        self.policy = policy
         self.goal_buffer = goal_buffer
         self.vae = vae
 
+        self.num_rollouts = num_rollouts
+        self.max_path_length = max_path_length
+
+        self._timesteps_sampled_per_itr = num_rollouts * max_path_length
+        self._total_timesteps_sampled = 0
+
         # setup vectorized environment
 
-        if self.n_parallel > 1:
+        if n_parallel > 1:
             # self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
             raise NotImplementedError
         else:
@@ -44,22 +49,22 @@ class GCSampler(BaseSampler):
 
     def collect_rollouts(self, eval=False, *args, **kwargs):
         paths = []
-        for batch in self.goal_buffer.get_batches(eval=eval, batch_size=self.num_envs):
+        for batch in self.goal_buffer.get_batches(eval=eval, batch_size=self.num_rollouts):
             _paths = self._collect_rollouts(batch, *args, **kwargs)
             paths.extend(_paths)
 
         return paths
 
-    def _collect_rollouts(self, goals, random=False, verbose=False, log=False, log_prefix=''):
-        assert goals.ndim == 2 and goals.shape[0] == self.num_envs, goals.shape
+    def _collect_rollouts(self, goals, random=False, log=False, log_prefix=''):
+        assert goals.ndim == 2 and goals.shape[0] == self.num_rollouts, goals.shape
         policy = self.policy
         paths = []
         n_samples = 0
-        running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_envs)]
-        policy.reset(dones=[True] * self.num_envs)
+        running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_rollouts)]
+        policy.reset(dones=[True] * self.num_rollouts)
         init_obs_no = self.vec_env.reset()
 
-        if verbose: pbar = ProgBar(self.total_samples)
+        # if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
         # sample goals
@@ -67,14 +72,14 @@ class GCSampler(BaseSampler):
         goal_ng = goals
         self.vec_env.set_goal(goal_ng)
 
-        while n_samples < self.total_samples:
+        while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
             t = time.time()
             if self.vae is not None:
                 obs_no = np.array(obs_no)
                 obs_no = self.vae.encode(obs_no)
             if random:
-                act_na = np.stack([self.env.action_space.sample() for _ in range(self.num_envs)], axis=0)
+                act_na = np.stack([self.env.action_space.sample() for _ in range(self.num_rollouts)], axis=0)
                 agent_info_n = []
             else:
                 obs_no = np.array(obs_no)
@@ -89,9 +94,8 @@ class GCSampler(BaseSampler):
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
             agent_info_n, env_info_n = self._handle_info_dicts(agent_info_n, env_info_n)
 
-            new_samples = 0
             for idx, goal, observation, action, reward, env_info, agent_info, done in zip(
-                    np.arange(self.num_envs), goal_ng, obs_no, act_na,
+                    np.arange(self.num_rollouts), goal_ng, obs_no, act_na,
                     reward_n, env_info_n, agent_info_n, done_n,
             ):
                 # append new samples to running paths
@@ -116,19 +120,18 @@ class GCSampler(BaseSampler):
                         env_infos=utils.stack_tensor_dict_list(running_paths[idx]["env_infos"]),
                         agent_infos=utils.stack_tensor_dict_list(running_paths[idx]["agent_infos"]),
                     ))
-                    new_samples += len(running_paths[idx]["rewards"])
+                    n_samples += len(running_paths[idx]["rewards"])
                     running_paths[idx] = _get_empty_running_paths_dict()
 
-            if verbose: pbar.update(self.vec_env.num_envs)
-            n_samples += new_samples
+            # if verbose: pbar.update(self.vec_env.num_envs)
             obs_no = next_obs_no
 
-        if verbose: pbar.stop()
+        # if verbose: pbar.stop()
 
-        self.total_timesteps_sampled += self.total_samples
+        self._total_timesteps_sampled += n_samples
 
         if log:
-            logger.logkv(log_prefix + "TimeStepsCtr", self.total_timesteps_sampled)
+            logger.logkv(log_prefix + "TimeStepsCtr", self._total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
 

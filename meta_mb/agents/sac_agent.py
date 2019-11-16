@@ -11,7 +11,6 @@ from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 
 import ray
 import pickle
-import numpy as np
 import time
 
 
@@ -119,7 +118,7 @@ class Agent(object):
             )
 
             self.eval_interval = eval_interval
-            self.num_grad_steps = self.sampler.total_samples if num_grad_step is None else num_grad_step
+            self.num_grad_steps = self.sampler._timesteps_sampled_per_itr if num_grad_step is None else num_grad_step
             self.replay_buffer = SimpleReplayBuffer(self.env, instance_kwargs['max_replay_buffer_size'])
 
             sess.run(tf.initializers.global_variables())

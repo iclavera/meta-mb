@@ -51,31 +51,29 @@ class GoalBuffer(object):
         min_q, = sess.run([self.min_q_var], feed_dict=feed_dict)
         return min_q
 
-    def refresh(self, sample_goals, q_list, log=True):
+    def refresh(self, mc_goals, proposed_goals, q_list, log=True):
         """
         g ~ (1 - alpha) * P + alpha * U
         U = X_E, where E is the target region in the maze, X is the indicator function
         if alpha = 1, g ~ U, target_goals should all lie in E
         otherwise target_goals lie in anywhere of the maze
-        :param sample_goals:
-        :param agent_q:
-        :param max_q:
+        :param mc_goals:
+        :param reused_goals: goals from previous refresh iteration, to be appended to the goal buffer
         :param q_list:
         :param log:
         :return:
         """
 
-        """----------------------- alpha = 1, g ~ U ---------------------------"""
+        """--------------------- alpha = 1, g ~ U or g ~ X ---------------------"""
 
         if self.alpha == 1:
             # uniform sampling, all sample_goals come from env.target_goals
-            self.buffer = sample_goals[np.random.choice(len(sample_goals), size=self.max_buffer_size, replace=True)]
+            self.buffer = mc_goals[np.random.choice(len(mc_goals), size=self.max_buffer_size, replace=True)]
             return
 
-        assert sample_goals.ndim == 2 and sample_goals.shape[1] == self.goal_dim
-        assert sample_goals.shape[0] == q_list.shape[1]
+        assert mc_goals.shape == (q_list.shape[1], self.goal_dim)
 
-        """--------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
+        """--------------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
 
         # for maze env
         # _target_goals_ind_list = self.env._target_goals_ind.tolist()
@@ -88,17 +86,21 @@ class GoalBuffer(object):
 
         samples = []
 
+        """--------------------- sample with curiosity -------------------"""
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
-        agent_q = q_list[self.agent_index, :]
-        max_q, min_q = np.max(q_list, axis=0), np.min(q_list, axis=0)
-        kth = int(len(agent_q) * (1 - self.curiosity_percentage))  # drop k goals with low disagreement
-        curiosity_mask = np.full_like(agent_q, fill_value=True)
-        curiosity_mask[np.argpartition(max_q - min_q, kth=kth)[:kth]] = False
-        samples.extend(sample_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
+        # agent_q = q_list[self.agent_index, :]
+        # max_q, min_q = np.max(q_list, axis=0), np.min(q_list, axis=0)
+        # kth = int(len(agent_q) * (1 - self.curiosity_percentage))  # drop k goals with low disagreement
+        # curiosity_mask = np.full_like(agent_q, fill_value=True)
+        # curiosity_mask[np.argpartition(max_q - min_q, kth=kth)[:kth]] = False
+        # samples.extend(mc_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
+
+        """------------ sample if the current agent proposed a goal in the previous iteration  -------------"""
+        samples.extend(proposed_goals)
 
         if log:
-            logger.logkv('q_leading-pct', len(samples) / len(agent_q))
+            logger.logkv('q_leading-pct', len(samples) / len(q_list[0]))
 
         if self.sample_rule == 'softmax':
 
@@ -112,6 +114,8 @@ class GoalBuffer(object):
 
             """------------- sample with normalized difference --------------"""
 
+            max_q = np.max(q_list, axis=0)
+            agent_q = q_list[self.agent_index, :]
             p = max_q - agent_q
             if np.sum(p) == 0:
                 p = np.ones_like(p) / len(p)
@@ -121,14 +125,16 @@ class GoalBuffer(object):
         else:
             raise ValueError
 
-        u = np.ones_like(agent_q)
+        u = np.ones_like(q_list[0])
         u = u / np.sum(u)
         goal_dist = (1 - self.alpha) * p + self.alpha * u
         goal_dist = goal_dist / np.sum(goal_dist)
-        indices = np.random.choice(len(sample_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
-        samples.extend(sample_goals[indices])
+        indices = np.random.choice(len(mc_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
+        samples.extend(mc_goals[indices])
 
         self.buffer = samples
+
+        return indices
 
     def get_batches(self, eval, batch_size):
         if eval:

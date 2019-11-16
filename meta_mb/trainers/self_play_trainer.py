@@ -60,6 +60,7 @@ class Trainer(object):
 
     def train(self):
         agents = self.agents
+        proposed_goals_list = [[] for _ in range(len(agents))]  # updated with returned values from update_goal_buffer
 
         for itr in range(self.n_itr):
 
@@ -67,22 +68,23 @@ class Trainer(object):
 
             if itr % self.goal_update_interval == 0:
                 if self.alpha == 1:
-                    sample_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
+                    mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
                     # baseline: sample goals across all free area
                     # sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
                     q_list = None
                 else:
-                    sample_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
+                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
                     _t = time.time()
-                    _futures = [agent.compute_q_values.remote(sample_goals) for agent in agents]
+                    _futures = [agent.compute_q_values.remote(mc_goals) for agent in agents]
                     q_list = np.asarray(ray.get(_futures))
                     logger.logkv('TimeCompQ', time.time() - _t)
-                futures = [agent.update_goal_buffer.remote(sample_goals, q_list) for agent in agents]
-            else:
-                futures = []
+                futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
+                           for agent, proposed_goals in zip(agents, proposed_goals_list)]
+                proposed_goals_indices_list = ray.get(futures)
+                proposed_goals_list = list(map(lambda indices: mc_goals[indices], proposed_goals_indices_list))
 
-            for agent in agents:
-                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()])
+            futures = [(agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()) \
+                       for agent in agents]
             ray.get(futures)
 
             if itr == 0:

@@ -5,82 +5,8 @@ import copy
 from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 
 
-class ParticleEnv(object):
-    def __init__(self):
-        self.obs_dim = obs_dim = 2
-        self.act_dim = act_dim = 2
-        self.goal_dim = 2
-
-        self.dt = 0.1
-
-        self.obs_low, self.obs_high = np.ones(obs_dim) * (-1.0), np.ones(obs_dim) * (1.0)
-        self.act_low, self.act_high = np.ones(act_dim) * (-1.0), np.ones(act_dim) * (1.0)
-        self.observation_space = spaces.Box(low=self.obs_low, high=self.obs_high)
-        self.action_space = spaces.Box(low=self.act_low, high=self.act_high)
-
-        # self.start_state = self.observation_space.sample()
-        self._start_state = np.array([-0.4, -0.3], dtype=np.float32)
-        _ = self.reset()
-
-    def reset(self):
-        self.state = self._start_state
-        self.goal = None
-        return self._get_obs()
-
-    def _get_obs(self):
-        return self.state
-
-    def set_goal(self, goal):
-        self.goal = goal
-
-    def sample_goals(self, num_samples):
-        return np.random.uniform(low=self.obs_low, high=self.obs_high, size=(num_samples, self.obs_dim))
-
-    def sample_grid_goals(self, num_samples_sqrt):
-        x = np.linspace(-.95, .95, num_samples_sqrt, endpoint=True)
-        xx, yy = np.meshgrid(x, x)
-        grid_goals = list(zip(xx.ravel(), yy.ravel()))
-        return grid_goals
-
-    def step(self, action):
-        ob = self._get_obs()
-        act = np.clip(action, self.action_space.low, self.action_space.high)
-        next_ob = ob + act * self.dt
-        next_ob = np.clip(next_ob, self.observation_space.low, self.action_space.high)
-        rew = self.reward(ob, act, next_ob)
-        done = False
-        return next_ob, rew, done, {}
-
-    def reward(self, ob, act, next_ob):
-        rew_run = -np.sum(np.square(next_ob - self.goal))
-        rew_ctrl = -0.1 * np.sum(np.square(act))
-        return rew_run + rew_ctrl
-
-    @property
-    def start_state(self):
-        return self._start_state
-
-    def log_diagnostics(self, *args, **kwargs):
-        pass
-
-
-class ParticleFixedEnv(ParticleEnv):
-    def __init__(self):
-        super().__init__()
-        self.goal = self.observation_space.sample()
-
-    def reset(self):
-        self.state = self.start_state
-        return self._get_obs()
-
-    def sample_goals(self, num_samples):
-        return np.stack([self.goal for _ in range(num_samples)], axis=0)
-
-    def set_goal(self, goal):
-        pass
-
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name, reward_str):
+    def __init__(self, grid_name='novel1', reward_str='sparse'):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2
@@ -107,7 +33,7 @@ class ParticleMazeEnv(object):
 
         start_ind = np.argwhere(_grid == 'S')
         assert len(start_ind) == 1
-        self._start_state = self._get_coords(start_ind[0])
+        self._init_state = self._get_coords(start_ind[0])
 
         # grid goals, for performance logging during training
         grid_goals_ind = np.argwhere(_grid == 'E')
@@ -176,28 +102,31 @@ class ParticleMazeEnv(object):
     def _get_obs(self):
         return self.state
 
+    def get_achieved_goal(self, obs, act, next_obs):
+        return next_obs
+
     def reward(self, obs, act, next_obs, goal=None):
         if goal is None:
             goal = self.goal
         if self.reward_str == 'L1':
-            _reward = - np.sum(np.abs(obs - goal), axis=-1)
+            _reward = - np.sum(np.abs(next_obs - goal), axis=-1)
         elif self.reward_str == 'L2':
-            _reward = - np.linalg.norm(obs - goal, axis=-1)
+            _reward = - np.linalg.norm(next_obs - goal, axis=-1)
         elif self.reward_str == 'sparse':
-            _reward = (np.linalg.norm(obs - goal, axis=-1) < 0.1).astype(int)
+            _reward = (np.linalg.norm(next_obs - goal, axis=-1) < 0.1).astype(int)
         else:
             raise ValueError
         return _reward
 
     def reset(self):
-        self.state = self._start_state
+        self.state = self._init_state
         self.goal = None
         return self._get_obs()
 
     def step(self, action):
         action = np.clip(action, self.act_low, self.act_high)
-        init_obs = obs = self._get_obs()
-        assert not self._is_wall(init_obs)
+        start_obs = obs = self._get_obs()
+        assert not self._is_wall(start_obs)
 
         # collision detection
         # collision = False
@@ -211,7 +140,7 @@ class ParticleMazeEnv(object):
 
         obs = self._set_state(obs)
         assert not self._is_wall(obs)
-        reward = self.reward(init_obs, action, obs) # - 0.1 * int(collision)  # penalty for collision
+        reward = self.reward(start_obs, action, obs) # - 0.1 * int(collision)  # penalty for collision
         done = False
         info = {}
 
@@ -219,7 +148,7 @@ class ParticleMazeEnv(object):
 
     @property
     def init_obs(self):
-        return self._start_state
+        return self._init_state
 
     @property
     def eval_goals(self):
@@ -266,7 +195,7 @@ class IterativeEnvExecutor(object):
 
 
 if __name__ == "__main__":
-    env = ParticleEnv()
+    env = ParticleMazeEnv()
     # env.set_goal(env.observation_space.sample())
     env.sample_grid_goals(2)
     # env.step(env.action_space.sample())

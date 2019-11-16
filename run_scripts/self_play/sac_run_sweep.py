@@ -5,7 +5,7 @@ from datetime import datetime
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
-from meta_mb.envs.mb_envs.maze import ParticleEnv, ParticleMazeEnv, ParticleFixedEnv
+from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
 from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.trainers.self_play_trainer import Trainer
 from meta_mb.logger import logger
@@ -22,11 +22,7 @@ GLOBAL_SEED = 1
 def run_experiment(**kwargs):
     set_seed(GLOBAL_SEED)
 
-    if kwargs['env'] is ParticleEnv:
-        env_name = 'PEnv'
-    elif kwargs['env'] is ParticleFixedEnv:
-        env_name = 'PFixedEnv'
-    elif kwargs['env'] is ParticleMazeEnv:
+    if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv'
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
@@ -42,7 +38,6 @@ def run_experiment(**kwargs):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    # env = normalize(kwargs['env'](grid_name=kwargs['grid_name'], reward_str=kwargs['reward_str']))
     env = normalize(kwargs['env']())
 
     logger.log('ray init...', ray.init())
@@ -69,8 +64,6 @@ if __name__ == '__main__':
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
         'env': [FetchReachEnv], #[ParticleMazeEnv],
-        # 'grid_name': ['novel1'],
-        # 'reward_str': ['sparse'], #'L1', 'L2'],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
