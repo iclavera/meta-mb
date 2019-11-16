@@ -38,7 +38,8 @@ def run_experiment(**kwargs):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = normalize(kwargs['env']())
+    # env = normalize(kwargs['env']())  # FIXME
+    env = kwargs['env']()
 
     logger.log('ray init...', ray.init())
     trainer = Trainer(

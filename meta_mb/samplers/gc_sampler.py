@@ -5,6 +5,7 @@ from meta_mb.utils import utils
 # from pyprind import ProgBar
 import numpy as np
 import time
+import pickle
 
 
 class GCSampler(Serializable):
@@ -17,7 +18,7 @@ class GCSampler(Serializable):
 
     def __init__(
             self,
-            env,
+            env_pickled,
             policy,
             goal_buffer,
             num_rollouts,
@@ -27,7 +28,7 @@ class GCSampler(Serializable):
     ):
         Serializable.quick_init(self, locals())
 
-        self.env = env
+        self.env = pickle.loads(env_pickled)
         self.policy = policy
         self.goal_buffer = goal_buffer
         self.vae = vae
@@ -41,10 +42,10 @@ class GCSampler(Serializable):
         # setup vectorized environment
 
         if n_parallel > 1:
-            # self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            # self.vec_env = ParallelEnvExecutor(env_pickled, n_parallel, num_rollouts, self.max_path_length)
             raise NotImplementedError
         else:
-            self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
+            self.vec_env = IterativeEnvExecutor(env_pickled, num_rollouts, max_path_length)
 
     def collect_rollouts(self, eval=False, *args, **kwargs):
         paths = []
@@ -63,7 +64,7 @@ class GCSampler(Serializable):
         policy.reset(dones=[True] * self.num_rollouts)
 
         # if verbose: pbar = ProgBar(self.total_samples)
-        policy_time, env_time = 0, 0
+        policy_time, env_time, store_time = 0, 0, 0
 
         # sample goals
         goal_ng = goals
@@ -90,6 +91,7 @@ class GCSampler(Serializable):
             env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
+            t = time.time()
             agent_info_n, env_info_n = self._handle_info_dicts(agent_info_n, env_info_n)
 
             for idx, goal, observation, action, reward, env_info, agent_info, done in zip(
@@ -120,6 +122,7 @@ class GCSampler(Serializable):
                     ))
                     n_samples += len(running_paths[idx]["rewards"])
                     running_paths[idx] = _get_empty_running_paths_dict()
+            store_time = time.time() - t
 
             # if verbose: pbar.update(self.vec_env.num_envs)
             obs_no = next_obs_no
@@ -132,6 +135,7 @@ class GCSampler(Serializable):
             logger.logkv(log_prefix + "TimeStepsCtr", self._total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
+            logger.logkv(log_prefix + "StoreTime", store_time)
 
         return paths
 

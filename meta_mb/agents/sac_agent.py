@@ -89,7 +89,7 @@ class Agent(object):
             )
 
             self.sampler = GCSampler(
-                env=env,
+                env_pickled=env_pickled,
                 policy=policy,
                 goal_buffer=self.goal_buffer,
                 num_rollouts=instance_kwargs['num_rollouts'],
@@ -152,11 +152,14 @@ class Agent(object):
 
             t = time.time()
             paths = self.sampler.collect_rollouts(log=True, log_prefix='train-')
+            logger.logkv('TimeSampling', time.time() - t)
+            t = time.time()
             samples_data = self.sample_processor.process_samples(paths, replay_strategy='future', log='all', log_prefix='train-')
+            logger.logkv('TimeProcSamples', time.time() - t)
+            t = time.time()
             self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                            samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
-            t = time.time() - t
-            logger.logkv('TimeSampling', time.time() - t)
+            logger.logkv('TimeAddSamples', time.time() - t)
 
             """-------------------------- Evaluation ------------------"""
 
