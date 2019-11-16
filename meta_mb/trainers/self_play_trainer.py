@@ -90,7 +90,7 @@ class Trainer(object):
 
             """------------------- collect future objects ---------------------"""
 
-            if itr % self.goal_update_interval == 0 and self.alpha > 1:
+            if itr % self.goal_update_interval == 0 and self.alpha < 1:
                 # update proposed_goals_list
                 # If an agent successfully proposes a goal at current iteration,
                 # the goal will be appended to its goal buffer for the next iteration.

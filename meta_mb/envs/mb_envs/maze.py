@@ -59,10 +59,6 @@ class ParticleMazeEnv(object):
     def target_percentage(self):
         return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
 
-    def set_goal(self, goal):
-        assert not self._is_wall(goal)
-        self.goal = goal
-
     def sample_goals(self, mode, num_samples):
         if mode is None:
             num_target_goals = max(int(num_samples * self.target_percentage), 1)
@@ -105,9 +101,7 @@ class ParticleMazeEnv(object):
     def get_achieved_goal(self, next_obs):
         return next_obs
 
-    def reward(self, obs, act, next_obs, goal=None):
-        if goal is None:
-            goal = self.goal
+    def reward(self, obs, act, next_obs, goal):
         if self.reward_str == 'L1':
             _reward = - np.sum(np.abs(next_obs - goal), axis=-1)
         elif self.reward_str == 'L2':
@@ -118,9 +112,10 @@ class ParticleMazeEnv(object):
             raise ValueError
         return _reward
 
-    def reset(self):
+    def reset(self, goal):
         self.state = self._init_state
-        self.goal = None
+        assert not self._is_wall(goal)
+        self.goal = goal
         return self._get_obs()
 
     def step(self, action):
@@ -140,7 +135,7 @@ class ParticleMazeEnv(object):
 
         obs = self._set_state(obs)
         assert not self._is_wall(obs)
-        reward = self.reward(start_obs, action, obs) # - 0.1 * int(collision)  # penalty for collision
+        reward = self.reward(start_obs, action, obs, self.goal) # - 0.1 * int(collision)  # penalty for collision
         done = False
         info = {}
 
@@ -153,45 +148,6 @@ class ParticleMazeEnv(object):
     @property
     def eval_goals(self):
         return self._grid_goals
-
-
-class IterativeEnvExecutor(object):
-    def __init__(self, env, num_rollouts, max_path_length):
-        self._num_envs = num_rollouts
-        self.max_path_length = max_path_length
-        self.envs = np.asarray([copy.deepcopy(env) for _ in range(self._num_envs)])
-        self.ts = np.zeros(self._num_envs, dtype='int')  # time steps
-
-    def set_goal(self, goal_ng):
-        for goal, env in zip(goal_ng, self.envs):
-            env.set_goal(goal)
-
-    def step(self, act_na):
-
-        assert len(act_na) == self._num_envs
-        all_results = [env.step(a) for (a, env) in zip(act_na, self.envs)]
-
-        # stack results split to obs, rewards, ...
-        obs, rewards, dones, env_infos = list(map(list, zip(*all_results)))
-
-        # reset env when done or max_path_length reached
-        dones = np.asarray(dones)
-        self.ts += 1
-        dones = np.logical_or(self.ts >= self.max_path_length, dones)
-
-        for i in np.argwhere(dones).flatten():
-            obs[i] = self.envs[i].reset()
-            self.ts[i] = 0
-
-        return obs, rewards, dones, env_infos
-
-    def reset(self):
-        init_ob_no = [env.reset() for env in self.envs]
-        return init_ob_no
-
-    @property
-    def num_envs(self):
-        return self._num_envs
 
 
 if __name__ == "__main__":

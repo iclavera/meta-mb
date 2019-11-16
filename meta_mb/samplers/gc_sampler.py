@@ -1,5 +1,4 @@
 from meta_mb.utils.serializable import Serializable
-# from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
 from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
@@ -62,15 +61,14 @@ class GCSampler(Serializable):
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_rollouts)]
         policy.reset(dones=[True] * self.num_rollouts)
-        init_obs_no = self.vec_env.reset()
 
         # if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time = 0, 0
 
         # sample goals
-        obs_no = init_obs_no
         goal_ng = goals
-        self.vec_env.set_goal(goal_ng)
+        init_obs_no = self.vec_env.reset(goal_ng)
+        obs_no = init_obs_no
 
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy

@@ -39,9 +39,10 @@ class IterativeEnvExecutor(object):
 
         # reset env when done or max_path_length reached
         self.ts += 1
-        dones = np.logical_or(self.ts >= self.max_path_length, np.asarray(dones)).tolist()
+        dones = np.logical_or(self.ts >= self.max_path_length, dones).tolist()
 
         for i in np.argwhere(dones).flatten():
+            raise NotImplementedError
             obs[i] = self.envs[i].reset() # assume that env preserves goal state
             if isinstance(obs[i], dict):
                 obs[i] = obs[i]['observation']
@@ -49,12 +50,8 @@ class IterativeEnvExecutor(object):
 
         return obs, rewards, dones, env_infos
 
-    def set_goal(self, goal_ng):
-        for goal, env in zip(goal_ng, self.envs):
-            env.set_goal(goal)
-
-    def reset(self):
-        init_ob_no = [env.reset() for env in self.envs]
+    def reset(self, goal_ng):
+        init_ob_no = [env.reset(goal) for goal, env in zip(goal_ng, self.envs)]
         if isinstance(init_ob_no[0], dict):
             init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
         self.ts[:] = 0
@@ -84,7 +81,6 @@ class ParallelEnvExecutor(object):
         assert num_rollouts % n_parallel == 0
         self._envs_per_proc = num_rollouts // n_parallel
         self._num_envs = num_rollouts
-        self.n_parallel = n_parallel
 
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
