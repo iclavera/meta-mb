@@ -84,9 +84,8 @@ class GoalBuffer(object):
         # else:
         #     u = np.zeros_like(mask)
 
-        samples = []
-
         """--------------------- sample with curiosity -------------------"""
+
         # if the current agent has the max q value, add the goal to the buffer,
         # because it might be an overestimate due to distribution mismatch
         # agent_q = q_list[self.agent_index, :]
@@ -97,10 +96,6 @@ class GoalBuffer(object):
         # samples.extend(mc_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
 
         """------------ sample if the current agent proposed a goal in the previous iteration  -------------"""
-        samples.extend(proposed_goals)
-
-        if log:
-            logger.logkv('q_leading-pct', len(samples) / len(q_list[0]))
 
         if self.sample_rule == 'softmax':
 
@@ -129,10 +124,14 @@ class GoalBuffer(object):
         u = u / np.sum(u)
         goal_dist = (1 - self.alpha) * p + self.alpha * u
         goal_dist = goal_dist / np.sum(goal_dist)
-        indices = np.random.choice(len(mc_goals), size=self.max_buffer_size - len(samples), replace=True, p=goal_dist)
-        samples.extend(mc_goals[indices])
+        indices = np.random.choice(len(mc_goals), size=self.max_buffer_size - len(proposed_goals), replace=True, p=goal_dist)
 
+        assert isinstance(proposed_goals, list)
+        samples = proposed_goals + list(mc_goals[indices])
+        assert len(samples) == self.max_buffer_size
         self.buffer = samples
+        if log:
+            logger.logkv('ProposedGoalsCtr', len(proposed_goals))
 
         return indices
 

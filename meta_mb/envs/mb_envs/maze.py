@@ -102,7 +102,7 @@ class ParticleMazeEnv(object):
     def _get_obs(self):
         return self.state
 
-    def get_achieved_goal(self, obs, act, next_obs):
+    def get_achieved_goal(self, next_obs):
         return next_obs
 
     def reward(self, obs, act, next_obs, goal=None):

@@ -66,6 +66,8 @@ class Trainer(object):
 
             t = time.time()
 
+            """------------------- assign tasks to agents --------------------------"""
+
             if itr % self.goal_update_interval == 0:
                 if self.alpha == 1:
                     mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
@@ -78,13 +80,28 @@ class Trainer(object):
                     _futures = [agent.compute_q_values.remote(mc_goals) for agent in agents]
                     q_list = np.asarray(ray.get(_futures))
                     logger.logkv('TimeCompQ', time.time() - _t)
-                futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
-                           for agent, proposed_goals in zip(agents, proposed_goals_list)]
-                proposed_goals_indices_list = ray.get(futures)
-                proposed_goals_list = list(map(lambda indices: mc_goals[indices], proposed_goals_indices_list))
 
-            futures = [(agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()) \
-                       for agent in agents]
+                _futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
+                           for agent, proposed_goals in zip(agents, proposed_goals_list)]
+
+            futures = []
+            for agent in agents:
+                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()])
+
+            """------------------- collect future objects ---------------------"""
+
+            if itr % self.goal_update_interval == 0 and self.alpha > 1:
+                # update proposed_goals_list
+                # If an agent successfully proposes a goal at current iteration,
+                # the goal will be appended to its goal buffer for the next iteration.
+                proposed_goals_list = [[] for _ in range(len(agents))]
+                proposed_goals_indices = ray.get(_futures)
+                proposed_goals_indices = np.unique(np.concatenate(proposed_goals_indices))
+                proposed_goals = mc_goals[proposed_goals_indices]
+                proposer_indices = np.argmax(q_list, axis=0)[proposed_goals_indices]
+                for goal, proposer_index in zip(proposed_goals, proposer_indices):
+                    proposed_goals_list[proposer_index].append(goal)
+
             ray.get(futures)
 
             if itr == 0:

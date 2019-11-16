@@ -66,7 +66,7 @@ class FetchEnv(robot_env.RobotEnv):
     # Env methods
     # ----------------------------
 
-    def get_achieved_goal(self, obs, act, next_obs):
+    def get_achieved_goal(self, next_obs):
         if not self.has_object:
             achieved_goal = next_obs[..., :self._grip_pos_size]
         else:
@@ -74,7 +74,7 @@ class FetchEnv(robot_env.RobotEnv):
         return achieved_goal
 
     def reward(self, obs, act, next_obs, goal=None):
-        achieved_goal = self.get_achieved_goal(obs, act, next_obs)
+        achieved_goal = self.get_achieved_goal(next_obs)
         if goal is None:
             goal = self.goal
 
