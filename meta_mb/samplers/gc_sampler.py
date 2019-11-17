@@ -1,11 +1,11 @@
 from meta_mb.utils.serializable import Serializable
-# from meta_mb.envs.mb_envs.maze import IterativeEnvExecutor
 from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 # from pyprind import ProgBar
 import numpy as np
 import time
+import pickle
 
 
 class GCSampler(Serializable):
@@ -18,7 +18,7 @@ class GCSampler(Serializable):
 
     def __init__(
             self,
-            env,
+            env_pickled,
             policy,
             goal_buffer,
             num_rollouts,
@@ -28,7 +28,7 @@ class GCSampler(Serializable):
     ):
         Serializable.quick_init(self, locals())
 
-        self.env = env
+        self.env = pickle.loads(env_pickled)
         self.policy = policy
         self.goal_buffer = goal_buffer
         self.vae = vae
@@ -42,10 +42,10 @@ class GCSampler(Serializable):
         # setup vectorized environment
 
         if n_parallel > 1:
-            # self.vec_env = ParallelEnvExecutor(env, n_parallel, num_rollouts, self.max_path_length)
+            # self.vec_env = ParallelEnvExecutor(env_pickled, n_parallel, num_rollouts, self.max_path_length)
             raise NotImplementedError
         else:
-            self.vec_env = IterativeEnvExecutor(env, num_rollouts, max_path_length)
+            self.vec_env = IterativeEnvExecutor(env_pickled, num_rollouts, max_path_length)
 
     def collect_rollouts(self, eval=False, *args, **kwargs):
         paths = []
@@ -62,15 +62,14 @@ class GCSampler(Serializable):
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_rollouts)]
         policy.reset(dones=[True] * self.num_rollouts)
-        init_obs_no = self.vec_env.reset()
 
         # if verbose: pbar = ProgBar(self.total_samples)
-        policy_time, env_time = 0, 0
+        policy_time, env_time, store_time = 0, 0, 0
 
         # sample goals
-        obs_no = init_obs_no
         goal_ng = goals
-        self.vec_env.set_goal(goal_ng)
+        init_obs_no = self.vec_env.reset(goal_ng)
+        obs_no = init_obs_no
 
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
@@ -92,6 +91,7 @@ class GCSampler(Serializable):
             env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
+            t = time.time()
             agent_info_n, env_info_n = self._handle_info_dicts(agent_info_n, env_info_n)
 
             for idx, goal, observation, action, reward, env_info, agent_info, done in zip(
@@ -122,6 +122,7 @@ class GCSampler(Serializable):
                     ))
                     n_samples += len(running_paths[idx]["rewards"])
                     running_paths[idx] = _get_empty_running_paths_dict()
+            store_time = time.time() - t
 
             # if verbose: pbar.update(self.vec_env.num_envs)
             obs_no = next_obs_no
@@ -134,6 +135,7 @@ class GCSampler(Serializable):
             logger.logkv(log_prefix + "TimeStepsCtr", self._total_timesteps_sampled)
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
+            logger.logkv(log_prefix + "StoreTime", store_time)
 
         return paths
 

@@ -1,7 +1,8 @@
 import numpy as np
 import pickle as pickle
-from multiprocessing import Process, Pipe
-import copy
+import ray
+
+from meta_mb.agents.remote_env import RemoteEnv
 
 
 class IterativeEnvExecutor(object):
@@ -10,9 +11,9 @@ class IterativeEnvExecutor(object):
     in a vectorized manner. Internally, the environments are executed iteratively.
     """
 
-    def __init__(self, env, num_rollouts, max_path_length):
+    def __init__(self, env_pickled, num_rollouts, max_path_length):
         self._num_envs = num_rollouts
-        self.envs = np.asarray([copy.deepcopy(env) for _ in range(self._num_envs)])
+        self.envs = np.asarray([pickle.loads(env_pickled) for _ in range(self._num_envs)])
         self.ts = np.zeros(self._num_envs, dtype='int')  # time steps
         self.max_path_length = max_path_length
 
@@ -39,22 +40,18 @@ class IterativeEnvExecutor(object):
 
         # reset env when done or max_path_length reached
         self.ts += 1
-        dones = np.logical_or(self.ts >= self.max_path_length, np.asarray(dones)).tolist()
+        dones = np.logical_or(self.ts >= self.max_path_length, dones).tolist()
 
         for i in np.argwhere(dones).flatten():
-            obs[i] = self.envs[i].reset() # assume that env preserves goal state
+            obs[i] = self.envs[i].reset(self.envs[i].goal) # assume that env preserves goal state
             if isinstance(obs[i], dict):
                 obs[i] = obs[i]['observation']
             self.ts[i] = 0
 
         return obs, rewards, dones, env_infos
 
-    def set_goal(self, goal_ng):
-        for goal, env in zip(goal_ng, self.envs):
-            env.set_goal(goal)
-
-    def reset(self):
-        init_ob_no = [env.reset() for env in self.envs]
+    def reset(self, goal_ng):
+        init_ob_no = [env.reset(goal) for goal, env in zip(goal_ng, self.envs)]
         if isinstance(init_ob_no[0], dict):
             init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
         self.ts[:] = 0
@@ -79,33 +76,23 @@ class ParallelEnvExecutor(object):
                              the respective environment is reset
     """
 
-    def __init__(self, env, n_parallel, num_rollouts, max_path_length):
+    def __init__(self, env_pickled, n_parallel, num_rollouts, max_path_length):
         n_parallel = min(n_parallel, num_rollouts)
         assert num_rollouts % n_parallel == 0
-        self._envs_per_proc = num_rollouts // n_parallel
+        self._envs_per_worker = num_rollouts // n_parallel
         self._num_envs = num_rollouts
-        self.n_parallel = n_parallel
 
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(n_parallel)])
-
-        self.ps = [
-            Process(target=worker, args=(work_remote, remote, pickle.dumps(env), self._envs_per_proc, max_path_length, seed))
-            for (work_remote, remote, seed) in zip(self.work_remotes, self.remotes, seeds)]  # Why pass work remotes?
-
-        for p in self.ps:
-            p.daemon = True  # if the main process crashes, we should not cause things to hang
-            p.start()
-        for remote in self.work_remotes:
-            remote.close()
+        self.workers = [RemoteEnv.remote(pickle.loads(env_pickled), self._envs_per_worker, max_path_length, seed) \
+                        for seed in seeds]
 
     def step(self, actions):
         """
         Executes actions on each env
 
         Args:
-            actions (list): lists of actions, of length meta_batch_size x envs_per_task
+            actions (np.array): lists of actions, of length meta_batch_size x envs_per_task
 
         Returns
             (tuple): a length 4 tuple of lists, containing obs (np.array), rewards (float), dones (bool), env_infos (dict)
@@ -115,30 +102,24 @@ class ParallelEnvExecutor(object):
 
         # split list of actions in list of list of actions per meta tasks
         # chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
-        actions_per_meta_task = chunks(actions, self._envs_per_proc)
-
-        # step remote environments
-        for remote, action_list in zip(self.remotes, actions_per_meta_task):
-            remote.send(('step', action_list))
-
-        results = [remote.recv() for remote in self.remotes]
-
-        obs, rewards, dones, env_infos = map(lambda x: sum(x, []), zip(*results))
+        act_per_worker = np.split(actions, self._envs_per_worker)
+        futures = [worker.step.remote(act) for act, worker in zip(act_per_worker, self.workers)]
+        all_results = ray.get(futures)
+        obs, rewards, dones, env_infos = map(lambda x: sum(x, []), zip(*all_results))
 
         return obs, rewards, dones, env_infos
 
-    def reset(self, buffer=None):
+    def reset(self, goal_ng):
         """
         Resets the environments of each worker
 
         Returns:
             (list): list of (np.ndarray) with the new initial observations.
         """
-        if buffer is not None:
-            raise NotImplementedError
-        for remote in self.remotes:
-            remote.send(('reset', None))
-        return sum([remote.recv() for remote in self.remotes], [])
+        goals_per_worker = np.split(goal_ng, self._envs_per_worker)
+        futures = [worker.reset.remote(goals) for goals, worker in zip(goals_per_worker, self.workers)]
+        all_results = ray.get(futures)
+        return sum(all_results)
 
     def set_tasks(self, tasks=None):
         """

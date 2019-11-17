@@ -38,7 +38,8 @@ def run_experiment(**kwargs):
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
-    env = normalize(kwargs['env']())
+    # env = normalize(kwargs['env']())  # FIXME
+    env = kwargs['env']()
 
     logger.log('ray init...', ray.init())
     trainer = Trainer(
@@ -58,12 +59,13 @@ def run_experiment(**kwargs):
     trainer.train()
     logger.log('ray shutdown...', ray.shutdown())
 
+
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #[ParticleMazeEnv],
+        'env': [FetchReachEnv],  # [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -76,10 +78,10 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [30],
         'num_sample_goals': [20],
-        'goal_buffer_alpha': [0.1], #[0, 0.1, 0.5, 0.9, 1],
+        'goal_buffer_alpha': [0.1],  # [0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
         'eval_interval': [20],
-        'sample_rule': ['norm_diff'], #'softmax'],
+        'sample_rule': ['norm_diff'],  # 'softmax'],
         'curiosity_percentage': [0.8],
 
         # Problem Conf
