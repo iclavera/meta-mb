@@ -6,7 +6,7 @@ from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 
 
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name='novel1', reward_str='sparse'):
+    def __init__(self, grid_name='hard', reward_str='sparse'):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2
@@ -52,7 +52,7 @@ class ParticleMazeEnv(object):
         self.grid = _grid != ' '  # boolean mask, True for blocks ('+', '|', '-')
         self._free_ind = np.argwhere(_grid == ' ')  # np.array of indices with no blocks
 
-        self.reset()
+        self.reset(self.sample_goals(mode=None, num_samples=1)[0])
         assert not self._is_wall(self._get_obs())
 
     @property
@@ -107,7 +107,7 @@ class ParticleMazeEnv(object):
         elif self.reward_str == 'L2':
             _reward = - np.linalg.norm(next_obs - goal, axis=-1)
         elif self.reward_str == 'sparse':
-            _reward = (np.linalg.norm(next_obs - goal, axis=-1) < 0.1).astype(int)
+            _reward = - (np.linalg.norm(next_obs - goal, axis=-1) > 0.1).astype(int)
         else:
             raise ValueError
         return _reward

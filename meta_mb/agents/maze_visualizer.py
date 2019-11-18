@@ -160,7 +160,7 @@ class MazeVisualizer(object):
         return q_values
 
     def _do_plot_eval_returns(self, fig, ax, policy):
-        points_per_dim = POINTS_PER_DIM//5
+        points_per_dim = POINTS_PER_DIM//4
 
         """
         Evaluated discounted returns heatmap
@@ -187,7 +187,7 @@ class MazeVisualizer(object):
                 path = self._rollout(goal=goal, policy=policy)
                 discounted_return = path["discounted_return"]
 
-                if discounted_return > 0:  # counted as success
+                if path['undiscounted_return'] > - len(path['rewards']):  # counted as success
                     total_success += 1
                     if goal_ind in _target_goals_ind_list:
                         target_success += 1
@@ -198,7 +198,7 @@ class MazeVisualizer(object):
         target_success_rate = target_success / target_counter
 
         z = np.reshape(z, (points_per_dim, points_per_dim))
-        cb = ax.scatter(xx, yy, c=z, s=200, marker='s')
+        cb = ax.scatter(xx, yy, c=z, s=100, marker='s')
         fig.colorbar(cb, shrink=0.5, ax=ax)
 
         ax.set_facecolor('black')
@@ -246,6 +246,7 @@ class MazeVisualizer(object):
             ax.add_artist(plt.Circle(goal, radius=0.05, lw=2, fill=False, color='darkorange', zorder=1000))
             ax.add_artist(plt.Circle(terminal_obs, radius=0.025, fill=True, color='darkorange', zorder=100000))
 
+        ax.set_facecolor('black')
         ax.axis('equal')
         ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
@@ -272,9 +273,9 @@ class MazeVisualizer(object):
 
         observations, rewards, dones = [], [], []
         discounted_return = 0
+        undiscounted_return = 0
         policy.reset()
-        obs = env.reset()
-        env.set_goal(goal)
+        obs = env.reset(goal)
         path_length = 0
 
         while path_length < max_path_length:
@@ -286,9 +287,11 @@ class MazeVisualizer(object):
             rewards.append(reward)
             dones.append(done)
             discounted_return += discount**path_length * reward
+            undiscounted_return += reward
             path_length += 1
             if done and not self.ignore_done:
                 break
             obs = next_obs
 
-        return dict(observations=observations, discounted_return=discounted_return, dones=dones, rewards=rewards)
+        return dict(observations=observations, discounted_return=discounted_return,
+                    undiscounted_return=undiscounted_return, dones=dones, rewards=rewards)

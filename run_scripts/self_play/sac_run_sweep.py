@@ -27,6 +27,8 @@ def run_experiment(**kwargs):
 
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv'
+        # kwargs['n_itr'] = 1001
+        # kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
     elif kwargs['env'] is FetchPushEnv:
@@ -40,9 +42,9 @@ def run_experiment(**kwargs):
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        kwargs['exp_name'] = "%s" % timestamp
+        kwargs['exp_name'] = f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-replay_k-{kwargs['replay_k']}-{timestamp}"
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-replay_k-{kwargs['replay_k']}-{kwargs['exp_name']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -80,7 +82,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -98,7 +100,7 @@ if __name__ == '__main__':
         'goal_update_interval': [2],
         'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
-        'replay_k': [-1, 4],
+        'replay_k': [4, -1],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
