@@ -33,7 +33,9 @@ def run_experiment(**kwargs):
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = "%s" % timestamp
 
-    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-{kwargs['sample_rule']}-{kwargs['exp_name']}")
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-{kwargs['exp_name']}")
+    for k, v in kwargs.items():
+        logger.logkv(k, v)
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
@@ -55,6 +57,7 @@ def run_experiment(**kwargs):
         exp_dir=exp_dir,
         goal_update_interval=kwargs['goal_update_interval'],
         num_grad_steps=kwargs['num_grad_steps'],
+        snapshot_gap=kwargs['snapshot_gap'],
     )
 
     trainer.train()
@@ -80,7 +83,7 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [30],
         'num_sample_goals': [20],
-        'goal_buffer_alpha': [0.1],  # [0, 0.1, 0.5, 0.9, 1],
+        'goal_buffer_alpha': [0, 0.5, 0.9, 1],  # [0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
         'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
@@ -88,7 +91,8 @@ if __name__ == '__main__':
 
         # Problem Conf
         'num_agents': [3],
-        'n_itr': [2001], # [3001],
+        'n_itr': [51], # [3001],
+        'snapshot_gap': [10], # [500],
         'max_path_length': [50], #100],
         'discount': [0.95], #0.99],
         'gae_lambda': [1.],

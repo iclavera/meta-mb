@@ -36,7 +36,8 @@ class Agent(object):
     ):
 
         self.agent_index = agent_idx
-        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
+        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], \
+            snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
 
         import tensorflow as tf
 
@@ -168,8 +169,7 @@ class Agent(object):
 
                 t = time.time()
                 self.itr += 1
-                with self.sess.as_default():
-                    self.algo.optimize_policy(self.replay_buffer, self.itr, self.num_grad_steps)
+                self.algo.optimize_policy(self.replay_buffer, self.itr, self.num_grad_steps)
 
                 logger.logkv('TimeTrainPolicy', time.time() - t)
                 logger.logkv('ReplayBufferSize', self.replay_buffer.size)

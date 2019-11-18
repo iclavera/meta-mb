@@ -54,8 +54,16 @@ class Trainer(object):
 
         for i in range(num_agents):
             agent = Agent.remote(
-                i, exp_dir, snapshot_gap, gpu_frac, seeds[i],
-                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_interval, num_grad_steps,
+                agent_idx=i, 
+                exp_dir=exp_dir, 
+                snapshot_gap=snapshot_gap, 
+                gpu_frac=gpu_frac, 
+                seed=seeds[i], 
+                env_pickled=env_pickled,
+                n_initial_exploration_steps=n_initial_exploration_steps, 
+                instance_kwargs=instance_kwargs, 
+                eval_interval=eval_interval, 
+                num_grad_steps=num_grad_steps, 
             )
             self.agents[i] = agent
 
@@ -85,9 +93,8 @@ class Trainer(object):
                 _futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
                            for agent, proposed_goals in zip(agents, proposed_goals_list)]
 
-            futures = []
-            for agent in agents:
-                futures.extend([agent.train.remote(), agent.save_snapshot.remote()])
+            futures = [agent.train.remote() for agent in agents]
+            futures.extend([agent.save_snapshot.remote() for agent in agents])
 
             """------------------- collect future objects ---------------------"""
 
