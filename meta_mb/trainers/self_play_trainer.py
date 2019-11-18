@@ -93,8 +93,8 @@ class Trainer(object):
                 _futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
                            for agent, proposed_goals in zip(agents, proposed_goals_list)]
 
-            futures = [agent.train.remote() for agent in agents]
-            futures.extend([agent.save_snapshot.remote() for agent in agents])
+            futures = [agent.train.remote(itr) for agent in agents]
+            futures.extend([agent.save_snapshot.remote(itr) for agent in agents])
 
             """------------------- collect future objects ---------------------"""
 

@@ -126,7 +126,7 @@ class Agent(object):
 
             """------------------------- initial exploration steps ----------------------------"""
 
-            self.itr = -1
+            self.policy_itr = -1
 
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
@@ -149,7 +149,7 @@ class Agent(object):
         logger.logkv('TimeGoalSampling', time.time() - t)
         return indices
 
-    def train(self):
+    def train(self, itr):
         with self.sess.as_default():
 
             for batch in self.goal_buffer.get_batches(eval=False, batch_size=self.sampler.num_rollouts):
@@ -168,13 +168,13 @@ class Agent(object):
                 """------------------------ train policy for one iteration ------------------"""
 
                 t = time.time()
-                self.itr += 1
-                self.algo.optimize_policy(self.replay_buffer, self.itr, self.num_grad_steps)
+                self.policy_itr += 1
+                self.algo.optimize_policy(self.replay_buffer, self.policy_itr, self.num_grad_steps)
 
                 logger.logkv('TimeTrainPolicy', time.time() - t)
                 logger.logkv('ReplayBufferSize', self.replay_buffer.size)
 
-            if self.itr % self.eval_interval == 0:
+            if itr % self.eval_interval == 0:
 
                 """-------------------------- Evaluation ------------------"""
 
@@ -185,10 +185,10 @@ class Agent(object):
 
                 logger.dumpkvs()
 
-    def save_snapshot(self):
+    def save_snapshot(self, itr):
         with self.sess.as_default():
-            params = self._get_itr_snapshot(self.itr)
-            logger.save_itr_params(self.itr, params)
+            params = self._get_itr_snapshot(itr)
+            logger.save_itr_params(itr, params)
 
     def _get_itr_snapshot(self, itr):
         return dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets))

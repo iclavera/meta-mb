@@ -75,6 +75,10 @@ class GoalBuffer(object):
 
         """--------------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
 
+        num_proposed_goals = len(proposed_goals)
+        num_goals_u = int((self.max_buffer_size - num_proposed_goals) * alpha)
+        num_goals_p = self.max_buffer_size - num_proposed_goals - num_goals_u
+
         # for maze env
         # _target_goals_ind_list = self.env._target_goals_ind.tolist()
         # mask = np.array(list(map(lambda ind: ind.tolist() in _target_goals_ind_list, self.env._get_index(sample_goals))), dtype=np.int)
@@ -96,6 +100,8 @@ class GoalBuffer(object):
         # samples.extend(mc_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
 
         """------------ sample if the current agent proposed a goal in the previous iteration  -------------"""
+
+        """------------------------ sample with P --------------------"""
 
         if self.sample_rule == 'softmax':
 
@@ -120,20 +126,22 @@ class GoalBuffer(object):
         else:
             raise ValueError
 
+        indices_p = np.random.choice(len(mc_goals), size=num_goals_p, replace=True, p=p)
+
+        """------------------------- sample with U -----------------"""
+
         u = np.ones_like(q_list[0])
         u = u / np.sum(u)
-        goal_dist = (1 - self.alpha) * p + self.alpha * u
-        goal_dist = goal_dist / np.sum(goal_dist)
-        indices = np.random.choice(len(mc_goals), size=self.max_buffer_size - len(proposed_goals), replace=True, p=goal_dist)
+        indices_u = np.random.choice(len(mc_goals), size=num_goals_u, replace=True, p=u)
 
         assert isinstance(proposed_goals, list)
-        samples = proposed_goals + list(mc_goals[indices])
+        samples = proposed_goals + list(mc_goals[indices_p]) + list(mc_goals[indices_u])
         assert len(samples) == self.max_buffer_size
         self.buffer = samples
         if log:
             logger.logkv('ProposedGoalsCtr', len(proposed_goals))
 
-        return indices
+        return indices_p
 
     def get_batches(self, eval, batch_size):
         if eval:
