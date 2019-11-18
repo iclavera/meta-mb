@@ -76,7 +76,7 @@ class GoalBuffer(object):
         """--------------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
 
         num_proposed_goals = len(proposed_goals)
-        num_goals_u = int((self.max_buffer_size - num_proposed_goals) * alpha)
+        num_goals_u = int((self.max_buffer_size - num_proposed_goals) * self.alpha)
         num_goals_p = self.max_buffer_size - num_proposed_goals - num_goals_u
 
         # for maze env
