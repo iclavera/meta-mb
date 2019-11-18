@@ -1,5 +1,5 @@
 from gym import utils
-from gym.envs.robotics import fetch_env
+from meta_mb.envs.robotics import fetch_env
 
 
 class FetchPushEnv(fetch_env.FetchEnv, utils.EzPickle):
