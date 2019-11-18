@@ -35,6 +35,7 @@ class Trainer(object):
             exp_dir,
             goal_update_interval,
             eval_interval,
+            num_grad_steps,
             snapshot_gap=500,
             n_initial_exploration_steps=1e3,
         ):
@@ -54,7 +55,7 @@ class Trainer(object):
         for i in range(num_agents):
             agent = Agent.remote(
                 i, exp_dir, snapshot_gap, gpu_frac, seeds[i],
-                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_interval,
+                env_pickled, n_initial_exploration_steps, instance_kwargs, eval_interval, num_grad_steps,
             )
             self.agents[i] = agent
 
@@ -86,7 +87,7 @@ class Trainer(object):
 
             futures = []
             for agent in agents:
-                futures.extend([agent.update_replay_buffer.remote(), agent.update_policy.remote(), agent.save_snapshot.remote()])
+                futures.extend([agent.train.remote(), agent.save_snapshot.remote()])
 
             """------------------- collect future objects ---------------------"""
 

@@ -13,7 +13,7 @@ class GoalBuffer(object):
             max_buffer_size,
             alpha,
             sample_rule,
-            curiosity_percentage,
+            # curiosity_percentage,
     ):
         self.env = env
         self.agent_index = agent_index
@@ -33,7 +33,7 @@ class GoalBuffer(object):
         self.eval_buffer = env.eval_goals
 
         self.sample_rule = sample_rule
-        self.curiosity_percentage = curiosity_percentage
+        # self.curiosity_percentage = curiosity_percentage
 
     def _build(self):
         ob_no = tf.tile(self.env.init_obs[None], (tf.shape(self.goal_ph)[0], 1))

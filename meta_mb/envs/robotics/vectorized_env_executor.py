@@ -34,7 +34,7 @@ class IterativeEnvExecutor(object):
         all_results = [env.step(a) for (a, env) in zip(act_na, self.envs)]
 
         # stack results split to obs, rewards, ...
-        obs, rewards, dones, env_infos = list(zip(*all_results))
+        obs, rewards, dones, env_infos = map(list, zip(*all_results))
         if isinstance(obs[0], dict):
             obs = list(map(lambda obs_dict: obs_dict['observation'], obs))
 
@@ -81,10 +81,11 @@ class ParallelEnvExecutor(object):
         assert num_rollouts % n_parallel == 0
         self._envs_per_worker = num_rollouts // n_parallel
         self._num_envs = num_rollouts
+        self._num_workers = n_parallel
 
         seeds = np.random.choice(range(10**6), size=n_parallel, replace=False)
 
-        self.workers = [RemoteEnv.remote(pickle.loads(env_pickled), self._envs_per_worker, max_path_length, seed) \
+        self.workers = [RemoteEnv.remote(env_pickled, self._envs_per_worker, max_path_length, seed) \
                         for seed in seeds]
 
     def step(self, actions):
@@ -102,7 +103,7 @@ class ParallelEnvExecutor(object):
 
         # split list of actions in list of list of actions per meta tasks
         # chunks = lambda l, n: [l[x: x + n] for x in range(0, len(l), n)]
-        act_per_worker = np.split(actions, self._envs_per_worker)
+        act_per_worker = np.split(actions, self._num_workers)
         futures = [worker.step.remote(act) for act, worker in zip(act_per_worker, self.workers)]
         all_results = ray.get(futures)
         obs, rewards, dones, env_infos = map(lambda x: sum(x, []), zip(*all_results))
@@ -116,22 +117,10 @@ class ParallelEnvExecutor(object):
         Returns:
             (list): list of (np.ndarray) with the new initial observations.
         """
-        goals_per_worker = np.split(goal_ng, self._envs_per_worker)
+        goals_per_worker = np.split(goal_ng, self._num_workers)
         futures = [worker.reset.remote(goals) for goals, worker in zip(goals_per_worker, self.workers)]
         all_results = ray.get(futures)
-        return sum(all_results)
-
-    def set_tasks(self, tasks=None):
-        """
-        Sets a list of tasks to each worker
-
-        Args:
-            tasks (list): list of the tasks for each worker
-        """
-        for remote, task in zip(self.remotes, tasks):
-            remote.send(('set_task', task))
-        for remote in self.remotes:
-            remote.recv()
+        return sum(all_results, [])
 
     @property
     def num_envs(self):
@@ -142,77 +131,3 @@ class ParallelEnvExecutor(object):
             (int): number of environments
         """
         return self._num_envs
-
-
-def worker(remote, parent_remote, env_pickle, n_envs, max_path_length, seed):
-    """
-    Instantiation of a parallel worker for collecting samples. It loops continually checking the task that the remote
-    sends to it.
-
-    Args:
-        remote (multiprocessing.Connection):
-        parent_remote (multiprocessing.Connection):
-        env_pickle (pkl): pickled environment
-        n_envs (int): number of environments per worker
-        max_path_length (int): maximum path length of the task
-        seed (int): random seed for the worker
-    """
-    parent_remote.close()
-
-    envs = [pickle.loads(env_pickle) for _ in range(n_envs)]
-    np.random.seed(seed)
-
-    ts = np.zeros(n_envs, dtype='int')
-
-    while True:
-        # receive command and data from the remote
-        cmd, data = remote.recv()
-
-        # do a step in each of the environment of the worker
-        if cmd == 'step':
-            all_results = [env.step(a) for (a, env) in zip(data, envs)]
-            obs, rewards, dones, infos = map(list, zip(*all_results))
-            ts += 1
-            for i in range(n_envs):
-                if dones[i] or (ts[i] >= max_path_length):
-                    dones[i] = True
-                    obs[i] = envs[i].reset()
-                    ts[i] = 0
-            remote.send((obs, rewards, dones, infos))
-
-        # reset all the environments of the worker
-        elif cmd == 'reset':
-            obs = [env.reset() for env in envs]
-            ts[:] = 0
-            remote.send(obs)
-
-        elif cmd == 'reset_from_pickles':
-            # only one env repeated for one worker!!
-            env_state = pickle.loads(data['envs'])
-            for env in envs:
-                # TODO: env.sim.reset()?
-                env.sim.set_state(env_state)
-                env.sim.forward()
-
-            # ts = pickle.loads(data['ts'])  # FIXME: dones are ignored!
-            # obs = [env._get_obs() for env in envs]
-            remote.send(None)
-
-        elif cmd == 'get_pickles':
-            # remote.send(dict(envs=[pickle.dumps(env) for env in envs], ts=pickle.dumps(ts)))
-            remote.send(dict(envs=[pickle.dumps(env.sim.get_state()) for env in envs]))
-
-        # set the specified task for each of the environments of the worker
-        elif cmd == 'set_task':
-            for env in envs:
-                env.set_task(data)
-            remote.send(None)
-
-        # close the remote and stop the worker
-        elif cmd == 'close':
-            remote.close()
-            break
-
-        else:
-            raise NotImplementedError
-
