@@ -1,5 +1,5 @@
 from meta_mb.utils.serializable import Serializable
-from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor
+from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor, ParallelEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
 # from pyprind import ProgBar
@@ -42,20 +42,11 @@ class GCSampler(Serializable):
         # setup vectorized environment
 
         if n_parallel > 1:
-            # self.vec_env = ParallelEnvExecutor(env_pickled, n_parallel, num_rollouts, self.max_path_length)
-            raise NotImplementedError
+            self.vec_env = ParallelEnvExecutor(env_pickled, n_parallel, num_rollouts, max_path_length)
         else:
             self.vec_env = IterativeEnvExecutor(env_pickled, num_rollouts, max_path_length)
 
-    def collect_rollouts(self, eval=False, *args, **kwargs):
-        paths = []
-        for batch in self.goal_buffer.get_batches(eval=eval, batch_size=self.num_rollouts):
-            _paths = self._collect_rollouts(batch, *args, **kwargs)
-            paths.extend(_paths)
-
-        return paths
-
-    def _collect_rollouts(self, goals, random=False, log=False, log_prefix=''):
+    def collect_rollouts(self, goals, random=False, log=False, log_prefix=''):
         assert goals.ndim == 2 and goals.shape[0] == self.num_rollouts, goals.shape
         policy = self.policy
         paths = []
@@ -136,6 +127,8 @@ class GCSampler(Serializable):
             logger.logkv(log_prefix + "PolicyExecTime", policy_time)
             logger.logkv(log_prefix + "EnvExecTime", env_time)
             logger.logkv(log_prefix + "StoreTime", store_time)
+
+        assert len(paths) == self.num_rollouts, (len(paths), self.num_rollouts)
 
         return paths
 

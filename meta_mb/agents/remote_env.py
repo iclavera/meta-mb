@@ -20,7 +20,7 @@ class RemoteEnv(object):
         :return: (tuple): a length 4 tuple of lists, each list has np.array or scalar elements
         """
         all_results = [env.step(a) for a, env in zip(act_na, self._envs)]
-        obs, rewards, dones, infos = list(zip(*all_results))
+        obs, rewards, dones, infos = map(list, zip(*all_results))
 
         if isinstance(obs[0], dict):
             obs = list(map(lambda obs_dict: obs_dict['observation'], obs))
@@ -43,7 +43,7 @@ class RemoteEnv(object):
         :param goal_ng: (np.array)
         :return: (list)
         """
-        init_ob_no = [env.reseg(goal) for goal, env in zip(goal_ng, self.envs)]
+        init_ob_no = [env.reset(goal) for goal, env in zip(goal_ng, self._envs)]
         if isinstance(init_ob_no[0], dict):
             init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
         self.ts[:] = 0

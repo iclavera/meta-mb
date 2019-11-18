@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
 from .base import Algo
+import time
 """===============added==========start============"""
 from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
@@ -345,16 +346,16 @@ class SAC(Algo):
                 for param_name, source in source_params.items()
             ]))
 
-    def optimize_policy(self, buffer, timestep, grad_steps, log=True):
+    def optimize_policy(self, buffer, itr, grad_steps, log=True):
         sess = tf.get_default_session()
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
-                logger.logkv('train-Itr', timestep)
+                logger.logkv('train-Itr', itr)
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
                     logger.logkv(k, v)
-            if timestep % self.target_update_interval == 0:
+            if itr % self.target_update_interval == 0:
                 self._update_target()

@@ -10,7 +10,7 @@ from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.trainers.self_play_trainer import Trainer
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.envs.normalized_env import normalize
+# from meta_mb.envs.normalized_env import normalize
 from meta_mb.utils.utils import set_seed
 
 
@@ -53,7 +53,8 @@ def run_experiment(**kwargs):
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
-        goal_update_interval=kwargs['goal_update_interval']
+        goal_update_interval=kwargs['goal_update_interval'],
+        num_grad_steps=kwargs['num_grad_steps'],
     )
 
     trainer.train()
@@ -71,6 +72,7 @@ if __name__ == '__main__':
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
+        'num_grad_steps': [-1],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -80,9 +82,9 @@ if __name__ == '__main__':
         'num_sample_goals': [20],
         'goal_buffer_alpha': [0.1],  # [0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
-        'eval_interval': [20],
+        'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
-        'curiosity_percentage': [0.8],
+        # 'curiosity_percentage': [0.8],
 
         # Problem Conf
         'num_agents': [3],
