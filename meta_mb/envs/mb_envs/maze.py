@@ -43,9 +43,10 @@ class ParticleMazeEnv(object):
 
         # target goals spreads across E, uniform distribution for the goal is defined to be normalize(X_E) the indicator function
         self._target_goals_ind = np.argwhere(_grid == 'G')
-        self._non_target_goals_ind = np.argwhere(_grid == ' ')
+        # self._non_target_goals_ind = np.argwhere(_grid == ' ')
         # clean 'G'
         _grid_flatten[_grid_flatten == 'G'] = ' '
+        self._goals_ind = np.argwhere(_grid == ' ')
 
         # clean 'S'
         _grid_flatten[_grid_flatten == 'S'] = ' '
@@ -55,24 +56,24 @@ class ParticleMazeEnv(object):
         self.reset(self.sample_goals(mode=None, num_samples=1)[0])
         assert not self._is_wall(self._get_obs())
 
-    @property
-    def target_percentage(self):
-        return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
+    # @property
+    # def target_percentage(self):
+    #     return len(self._target_goals_ind) / (len(self._target_goals_ind) + len(self._non_target_goals_ind))
 
     def sample_goals(self, mode, num_samples):
-        if mode is None:
-            num_target_goals = max(int(num_samples * self.target_percentage), 1)
-            _sample_ind = np.random.choice(len(self._target_goals_ind), num_target_goals, replace=True)
-            samples = list(map(self._get_coords_uniform_noise, self._target_goals_ind[_sample_ind]))
-            _sample_ind = np.random.choice(len(self._non_target_goals_ind), num_samples - num_target_goals, replace=True)
-            samples.extend(list(map(self._get_coords_uniform_noise, self._non_target_goals_ind[_sample_ind])))
+        # if mode is None:
+        #     num_target_goals = max(int(num_samples * self.target_percentage), 1)
+        #     _sample_ind = np.random.choice(len(self._target_goals_ind), num_target_goals, replace=True)
+        #     samples = list(map(self._get_coords_uniform_noise, self._target_goals_ind[_sample_ind]))
+        #     _sample_ind = np.random.choice(len(self._non_target_goals_ind), num_samples - num_target_goals, replace=True)
+        #     samples.extend(list(map(self._get_coords_uniform_noise, self._non_target_goals_ind[_sample_ind])))
 
-        elif mode == 'target':
+        if mode == 'target':
             _sample_ind = np.random.choice(len(self._target_goals_ind), num_samples, replace=True)
             samples = list(map(self._get_coords_uniform_noise, self._target_goals_ind[_sample_ind]))
-        elif mode == 'non_target':
-            _sample_ind = np.random.choice(len(self._non_target_goals_ind), num_samples, replace=True)
-            samples = list(map(self._get_coords_uniform_noise, self._non_target_goals_ind[_sample_ind]))
+        elif mode is None:
+            _sample_ind = np.random.choice(len(self._goals_ind), num_samples, replace=True)
+            samples = list(map(self._get_coords_uniform_noise, self._goals_ind[_sample_ind]))
         else:
             raise RuntimeError
 

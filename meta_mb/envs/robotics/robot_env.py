@@ -51,7 +51,7 @@ class RobotEnv(gym.GoalEnv):
 
         # initial observation
         self._init_obs = obs['observation'].astype(np.float32)
-        self._eval_goals = self._sample_goal_vec(NUM_EVAL_GOALS)
+        self._eval_goals = self._sample_goals(NUM_EVAL_GOALS)
 
     @property
     def dt(self):
@@ -107,7 +107,10 @@ class RobotEnv(gym.GoalEnv):
         :param num_samples:
         :return:
         """
-        return self._sample_goal_vec(num_samples)
+        if mode == 'target':
+            return self._sample_target_goals(num_samples)
+        elif mode is None:
+            return self._sample_goals(num_samples)
 
     def close(self):
         if self.viewer is not None:
@@ -165,7 +168,10 @@ class RobotEnv(gym.GoalEnv):
         """
         raise NotImplementedError()
 
-    def _sample_goal_vec(self, num_samples):
+    def _sample_target_goals(self, num_samples):
+        raise NotImplementedError()
+
+    def _sample_goals(self, num_samples):
         raise NotImplementedError()
 
     def _env_setup(self, initial_qpos):

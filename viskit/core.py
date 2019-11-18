@@ -108,11 +108,13 @@ def load_exps_data(exp_folder_paths, disable_variant=False):
                     params = load_params(variant_json_path)
                 except IOError:
                     params = load_params(params_json_path)
-            for progress_csv_path in progress_csv_path_list:
+            for i, progress_csv_path in enumerate(progress_csv_path_list):
                 print(progress_csv_path)
                 progress = load_progress(progress_csv_path)
+                _params = params.copy()
+                _params['exp_name'] += f"_{i}"
                 exps_data.append(AttrDict(
-                    progress=progress, params=params, flat_params=flatten_dict(params)))
+                    progress=progress, params=_params, flat_params=flatten_dict(_params)))
         except IOError as e:
             print(e)
     return exps_data

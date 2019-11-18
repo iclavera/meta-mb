@@ -11,9 +11,11 @@ from meta_mb.agents.maze_visualizer import MazeVisualizer
 
 NUM_EVAL_GOALS = 1
 
-def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None, max_pkl=None,
+def plot_maze(dir_path_list, max_path_length, num_rollouts=None, gap=1, min_pkl=None, max_pkl=None,
               ignore_done=False, stochastic=False, force_reload=False):
-    exps = load_exps_data(dir_path, gap=1, max=None)
+    exps = []
+    for dir_path in dir_path_list:
+        exps.extend(load_exps_data(dir_path, gap=1, max=None))
     eval_goals = None
 
     for exp in exps:
@@ -65,7 +67,7 @@ def plot_maze(dir_path, max_path_length, num_rollouts=None, gap=1, min_pkl=None,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", type=str)
+    parser.add_argument("path", type=str, nargs='*')
     parser.add_argument('--num_rollouts', '-n', type=int, default=1,
                         help='Max length of rollout')
     parser.add_argument('--gap_pkl', type=int, default=1,
@@ -84,7 +86,7 @@ if __name__ == "__main__":
                         help='Force reloading images')
     args = parser.parse_args()
 
-    plot_maze(dir_path=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
+    plot_maze(dir_path_list=args.path, max_path_length=args.max_path_length, num_rollouts=args.num_rollouts,
               gap=args.gap_pkl, min_pkl=args.min_pkl, max_pkl=args.max_pkl, ignore_done=args.ignore_done, stochastic=args.stochastic,
               force_reload=args.force_reload)
 

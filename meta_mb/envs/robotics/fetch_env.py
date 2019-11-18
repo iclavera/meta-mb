@@ -183,16 +183,24 @@ class FetchEnv(robot_env.RobotEnv):
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(-0.15, 0.15, size=3)
         return goal.copy()
 
-    def _sample_goal_vec(self, num_samples):
+    def _sample_target_goals(self, num_samples):
         if self.has_object:
-            goal = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
-            goal += self.target_offset
-            goal[:, 2] = self.height_offset
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+            goals += self.target_offset
+            goals[:, 2] = self.height_offset
             if self.target_in_the_air and self.np_random.uniform() < 0.5:
-                goal[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples)
+                goals[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples)
         else:
-            goal = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
-        return goal.copy()
+            # goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(0.10, 0.15, size=(num_samples, 3))
+        return goals.copy()
+
+    def _sample_goals(self, num_samples):
+        if self.has_object:
+            raise NotImplementedError  # FIXME
+        else:
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
+        return goals
 
     def _is_success(self, achieved_goal, desired_goal):
         d = goal_distance(achieved_goal, desired_goal)

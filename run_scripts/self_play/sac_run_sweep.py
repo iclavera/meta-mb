@@ -82,7 +82,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'max_goal_buffer_size': [30],
         'num_sample_goals': [20],
-        'goal_buffer_alpha': [0, 0.5, 1], #[0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],
+        'goal_buffer_alpha': [0.1, 1], #[0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],
         'goal_update_interval': [2],
         'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
         # Problem Conf
         'num_agents': [3],
-        'n_itr': [501], # [3001],
+        'n_itr': [201], # [3001],
         'snapshot_gap': [10], # [500],
         'max_path_length': [50], #100],
         'discount': [0.95], #0.99],
