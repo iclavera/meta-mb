@@ -71,6 +71,8 @@ class Trainer(object):
         agents = self.agents
         proposed_goals_list = [[] for _ in range(len(agents))]  # updated with returned values from update_goal_buffer
 
+        time_start = time.time()
+
         for itr in range(self.n_itr):
 
             t = time.time()
@@ -85,10 +87,8 @@ class Trainer(object):
                     q_list = None
                 else:
                     mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
-                    _t = time.time()
                     _futures = [agent.compute_q_values.remote(mc_goals) for agent in agents]
                     q_list = np.asarray(ray.get(_futures))
-                    logger.logkv('TimeCompQ', time.time() - _t)
 
                 _futures = [agent.update_goal_buffer.remote(mc_goals, proposed_goals, q_list) \
                            for agent, proposed_goals in zip(agents, proposed_goals_list)]
@@ -116,6 +116,7 @@ class Trainer(object):
                 ray.get([agent.finalize_graph.remote() for agent in agents])
 
             if itr % self.eval_interval == 0:
+                logger.logkv('TimeTotal', time.time() - time_start)
                 logger.logkv('TimeItr', time.time() - t)
                 logger.logkv('Itr', itr)
                 logger.dumpkvs()

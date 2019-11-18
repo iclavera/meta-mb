@@ -102,6 +102,7 @@ class Agent(object):
                 reward_fn=env.reward,
                 achieved_goal_fn=env.get_achieved_goal,
                 baseline=baseline,
+                replay_k=instance_kwargs['replay_k'],
                 discount=instance_kwargs['discount'],
                 gae_lambda=instance_kwargs['gae_lambda'],
                 normalize_adv=instance_kwargs['normalize_adv'],
@@ -133,7 +134,7 @@ class Agent(object):
                 while self.replay_buffer._size < n_initial_exploration_steps:
                     paths = self.sampler.collect_rollouts(env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
                                                           log=True, log_prefix='train-', random=True)
-                    samples_data = self.sample_processor.process_samples(paths, log='all', log_prefix='train-')
+                    samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
@@ -160,7 +161,7 @@ class Agent(object):
                 paths = self.sampler.collect_rollouts(batch, log=True, log_prefix='train-')
                 logger.logkv('TimeSampling', time.time() - t)
 
-                samples_data = self.sample_processor.process_samples(paths, replay_strategy='future', log='all', log_prefix='train-')
+                samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
 
                 self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
@@ -181,7 +182,7 @@ class Agent(object):
                 eval_paths = []
                 for batch in self.goal_buffer.get_batches(eval=True, batch_size=self.sampler.num_rollouts):
                     eval_paths.extend(self.sampler.collect_rollouts(batch, log=True, log_prefix='eval-'))
-                _ = self.sample_processor.process_samples(eval_paths, replay_strategy=None, log='all', log_prefix='eval-', log_all=False)
+                _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
 
                 logger.dumpkvs()
 
