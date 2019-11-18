@@ -29,6 +29,12 @@ def run_experiment(**kwargs):
         env_name = 'PMazeEnv'
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
+    elif kwargs['env'] is FetchPushEnv:
+        env_name = 'FPushEnv'
+    elif kwargs['env'] is FetchPickAndPlaceEnv:
+        env_name = 'FP&PEnv'
+    elif kwargs['env'] is FetchSlideEnv:
+        env_name = 'FSlideEnv'
     else:
         raise NotImplementedError
 
