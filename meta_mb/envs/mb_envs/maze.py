@@ -1,12 +1,11 @@
 from gym import spaces
 
 import numpy as np
-import copy
 from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 
 
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name='hard', reward_str='sparse'):
+    def __init__(self, grid_name='novel1', reward_str='sparse'):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2

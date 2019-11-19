@@ -66,7 +66,7 @@ class GoalBuffer(object):
 
         """--------------------- alpha = 1, g ~ U or g ~ X ---------------------"""
 
-        if self.alpha == 1:
+        if self.alpha == 1 or self.alpha == -1:
             # uniform sampling, all sample_goals come from env.target_goals
             self.buffer = mc_goals[np.random.choice(len(mc_goals), size=self.max_buffer_size, replace=True)]
             return

@@ -76,6 +76,8 @@ class MazeVisualizer(object):
         return q_values_arr
 
     def plot_goal_distributions(self, q_values_arr, sample_rule, alpha, itr):
+        if not 0 < alpha < 1:
+            return
         image_path = os.path.join(self.parent_path, f"itr_{itr}_p_dist.png")
         if not self.force_reload and os.path.exists(image_path):
             return
