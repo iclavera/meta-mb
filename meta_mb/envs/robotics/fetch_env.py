@@ -185,21 +185,24 @@ class FetchEnv(robot_env.RobotEnv):
 
     def _sample_target_goals(self, num_samples):
         if self.has_object:
-            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(self.target_range*2/3, self.target_range, size=(num_samples, 3))
             goals += self.target_offset
             goals[:, 2] = self.height_offset
-            if self.target_in_the_air and self.np_random.uniform() < 0.5:
-                goals[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples)
+            if self.target_in_the_air:
+                goals[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples) * (self.np_random.uniform(size=num_samples) < 0.5).astype(int)
         else:
-            # goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
-            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(0.10, 0.15, size=(num_samples, 3))
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(self.target_range*2/3, self.target_range, size=(num_samples, 3))
         return goals.copy()
 
     def _sample_goals(self, num_samples):
         if self.has_object:
-            raise NotImplementedError  # FIXME
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+            goals += self.target_offset
+            goals[:, 2] = self.height_offset
+            if self.target_in_the_air:
+                goals[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples) * (self.np_random.uniform(size=num_samples) < 0.5).astype(int)
         else:
-            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-0.15, 0.15, size=(num_samples, 3))
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
         return goals
 
     def _is_success(self, achieved_goal, desired_goal):
