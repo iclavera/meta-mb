@@ -4,7 +4,7 @@ from meta_mb.algos.gc_sac import SAC
 from meta_mb.utils.utils import set_seed
 from meta_mb.samplers.gc_sampler import GCSampler
 from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
-from meta_mb.policies.gc_tanh_mlp_gaussian_policy import TanhGaussianMLPPolicy
+from meta_mb.policies.gc_gaussian_mlp_policy import GCGaussianMLPPolicy
 from meta_mb.value_functions.gc_value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
@@ -32,11 +32,12 @@ class Agent(object):
             n_initial_exploration_steps,
             instance_kwargs,
             eval_interval,
+            greedy_eps,
             num_grad_steps,
     ):
 
         self.agent_index = agent_idx
-        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'], \
+        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
             snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
 
         import tensorflow as tf
@@ -56,26 +57,33 @@ class Agent(object):
 
             self.env = env = pickle.loads(env_pickled)
 
-            Qs = [ValueFunction(name="q_fun_%d" % i,
-                                obs_dim=env.obs_dim,
-                                action_dim=env.act_dim,
-                                goal_dim=env.goal_dim,
-                                ) for i in range(2)]
+            Qs = [ValueFunction(
+                name="q_fun_%d" % i,
+                obs_dim=env.obs_dim,
+                action_dim=env.act_dim,
+                goal_dim=env.goal_dim,
+                hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
+            ) for i in range(2)]
 
-            self.Q_targets = Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                       obs_dim=env.obs_dim,
-                                       action_dim=env.act_dim,
-                                       goal_dim=env.goal_dim,
-                                       ) for i in range(2)]
+            self.Q_targets = Q_targets = [ValueFunction(
+                name="q_fun_target_%d" % i,
+                obs_dim=env.obs_dim,
+                action_dim=env.act_dim,
+                goal_dim=env.goal_dim,
+                hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
+            ) for i in range(2)]
 
-            self.policy = policy = TanhGaussianMLPPolicy(
+            self.policy = policy = GCGaussianMLPPolicy(
                 goal_dim=env.goal_dim,
                 name="policy",
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
                 hidden_sizes=instance_kwargs['policy_hidden_sizes'],
-                learn_std=instance_kwargs['policy_learn_std'],
                 output_nonlinearity=instance_kwargs['policy_output_nonlinearity'],
+                hidden_nonlinearity=instance_kwargs['policy_hidden_nonlinearity'],
+                max_std=instance_kwargs['policy_max_std'],
+                min_std=instance_kwargs['policy_min_std'],
+                squashed=True,
             )
 
             self.goal_buffer = GoalBuffer(
@@ -96,6 +104,7 @@ class Agent(object):
                 num_rollouts=instance_kwargs['num_rollouts'],
                 max_path_length=instance_kwargs['max_path_length'],
                 n_parallel=instance_kwargs['n_parallel'],
+                action_noise_str=instance_kwargs['action_noise_str'],
             )
 
             self.sample_processor = ModelSampleProcessor(
@@ -120,6 +129,7 @@ class Agent(object):
             )
 
             self.eval_interval = eval_interval
+            self.greedy_eps = greedy_eps
             self.num_grad_steps = self.sampler._timesteps_sampled_per_itr if num_grad_steps == -1 else num_grad_steps
             self.replay_buffer = SimpleReplayBuffer(self.env, instance_kwargs['max_replay_buffer_size'])
 
@@ -133,7 +143,7 @@ class Agent(object):
             if n_initial_exploration_steps > 0:
                 while self.replay_buffer._size < n_initial_exploration_steps:
                     paths = self.sampler.collect_rollouts(env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
-                                                          log=True, log_prefix='train-', random=True)
+                                                          greedy_eps=1, log=True, log_prefix='train-')
                     samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
@@ -158,7 +168,8 @@ class Agent(object):
                 """------------------- collect training samples with goal batch -------------"""
 
                 t = time.time()
-                paths = self.sampler.collect_rollouts(batch, log=True, log_prefix='train-')
+                paths = self.sampler.collect_rollouts(batch, greedy_eps=self.greedy_eps, apply_action_noise=True,
+                                                      log=True, log_prefix='train-')
                 logger.logkv('TimeSampling', time.time() - t)
 
                 samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
@@ -181,7 +192,8 @@ class Agent(object):
 
                 eval_paths = []
                 for batch in self.goal_buffer.get_batches(eval=True, batch_size=self.sampler.num_rollouts):
-                    eval_paths.extend(self.sampler.collect_rollouts(batch, log=True, log_prefix='eval-'))
+                    eval_paths.extend(self.sampler.collect_rollouts(batch, greedy_eps=0, apply_action_noise=False,
+                                                                    log=True, log_prefix='eval-'))
                 _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
 
                 logger.dumpkvs()

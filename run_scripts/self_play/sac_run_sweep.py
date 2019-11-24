@@ -69,6 +69,7 @@ def run_experiment(**kwargs):
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
         goal_update_interval=kwargs['goal_update_interval'],
+        greedy_eps=kwargs['greedy_eps'],
         num_grad_steps=kwargs['num_grad_steps'],
         snapshot_gap=kwargs['snapshot_gap'],
     )
@@ -82,33 +83,42 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
+        'policy_hidden_nonlinearity': ['relu'],  # FIXME
         'policy_output_nonlinearity': [None],
         'num_grad_steps': [-1],
+        'policy_max_std': [2e0],
+        'policy_min_std': [1e-3],
+
+        # Value function
+        'vfun_hidden_nonlinearity': ['relu'],  # FIXME
+        'vfun_output_nonlinearity': [None],
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
-        'max_goal_buffer_size': [30],
-        'num_sample_goals': [20],
-        'goal_buffer_alpha': [0.1, 1], #[0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],
-        'goal_update_interval': [2],
+        'max_goal_buffer_size': [100],  # 30
+        'num_sample_goals': [100],  # 20
+        'goal_buffer_alpha': [0.1, 0.5], #[0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],
+        'goal_update_interval': [1],  # does not affect the number of timesteps collected
         'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
-        'replay_k': [4, -1],
+        'replay_k': [4], # -1],
+        'greedy_eps': [0.3],
+        'action_noise_str': ['ou_0.2', 'normal_0.2'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
         'num_agents': [3],
-        'n_itr': [201], # [3001],
+        'n_itr': [101], # [3001],
         'snapshot_gap': [10], # [500],
         'max_path_length': [50], #100],
-        'discount': [0.95], #0.99],
+        'discount': [0.99], #0.95],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],

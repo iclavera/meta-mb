@@ -27,7 +27,6 @@ class Policy(Serializable):
                  action_dim,
                  name='policy',
                  hidden_sizes=(32, 32),
-                 learn_std=True,
                  hidden_nonlinearity=tf.tanh,
                  output_nonlinearity=None,
                  **kwargs
@@ -39,7 +38,6 @@ class Policy(Serializable):
         self.name = name
 
         self.hidden_sizes = hidden_sizes
-        self.learn_std = learn_std
         self.hidden_nonlinearity = hidden_nonlinearity
         self.output_nonlinearity = output_nonlinearity
 

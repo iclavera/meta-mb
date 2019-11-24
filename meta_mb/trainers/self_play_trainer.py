@@ -36,7 +36,8 @@ class Trainer(object):
             goal_update_interval,
             eval_interval,
             num_grad_steps,
-            snapshot_gap=500,
+            greedy_eps,
+            snapshot_gap,
             n_initial_exploration_steps=1e3,
         ):
 
@@ -63,7 +64,8 @@ class Trainer(object):
                 n_initial_exploration_steps=n_initial_exploration_steps, 
                 instance_kwargs=instance_kwargs, 
                 eval_interval=eval_interval, 
-                num_grad_steps=num_grad_steps, 
+                num_grad_steps=num_grad_steps,
+                greedy_eps=greedy_eps,
             )
             self.agents[i] = agent
 

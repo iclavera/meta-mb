@@ -1,5 +1,5 @@
 from meta_mb.utils.networks.mlp import create_mlp, forward_mlp
-from meta_mb.utils import Serializable
+from meta_mb.utils import Serializable, compile_function
 from meta_mb.utils.utils import remove_scope_from_name
 from meta_mb.logger import logger
 
@@ -77,6 +77,7 @@ class ValueFunction(Serializable):
 
             self.vfun_params_ph = self._create_placeholders_for_vars(scope=self.name + "/v_network")
             self.vfun_params_keys = self.vfun_params_ph.keys()
+            self.vfun_np = compile_function(self.input_var, self.output_var)
 
     def log_diagnostics(self, paths, prefix=''):
         """

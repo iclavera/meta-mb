@@ -2,7 +2,7 @@ from meta_mb.utils.serializable import Serializable
 from meta_mb.envs.robotics.vectorized_env_executor import IterativeEnvExecutor, ParallelEnvExecutor
 from meta_mb.logger import logger
 from meta_mb.utils import utils
-# from pyprind import ProgBar
+from meta_mb.samplers.noise import VecOrnsteinUhlenbeckActionNoise, VecNormalActionNoise, VecActionNoise
 import numpy as np
 import time
 import pickle
@@ -23,15 +23,14 @@ class GCSampler(Serializable):
             goal_buffer,
             num_rollouts,
             max_path_length,
+            action_noise_str,
             n_parallel=1,
-            vae=None,
     ):
         Serializable.quick_init(self, locals())
 
         self.env = pickle.loads(env_pickled)
         self.policy = policy
         self.goal_buffer = goal_buffer
-        self.vae = vae
 
         self.num_rollouts = num_rollouts
         self.max_path_length = max_path_length
@@ -46,15 +45,44 @@ class GCSampler(Serializable):
         else:
             self.vec_env = IterativeEnvExecutor(env_pickled, num_rollouts, max_path_length)
 
-    def collect_rollouts(self, goals, random=False, log=False, log_prefix=''):
+        # set up action_noise instance
+        if action_noise_str is None:
+            self.vec_action_noise = VecActionNoise(self.num_rollouts)
+        elif 'ou' in action_noise_str:
+            _, stddev = action_noise_str.split('_')
+            self.vec_action_noise = VecOrnsteinUhlenbeckActionNoise(
+                num_envs=self.num_rollouts,
+                mu=np.zeros(self.env.act_dim),
+                sigma=float(stddev) * np.ones(self.env.act_dim),
+            )
+        elif 'normal' in action_noise_str:
+            _, stddev = action_noise_str.split('_')
+            self.vec_action_noise = VecNormalActionNoise(
+                num_envs=self.num_rollouts,
+                mu=np.zeros(self.env.act_dim),
+                sigma=float(stddev) * np.ones(self.env.act_dim),
+            )
+        else:
+            raise NotImplementedError
+
+    def collect_rollouts(self, goals, greedy_eps, apply_action_noise=True, log=False, log_prefix=''):
+        """
+
+        :param goals: (np.array) goals of shape (num_rollouts, goal_dim)
+        :param apply_noise: whether to apply self.action_noise
+        :param greedy_eps: epsilon greedy policy
+        :param log:
+        :param log_prefix:
+        :return: (list) a list of paths
+        """
         assert goals.ndim == 2 and goals.shape[0] == self.num_rollouts, goals.shape
+        self.policy.reset(dones=[True] * self.num_rollouts)
+        self.vec_action_noise.reset()
+
         policy = self.policy
         paths = []
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_rollouts)]
-        policy.reset(dones=[True] * self.num_rollouts)
-
-        # if verbose: pbar = ProgBar(self.total_samples)
         policy_time, env_time, store_time = 0, 0, 0
 
         # sample goals
@@ -65,15 +93,23 @@ class GCSampler(Serializable):
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
             t = time.time()
-            if self.vae is not None:
-                obs_no = np.array(obs_no)
-                obs_no = self.vae.encode(obs_no)
-            if random:
+            if greedy_eps == 1:
                 act_na = np.stack([self.env.action_space.sample() for _ in range(self.num_rollouts)], axis=0)
                 agent_info_n = []
             else:
                 obs_no = np.array(obs_no)
                 act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
+                # sanity check the magnitude of action statistics
+                act_std = np.exp(agent_info_n[0]['log_std'])
+                logger.log('act std', act_std)
+
+                if apply_action_noise:
+                    act_na += self.vec_action_noise()
+
+                # epsilon greedy policy
+                greedy_mask = np.random.binomial(1, greedy_eps, self.num_rollouts).astype(np.bool)
+                act_na[greedy_mask] = np.reshape([self.env.action_space.sample() for _ in range(np.sum(greedy_mask))], (-1, self.env.act_dim))
+
             policy_time += time.time() - t
 
             # step environments
@@ -115,10 +151,7 @@ class GCSampler(Serializable):
                     running_paths[idx] = _get_empty_running_paths_dict()
             store_time = time.time() - t
 
-            # if verbose: pbar.update(self.vec_env.num_envs)
             obs_no = next_obs_no
-
-        # if verbose: pbar.stop()
 
         self._total_timesteps_sampled += n_samples
 
@@ -142,7 +175,6 @@ class GCSampler(Serializable):
     def __getstate__(self):
         state = dict()
         state['init_args'] = Serializable.__getstate__(self)
-        # dumps policy
         state['policy'] = self.policy.__getstate__()
         return state
 

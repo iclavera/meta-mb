@@ -227,19 +227,19 @@ class SampleProcessor(object):
 
         return samples_data, paths
 
-    def _log_path_stats(self, paths, log=False, log_prefix='', log_all=False):
+    def _log_path_stats(self, paths, log=False, log_prefix='', log_success_rate=True):
         # compute log stats
         average_discounted_return = np.mean([path["returns"][0] for path in paths])
-        undiscounted_returns = [sum(path["rewards"]) for path in paths]
+        undiscounted_returns = np.asarray([sum(path["rewards"]) for path in paths])
 
         if log == 'reward':
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
 
         elif log == 'all' or log is True:
-            if log_all:
-                for i, (undiscounted_return, path) in enumerate(zip(undiscounted_returns, paths)):
-                    logger.logkv(log_prefix + f"Return-{i}", undiscounted_return)
-                    logger.logkv(log_prefix + f"DiscountedReturn-{i}", path["returns"][0])
+            if log_success_rate:
+                len_trajs = np.asarray([len(path["rewards"]) for path in paths])
+                success_rate = np.sum(undiscounted_returns > -len_trajs) / len(paths)
+                logger.logkv(log_prefix + f"SuccessRate", success_rate)
             logger.logkv(log_prefix + 'LenTrajs', np.mean([len(path["rewards"]) for path in paths]))
             logger.logkv(log_prefix + 'AverageDiscountedReturn', average_discounted_return)
             logger.logkv(log_prefix + 'AverageReturn', np.mean(undiscounted_returns))
