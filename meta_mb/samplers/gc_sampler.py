@@ -100,8 +100,8 @@ class GCSampler(Serializable):
                 obs_no = np.array(obs_no)
                 act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
                 # sanity check the magnitude of action statistics
-                act_std = np.exp(agent_info_n[0]['log_std'])
-                logger.log('act std', act_std)
+                # act_std = np.exp(agent_info_n[0]['log_std'])  # this number if large, almost one
+                # logger.log('act std', act_std)
 
                 if apply_action_noise:
                     act_na += self.vec_action_noise()

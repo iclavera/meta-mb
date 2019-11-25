@@ -27,22 +27,28 @@ def run_experiment(**kwargs):
 
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv'
-        # kwargs['n_itr'] = 1001
-        # kwargs['snapshot_gap'] = 100
+        kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
+        kwargs['n_itr'] = 41
+        kwargs['snapshot_gap'] = 10
     elif kwargs['env'] is FetchPushEnv:
         env_name = 'FPushEnv'
+        kwargs['n_itr'] = 201
+        kwargs['snapshot_gap'] = 40
     elif kwargs['env'] is FetchPickAndPlaceEnv:
         env_name = 'FP&PEnv'
     elif kwargs['env'] is FetchSlideEnv:
         env_name = 'FSlideEnv'
+        kwargs['n_itr'] = 201
+        kwargs['snapshot_gap'] = 40
     else:
         raise NotImplementedError
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        kwargs['exp_name'] = f"agent_{kwargs['num_agents']}-{env_name}-{kwargs['goal_buffer_alpha']}-replay_k-{kwargs['replay_k']}-{timestamp}"
+        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
@@ -83,40 +89,42 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': ['relu'],  # FIXME
+        'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # FIXME
         'policy_output_nonlinearity': [None],
         'num_grad_steps': [-1],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
 
         # Value function
-        'vfun_hidden_nonlinearity': ['relu'],  # FIXME
+        'vfun_hidden_nonlinearity': ['tanh'],  # FIXME
         'vfun_output_nonlinearity': [None],
+
+        # Goal Sampling
+        'max_goal_buffer_size': [100],  # 30  # FIXME
+        'num_sample_goals': [100],  # 20  # FIXME
+        'goal_buffer_alpha': [0.1, 0.5],  # [0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
+        'goal_update_interval': [1],  # does not affect the number of timesteps collected
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
-        'max_goal_buffer_size': [100],  # 30
-        'num_sample_goals': [100],  # 20
-        'goal_buffer_alpha': [0.1, 0.5], #[0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],
-        'goal_update_interval': [1],  # does not affect the number of timesteps collected
         'eval_interval': [1],
         'sample_rule': ['norm_diff'],  # 'softmax'],
-        'replay_k': [4], # -1],
+        'replay_k': [3], # 4, -1],
         'greedy_eps': [0.3],
-        'action_noise_str': ['ou_0.2', 'normal_0.2'],
+        'action_noise_str': ['ou_0.2'], #'normal_0.2'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
         'num_agents': [3],
-        'n_itr': [101], # [3001],
-        'snapshot_gap': [10], # [500],
+        # 'n_itr': [101], # [3001],
+        # 'snapshot_gap': [10], # [500],
         'max_path_length': [50], #100],
         'discount': [0.99], #0.95],
         'gae_lambda': [1.],
