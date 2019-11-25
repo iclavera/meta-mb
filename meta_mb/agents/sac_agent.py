@@ -91,9 +91,9 @@ class Agent(object):
                 agent_index=self.agent_index,
                 policy=policy,
                 q_ensemble=Q_targets,
-                max_buffer_size=instance_kwargs['max_goal_buffer_size'],
+                max_buffer_size=instance_kwargs['goal_buffer_size'],
                 alpha=instance_kwargs['goal_buffer_alpha'],
-                sample_rule=instance_kwargs['sample_rule'],
+                sampling_rule=instance_kwargs['goal_sampling_rule'],
                 # curiosity_percentage=instance_kwargs['curiosity_percentage'],
             )
 

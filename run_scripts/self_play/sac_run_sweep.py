@@ -25,10 +25,11 @@ GLOBAL_SEED = 1
 def run_experiment(**kwargs):
     set_seed(GLOBAL_SEED)
 
+    # preprocess kwargs
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv'
-        kwargs['n_itr'] = 1001
-        kwargs['snapshot_gap'] = 100
+        kwargs['n_itr'] = 51
+        kwargs['snapshot_gap'] = 10
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 41
@@ -45,10 +46,13 @@ def run_experiment(**kwargs):
         kwargs['snapshot_gap'] = 40
     else:
         raise NotImplementedError
+    kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
+    else:
+        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}" + kwargs['exp_name']
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
@@ -69,12 +73,12 @@ def run_experiment(**kwargs):
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
-        num_sample_goals=kwargs['num_sample_goals'],
+        num_mc_goals=kwargs['num_mc_goals'],
+        refresh_interval=kwargs['refresh_interval'],
         alpha=kwargs['goal_buffer_alpha'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
-        goal_update_interval=kwargs['goal_update_interval'],
         greedy_eps=kwargs['greedy_eps'],
         num_grad_steps=kwargs['num_grad_steps'],
         snapshot_gap=kwargs['snapshot_gap'],
@@ -105,17 +109,15 @@ if __name__ == '__main__':
         'vfun_output_nonlinearity': [None],
 
         # Goal Sampling
-        'max_goal_buffer_size': [100],  # 30  # FIXME
-        'num_sample_goals': [100],  # 20  # FIXME
-        'goal_buffer_alpha': [0.1, 0.5],  # [0, 0.5, 1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
-        'goal_update_interval': [1],  # does not affect the number of timesteps collected
+        'goal_sampling_params': [(1, 100, 100), (4, 25, 25)],  # (refresh_interval, num_mc_goals, goal_buffer_size)
+        'goal_buffer_alpha': [0.1, 0.5, -1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
+        'goal_sampling_rule': ['norm_diff'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'eval_interval': [1],
-        'sample_rule': ['norm_diff'],  # 'softmax'],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0.3],
         'action_noise_str': ['ou_0.2'], #'normal_0.2'],
@@ -123,8 +125,6 @@ if __name__ == '__main__':
 
         # Problem Conf
         'num_agents': [3],
-        # 'n_itr': [101], # [3001],
-        # 'snapshot_gap': [10], # [500],
         'max_path_length': [50], #100],
         'discount': [0.99], #0.95],
         'gae_lambda': [1.],

@@ -29,11 +29,11 @@ class Trainer(object):
             instance_kwargs,
             gpu_frac,
             env,
-            num_sample_goals,
+            num_mc_goals,
+            refresh_interval,
             alpha,
             n_itr,
             exp_dir,
-            goal_update_interval,
             eval_interval,
             num_grad_steps,
             greedy_eps,
@@ -42,9 +42,9 @@ class Trainer(object):
         ):
 
         self.env = env
-        self.num_sample_goals = num_sample_goals
         self.alpha = alpha
-        self.goal_update_interval = goal_update_interval
+        self.num_mc_goals = num_mc_goals
+        self.refresh_interval = refresh_interval
         self.eval_interval = eval_interval
         self.n_itr = n_itr
 
@@ -81,15 +81,15 @@ class Trainer(object):
 
             """------------------- assign tasks to agents --------------------------"""
 
-            if itr % self.goal_update_interval == 0:
+            if itr % self.refresh_interval == 0:
                 if self.alpha == 1:  # baseline
-                    mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_sample_goals)
+                    mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_mc_goals)
                     q_list = None
                 elif self.alpha == -1:  # baseline
-                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
+                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
                     q_list = None
                 else:
-                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_sample_goals)
+                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
                     _futures = [agent.compute_q_values.remote(mc_goals) for agent in agents]
                     q_list = np.asarray(ray.get(_futures))
 
@@ -101,7 +101,7 @@ class Trainer(object):
 
             """------------------- collect future objects ---------------------"""
 
-            if itr % self.goal_update_interval == 0 and 0 < self.alpha < 1:
+            if itr % self.refresh_interval == 0 and 0 < self.alpha < 1:
                 # update proposed_goals_list
                 # If an agent successfully proposes a goal at current iteration,
                 # the goal will be appended to its goal buffer for the next iteration.

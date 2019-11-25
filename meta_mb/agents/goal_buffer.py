@@ -1,5 +1,6 @@
 import tensorflow as tf
 from meta_mb.logger import logger
+from meta_mb.utils import compile_function
 import numpy as np
 
 
@@ -12,7 +13,7 @@ class GoalBuffer(object):
             q_ensemble,
             max_buffer_size,
             alpha,
-            sample_rule,
+            sampling_rule,
             # curiosity_percentage,
     ):
         self.env = env
@@ -28,11 +29,12 @@ class GoalBuffer(object):
 
         self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goal')
         self.min_q_var = self._build()
+        self.compute_min_q = compile_function(inputs=[self.goal_ph], outputs=self.min_q_var)
 
         self.buffer = env.sample_goals(mode=None, num_samples=max_buffer_size)
         self.eval_buffer = env.eval_goals
 
-        self.sample_rule = sample_rule
+        self.sampling_rule = sampling_rule
         # self.curiosity_percentage = curiosity_percentage
 
     def _build(self):
@@ -44,12 +46,12 @@ class GoalBuffer(object):
         # agent_q_var = (num_q, num_target_goals)
         q_vals = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in self.q_ensemble], axis=0)
         return tf.reduce_min(q_vals, axis=0)
-
-    def compute_min_q(self, target_goals):
-        feed_dict = {self.goal_ph: target_goals}
-        sess = tf.get_default_session()
-        min_q, = sess.run([self.min_q_var], feed_dict=feed_dict)
-        return min_q
+    #
+    # def compute_min_q(self, target_goals):
+    #     feed_dict = {self.goal_ph: target_goals}
+    #     sess = tf.get_default_session()
+    #     min_q, = sess.run([self.min_q_var], feed_dict=feed_dict)
+    #     return min_q
 
     def refresh(self, mc_goals, proposed_goals, q_list, log=True):
         """
@@ -103,7 +105,7 @@ class GoalBuffer(object):
 
         """------------------------ sample with P --------------------"""
 
-        if self.sample_rule == 'softmax':
+        if self.sampling_rule == 'softmax':
 
             """-------------- sample with softmax -------------"""
 
@@ -111,7 +113,7 @@ class GoalBuffer(object):
             p = np.exp(log_p - np.max(log_p))
             p /= np.sum(p)
 
-        elif self.sample_rule == 'norm_diff':
+        elif self.sampling_rule == 'norm_diff':
 
             """------------- sample with normalized difference --------------"""
 
@@ -139,6 +141,10 @@ class GoalBuffer(object):
         assert len(samples) == self.max_buffer_size
         self.buffer = samples
         if log:
+            logger.logkv('PMax', np.max(p))
+            logger.logkv('PMin', np.min(p))
+            logger.logkv('PStd', np.std(p))
+            logger.logkv('PMean', np.mean(p))
             logger.logkv('ProposedGoalsCtr', len(proposed_goals))
 
         return indices_p
