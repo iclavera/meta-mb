@@ -116,7 +116,7 @@ class TrainerV1(object):
                 # If an agent successfully proposes a goal at current iteration,
                 # the goal will be appended to its goal buffer for the next iteration.
                 proposed_goals_list = [[] for _ in range(len(agents))]
-                proposed_goals_indices = np.unique(proposed_goals_indices)
+                proposed_goals_indices = np.unique(np.concatenate(proposed_goals_indices))
                 proposed_goals = mc_goals[proposed_goals_indices]
                 proposer_indices = np.argmax(q_list, axis=0)[proposed_goals_indices]
                 for goal, proposer_index in zip(proposed_goals, proposer_indices):
