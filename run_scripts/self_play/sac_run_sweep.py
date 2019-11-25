@@ -11,6 +11,7 @@ from meta_mb.envs.robotics.fetch.push import FetchPushEnv
 from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
 from meta_mb.envs.robotics.fetch.pick_and_place import FetchPickAndPlaceEnv
 from meta_mb.trainers.self_play_trainer import Trainer
+from meta_mb.trainers.self_play_trainer_v1 import TrainerV1
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 # from meta_mb.envs.normalized_env import normalize
@@ -52,7 +53,7 @@ def run_experiment(**kwargs):
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
     else:
-        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}" + kwargs['exp_name']
+        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-" + kwargs['exp_name']
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
@@ -67,7 +68,7 @@ def run_experiment(**kwargs):
     logger.dumpkvs()
 
     logger.log('ray init...', ray.init())
-    trainer = Trainer(
+    trainer = TrainerV1(
         num_agents=kwargs['num_agents'],
         seeds=kwargs['seeds'],
         instance_kwargs=kwargs,
@@ -110,8 +111,8 @@ if __name__ == '__main__':
 
         # Goal Sampling
         'goal_sampling_params': [(1, 100, 100), (4, 25, 25)],  # (refresh_interval, num_mc_goals, goal_buffer_size)
-        'goal_buffer_alpha': [0.1, 0.5, -1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
-        'goal_sampling_rule': ['norm_diff'],  # ['softmax'],
+        'goal_buffer_alpha': [0, 0.5, -1], #-1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
+        'goal_sampling_rule': ['norm_diff', 'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
