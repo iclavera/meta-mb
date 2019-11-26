@@ -10,7 +10,6 @@ from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.envs.robotics.fetch.push import FetchPushEnv
 from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
 from meta_mb.envs.robotics.fetch.pick_and_place import FetchPickAndPlaceEnv
-from meta_mb.trainers.self_play_trainer import Trainer
 from meta_mb.trainers.self_play_trainer_v1 import TrainerV1
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -26,11 +25,18 @@ GLOBAL_SEED = 1
 def run_experiment(**kwargs):
     set_seed(GLOBAL_SEED)
 
+    # env = normalize(kwargs['env']())  # FIXME
+    env = kwargs['env']()
+
     # preprocess kwargs
     if kwargs['env'] is ParticleMazeEnv:
-        env_name = 'PMazeEnv'
-        kwargs['n_itr'] = 51
-        kwargs['snapshot_gap'] = 10
+        env_name = 'PMazeEnv-' + env.name
+        if env.name == 'easy':
+            kwargs['n_itr'] = 51
+            kwargs['snapshot_gap'] = 10
+        elif env.name == 'medium':
+            kwargs['n_itr'] = 201
+            kwargs['snapshot_gap'] = 40
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 41
@@ -48,6 +54,7 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
     kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
+    assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
@@ -59,9 +66,6 @@ def run_experiment(**kwargs):
 
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-
-    # env = normalize(kwargs['env']())  # FIXME
-    env = kwargs['env']()
 
     for k, v in kwargs.items():
         logger.logkv(k, v)
@@ -110,9 +114,11 @@ if __name__ == '__main__':
         'vfun_output_nonlinearity': [None],
 
         # Goal Sampling
-        'goal_sampling_params': [(1, 100, 100), (4, 25, 25)],  # (refresh_interval, num_mc_goals, goal_buffer_size)
-        'goal_buffer_alpha': [0, 0.5, -1], #-1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
-        'goal_sampling_rule': ['norm_diff', 'softmax'],  # ['softmax'],
+        # goal_sampling_params = (refresh_interval, num_mc_goals, goal_buffer_size)
+        # need num_mc_goals > goal_buffer_size to avoid error (repeated sampling not allowed)
+        'goal_sampling_params': [(2, 200, 50)], #[(1, 200, 100)], #
+        'goal_buffer_alpha': [0, 0.5], #-1],  # [0, 0.1, 0.5, 0.9, 1],  # FIXME
+        'goal_sampling_rule': ['norm_diff'], #'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -121,7 +127,7 @@ if __name__ == '__main__':
         'eval_interval': [1],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0.3],
-        'action_noise_str': ['ou_0.2'], #'normal_0.2'],
+        'action_noise_str': ['ou_0.2', 'none'], #'normal_0.2'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf

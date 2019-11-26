@@ -61,7 +61,7 @@ def plot_maze(dir_path_list, max_path_length, num_rollouts=None, gap=1, min_pkl=
 
             # plot goal distribution, split by itr
             for itr, q_values_arr in q_values_dict.items():
-                vis.plot_goal_distributions(q_values_arr=q_values_arr, sample_rule=exp['json']['sample_rule'], alpha=exp['json']['goal_buffer_alpha'], itr=itr)
+                vis.plot_goal_distributions(q_values_arr=q_values_arr, sample_rule=exp['json']['sampling_rule'], alpha=exp['json']['goal_buffer_alpha'], itr=itr)
 
     plt.show()
 

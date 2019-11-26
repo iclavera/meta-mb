@@ -29,8 +29,8 @@ class GCGaussianMLPPolicy(Policy):
 
     def __init__(
             self,
+            goal_dim,
             *args,
-            goal_dim=None,
             squashed=False,
             init_std=1e-2,
             min_std=1e-6,

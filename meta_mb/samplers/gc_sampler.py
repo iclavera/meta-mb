@@ -46,7 +46,7 @@ class GCSampler(Serializable):
             self.vec_env = IterativeEnvExecutor(env_pickled, num_rollouts, max_path_length)
 
         # set up action_noise instance
-        if action_noise_str is None:
+        if action_noise_str == 'none':
             self.vec_action_noise = VecActionNoise(self.num_rollouts)
         elif 'ou' in action_noise_str:
             _, stddev = action_noise_str.split('_')

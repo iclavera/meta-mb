@@ -152,12 +152,9 @@ class AgentV1(object):
     def compute_q_values(self, sample_goals):
         return self.goal_buffer.compute_min_q(sample_goals)
 
-    def update_info(self, mc_goals, q_list):
-        return self.goal_buffer.update_info(mc_goals, q_list)
-
-    def update_buffer(self, proposed_goals):
+    def update_buffer(self, proposed_goals, mc_goals, q_max, agent_q):
         t = time.time()
-        indices = self.goal_buffer.update_buffer(proposed_goals, log=True)
+        indices = self.goal_buffer.update_buffer(proposed_goals, mc_goals, q_max, agent_q, log=True)
         logger.logkv('TimeGoalSampling', time.time() - t)
         return indices
 
@@ -197,6 +194,7 @@ class AgentV1(object):
                                                                     log=True, log_prefix='eval-'))
                 _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
 
+                logger.logkv('Index', self.agent_index)
                 logger.dumpkvs()
 
     def save_snapshot(self, itr):

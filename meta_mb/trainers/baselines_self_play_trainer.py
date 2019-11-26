@@ -7,7 +7,7 @@ import ray
 import pickle
 
 
-class TrainerV1(object):
+class Trainer(object):
     """
     Performs steps for MAML
     Args:
@@ -71,9 +71,7 @@ class TrainerV1(object):
 
     def train(self):
         agents = self.agents
-        proposed_goals_list = [[] for _ in range(len(agents))]  # updated with returned values from update_goal_buffer
         mc_goals = None
-        proposer_indices = None
 
         time_start = time.time()
 
@@ -84,41 +82,24 @@ class TrainerV1(object):
             """------------------- assign tasks to agents --------------------------"""
 
             if itr % self.refresh_interval == 0:
-                # Every refresh_interval, resample mc_goals and recompute Q-value predictions for all agents
-                mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
-                _tmp = [agent.compute_q_values.remote(mc_goals) for agent in agents]
-                q_list = np.asarray(ray.get(_tmp))
-                proposer_indices = np.argmax(q_list, axis=0)
-                q_max = np.max(q_list, axis=0)
+                if self.alpha == 1:  # baseline
+                    mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_mc_goals)
+                elif self.alpha == -1:  # baseline
+                    mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
 
-                if itr % self.eval_interval == 0:
-                    _, _proposer_ctrs = np.unique(proposer_indices, return_counts=True)
-                    logger.logkv('LeadCtr', _proposer_ctrs/self.num_mc_goals)
-
-                _futures_update_buffer = [
-                    agent.update_buffer.remote(proposed_goals=proposed_goals, mc_goals=mc_goals, q_max=q_max, agent_q=agent_q) \
-                    for agent, proposed_goals, agent_q in zip(agents, proposed_goals_list, q_list)]
+                _futures_update_info = [agent.update_info.remote(mc_goals=mc_goals, q_list=None) for agent in agents]
             else:
-                _futures_update_buffer = [agent.update_buffer.remote(proposed_goals=proposed_goals, mc_goals=None, q_max=None, agent_q=None) \
-                                          for agent, proposed_goals in
-                                          zip(agents, proposed_goals_list)]
+                _futures_update_info = []
 
             # Every iteration, resample goals to generate new goal batches
+            _futures_update_buffer = [agent.update_buffer.remote(proposed_goals=None) for agent in agents]
             _futures_train = [agent.train.remote(itr) for agent in agents]
             _futures_train.extend([agent.save_snapshot.remote(itr) for agent in agents])
 
             """------------------- collect future objects ---------------------"""
 
-            proposed_goals_indices = ray.get(_futures_update_buffer)
-
-            # update proposed_goals_list
-            # If an agent successfully proposes a goal at current iteration,
-            # the goal will be appended to its goal buffer for the next iteration.
-            proposed_goals_list = [[] for _ in range(len(agents))]
-            proposed_goals_indices = np.unique(np.concatenate(proposed_goals_indices))
-            for goal, proposer_index in zip(mc_goals[proposed_goals_indices], proposer_indices[proposed_goals_indices]):
-                proposed_goals_list[proposer_index].append(goal)
-
+            _ = ray.get(_futures_update_info)
+            _ = ray.get(_futures_update_buffer)
             _ = ray.get(_futures_train)
 
             if itr == 0:

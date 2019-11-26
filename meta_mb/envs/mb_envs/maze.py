@@ -18,6 +18,7 @@ class ParticleMazeEnv(object):
         self.reward_str = reward_str
         self.num_substeps = 10
         self.ddt = 0.01  # dt = 0.1 = ddt * num_substeps
+        self.name = grid_name
         self.grid = maze_layouts[grid_name]
 
         self._reset_grid()

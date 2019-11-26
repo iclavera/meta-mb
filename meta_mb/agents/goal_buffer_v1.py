@@ -53,11 +53,7 @@ class GoalBufferV1(object):
         q_vals = tf.stack([tf.reshape(q.value_sym(input_var=input_q_fun), (-1,)) for q in self.q_ensemble], axis=0)
         return tf.reduce_min(q_vals, axis=0)
 
-    def update_info(self, mc_goals, q_list):
-        self.mc_goals = mc_goals
-        self.q_max = np.max(q_list, axis=0)
-
-    def update_buffer(self, proposed_goals, log=True):
+    def update_buffer(self, proposed_goals, mc_goals, q_max, agent_q, log=True):
         """
         g ~ (1 - alpha) * P + alpha * U
         U = X_E, where E is the target region in the maze, X is the indicator function
@@ -69,23 +65,42 @@ class GoalBufferV1(object):
         :param log:
         :return:
         """
-
         """--------------------- alpha = 1, g ~ U or g ~ X ---------------------"""
 
         if self.alpha == 1 or self.alpha == -1:
             # uniform sampling, all sample_goals come from env.target_goals
+            if mc_goals is not None:
+                self.mc_goals = mc_goals
             self.buffer = self.mc_goals[np.random.choice(len(self.mc_goals), size=self.max_buffer_size, replace=True)]
             return None
 
         """--------------- alpha < 1, g ~ (1-alpha) * P + alpha * U ------------------"""
 
-        agent_q = self.compute_min_q(self.mc_goals)
-        self.q_max = np.maximum(self.q_max, agent_q)
+        if mc_goals is not None:
+            self.mc_goals = mc_goals
+            self.q_max = q_max
+        else:
+            _prev_q_max = self.q_max  # for logging
+            agent_q = self.compute_min_q(self.mc_goals)
+            self.q_max = np.maximum(self.q_max, agent_q)
+            if log: logger.logkv('PChangePct', np.sum(_prev_q_max < self.q_max) / len(self.q_max))
 
         num_proposed_goals = len(proposed_goals)
+        if log: logger.logkv('ProposedGoalsCtr', num_proposed_goals)
+        if num_proposed_goals >= self.max_buffer_size:
+            proposed_goals_indices = np.random.choice(num_proposed_goals, size=self.max_buffer_size, replace=True)
+            self.buffer = np.asarray(proposed_goals)[proposed_goals_indices]
+            return np.array([])
+
+        diff = self.q_max - agent_q
+        if np.sum(diff) == 0:
+            indices_u = np.random.choice(len(self.mc_goals), size=self.max_buffer_size-num_proposed_goals)
+            samples = proposed_goals + list(self.mc_goals[indices_u])
+            self.buffer = samples
+            return np.array([])
+
         num_goals_u = int((self.max_buffer_size - num_proposed_goals) * self.alpha)
         num_goals_p = self.max_buffer_size - num_proposed_goals - num_goals_u
-
 
         """--------------------- sample with curiosity -------------------"""
 
@@ -98,43 +113,17 @@ class GoalBufferV1(object):
         # curiosity_mask[np.argpartition(max_q - min_q, kth=kth)[:kth]] = False
         # samples.extend(mc_goals[np.logical_and(agent_q == max_q, curiosity_mask)])
 
-        """------------ sample if the current agent proposed a goal in the previous iteration  -------------"""
-
-        """------------------------ sample with P --------------------"""
-
         if self.sampling_rule == 'softmax':
-
-            """-------------- sample with softmax -------------"""
-
-            log_diff = self.q_max - agent_q
-            p = np.exp(log_diff - np.max(log_diff))
+            p = np.exp(diff - np.max(diff))
             p /= np.sum(p)
-
         elif self.sampling_rule == 'norm_diff':
-
-            """------------- sample with normalized difference --------------"""
-
-            diff = self.q_max - agent_q
-            if np.sum(diff) == 0:
-                p = np.ones_like(diff) / len(diff)
-            else:
-                p = diff / np.sum(diff)
-
+            p = diff / np.sum(diff)
         else:
             raise ValueError
 
         indices_p = np.random.choice(len(self.mc_goals), size=num_goals_p, replace=True, p=p)
-
-        """------------------------- sample with U -----------------"""
-
-        u = np.ones_like(agent_q)
-        u = u / np.sum(u)
-        indices_u = np.random.choice(len(self.mc_goals), size=num_goals_u, replace=True, p=u)
-
-        """----------------------- concatenate sampled goals ---------------------"""
-
+        indices_u = np.random.choice(len(self.mc_goals), size=num_goals_u, replace=True)
         samples = proposed_goals + list(self.mc_goals[indices_p]) + list(self.mc_goals[indices_u])
-        assert len(samples) == self.max_buffer_size
         self.buffer = samples
 
         if log:
@@ -142,7 +131,6 @@ class GoalBufferV1(object):
             logger.logkv('PMin', np.min(p))
             logger.logkv('PStd', np.std(p))
             logger.logkv('PMean', np.mean(p))
-            logger.logkv('ProposedGoalsCtr', len(proposed_goals))
 
         return indices_p
 

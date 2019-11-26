@@ -44,12 +44,12 @@ class MazeVisualizer(object):
             sweeping_indices,
         )), (POINTS_PER_DIM, POINTS_PER_DIM))
 
-        _target_goals_ind_list = self.env._target_goals_ind.tolist()
-        target_mask = np.asarray(list(map(
-            lambda ind: ind.tolist() in _target_goals_ind_list,
-            sweeping_indices[self.mask.ravel()],
-        )))  # length = number of free sweeping index pairs
-        self.u = target_mask.ravel().astype(np.int) / np.sum(target_mask)
+        # _target_goals_ind_list = self.env._target_goals_ind.tolist()
+        # target_mask = np.asarray(list(map(
+        #     lambda ind: ind.tolist() in _target_goals_ind_list,
+        #     sweeping_indices[self.mask.ravel()],
+        # )))  # length = number of free sweeping index pairs
+        # self.x = target_mask.ravel().astype(np.int) / np.sum(target_mask)
 
     def do_plots(self, policy_arr, q_ensemble_arr, itr):
         image_path = os.path.join(self.parent_path, f"itr_{itr}.png")
@@ -76,7 +76,7 @@ class MazeVisualizer(object):
         return q_values_arr
 
     def plot_goal_distributions(self, q_values_arr, sample_rule, alpha, itr):
-        if not 0 < alpha < 1:
+        if not 0 <= alpha < 1:
             return
         image_path = os.path.join(self.parent_path, f"itr_{itr}_p_dist.png")
         if not self.force_reload and os.path.exists(image_path):
@@ -89,13 +89,16 @@ class MazeVisualizer(object):
 
         fig, ax_arr = plt.subplots(nrows=1, ncols=num_agents+1, figsize=(20, 5))
 
+        u = np.ones_like(q_values_arr[0])
+        u /= np.sum(u)
+
         if sample_rule == 'softmax':
             for agent_idx in range(num_agents):
-                log_p = np.max(q_values_arr[:agent_idx] + q_values_arr[agent_idx+1:], axis=0)  # - agent_q
+                log_p = np.max(q_values_arr, axis=0) - q_values_arr[agent_idx]
                 p = np.exp(log_p - np.max(log_p))
                 p /= np.sum(p)
 
-                p = (1 - alpha) * p + alpha * self.u
+                p = (1 - alpha) * p + alpha * u
                 self._goal_distribution_helper(fig, ax_arr[agent_idx], p)
 
         elif sample_rule == 'norm_diff':
@@ -106,7 +109,7 @@ class MazeVisualizer(object):
                 else:
                     p = p / np.sum(p)
 
-                p = (1 - alpha) * p + alpha * self.u
+                p = (1 - alpha) * p + alpha * u
                 self._goal_distribution_helper(fig, ax_arr[agent_idx], p)
 
         else:
@@ -168,7 +171,7 @@ class MazeVisualizer(object):
         Evaluated discounted returns heatmap
         """
         _free_ind_list = self.env._free_ind.tolist()
-        _target_goals_ind_list = self.env._target_goals_ind.tolist()
+        # _target_goals_ind_list = self.env._target_goals_ind.tolist()
 
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
@@ -176,7 +179,7 @@ class MazeVisualizer(object):
 
         # performance metric
         total_counter, total_success = 0, 0
-        target_counter, target_success = 0, 0
+        # target_counter, target_success = 0, 0
 
         for _x, _y in zip(xx.ravel(), yy.ravel()):
             discounted_return = None
@@ -184,27 +187,28 @@ class MazeVisualizer(object):
             goal_ind = self.env._get_index(goal).tolist()
             if goal_ind in _free_ind_list:
                 total_counter += 1
-                if goal_ind in _target_goals_ind_list:
-                    target_counter += 1
+                # if goal_ind in _target_goals_ind_list:
+                #     target_counter += 1
                 path = self._rollout(goal=goal, policy=policy)
                 discounted_return = path["discounted_return"]
 
                 if path['undiscounted_return'] > - len(path['rewards']):  # counted as success
                     total_success += 1
-                    if goal_ind in _target_goals_ind_list:
-                        target_success += 1
+                    # if goal_ind in _target_goals_ind_list:
+                    #     target_success += 1
 
             z.append(discounted_return)
 
         total_success_rate = total_success / total_counter
-        target_success_rate = target_success / target_counter
+        # target_success_rate = target_success / target_counter
 
         z = np.reshape(z, (points_per_dim, points_per_dim))
         cb = ax.scatter(xx, yy, c=z, s=100, marker='s')
         fig.colorbar(cb, shrink=0.5, ax=ax)
 
         ax.set_facecolor('black')
-        ax.set_title(f"total_hit_{round(total_success_rate, 2)}_target_hit_{round(target_success_rate, 2)}")
+        # ax.set_title(f"total_hit_{round(total_success_rate, 2)}_target_hit_{round(target_success_rate, 2)}")
+        ax.set_title(f"total_hit_{round(total_success_rate, 2)}")
         ax.axis('equal')
         ax.set(xlim=(-1, 1), ylim=(-1, 1))
 

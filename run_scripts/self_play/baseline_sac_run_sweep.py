@@ -1,123 +1,136 @@
 import os
 import json
-import tensorflow as tf
-import numpy as np
+import ray
+from datetime import datetime
+
+from experiment_utils.run_sweep import run_sweep
+from meta_mb.utils.utils import ClassEncoder
+from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
+from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
+from meta_mb.envs.robotics.fetch.push import FetchPushEnv
+from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
+from meta_mb.envs.robotics.fetch.pick_and_place import FetchPickAndPlaceEnv
+from meta_mb.trainers.baselines_self_play_trainer import Trainer
+from meta_mb.logger import logger
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+# from meta_mb.envs.normalized_env import normalize
+from meta_mb.utils.utils import set_seed
+
+
 INSTANCE_TYPE = 'c4.xlarge'
 EXP_NAME = 'sac'
-
-
-from meta_mb.algos.sac import SAC
-from experiment_utils.run_sweep import run_sweep
-from meta_mb.utils.utils import set_seed, ClassEncoder
-from meta_mb.envs.mb_envs import *
-from meta_mb.envs.mb_envs.maze import ParticleEnv, ParticleMazeEnv, ParticleFixedEnv
-from meta_mb.envs.normalized_env import normalize
-from meta_mb.trainers.sac_trainer import Trainer
-from meta_mb.samplers.sampler import Sampler
-from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
-from meta_mb.policies.tanh_mlp_gaussian_policy import TanhGaussianMLPPolicy
-from meta_mb.logger import logger
-from meta_mb.value_functions.value_function import ValueFunction
-from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-
+GLOBAL_SEED = 1
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/' + EXP_NAME
+    set_seed(GLOBAL_SEED)
+
+    # env = normalize(kwargs['env']())  # FIXME
+    env = kwargs['env']()
+
+    # preprocess kwargs
+    if kwargs['env'] is ParticleMazeEnv:
+        env_name = 'PMazeEnv-' + env.name
+        if env.name == 'easy':
+            kwargs['n_itr'] = 51
+            kwargs['snapshot_gap'] = 10
+        elif env.name == 'medium':
+            kwargs['n_itr'] = 161
+            kwargs['snapshot_gap'] = 40
+    elif kwargs['env'] is FetchReachEnv:
+        env_name = 'FReachEnv'
+        kwargs['n_itr'] = 41
+        kwargs['snapshot_gap'] = 10
+    elif kwargs['env'] is FetchPushEnv:
+        env_name = 'FPushEnv'
+        kwargs['n_itr'] = 201
+        kwargs['snapshot_gap'] = 40
+    elif kwargs['env'] is FetchPickAndPlaceEnv:
+        env_name = 'FP&PEnv'
+    elif kwargs['env'] is FetchSlideEnv:
+        env_name = 'FSlideEnv'
+        kwargs['n_itr'] = 201
+        kwargs['snapshot_gap'] = 40
+    else:
+        raise NotImplementedError
+    kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
+
+    if kwargs.get('exp_name') is None:
+        timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
+    else:
+        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-" + kwargs['exp_name']
+
+    exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
+
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
-    sess = tf.Session(config=config)
-    with sess.as_default() as sess:
 
-        # Instantiate classes
-        set_seed(kwargs['seed'])
+    for k, v in kwargs.items():
+        logger.logkv(k, v)
+    logger.dumpkvs()
 
-        baseline = kwargs['baseline']()
+    logger.log('ray init...', ray.init())
+    trainer = Trainer(
+        num_agents=kwargs['num_agents'],
+        seeds=kwargs['seeds'],
+        instance_kwargs=kwargs,
+        gpu_frac=kwargs.get('gpu_frac', 0.95),
+        env=env,
+        num_mc_goals=kwargs['num_mc_goals'],
+        refresh_interval=kwargs['refresh_interval'],
+        alpha=kwargs['goal_buffer_alpha'],
+        eval_interval=kwargs['eval_interval'],
+        n_itr=kwargs['n_itr'],
+        exp_dir=exp_dir,
+        greedy_eps=kwargs['greedy_eps'],
+        num_grad_steps=kwargs['num_grad_steps'],
+        snapshot_gap=kwargs['snapshot_gap'],
+    )
 
-        env = normalize(kwargs['env']())
-
-        Qs = [ValueFunction(name="q_fun_%d" % i,
-                            obs_dim=int(np.prod(env.observation_space.shape)),
-                            action_dim=int(np.prod(env.action_space.shape))
-                            ) for i in range(2)]
-
-        Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
-                                   obs_dim=int(np.prod(env.observation_space.shape)),
-                                   action_dim=int(np.prod(env.action_space.shape))
-                                   ) for i in range(2)]
-
-        policy = TanhGaussianMLPPolicy(
-            name="policy",
-            obs_dim=np.prod(env.observation_space.shape),
-            action_dim=np.prod(env.action_space.shape),
-            hidden_sizes=kwargs['policy_hidden_sizes'],
-            learn_std=kwargs['policy_learn_std'],
-            output_nonlinearity=kwargs['policy_output_nonlinearity'],
-        )
-
-        sampler = Sampler(
-            env=env,
-            policy=policy,
-            num_rollouts=kwargs['num_rollouts'],
-            max_path_length=kwargs['max_path_length'],
-            n_parallel=kwargs['n_parallel'],
-        )
-
-        sample_processor = ModelSampleProcessor(
-            baseline=baseline,
-            discount=kwargs['discount'],
-            gae_lambda=kwargs['gae_lambda'],
-            normalize_adv=kwargs['normalize_adv'],
-            positive_adv=kwargs['positive_adv'],
-        )
-
-        algo = SAC(
-            policy=policy,
-            discount=kwargs['discount'],
-            learning_rate=kwargs['learning_rate'],
-            env=env,
-            Qs=Qs,
-            Q_targets=Q_targets,
-            reward_scale=kwargs['reward_scale']
-        )
-
-        trainer = Trainer(
-            algo=algo,
-            policy=policy,
-            env=env,
-            sampler=sampler,
-            sample_processor=sample_processor,
-            n_itr=kwargs['n_itr'],
-            sess=sess,
-        )
-
-        trainer.train()
-    sess.__exit__()
+    trainer.train()
+    logger.log('ray shutdown...', ray.shutdown())
 
 
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1],
+        'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleFixedEnv],
+        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
+        'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # FIXME
         'policy_output_nonlinearity': [None],
+        'num_grad_steps': [-1],
+        'policy_max_std': [2e0],
+        'policy_min_std': [1e-3],
+
+        # Value function
+        'vfun_hidden_nonlinearity': ['tanh'],  # FIXME
+        'vfun_output_nonlinearity': [None],
+
+        # Goal Sampling
+        'goal_sampling_params': [(1, 200, 100)],  # (refresh_interval, num_mc_goals, goal_buffer_size)
+        'goal_buffer_alpha': [-1],
+        'goal_sampling_rule': [None], #'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
         'n_parallel': [1],
+        'max_replay_buffer_size': [1e5],
+        'eval_interval': [1],
+        'replay_k': [3], # 4, -1],
+        'greedy_eps': [0.3],
+        'action_noise_str': ['ou_0.2'], #'normal_0.2'],
+        # 'curiosity_percentage': [0.8],
 
         # Problem Conf
-        'n_itr': [3000],
-        'max_path_length': [50],
-        'discount': [0.99],
+        'num_agents': [3],
+        'max_path_length': [50], #100],
+        'discount': [0.99], #0.95],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
