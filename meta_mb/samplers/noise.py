@@ -39,6 +39,9 @@ class VecActionNoise(ActionNoise):
     def __init__(self, num_envs):
         self.num_envs = num_envs
 
+    def __call__(self):
+        return 0
+
 
 class NormalActionNoise(ActionNoise):
     def __init__(self, mu, sigma):

@@ -90,14 +90,14 @@ class GoalBufferV1(object):
         if num_proposed_goals >= self.max_buffer_size:
             proposed_goals_indices = np.random.choice(num_proposed_goals, size=self.max_buffer_size, replace=True)
             self.buffer = np.asarray(proposed_goals)[proposed_goals_indices]
-            return np.array([])
+            return np.array([], dtype=np.int64)
 
         diff = self.q_max - agent_q
         if np.sum(diff) == 0:
             indices_u = np.random.choice(len(self.mc_goals), size=self.max_buffer_size-num_proposed_goals)
             samples = proposed_goals + list(self.mc_goals[indices_u])
             self.buffer = samples
-            return np.array([])
+            return np.array([], dtype=np.int64)
 
         num_goals_u = int((self.max_buffer_size - num_proposed_goals) * self.alpha)
         num_goals_p = self.max_buffer_size - num_proposed_goals - num_goals_u
