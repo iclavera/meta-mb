@@ -116,8 +116,9 @@ class TrainerV1(object):
             # the goal will be appended to its goal buffer for the next iteration.
             proposed_goals_list = [[] for _ in range(len(agents))]
             proposed_goals_indices = np.unique(np.concatenate(proposed_goals_indices))
-            for goal, proposer_index in zip(mc_goals[proposed_goals_indices], proposer_indices[proposed_goals_indices]):
-                proposed_goals_list[proposer_index].append(goal)
+            if len(proposed_goals_indices) > 0:
+                for goal, proposer_index in zip(mc_goals[proposed_goals_indices], proposer_indices[proposed_goals_indices]):
+                    proposed_goals_list[proposer_index].append(goal)
 
             _ = ray.get(_futures_train)
 
