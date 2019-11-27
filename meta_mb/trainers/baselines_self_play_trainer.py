@@ -71,7 +71,6 @@ class Trainer(object):
 
     def train(self):
         agents = self.agents
-        mc_goals = None
 
         time_start = time.time()
 
@@ -86,19 +85,19 @@ class Trainer(object):
                     mc_goals = self.env.sample_goals(mode='target', num_samples=self.num_mc_goals)
                 elif self.alpha == -1:  # baseline
                     mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
-
-                _futures_update_info = [agent.update_info.remote(mc_goals=mc_goals, q_list=None) for agent in agents]
+                else:
+                    raise RuntimeError
             else:
-                _futures_update_info = []
+                mc_goals = None
 
-            # Every iteration, resample goals to generate new goal batches
-            _futures_update_buffer = [agent.update_buffer.remote(proposed_goals=None) for agent in agents]
+            _futures_update_buffer = [agent.update_buffer.remote(
+                proposed_goals=None, mc_goals=mc_goals, q_max=None, agent_q=None,
+            ) for agent in agents]
             _futures_train = [agent.train.remote(itr) for agent in agents]
             _futures_train.extend([agent.save_snapshot.remote(itr) for agent in agents])
 
             """------------------- collect future objects ---------------------"""
 
-            _ = ray.get(_futures_update_info)
             _ = ray.get(_futures_update_buffer)
             _ = ray.get(_futures_train)
 

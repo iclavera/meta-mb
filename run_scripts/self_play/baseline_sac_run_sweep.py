@@ -53,7 +53,7 @@ def run_experiment(**kwargs):
         kwargs['snapshot_gap'] = 40
     else:
         raise NotImplementedError
-    kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
+    # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
@@ -113,7 +113,9 @@ if __name__ == '__main__':
         'vfun_output_nonlinearity': [None],
 
         # Goal Sampling
-        'goal_sampling_params': [(1, 200, 100)],  # (refresh_interval, num_mc_goals, goal_buffer_size)
+        'refresh_interval': [1, 2],
+        'num_mc_goals': [100],
+        'goal_buffer_size': [50],
         'goal_buffer_alpha': [-1],
         'goal_sampling_rule': [None], #'softmax'],  # ['softmax'],
 
@@ -124,7 +126,7 @@ if __name__ == '__main__':
         'eval_interval': [1],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0.3],
-        'action_noise_str': ['ou_0.2'], #'normal_0.2'],
+        'action_noise_str': ['none', 'ou_0.1'], #'normal_0.2'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
