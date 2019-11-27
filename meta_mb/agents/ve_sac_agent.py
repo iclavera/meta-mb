@@ -15,7 +15,7 @@ import time
 
 
 @ray.remote
-class AgentV1(object):
+class Agent(object):
     """
     Agent wrapper for self-play.
     Args:
@@ -23,7 +23,6 @@ class AgentV1(object):
     """
     def __init__(
             self,
-            agent_idx,
             exp_dir,
             snapshot_gap,
             gpu_frac,
@@ -36,7 +35,6 @@ class AgentV1(object):
             num_grad_steps,
     ):
 
-        self.agent_index = agent_idx
         logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
             snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent_{agent_idx}")
 
@@ -63,7 +61,6 @@ class AgentV1(object):
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
-                output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
             ) for i in range(2)]
 
             self.Q_targets = Q_targets = [ValueFunction(
@@ -72,7 +69,6 @@ class AgentV1(object):
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
-                output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
             ) for i in range(2)]
 
             self.policy = policy = GCGaussianMLPPolicy(

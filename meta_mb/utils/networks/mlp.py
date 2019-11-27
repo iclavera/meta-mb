@@ -116,7 +116,7 @@ def forward_mlp(output_dim,
             idx += 1
             bias_added = False
     output_var = x
-    return input_var, output_var # Todo why return input_var?
+    return input_var, output_var
 
 
 def create_rnn(name,

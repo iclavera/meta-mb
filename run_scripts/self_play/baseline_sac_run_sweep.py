@@ -117,7 +117,7 @@ if __name__ == '__main__':
         'num_mc_goals': [100],
         'goal_buffer_size': [50],
         'goal_buffer_alpha': [-1],
-        'goal_sampling_rule': [None], #'softmax'],  # ['softmax'],
+        'goal_sampling_rule': [""], #'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
