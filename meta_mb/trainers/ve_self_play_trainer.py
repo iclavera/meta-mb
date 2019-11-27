@@ -1,5 +1,7 @@
 from meta_mb.agents.ve_sac_agent import Agent
-from meta_mb.agents.remote_value_function import ValueFunction
+from meta_mb.agents.ve_value_function import ValueFunction
+from meta_mb.agents.value_ensemble_wrapper import ValueEnsembleWrapper
+from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.logger import logger
 
 import numpy as np
@@ -45,7 +47,6 @@ class Trainer(object):
         self.size_value_ensemble = size_value_ensemble
         self.env = env
         self.alpha = alpha
-        self.num_mc_goals = num_mc_goals
         self.refresh_interval = refresh_interval
         self.eval_interval = eval_interval
         self.n_itr = n_itr
@@ -53,22 +54,42 @@ class Trainer(object):
         # feed pickled env to all agents to guarantee identical environment (including env seed)
         env_pickled = pickle.dumps(env)
 
+        """---------------- value ensemble and agent share replay buffer ------------------"""
+
+        replay_buffer = SimpleReplayBuffer(self.env, instance_kwargs['max_replay_buffer_size'])
+
         """---------------- initiate value ensemble to compute intrinsic reward ------------"""
 
-        self.value_ensemble = [ValueFunction.remote(
+        self.value_ensemble = [ValueFunction(
+            replay_buffer=replay_buffer,
             obs_dim=self.env.obs_dim,
             goal_dim=self.env.goal_dim,
-            hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
-            output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
-        ) for _ in range(size_value_ensemble)]
+            gpu_frac=gpu_frac,
+            vfun_idx=vfun_idx,
+            hidden_nonlinearity=instance_kwargs["vfun_hidden_nonlinearity"],
+            output_nonlinearity=instance_kwargs["vfun_output_nonlinearity"],
+            batch_size=instance_kwargs["vfun_batch_size"],
+            reward_scale=instance_kwargs["reward_scale"],
+            discount=instance_kwargs["discount"],
+            learning_rate=instance_kwargs["learning_rate"],
+        ) for vfun_idx in range(size_value_ensemble)]
+
+        value_ensemble_wrapper = ValueEnsembleWrapper(
+            size=size_value_ensemble,
+            vfun_list=self.value_ensemble,
+            env=env,
+            num_mc_goals=num_mc_goals,
+        )
 
         """------------------ initiate remote SAC agent ----------------------"""
-        self.agent = Agent.remote(
+        self.agent = Agent(
             exp_dir=exp_dir,
             snapshot_gap=snapshot_gap,
             gpu_frac=gpu_frac,
             seed=seed,
             env_pickled=env_pickled,
+            value_ensemble=value_ensemble_wrapper,
+            replay_buffer=replay_buffer,
             n_initial_exploration_steps=n_initial_exploration_steps,
             instance_kwargs=instance_kwargs,
             eval_interval=eval_interval,
@@ -77,59 +98,37 @@ class Trainer(object):
         )
 
     def train(self):
+        """
+        Loop:
+        1. feed goals to goal buffer of the agent
+        2. call agent.train()
+        3. use value ensemble to sample goals
+        4. train value ensemble
+
+        :return:
+        """
         agent = self.agent
+        value_ensemble = self.value_ensemble
 
         time_start = time.time()
 
         for itr in range(self.n_itr):
 
             t = time.time()
+            _futures = []
 
-            """------------------- assign tasks to agents --------------------------"""
+            """------------------------------- train agent -------------------------"""
 
-            _futures = [agent.update_buffer.remote(), agent.train.remote(itr), agent.save_snapshot.remote(itr)]
+            agent.train(itr=itr)
+            agent.save_snapshot(itr=itr)
 
-            if itr % self.refresh_interval == 0:
-                # Every refresh_interval, resample mc_goals and recompute Q-value predictions for all agents
-                mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
-                _tmp = [agent.compute_q_values.remote(mc_goals) for agent in agents]
-                q_list = np.asarray(ray.get(_tmp))
-                proposer_indices = np.argmax(q_list, axis=0)
-                q_max = np.max(q_list, axis=0)
+            """-------------------------- train value ensemble ---------------------------"""
 
-                if itr % self.eval_interval == 0:
-                    _, _proposer_ctrs = np.unique(proposer_indices, return_counts=True)
-                    logger.logkv('LeadCtr', _proposer_ctrs/self.num_mc_goals)
-
-                _futures_update_buffer = [
-                    agent.update_buffer.remote(proposed_goals=proposed_goals, mc_goals=mc_goals, q_max=q_max, agent_q=agent_q) \
-                    for agent, proposed_goals, agent_q in zip(agents, proposed_goals_list, q_list)]
-            else:
-                _futures_update_buffer = [agent.update_buffer.remote(proposed_goals=proposed_goals, mc_goals=None, q_max=None, agent_q=None) \
-                                          for agent, proposed_goals in
-                                          zip(agents, proposed_goals_list)]
-
-            # Every iteration, resample goals to generate new goal batches
-            _futures_train = [agent.train.remote(itr) for agent in agents]
-            _futures_train.extend([agent.save_snapshot.remote(itr) for agent in agents])
-
-            """------------------- collect future objects ---------------------"""
-
-            proposed_goals_indices = ray.get(_futures_update_buffer)
-
-            # update proposed_goals_list
-            # If an agent successfully proposes a goal at current iteration,
-            # the goal will be appended to its goal buffer for the next iteration.
-            proposed_goals_list = [[] for _ in range(len(agents))]
-            proposed_goals_indices = np.unique(np.concatenate(proposed_goals_indices))
-            if len(proposed_goals_indices) > 0:
-                for goal, proposer_index in zip(mc_goals[proposed_goals_indices], proposer_indices[proposed_goals_indices]):
-                    proposed_goals_list[proposer_index].append(goal)
-
-            _ = ray.get(_futures_train)
+            for idx, vfun in enumerate(value_ensemble):
+                vfun.train(itr=itr, log=True, log_prefix=f"vc-{idx}-")
 
             if itr == 0:
-                ray.get([agent.finalize_graph.remote() for agent in agents])
+                agent.finalize_graph()
 
             if itr % self.eval_interval == 0:
                 logger.logkv('TimeTotal', time.time() - time_start)

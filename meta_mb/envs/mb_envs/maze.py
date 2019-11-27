@@ -119,6 +119,15 @@ class ParticleMazeEnv(object):
         self.goal = goal
         return self._get_obs()
 
+    def reset_obs(self):
+        self.state = self._init_state
+        return self._get_obs()
+
+    def reset_goal(self, goal):
+        assert not self._is_wall(goal)
+        self.goal = goal
+        return self._get_obs()
+
     def step(self, action):
         action = np.clip(action, self.act_low, self.act_high)
         start_obs = obs = self._get_obs()

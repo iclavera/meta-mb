@@ -5,48 +5,66 @@ from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
 
 import tensorflow as tf
+import numpy as np
 from collections import OrderedDict
-import ray
 
 
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
 
 
-@ray.remote
 class ValueFunction(object):
     def __init__(self,
+                 replay_buffer,
                  obs_dim,
                  goal_dim,
-                 name='v_fun',
+                 gpu_frac,
+                 reward_scale,
+                 discount,
+                 learning_rate,
+                 vfun_idx,
                  hidden_sizes=(256, 256),
                  hidden_nonlinearity=tf.tanh,
-                 output_nonlinearity=None):
+                 output_nonlinearity=None,
+                 batch_size=64):
 
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
+        self.sess = tf.Session(config=config)
+
+        self.replay_buffer = replay_buffer
         self.obs_dim = obs_dim
         self.goal_dim = goal_dim
-        self.name = name
+        self.name = f"ve_{vfun_idx}"
         self.hidden_sizes = hidden_sizes
         self.hidden_nonlinearity = hidden_nonlinearity
         self.output_nonlinearity = output_nonlinearity
+        self.batch_size = batch_size
+        self.reward_scale = reward_scale
+        self.discount = discount
+        self.learning_rate = learning_rate
 
         self.vfun_params = None
         self.input_var = None
         self._assign_ops = None
 
-        self._build_placeholder()
-        self._build_network()
-        self._init_value_iteration_update()
-        self._init_diagnostics_ops()
+        with self.sess.as_default():
+            self._build_placeholder()
+            self._build_network()
+            self._init_value_iteration_update()
+            self._init_diagnostics_ops()
+
+        self.sess.run(tf.initializers.global_variables())
 
     def _build_placeholder(self):
         self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='obs')
         self.next_obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='next_obs')
-        self.reward_ph = tf.placeholder(dtyupe=tf.float32, shape=(None,), name='rewards')
+        self.reward_ph = tf.placeholder(dtype=tf.float32, shape=(None,), name='rewards')
         self.terminal_ph = tf.placeholder(dtype=tf.bool, shape=(None,), name='dones')
         self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goals')
 
-        self.op_phs_dict = dict(obs=self.obs_ph, next_obs=self.next_obs_ph, rewards=self.reward_ph,
+        self.op_phs_dict = dict(observations=self.obs_ph, next_observations=self.next_obs_ph, rewards=self.reward_ph,
                                 dones=self.terminal_ph, goals=self.goal_ph)
 
     def _build_network(self):
@@ -55,7 +73,7 @@ class ValueFunction(object):
         """
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             # build the actual policy network
-            self.input_var, self.output_var = create_mlp(name='v_network',
+            self.input_var, self.output_var = create_mlp(name=self.name,
                                                          output_dim=1,
                                                          hidden_sizes=self.hidden_sizes,
                                                          hidden_nonlinearity=self.hidden_nonlinearity,
@@ -69,9 +87,9 @@ class ValueFunction(object):
             trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
 
-            self.vfun_params_ph = self._create_placeholders_for_vars(scope=self.name + "/v_network")
+            self.vfun_params_ph = self._create_placeholders_for_vars(scope=self.name + f"/{self.name}")
             self.vfun_params_keys = self.vfun_params_ph.keys()
-            self.vfun_np = compile_function(self.input_var, self.output_var)
+            self._vfun_np = lambda inputs: self.sess.run(self.output_var, feed_dict={self.input_var: inputs})
 
     def _init_value_iteration_update(self):
         value_input_var = tf.concat([self.obs_ph, self.goal_ph], axis=1)
@@ -92,8 +110,8 @@ class ValueFunction(object):
             next_value=(1-done_var) * next_value_var,
         )
 
-        loss = tf.losses.mean_squared_error(labels=v_target, predict=v_predict)
-        opt = tf.train.AdamOptimizer(learning_rate=self.lr, name=f"{self.name}_optimizer")
+        loss = tf.losses.mean_squared_error(labels=v_target, predictions=v_predict)
+        opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate, name=f"{self.name}_optimizer")
         training_op = opt.minimize(loss=loss, var_list=list(self.vfun_params.values()))
 
         self.loss = loss
@@ -104,7 +122,7 @@ class ValueFunction(object):
     def _init_diagnostics_ops(self):
         diagnosables = OrderedDict((
             ('loss', self.loss),
-            ('target', self.q_target),
+            ('target', self.v_target),
             ('predict', self.v_predict),
             ('scaled_rewards', self.reward_scale * self.reward_ph),
         ))
@@ -119,18 +137,18 @@ class ValueFunction(object):
             for metric_name, metric_fn in diagnostic_metrics.items()
         ])
 
-    def train(self, buffer, itr, grad_steps, log=True, log_prefix='vc-'):
-        sess = tf.get_default_session()
-        for i in range(grad_steps):
-            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.batch_size))
+    def compute_values(self, obs, goals):
+        return self._vfun_np(np.concatenate([obs, goals], axis=1))
 
-            _ = sess.run(self.training_op, feed_dict=feed_dict)
-            if log:
-                logger.logkv('train-Itr', itr)
-                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
-                for k, v in diagnostics.items():
-                    logger.logkv(f"{log_prefix}k", v)
+    def train(self, itr, log=True, log_prefix='vc-'):
+        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
+                                     value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))
+        _ = self.sess.run(self.training_op, feed_dict=feed_dict)
+        if log:
+            logger.logkv('train-Itr', itr)
+            diagnostics = self.sess.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv(f"{log_prefix}{k}", v)
 
     def value_sym(self, input_var, params=None):
         """
@@ -145,7 +163,7 @@ class ValueFunction(object):
         """
         if params is None:
             with tf.variable_scope(self.name, reuse=True):
-                input_var, output_var = create_mlp(name='v_network',
+                input_var, output_var = create_mlp(name=self.name,
                                                    output_dim=1,
                                                    hidden_sizes=self.hidden_sizes,
                                                    hidden_nonlinearity=self.hidden_nonlinearity,

@@ -128,8 +128,8 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'eval_interval': [1],
         'replay_k': [3], # 4, -1],
-        'greedy_eps': [0.3],
-        'action_noise_str': ['none', 'ou_0.1'],
+        'greedy_eps': [0.1, 0.3],
+        'action_noise_str': ['none', 'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf

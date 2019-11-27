@@ -10,7 +10,7 @@ from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.envs.robotics.fetch.push import FetchPushEnv
 from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
 from meta_mb.envs.robotics.fetch.pick_and_place import FetchPickAndPlaceEnv
-from meta_mb.trainers.baselines_self_play_trainer import Trainer
+from meta_mb.trainers.ve_self_play_trainer import Trainer
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 # from meta_mb.envs.normalized_env import normalize
@@ -35,7 +35,7 @@ def run_experiment(**kwargs):
             kwargs['n_itr'] = 51
             kwargs['snapshot_gap'] = 10
         elif env.name == 'medium':
-            kwargs['n_itr'] = 161
+            kwargs['n_itr'] = 201
             kwargs['snapshot_gap'] = 40
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
@@ -54,6 +54,7 @@ def run_experiment(**kwargs):
     else:
         raise NotImplementedError
     # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
+    # assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
@@ -72,8 +73,8 @@ def run_experiment(**kwargs):
 
     logger.log('ray init...', ray.init())
     trainer = Trainer(
-        num_agents=kwargs['num_agents'],
-        seeds=kwargs['seeds'],
+        size_value_ensemble=kwargs['size_value_ensemble'],
+        seed=kwargs['seed'],
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
@@ -95,29 +96,36 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seeds': [(6,7,8,9,10)],  # (1,2,3,4,5)]
+        'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+
+        # Value ensemble
+        'size_value_ensemble': [5],
+        'vfun_batch_size': [256],
+
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # FIXME
+        'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
         'num_grad_steps': [-1],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
 
         # Value function
-        'vfun_hidden_nonlinearity': ['tanh'],  # FIXME
+        'vfun_hidden_nonlinearity': ['tanh'],  # TODO
         'vfun_output_nonlinearity': [None],
 
         # Goal Sampling
-        'refresh_interval': [1],
+        # goal_sampling_params = (refresh_interval, num_mc_goals, goal_buffer_size)
+        # need num_mc_goals > goal_buffer_size to avoid error (repeated sampling not allowed)
+        'refresh_interval': [1, 2],
         'num_mc_goals': [100],
         'goal_buffer_size': [50],
-        'goal_buffer_alpha': [-1],
-        'goal_sampling_rule': ["none"], #'softmax'],  # ['softmax'],
+        'goal_buffer_alpha': [0, 0.5], # TODO
+        'goal_sampling_rule': ['norm_diff'], #'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -126,7 +134,7 @@ if __name__ == '__main__':
         'eval_interval': [1],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0.1, 0.3],
-        'action_noise_str': ['none', 'ou_0.05'], #'normal_0.2'],
+        'action_noise_str': ['none', 'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf

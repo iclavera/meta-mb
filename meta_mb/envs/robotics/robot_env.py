@@ -92,6 +92,18 @@ class RobotEnv(gym.GoalEnv):
         obs = self._get_obs()
         return obs
 
+    def reset_obs(self):
+        did_reset_sim = False
+        while not did_reset_sim:
+            did_reset_sim = self._reset_sim()
+
+        obs = self._get_obs()
+        return obs
+
+    def reset_goal(self, goal):
+        # assuming that resetting goal does not affect initial observation
+        self.goal = goal
+
     @property
     def eval_goals(self):
         return self._eval_goals
