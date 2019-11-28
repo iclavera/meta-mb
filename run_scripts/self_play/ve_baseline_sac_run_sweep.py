@@ -99,10 +99,10 @@ if __name__ == '__main__':
         'env': [FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
-        'size_value_ensemble': [5],
-        'vfun_batch_size': [256],
-        'vfun_num_grad_steps': [20, 100],
-        'vfun_max_replay_buffer_size': [1e3, 1e4],
+        'size_value_ensemble': [0],
+        'vfun_batch_size': [-1],
+        'vfun_num_grad_steps': [-1],
+        'vfun_max_replay_buffer_size': [-1],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
