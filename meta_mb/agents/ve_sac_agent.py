@@ -1,9 +1,9 @@
 from meta_mb.logger import logger
-from meta_mb.agents.ve_goal_buffer import GoalBuffer
 from meta_mb.algos.gc_sac import SAC
 from meta_mb.utils.utils import set_seed
 from meta_mb.samplers.ve_gc_sampler import Sampler
 from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
+from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.policies.gc_gaussian_mlp_policy import GCGaussianMLPPolicy
 from meta_mb.value_functions.gc_value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
@@ -27,7 +27,6 @@ class Agent(object):
             seed,
             env_pickled,
             value_ensemble,
-            replay_buffer,
             n_initial_exploration_steps,
             instance_kwargs,
             eval_interval,
@@ -64,7 +63,7 @@ class Agent(object):
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
             ) for i in range(2)]
 
-            self.Q_targets = Q_targets = [ValueFunction(
+            self.Q_targets = [ValueFunction(
                 name="q_fun_target_%d" % i,
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
@@ -72,7 +71,7 @@ class Agent(object):
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
             ) for i in range(2)]
 
-            self.policy = policy = GCGaussianMLPPolicy(
+            self.policy = GCGaussianMLPPolicy(
                 goal_dim=env.goal_dim,
                 name="policy",
                 obs_dim=env.obs_dim,
@@ -88,7 +87,7 @@ class Agent(object):
             self.sampler = Sampler(
                 env_pickled=env_pickled,
                 value_ensemble=value_ensemble,
-                policy=policy,
+                policy=self.policy,
                 num_rollouts=instance_kwargs['num_rollouts'],
                 max_path_length=instance_kwargs['max_path_length'],
                 n_parallel=instance_kwargs['n_parallel'],
@@ -106,20 +105,24 @@ class Agent(object):
                 positive_adv=instance_kwargs['positive_adv'],
             )
 
+            self.replay_buffer = SimpleReplayBuffer(
+                env_spec=env,
+                max_replay_buffer_size=instance_kwargs['policy_max_replay_buffer_size'],
+            )
+
             self.algo = SAC(
-                replay_buffer=replay_buffer,
-                policy=policy,
+                replay_buffer=self.replay_buffer,
+                policy=self.policy,
                 discount=instance_kwargs['discount'],
                 learning_rate=instance_kwargs['learning_rate'],
                 env=env,
                 Qs=Qs,
-                Q_targets=Q_targets,
+                Q_targets=self.Q_targets,
                 reward_scale=instance_kwargs['reward_scale']
             )
 
             self.eval_interval = eval_interval
             self.greedy_eps = greedy_eps
-            self.replay_buffer = replay_buffer
             if instance_kwargs["policy_num_grad_steps"] == -1:
                 self.num_grad_steps = self.sampler._timesteps_sampled_per_itr
             else:
@@ -133,11 +136,11 @@ class Agent(object):
 
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
-                while replay_buffer._size < n_initial_exploration_steps:
+                while self.replay_buffer._size < n_initial_exploration_steps:
                     paths = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
                                                           greedy_eps=1, log=True, log_prefix='train-')
                     samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
-                    replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                    self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
     def train(self, itr):
@@ -172,6 +175,8 @@ class Agent(object):
                     eval_paths.extend(self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False,
                                                                     log=True, log_prefix='eval-'))
                 _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
+
+            return paths
 
     def save_snapshot(self, itr):
         with self.sess.as_default():

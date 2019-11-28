@@ -1,5 +1,7 @@
 from meta_mb.utils.networks.mlp import create_mlp, forward_mlp
-from meta_mb.utils import Serializable, compile_function
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
+from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
 from meta_mb.utils.utils import remove_scope_from_name
 from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
@@ -15,37 +17,46 @@ def td_target(reward, discount, next_value):
 
 class ValueFunction(object):
     def __init__(self,
-                 replay_buffer,
-                 obs_dim,
-                 goal_dim,
+                 env,
                  gpu_frac,
-                 reward_scale,
-                 discount,
-                 learning_rate,
                  vfun_idx,
-                 hidden_sizes=(256, 256),
-                 hidden_nonlinearity=tf.tanh,
-                 output_nonlinearity=None,
-                 batch_size=64,
-                 num_grad_steps=24,):
+                 instance_kwargs,
+                 ):
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
         self.sess = tf.Session(config=config)
 
-        self.replay_buffer = replay_buffer
-        self.obs_dim = obs_dim
-        self.goal_dim = goal_dim
+        self.obs_dim = env.obs_dim
+        self.goal_dim = env.goal_dim
         self.name = f"ve_{vfun_idx}"
-        self.hidden_sizes = hidden_sizes
-        self.hidden_nonlinearity = hidden_nonlinearity
-        self.output_nonlinearity = output_nonlinearity
-        self.batch_size = batch_size
-        self.reward_scale = reward_scale
-        self.discount = discount
-        self.learning_rate = learning_rate
-        self.num_grad_steps = num_grad_steps
+        self.hidden_sizes = instance_kwargs['vfun_hidden_sizes']
+        self.hidden_nonlinearity = instance_kwargs['vfun_hidden_nonlinearity']
+        self.output_nonlinearity = instance_kwargs['vfun_output_nonlinearity']
+        self.batch_size = instance_kwargs['vfun_batch_size']
+        self.reward_scale = instance_kwargs['reward_scale']
+        self.discount = instance_kwargs['discount']
+        self.learning_rate = instance_kwargs['learning_rate']
+        self.num_grad_steps = instance_kwargs['vfun_num_grad_steps']
+
+        baseline = LinearFeatureBaseline()
+
+        self.replay_buffer = SimpleReplayBuffer(
+            env_spec=env,
+            max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size'],
+        )
+
+        self.sample_processor = ModelSampleProcessor(
+            reward_fn=env.reward,
+            achieved_goal_fn=env.get_achieved_goal,
+            baseline=baseline,
+            replay_k=-1,
+            discount=instance_kwargs['discount'],
+            gae_lambda=instance_kwargs['gae_lambda'],
+            normalize_adv=instance_kwargs['normalize_adv'],
+            positive_adv=instance_kwargs['positive_adv'],
+        )
 
         self.vfun_params = None
         self.input_var = None
@@ -142,7 +153,12 @@ class ValueFunction(object):
     def compute_values(self, obs, goals):
         return self._vfun_np(np.concatenate([obs, goals], axis=1))
 
-    def train(self, itr, log=True, log_prefix='vc-'):
+    def train(self, on_policy_paths, itr, log=True, log_prefix='vc-'):
+        samples_data = self.sample_processor.process_samples(on_policy_paths, eval=False, log='all', log_prefix='train-')
+        self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                                       samples_data['rewards'], samples_data['dones'],
+                                       samples_data['next_observations'])
+
         for _ in range(self.num_grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))

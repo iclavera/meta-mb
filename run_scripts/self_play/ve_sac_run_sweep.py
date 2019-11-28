@@ -31,8 +31,8 @@ def run_experiment(**kwargs):
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 5001
-            kwargs['snapshot_gap'] = 1000
+            kwargs['n_itr'] = 2501
+            kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
             kwargs['n_itr'] = 201 * 100
             kwargs['snapshot_gap'] = 40
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
-        'size_value_ensemble': [0, 5],
+        'size_value_ensemble': [5, 0],
         'vfun_batch_size': [256],
         'vfun_num_grad_steps': [16],
 
@@ -109,11 +109,14 @@ if __name__ == '__main__':
         'policy_num_grad_steps': [-1],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
+        'policy_max_replay_buffer_size': [1e5],
         'learning_rate': [3e-4],
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
         'vfun_output_nonlinearity': [None],
+        'vfun_max_replay_buffer_size': [1e3],
+        'vfun_hidden_sizes': [(256, 256)],
 
         'num_mc_goals': [100],
 
@@ -121,9 +124,9 @@ if __name__ == '__main__':
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
-        'eval_interval': [1],
+        'eval_interval': [50],
         'replay_k': [3], # 4, -1],
-        'greedy_eps': [0.1, 0.3],
+        'greedy_eps': [0], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 
