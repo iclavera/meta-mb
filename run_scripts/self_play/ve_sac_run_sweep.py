@@ -97,16 +97,17 @@ if __name__ == '__main__':
         'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
-        'size_value_ensemble': [5, 0],
+        'size_value_ensemble': [5, 10],
         'vfun_batch_size': [256],
-        'vfun_num_grad_steps': [16],
+        'vfun_num_grad_steps': [16, 8],
+        'vfun_max_replay_buffer_size': [1e3, 1e4],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [-1],
+        'policy_num_grad_steps': [-1, 25, 100],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e5],
@@ -115,18 +116,16 @@ if __name__ == '__main__':
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
         'vfun_output_nonlinearity': [None],
-        'vfun_max_replay_buffer_size': [1e3],
         'vfun_hidden_sizes': [(256, 256)],
 
-        'num_mc_goals': [100],
-
         # Env Sampling
+        'num_mc_goals': [100],
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'eval_interval': [50],
         'replay_k': [3], # 4, -1],
-        'greedy_eps': [0], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
+        'greedy_eps': [0, 0.1], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 

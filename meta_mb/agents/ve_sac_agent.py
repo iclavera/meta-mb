@@ -61,6 +61,8 @@ class Agent(object):
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
+                output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
+                hidden_sizes=instance_kwargs['hidden_sizes'],
             ) for i in range(2)]
 
             self.Q_targets = [ValueFunction(
@@ -69,6 +71,8 @@ class Agent(object):
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
                 hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
+                output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
+                hidden_sizes=instance_kwargs['hidden_sizes'],
             ) for i in range(2)]
 
             self.policy = GCGaussianMLPPolicy(
