@@ -1,6 +1,5 @@
 import os
 import json
-import ray
 from datetime import datetime
 
 from experiment_utils.run_sweep import run_sweep
@@ -32,10 +31,10 @@ def run_experiment(**kwargs):
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 51
-            kwargs['snapshot_gap'] = 10
+            kwargs['n_itr'] = 5001
+            kwargs['snapshot_gap'] = 1000
         elif env.name == 'medium':
-            kwargs['n_itr'] = 201
+            kwargs['n_itr'] = 201 * 100
             kwargs['snapshot_gap'] = 40
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
@@ -56,11 +55,12 @@ def run_experiment(**kwargs):
     # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
     # assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
+    exp_name = f"{env_name}-ve-{kwargs['size_value_ensemble']}"
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
+        kwargs['exp_name'] = f"{exp_name}-{timestamp}"
     else:
-        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-" + kwargs['exp_name']
+        kwargs['exp_name'] = f"{exp_name}-{kwargs['exp_name']}"
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
@@ -68,10 +68,9 @@ def run_experiment(**kwargs):
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     for k, v in kwargs.items():
-        logger.logkv(k, v)
-    logger.dumpkvs()
+        logger.log(f"{k}: {v}")
 
-    logger.log('ray init...', ray.init())
+    # logger.log('ray init...', ray.init())
     trainer = Trainer(
         size_value_ensemble=kwargs['size_value_ensemble'],
         seed=kwargs['seed'],
@@ -79,18 +78,15 @@ def run_experiment(**kwargs):
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
         num_mc_goals=kwargs['num_mc_goals'],
-        refresh_interval=kwargs['refresh_interval'],
-        alpha=kwargs['goal_buffer_alpha'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         exp_dir=exp_dir,
         greedy_eps=kwargs['greedy_eps'],
-        num_grad_steps=kwargs['num_grad_steps'],
         snapshot_gap=kwargs['snapshot_gap'],
     )
 
     trainer.train()
-    logger.log('ray shutdown...', ray.shutdown())
+    # logger.log('ray shutdown...', ray.shutdown())
 
 
 if __name__ == '__main__':
@@ -101,31 +97,25 @@ if __name__ == '__main__':
         'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
-        'size_value_ensemble': [5],
+        'size_value_ensemble': [0, 5],
         'vfun_batch_size': [256],
-
+        'vfun_num_grad_steps': [16],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'num_grad_steps': [-1],
+        'policy_num_grad_steps': [-1],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
+        'learning_rate': [3e-4],
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
         'vfun_output_nonlinearity': [None],
 
-        # Goal Sampling
-        # goal_sampling_params = (refresh_interval, num_mc_goals, goal_buffer_size)
-        # need num_mc_goals > goal_buffer_size to avoid error (repeated sampling not allowed)
-        'refresh_interval': [1, 2],
         'num_mc_goals': [100],
-        'goal_buffer_size': [50],
-        'goal_buffer_alpha': [0, 0.5], # TODO
-        'goal_sampling_rule': ['norm_diff'], #'softmax'],  # ['softmax'],
 
         # Env Sampling
         'num_rollouts': [1],
@@ -134,17 +124,15 @@ if __name__ == '__main__':
         'eval_interval': [1],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0.1, 0.3],
-        'action_noise_str': ['none', 'ou_0.05'],
+        'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
-        'num_agents': [3],
         'max_path_length': [50], #100],
         'discount': [0.99], #0.95],
         'gae_lambda': [1.],
         'normalize_adv': [True],
         'positive_adv': [False],
-        'learning_rate': [3e-4],
         'reward_scale': [1.],
         'sampler_batch_size': [256],
         }

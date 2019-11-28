@@ -32,7 +32,6 @@ class Agent(object):
             instance_kwargs,
             eval_interval,
             greedy_eps,
-            num_grad_steps,
     ):
 
         logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
@@ -108,6 +107,7 @@ class Agent(object):
             )
 
             self.algo = SAC(
+                replay_buffer=replay_buffer,
                 policy=policy,
                 discount=instance_kwargs['discount'],
                 learning_rate=instance_kwargs['learning_rate'],
@@ -119,8 +119,11 @@ class Agent(object):
 
             self.eval_interval = eval_interval
             self.greedy_eps = greedy_eps
-            self.num_grad_steps = self.sampler._timesteps_sampled_per_itr if num_grad_steps == -1 else num_grad_steps
             self.replay_buffer = replay_buffer
+            if instance_kwargs["policy_num_grad_steps"] == -1:
+                self.num_grad_steps = self.sampler._timesteps_sampled_per_itr
+            else:
+                self.num_grad_steps = instance_kwargs["policy_num_grad_steps"]
 
             sess.run(tf.initializers.global_variables())
 
@@ -130,11 +133,11 @@ class Agent(object):
 
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
-                while self.replay_buffer._size < n_initial_exploration_steps:
+                while replay_buffer._size < n_initial_exploration_steps:
                     paths = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
                                                           greedy_eps=1, log=True, log_prefix='train-')
                     samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
-                    self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                    replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
     def train(self, itr):
@@ -149,8 +152,6 @@ class Agent(object):
 
             samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
 
-
-
             self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                            samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
@@ -158,10 +159,9 @@ class Agent(object):
 
             t = time.time()
             self.policy_itr += 1
-            self.algo.optimize_policy(self.replay_buffer, self.policy_itr, self.num_grad_steps)
+            self.algo.optimize_policy(itr=self.policy_itr, grad_steps=self.num_grad_steps)
 
             logger.logkv('TimeTrainPolicy', time.time() - t)
-            logger.logkv('ReplayBufferSize', self.replay_buffer.size)
 
             if itr % self.eval_interval == 0:
 
@@ -172,8 +172,6 @@ class Agent(object):
                     eval_paths.extend(self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False,
                                                                     log=True, log_prefix='eval-'))
                 _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
-
-                logger.dumpkvs()
 
     def save_snapshot(self, itr):
         with self.sess.as_default():

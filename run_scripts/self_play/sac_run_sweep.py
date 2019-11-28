@@ -68,8 +68,7 @@ def run_experiment(**kwargs):
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     for k, v in kwargs.items():
-        logger.logkv(k, v)
-    logger.dumpkvs()
+        logger.log(f"{k}: {v}")
 
     logger.log('ray init...', ray.init())
     trainer = TrainerV1(

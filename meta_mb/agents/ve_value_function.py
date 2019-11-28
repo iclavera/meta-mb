@@ -26,7 +26,8 @@ class ValueFunction(object):
                  hidden_sizes=(256, 256),
                  hidden_nonlinearity=tf.tanh,
                  output_nonlinearity=None,
-                 batch_size=64):
+                 batch_size=64,
+                 num_grad_steps=24,):
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -44,6 +45,7 @@ class ValueFunction(object):
         self.reward_scale = reward_scale
         self.discount = discount
         self.learning_rate = learning_rate
+        self.num_grad_steps = num_grad_steps
 
         self.vfun_params = None
         self.input_var = None
@@ -141,14 +143,15 @@ class ValueFunction(object):
         return self._vfun_np(np.concatenate([obs, goals], axis=1))
 
     def train(self, itr, log=True, log_prefix='vc-'):
-        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                     value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))
-        _ = self.sess.run(self.training_op, feed_dict=feed_dict)
-        if log:
-            logger.logkv('train-Itr', itr)
-            diagnostics = self.sess.run({**self.diagnostics_ops}, feed_dict)
-            for k, v in diagnostics.items():
-                logger.logkv(f"{log_prefix}{k}", v)
+        for _ in range(self.num_grad_steps):
+            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
+                                         value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))
+            _ = self.sess.run(self.training_op, feed_dict=feed_dict)
+            if log:
+                logger.logkv('train-Itr', itr)
+                diagnostics = self.sess.run({**self.diagnostics_ops}, feed_dict)
+                for k, v in diagnostics.items():
+                    logger.logkv_mean(log_prefix + k, v)
 
     def value_sym(self, input_var, params=None):
         """

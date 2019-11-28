@@ -9,6 +9,9 @@ class ValueEnsembleWrapper(object):
         self.num_mc_goals = num_mc_goals
 
     def sample_goals(self, init_obs_no):
+        if self.size == 0:  # baseline
+            return self.env.sample_goals(mode=None, num_samples=len(init_obs_no))
+
         mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
         input_obs = np.repeat(init_obs_no, repeats=self.num_mc_goals).reshape((-1, self.env.obs_dim))
         input_goal = np.tile(mc_goals, [len(init_obs_no), 1])

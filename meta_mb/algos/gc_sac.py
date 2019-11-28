@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 from collections import OrderedDict
 from .base import Algo
-import time
 """===============added==========start============"""
 from meta_mb.utils import create_feed_dict
 from meta_mb.logger import logger
@@ -31,6 +30,7 @@ class SAC(Algo):
             policy,
             Qs,
             env,
+            replay_buffer,
             Q_targets=None,
             discount=0.99,
             name="sac",
@@ -90,6 +90,7 @@ class SAC(Algo):
         self.name = name
         self.policy = policy
         self.discount = discount
+        self.replay_buffer = replay_buffer
         # self.recurrent = getattr(self.policy, 'recurrent', False)
         self.recurrent = False
         self.training_environment = env
@@ -346,11 +347,11 @@ class SAC(Algo):
                 for param_name, source in source_params.items()
             ]))
 
-    def optimize_policy(self, buffer, itr, grad_steps, log=True):
+    def optimize_policy(self, itr, grad_steps, log=True):
         sess = tf.get_default_session()
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=buffer.random_batch(self.sampler_batch_size))
+                                         value_dict=self.replay_buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
                 logger.logkv('train-Itr', itr)

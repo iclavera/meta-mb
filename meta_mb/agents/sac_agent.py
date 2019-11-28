@@ -118,7 +118,13 @@ class Agent(object):
                 positive_adv=instance_kwargs['positive_adv'],
             )
 
+            self.replay_buffer = SimpleReplayBuffer(
+                env_spec=self.env,
+                max_replay_buffer_size=instance_kwargs['max_replay_buffer_size'],
+            )
+
             self.algo = SAC(
+                replay_buffer=self.replay_buffer,
                 policy=policy,
                 discount=instance_kwargs['discount'],
                 learning_rate=instance_kwargs['learning_rate'],
@@ -131,7 +137,6 @@ class Agent(object):
             self.eval_interval = eval_interval
             self.greedy_eps = greedy_eps
             self.num_grad_steps = self.sampler._timesteps_sampled_per_itr if num_grad_steps == -1 else num_grad_steps
-            self.replay_buffer = SimpleReplayBuffer(self.env, instance_kwargs['max_replay_buffer_size'])
 
             sess.run(tf.initializers.global_variables())
 
@@ -181,7 +186,7 @@ class Agent(object):
 
                 t = time.time()
                 self.policy_itr += 1
-                self.algo.optimize_policy(self.replay_buffer, self.policy_itr, self.num_grad_steps)
+                self.algo.optimize_policy(itr=self.policy_itr, grad_steps=self.num_grad_steps)
 
                 logger.logkv('TimeTrainPolicy', time.time() - t)
                 logger.logkv('ReplayBufferSize', self.replay_buffer.size)
