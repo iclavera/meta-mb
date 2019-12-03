@@ -1,7 +1,5 @@
 from meta_mb.agents.ve_sac_agent import Agent
-from meta_mb.agents.ve_value_function import ValueFunction
 from meta_mb.agents.value_ensemble_wrapper import ValueEnsembleWrapper
-from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.logger import logger
 
 import time
@@ -45,22 +43,16 @@ class Trainer(object):
         # feed pickled env to all agents to guarantee identical environment (including env seed)
         env_pickled = pickle.dumps(env)
 
-        """---------------- initiate value ensemble to compute intrinsic reward ------------"""
-
-        self.value_ensemble = [ValueFunction(
-            env=env,
-            gpu_frac=gpu_frac,
-            vfun_idx=vfun_idx,
-            instance_kwargs=instance_kwargs,
-        ) for vfun_idx in range(size_value_ensemble)]
-
         """------------- value ensemble is related to the agent via this wrapper ------"""
 
-        value_ensemble_wrapper = ValueEnsembleWrapper(
+        self.value_ensemble = ValueEnsembleWrapper(
             size=size_value_ensemble,
-            vfun_list=self.value_ensemble,
-            env=env,
+            env_pickled=env_pickled,
+            exp_dir=exp_dir,
+            snapshot_gap=snapshot_gap,
             num_mc_goals=num_mc_goals,
+            gpu_frac=gpu_frac,
+            instance_kwargs=instance_kwargs,
         )
 
         """------------------ initiate remote SAC agent ----------------------"""
@@ -70,7 +62,7 @@ class Trainer(object):
             gpu_frac=gpu_frac,
             seed=seed,
             env_pickled=env_pickled,
-            value_ensemble=value_ensemble_wrapper,
+            value_ensemble=self.value_ensemble,
             n_initial_exploration_steps=n_initial_exploration_steps,
             instance_kwargs=instance_kwargs,
             eval_interval=eval_interval,
@@ -103,8 +95,8 @@ class Trainer(object):
 
             """-------------------------- train value ensemble ---------------------------"""
 
-            for idx, vfun in enumerate(value_ensemble):
-                vfun.train(on_policy_paths, itr=itr, log=True)  # TODO: early stopping
+            value_ensemble.train(on_policy_paths, itr=itr, log=True)  # TODO: early stopping
+            value_ensemble.save_snapshot(itr=itr)
 
             if itr == 0:
                 agent.finalize_graph()

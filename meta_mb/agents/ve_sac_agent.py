@@ -55,6 +55,8 @@ class Agent(object):
             self.eval_goals = env.eval_goals
             assert len(self.eval_goals) % instance_kwargs["num_rollouts"] == 0
 
+            self.value_ensemble = value_ensemble
+
             Qs = [ValueFunction(
                 name="q_fun_%d" % i,
                 obs_dim=env.obs_dim,

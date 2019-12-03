@@ -78,19 +78,19 @@ class RobotEnv(gym.GoalEnv):
         reward = self.compute_reward(obs['achieved_goal'], self.goal, info)
         return obs, reward, done, info
 
-    def reset(self, goal):
-        # Attempt to reset the simulator. Since we randomize initial conditions, it
-        # is possible to get into a state with numerical issues (e.g. due to penetration or
-        # Gimbel lock) or we may not achieve an initial condition (e.g. an object is within the hand).
-        # In this case, we just keep randomizing until we eventually achieve a valid initial
-        # configuration.
-        did_reset_sim = False
-        while not did_reset_sim:
-            did_reset_sim = self._reset_sim()
-
-        self.goal = goal
-        obs = self._get_obs()
-        return obs
+    # def reset(self, goal):
+    #     # Attempt to reset the simulator. Since we randomize initial conditions, it
+    #     # is possible to get into a state with numerical issues (e.g. due to penetration or
+    #     # Gimbel lock) or we may not achieve an initial condition (e.g. an object is within the hand).
+    #     # In this case, we just keep randomizing until we eventually achieve a valid initial
+    #     # configuration.
+    #     did_reset_sim = False
+    #     while not did_reset_sim:
+    #         did_reset_sim = self._reset_sim()
+    #
+    #     self.goal = goal
+    #     obs = self._get_obs()
+    #     return obs
 
     def reset_obs(self):
         did_reset_sim = False
@@ -98,11 +98,13 @@ class RobotEnv(gym.GoalEnv):
             did_reset_sim = self._reset_sim()
 
         obs = self._get_obs()
+        obs['desired_goal'] = None
         return obs
 
     def reset_goal(self, goal):
         # assuming that resetting goal does not affect initial observation
         self.goal = goal
+        return self._get_obs()
 
     @property
     def eval_goals(self):
@@ -119,10 +121,9 @@ class RobotEnv(gym.GoalEnv):
         :param num_samples:
         :return:
         """
-        if mode == 'target':
-            return self._sample_target_goals(num_samples)
-        elif mode is None:
-            return self._sample_goals(num_samples)
+        # all goals are feasible
+        assert mode is None or mode == 'free'
+        return self._sample_goals(num_samples)
 
     def close(self):
         if self.viewer is not None:

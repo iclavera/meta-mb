@@ -31,26 +31,26 @@ def run_experiment(**kwargs):
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 2501
+            kwargs['n_itr'] = 5001
             kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
-            kwargs['n_itr'] = 201 * 100
-            kwargs['snapshot_gap'] = 40
+            kwargs['n_itr'] = 20001
+            kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 3001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchPushEnv:
         env_name = 'FPushEnv'
-        kwargs['n_itr'] = 5001
+        kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchPickAndPlaceEnv:
         env_name = 'FP&PEnv'
-        kwargs['n_itr'] = 5001
+        kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchSlideEnv:
         env_name = 'FSlideEnv'
-        kwargs['n_itr'] = 5001
+        kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
     else:
         raise NotImplementedError

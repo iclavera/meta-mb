@@ -4,6 +4,7 @@ from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
 from meta_mb.utils.utils import remove_scope_from_name
 from meta_mb.utils import create_feed_dict
+from meta_mb.utils import Serializable
 from meta_mb.logger import logger
 
 import tensorflow as tf
@@ -15,36 +16,43 @@ def td_target(reward, discount, next_value):
     return reward + discount * next_value
 
 
-class ValueFunction(object):
+class ValueFunction(Serializable):
     def __init__(self,
                  env,
-                 gpu_frac,
                  vfun_idx,
-                 instance_kwargs,
+                 reward_scale,
+                 discount,
+                 learning_rate,
+                 gae_lambda,
+                 normalize_adv,
+                 positive_adv,
+                 hidden_sizes,
+                 hidden_nonlinearity,
+                 output_nonlinearity,
+                 batch_size,
+                 num_grad_steps,
+                 max_replay_buffer_size,
                  ):
 
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
-        self.sess = tf.Session(config=config)
+        Serializable.quick_init(self, locals())
 
         self.obs_dim = env.obs_dim
         self.goal_dim = env.goal_dim
         self.name = f"ve_{vfun_idx}"
-        self.hidden_sizes = instance_kwargs['vfun_hidden_sizes']
-        self.hidden_nonlinearity = instance_kwargs['vfun_hidden_nonlinearity']
-        self.output_nonlinearity = instance_kwargs['vfun_output_nonlinearity']
-        self.batch_size = instance_kwargs['vfun_batch_size']
-        self.reward_scale = instance_kwargs['reward_scale']
-        self.discount = instance_kwargs['discount']
-        self.learning_rate = instance_kwargs['learning_rate']
-        self.num_grad_steps = instance_kwargs['vfun_num_grad_steps']
+        self.hidden_sizes = hidden_sizes
+        self.hidden_nonlinearity = hidden_nonlinearity
+        self.output_nonlinearity = output_nonlinearity
+        self.batch_size = batch_size
+        self.reward_scale = reward_scale
+        self.discount = discount
+        self.learning_rate = learning_rate
+        self.num_grad_steps = num_grad_steps
 
         baseline = LinearFeatureBaseline()
 
         self.replay_buffer = SimpleReplayBuffer(
             env_spec=env,
-            max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size'],
+            max_replay_buffer_size=max_replay_buffer_size
         )
 
         self.sample_processor = ModelSampleProcessor(
@@ -52,33 +60,31 @@ class ValueFunction(object):
             achieved_goal_fn=env.get_achieved_goal,
             baseline=baseline,
             replay_k=-1,
-            discount=instance_kwargs['discount'],
-            gae_lambda=instance_kwargs['gae_lambda'],
-            normalize_adv=instance_kwargs['normalize_adv'],
-            positive_adv=instance_kwargs['positive_adv'],
+            discount=discount,
+            gae_lambda=gae_lambda,
+            normalize_adv=normalize_adv,
+            positive_adv=positive_adv,
         )
 
         self.vfun_params = None
         self.input_var = None
         self._assign_ops = None
 
-        with self.sess.as_default():
-            self._build_placeholder()
-            self._build_network()
-            self._init_value_iteration_update()
-            self._init_diagnostics_ops()
-
-        self.sess.run(tf.initializers.global_variables())
+        self._build_placeholder()
+        self._build_network()
+        self._init_value_iteration_update()
+        self._init_diagnostics_ops()
 
     def _build_placeholder(self):
-        self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='obs')
-        self.next_obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='next_obs')
-        self.reward_ph = tf.placeholder(dtype=tf.float32, shape=(None,), name='rewards')
-        self.terminal_ph = tf.placeholder(dtype=tf.bool, shape=(None,), name='dones')
-        self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goals')
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            self.obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='obs')
+            self.next_obs_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.obs_dim), name='next_obs')
+            self.reward_ph = tf.placeholder(dtype=tf.float32, shape=(None,), name='rewards')
+            self.terminal_ph = tf.placeholder(dtype=tf.bool, shape=(None,), name='dones')
+            self.goal_ph = tf.placeholder(dtype=tf.float32, shape=(None, self.goal_dim), name='goals')
 
-        self.op_phs_dict = dict(observations=self.obs_ph, next_observations=self.next_obs_ph, rewards=self.reward_ph,
-                                dones=self.terminal_ph, goals=self.goal_ph)
+            self.op_phs_dict = dict(observations=self.obs_ph, next_observations=self.next_obs_ph, rewards=self.reward_ph,
+                                    dones=self.terminal_ph, goals=self.goal_ph)
 
     def _build_network(self):
         """
@@ -86,7 +92,7 @@ class ValueFunction(object):
         """
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             # build the actual policy network
-            self.input_var, self.output_var = create_mlp(name=self.name,
+            self.input_var, self.output_var = create_mlp(name='v_network',
                                                          output_dim=1,
                                                          hidden_sizes=self.hidden_sizes,
                                                          hidden_nonlinearity=self.hidden_nonlinearity,
@@ -100,55 +106,72 @@ class ValueFunction(object):
             trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
 
-            self.vfun_params_ph = self._create_placeholders_for_vars(scope=self.name + f"/{self.name}")
+            self.vfun_params_ph = self._create_placeholders_for_vars(scope=current_scope + f"/v_network ")
             self.vfun_params_keys = self.vfun_params_ph.keys()
-            self._vfun_np = lambda inputs: self.sess.run(self.output_var, feed_dict={self.input_var: inputs})
+            self._vfun_np = lambda inputs: tf.get_default_session().run(self.output_var, feed_dict={self.input_var: inputs})
 
     def _init_value_iteration_update(self):
-        value_input_var = tf.concat([self.obs_ph, self.goal_ph], axis=1)
-        v_predict = self.value_sym(value_input_var)
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
 
-        next_value_input_var = tf.concat([self.next_obs_ph, self.goal_ph], axis=1)
-        next_value_var = self.value_sym(next_value_input_var)
+            value_input_var = tf.concat([self.obs_ph, self.goal_ph], axis=1)
+            _, v_predict = create_mlp(name='v_network',
+                                      output_dim=1,
+                                      hidden_sizes=self.hidden_sizes,
+                                      hidden_nonlinearity=self.hidden_nonlinearity,
+                                      output_nonlinearity=self.output_nonlinearity,
+                                      input_var=value_input_var,
+                                      reuse=True,
+                                      )
 
-        reward_var = tf.expand_dims(self.reward_ph, axis=1)
-        reward_var = tf.cast(reward_var, tf.float32)
+            next_value_input_var = tf.concat([self.next_obs_ph, self.goal_ph], axis=1)
+            _, next_value_var = create_mlp(name='v_network',
+                                      output_dim=1,
+                                      hidden_sizes=self.hidden_sizes,
+                                      hidden_nonlinearity=self.hidden_nonlinearity,
+                                      output_nonlinearity=self.output_nonlinearity,
+                                      input_var=next_value_input_var,
+                                      reuse=True,
+                                      )
 
-        done_var = tf.expand_dims(self.terminal_ph, axis=1)
-        done_var = tf.cast(done_var, tf.float32)
+            reward_var = tf.expand_dims(self.reward_ph, axis=1)
+            reward_var = tf.cast(reward_var, tf.float32)
 
-        v_target = td_target(
-            reward=self.reward_scale * reward_var,
-            discount=self.discount,
-            next_value=(1-done_var) * next_value_var,
-        )
+            done_var = tf.expand_dims(self.terminal_ph, axis=1)
+            done_var = tf.cast(done_var, tf.float32)
 
-        loss = tf.losses.mean_squared_error(labels=v_target, predictions=v_predict)
-        opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate, name=f"{self.name}_optimizer")
-        training_op = opt.minimize(loss=loss, var_list=list(self.vfun_params.values()))
+            v_target = td_target(
+                reward=self.reward_scale * reward_var,
+                discount=self.discount,
+                next_value=(1-done_var) * next_value_var,
+            )
 
-        self.loss = loss
-        self.training_op = training_op
-        self.v_predict = v_predict
-        self.v_target = v_target
+            loss = tf.losses.mean_squared_error(labels=v_target, predictions=v_predict)
+            opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate, name=f"{self.name}_optimizer")
+            training_op = opt.minimize(loss=loss, var_list=list(self.vfun_params.values()))
+
+            self.loss = loss
+            self.training_op = training_op
+            self.v_predict = v_predict
+            self.v_target = v_target
 
     def _init_diagnostics_ops(self):
-        diagnosables = OrderedDict((
-            ('loss', self.loss),
-            ('target', self.v_target),
-            ('predict', self.v_predict),
-            ('scaled_rewards', self.reward_scale * self.reward_ph),
-        ))
+        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+            diagnosables = OrderedDict((
+                ('loss', self.loss),
+                ('target', self.v_target),
+                ('predict', self.v_predict),
+                ('scaled_rewards', self.reward_scale * self.reward_ph),
+            ))
 
-        diagnostic_metrics = OrderedDict((
-            ('mean', tf.reduce_mean),
-            # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
-        ))
-        self.diagnostics_ops = OrderedDict([
-            ("%s-%s"%(key,metric_name), metric_fn(values))
-            for key, values in diagnosables.items()
-            for metric_name, metric_fn in diagnostic_metrics.items()
-        ])
+            diagnostic_metrics = OrderedDict((
+                ('mean', tf.reduce_mean),
+                # ('std', lambda x: tfp.stats.stddev(x, sample_axis=None)),
+            ))
+            self.diagnostics_ops = OrderedDict([
+                ("%s-%s"%(key,metric_name), metric_fn(values))
+                for key, values in diagnosables.items()
+                for metric_name, metric_fn in diagnostic_metrics.items()
+            ])
 
     def compute_values(self, obs, goals):
         return self._vfun_np(np.concatenate([obs, goals], axis=1))
@@ -159,13 +182,14 @@ class ValueFunction(object):
                                        samples_data['rewards'], samples_data['dones'],
                                        samples_data['next_observations'])
 
+        sess = tf.get_default_session()
         for _ in range(self.num_grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))
-            _ = self.sess.run(self.training_op, feed_dict=feed_dict)
+            _ = sess.run(self.training_op, feed_dict=feed_dict)
             if log:
                 logger.logkv('train-Itr', itr)
-                diagnostics = self.sess.run({**self.diagnostics_ops}, feed_dict)
+                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
                     logger.logkv_mean(log_prefix + k, v)
 
@@ -181,8 +205,8 @@ class ValueFunction(object):
             (dict) : a dictionary of tf placeholders for the policy output distribution
         """
         if params is None:
-            with tf.variable_scope(self.name, reuse=True):
-                input_var, output_var = create_mlp(name=self.name,
+            with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
+                input_var, output_var = create_mlp(name='v_network',
                                                    output_dim=1,
                                                    hidden_sizes=self.hidden_sizes,
                                                    hidden_nonlinearity=self.hidden_nonlinearity,
@@ -191,27 +215,28 @@ class ValueFunction(object):
                                                    reuse=True,
                                                    )
         else:
-            input_var, output_var = forward_mlp(output_dim=1,
-                                                hidden_sizes=self.hidden_sizes,
-                                                hidden_nonlinearity=self.hidden_nonlinearity,
-                                                output_nonlinearity=self.output_nonlinearity,
-                                                input_var=input_var,
-                                                mlp_params=params,
-                                                )
+            raise NotImplementedError
+            # input_var, output_var = forward_mlp(output_dim=1,
+            #                                     hidden_sizes=self.hidden_sizes,
+            #                                     hidden_nonlinearity=self.hidden_nonlinearity,
+            #                                     output_nonlinearity=self.output_nonlinearity,
+            #                                     input_var=input_var,
+            #                                     mlp_params=params,
+            #                                     )
 
         return output_var
 
-    def distribution_info_keys(self, obs, state_infos):
-        """
-        Args:
-            obs (placeholder) : symbolic variable for observations
-            state_infos (dict) : a dictionary of placeholders that contains information about the
-            state of the policy at the time it received the observation
-
-        Returns:
-            (dict) : a dictionary of tf placeholders for the policy output distribution
-        """
-        raise ["mean", "log_std"]
+    # def distribution_info_keys(self, obs, state_infos):
+    #     """
+    #     Args:
+    #         obs (placeholder) : symbolic variable for observations
+    #         state_infos (dict) : a dictionary of placeholders that contains information about the
+    #         state of the policy at the time it received the observation
+    #
+    #     Returns:
+    #         (dict) : a dictionary of tf placeholders for the policy output distribution
+    #     """
+    #     raise ["mean", "log_std"]
 
     def _create_placeholders_for_vars(self, scope, graph_keys=tf.GraphKeys.TRAINABLE_VARIABLES):
         var_list = tf.get_collection(graph_keys, scope=scope)
@@ -273,14 +298,14 @@ class ValueFunction(object):
         feed_dict = dict(zip(self._assign_phs, vfun_params.values()))
         tf.get_default_session().run(self._assign_ops, feed_dict=feed_dict)
 
-    # def __getstate__(self):
-    #     state = {
-    #         'init_args': Serializable.__getstate__(self),
-    #         'network_params': self.get_param_values()
-    #     }
-    #     return state
-    #
-    # def __setstate__(self, state):
-    #     Serializable.__setstate__(self, state['init_args'])
-    #     # tf.get_default_session().run(tf.global_variables_initializer())
-    #     self.set_params(state['network_params'])
+    def __getstate__(self):
+        state = {
+            'init_args': Serializable.__getstate__(self),
+            'network_params': self.get_param_values()
+        }
+        return state
+
+    def __setstate__(self, state):
+        # Serializable.__setstate__(self, state['init_args'])
+        # tf.get_default_session().run(tf.global_variables_initializer())
+        self.set_params(state['network_params'])

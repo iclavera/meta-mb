@@ -31,7 +31,7 @@ def run_experiment(**kwargs):
     if kwargs['env'] is ParticleMazeEnv:
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 2501
+            kwargs['n_itr'] = 5001
             kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
             kwargs['n_itr'] = 201 * 100
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [0],
