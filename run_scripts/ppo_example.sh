@@ -4,8 +4,8 @@
 for i in `seq 0 2`;
 do
     echo $i
-    python ppo_run_sweep.py --env_name HalfCheetah \
-                            --exp_name pg4 \
+    python ppo_run_sweep.py --env_name Hopper \
+                            --exp_name pg5 \
                             --exp_num $i \
                             --discount 0.99 \
                             --use_baseline 0 \

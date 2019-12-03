@@ -4,11 +4,11 @@
 for i in `seq 0 2`;
 do
     echo $i
-    python ppo_run_sweep.py --env_name HalfCheetah \
-                            --exp_name pg2 \
+    python ppo_run_sweep.py --env_name Hopper \
+                            --exp_name pg+baseline \
                             --exp_num $i \
                             --discount 0.99 \
-                            --use_baseline 0 \
+                            --use_baseline 1 \
                             --use_ppo_obj 0 \
                             --use_clipper 0 \
                             --use_entropy 0 \
