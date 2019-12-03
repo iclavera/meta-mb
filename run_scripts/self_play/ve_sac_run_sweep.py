@@ -38,8 +38,8 @@ def run_experiment(**kwargs):
             kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchReachEnv:
         env_name = 'FReachEnv'
-        kwargs['n_itr'] = 3001
-        kwargs['snapshot_gap'] = 500
+        kwargs['n_itr'] = 801
+        kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchPushEnv:
         env_name = 'FPushEnv'
         kwargs['n_itr'] = 50001
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [5],
