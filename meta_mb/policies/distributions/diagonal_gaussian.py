@@ -81,6 +81,7 @@ class DiagonalGaussian(Distribution):
         """
         with tf.variable_scope("log_li_new"):
 <<<<<<< HEAD:meta_mb/policies/distributions/diagonal_gaussian.py
+<<<<<<< HEAD:meta_mb/policies/distributions/diagonal_gaussian.py
 <<<<<<< HEAD:hw5/policies/distributions/diagonal_gaussian.py
             # hint: consider using the function you just inplemented in PROBLEM 1A!
             logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
@@ -91,6 +92,12 @@ class DiagonalGaussian(Distribution):
         pi_over_pi_old = tf.exp(logli_new) / tf.exp(logli_old)
         """ YOUR CODE ENDS"""
         return pi_over_pi_old
+=======
+            logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
+        with tf.variable_scope("log_li_old"):
+            logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
+        return tf.exp(logli_new - logli_old)
+>>>>>>> parent of 053b127... first comit with 1a:meta_mb/policies/distributions/diagonal_gaussian.py
 =======
             logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
         with tf.variable_scope("log_li_old"):
