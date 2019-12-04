@@ -2,27 +2,27 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-from hw5.utils.utils import set_seed, ClassEncoder
-from hw5.baselines.linear_baseline import LinearFeatureBaseline
-from hw5.envs.mb_envs import *
-from hw5.envs.normalized_env import normalize
-from hw5.algos.ppo import PPO
+from experiment_utils.run_sweep import run_sweep
+from meta_mb.utils.utils import set_seed, ClassEncoder
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.envs.mb_envs import Walker2dEnv, AntEnv, HalfCheetahEnv
+from meta_mb.envs.normalized_env import normalize
+from meta_mb.algos.ppo import PPO
+from meta_mb.trainers.metrpo_trainer import Trainer
+from meta_mb.samplers.sampler import Sampler
+from meta_mb.samplers.base import SampleProcessor
+from meta_mb.samplers.metrpo_samplers.metrpo_sampler import METRPOSampler
+from meta_mb.policies.gaussian_mlp_policy import GaussianMLPPolicy
+from meta_mb.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
+from meta_mb.logger import logger
+from meta_mb.samplers.mb_sample_processor import ModelSampleProcessor
 
-from hw5.trainers.mbmf_trainer import Trainer
-
-from hw5.samplers.base import Sampler
-from hw5.samplers.base import SampleProcessor
-from hw5.samplers.mb_sampler import MBSampler
-from hw5.policies.gaussian_mlp_policy import GaussianMLPPolicy
-from hw5.dynamics.mlp_dynamics import MLPDynamicsModel
-from hw5.dynamics.mlp_dynamics_ensemble import MLPDynamicsEnsemble
-from hw5.logger import logger
-from hw5.samplers.mb_sample_processor import ModelSampleProcessor
-import argparse
+INSTANCE_TYPE = 'c4.4xlarge'
+EXP_NAME = 'mb_ppo'
 
 
 def run_experiment(**kwargs):
-    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + kwargs['name'] + '/' + kwargs.get('exp_name', '')
+    exp_dir = os.getcwd() + '/data/parallel_mb_ppo/' + EXP_NAME + '/' + kwargs.get('exp_name', '')
     logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
     config = tf.ConfigProto()
@@ -46,38 +46,27 @@ def run_experiment(**kwargs):
             hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
         )
-        if kwargs['ensemble']:
-            dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
-                                                    env=env,
-                                                    num_models=kwargs['num_models'],
-                                                    hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                                    hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                                    output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                                    learning_rate=kwargs['dynamics_learning_rate'],
-                                                    batch_size=kwargs['dynamics_batch_size'],
-                                                    buffer_size=kwargs['dynamics_buffer_size'],
-                                                    )
-        else:
-            dynamics_model = MLPDynamicsModel('dynamics-vanilla',
-                                              env=env,
-                                              hidden_sizes=kwargs['dynamics_hidden_sizes'],
-                                              hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
-                                              output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
-                                              batch_size=kwargs['dynamics_batch_size'],
-                                              learning_rate=kwargs['dynamics_learning_rate'],
-                                              weight_normalization=False,
-                                              normalize_input=True,
-                                              buffer_size=kwargs['dynamics_buffer_size'],
-                                              )
+
+        dynamics_model = MLPDynamicsEnsemble('dynamics-ensemble',
+                                             env=env,
+                                             num_models=kwargs['num_models'],
+                                             hidden_nonlinearity=kwargs['dyanmics_hidden_nonlinearity'],
+                                             hidden_sizes=kwargs['dynamics_hidden_sizes'],
+                                             output_nonlinearity=kwargs['dyanmics_output_nonlinearity'],
+                                             learning_rate=kwargs['dynamics_learning_rate'],
+                                             batch_size=kwargs['dynamics_batch_size'],
+                                             buffer_size=kwargs['dynamics_buffer_size'],
+                                             )
 
         env_sampler = Sampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['num_rollouts'],
             max_path_length=kwargs['max_path_length'],
+            n_parallel=kwargs['n_parallel'],
         )
 
-        model_sampler = MBSampler(
+        model_sampler = METRPOSampler(
             env=env,
             policy=policy,
             num_rollouts=kwargs['imagined_num_rollouts'],
@@ -110,7 +99,7 @@ def run_experiment(**kwargs):
         )
 
         trainer = Trainer(
-                algo=algo,
+            algo=algo,
             policy=policy,
             env=env,
             model_sampler=model_sampler,
@@ -130,63 +119,53 @@ def run_experiment(**kwargs):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--env_name', type=str, default='HalfCheetah')
-    parser.add_argument('--exp_name', type=str, default=None)
-    parser.add_argument('--exp_num', type=int, default=0)
-    parser.add_argument('--ensemble', type=int, default=0)
 
-    args = parser.parse_args()
-    env_dict = {'HalfCheetah': HalfCheetahEnv, 'Swimmer': SwimmerEnv, 'Hopper': HopperEnv}
-    env = env_dict[args.env_name]
-    params = {
-            'name': args.exp_name,
-            'seed': args.exp_num,
-            'exp_num': args.exp_num,
-            'algo': 'meppo',
-            'baseline': LinearFeatureBaseline,
-            'env': env,
-            'ensemble': args.ensemble,
+    sweep_params = {
+        'seed': [1, 2],
 
-            # Problem Conf
-            'n_itr': 51,
-            'max_path_length': 200,
-            'discount': 0.99,
-            'gae_lambda': 1,
-            'normalize_adv': True,
-            'positive_adv': False,
-            'log_real_performance': True,
-            'steps_per_iter': (10, 10),     #(50, 50)],
+        'algo': ['meppo'],
+        'baseline': [LinearFeatureBaseline],
+        'env': [Walker2dEnv, AntEnv, HalfCheetahEnv],
 
-            # Real Env Sampling
-            'num_rollouts': 5,
+        # Problem Conf
+        'n_itr': [51],
+        'max_path_length': [200,],
+        'discount': [0.99],
+        'gae_lambda': [1],
+        'normalize_adv': [True],
+        'positive_adv': [False],
+        'log_real_performance': [True],
+        'steps_per_iter': [(10, 10), ],#(50, 50)],
 
-            # Dynamics Model
-            'num_models': 5,
-            'dynamics_hidden_sizes': (512, 512),
-            'dyanmics_hidden_nonlinearity': 'relu',
-            'dyanmics_output_nonlinearity': None,
-            'dynamics_max_epochs': 50,
-            'dynamics_learning_rate': 1e-3,
-            'dynamics_batch_size': 256,
-            'dynamics_buffer_size': 10000,
-            'deterministic': True,
+        # Real Env Sampling
+        'num_rollouts': [5],
+        'n_parallel': [5],
 
-            # Policy
-            'policy_hidden_sizes': (64, 64),
-            'policy_learn_std': True,
-            'policy_hidden_nonlinearity': tf.tanh,
-            'policy_output_nonlinearity': None,
+        # Dynamics Model
+        'num_models': [5],
+        'dynamics_hidden_sizes': [(512, 512)],
+        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_output_nonlinearity': [None],
+        'dynamics_max_epochs': [50],
+        'dynamics_learning_rate': [1e-3],
+        'dynamics_batch_size': [256],
+        'dynamics_buffer_size': [10000],
+        'deterministic': [True],
 
-            # Algo
-            'clip_eps': 0.2,                # 0.3, 0.1],
-            'learning_rate': 1e-3,          # 5e-4],
-            'num_ppo_steps': 5,
-            'imagined_num_rollouts': 20,    #50],
-            'scope': None,
-            'exp_tag': 'mb_ppo_all',        # For changes besides hyperparams
-            'recurrent': False,
-        }
+        # Policy
+        'policy_hidden_sizes': [(64, 64)],
+        'policy_learn_std': [True],
+        'policy_hidden_nonlinearity': [tf.tanh],
+        'policy_output_nonlinearity': [None],
 
-    run_experiment(**params)
+        # Algo
+        'clip_eps': [0.2,],# 0.3, 0.1],
+        'learning_rate': [1e-3],# 5e-4],
+        'num_ppo_steps': [5],
+        'imagined_num_rollouts': [20], #50],
+        'scope': [None],
+        'exp_tag': ['mb_ppo_all'],  # For changes besides hyperparams
+    }
+
+    run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)
 

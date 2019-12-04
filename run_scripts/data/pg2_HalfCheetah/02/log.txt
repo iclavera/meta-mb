@@ -1,1 +1,0 @@
-Logging to /Users/sarahyoung/cs287/hw5_release_v2 2/ppo/run_scripts/data/pg2_HalfCheetah/02
