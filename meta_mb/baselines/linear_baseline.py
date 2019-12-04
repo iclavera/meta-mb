@@ -30,8 +30,11 @@ class LinearBaseline(Baseline):
         """
         if self._coeffs is None:
             return np.zeros(len(path["observations"]))
+<<<<<<< HEAD
 <<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
 <<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
+=======
+>>>>>>> parent of d8ac123... reverting
 <<<<<<< HEAD:hw5/baselines/linear_baseline.py
         '''  YOUR CODE HERE FOR PROBLEM 1B'''
         # hint baselines should be features dot coeffs
@@ -42,12 +45,15 @@ class LinearBaseline(Baseline):
 =======
         return self._features(path).dot(self._coeffs)
 >>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
+<<<<<<< HEAD
 =======
         return self._features(path).dot(self._coeffs)
 >>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
 =======
         return self._features(path).dot(self._coeffs)
 >>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
+=======
+>>>>>>> parent of d8ac123... reverting
 
     def get_param_values(self, **tags):
         """
@@ -79,8 +85,11 @@ class LinearBaseline(Baseline):
 
         """
         assert all([target_key in path.keys() for path in paths])
+<<<<<<< HEAD
 <<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
 <<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
+=======
+>>>>>>> parent of d8ac123... reverting
 <<<<<<< HEAD:hw5/baselines/linear_baseline.py
         """ YOUR CODE HERE FOR PROBLEM 1B """
         # hint: 1. convert your paths to concatenated features use the function self._features
@@ -97,6 +106,7 @@ class LinearBaseline(Baseline):
         featmat = np.concatenate([self._features(path) for path in paths], axis=0)
         target = np.concatenate([path[target_key] for path in paths], axis=0)
 >>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
+<<<<<<< HEAD
 =======
 
         featmat = np.concatenate([self._features(path) for path in paths], axis=0)
@@ -107,6 +117,8 @@ class LinearBaseline(Baseline):
         featmat = np.concatenate([self._features(path) for path in paths], axis=0)
         target = np.concatenate([path[target_key] for path in paths], axis=0)
 >>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
+=======
+>>>>>>> parent of d8ac123... reverting
         reg_coeff = self._reg_coeff
         for _ in range(5):
             self._coeffs = np.linalg.lstsq(
