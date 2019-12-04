@@ -82,12 +82,12 @@ class DiagonalGaussian(Distribution):
         """ YOUR CODE HERE FOR PROBLEM 1C"""
         with tf.variable_scope("log_li_new"):
             # hint: consider using the function you just inplemented in PROBLEM 1A!
-            logli_new = "none"
+            logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
         with tf.variable_scope("log_li_old"):
             # hint: consider using the function you just inplemented in PROBLEM 1A!
-            logli_old = "none"
+            logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
         # hint: note this is pi over pi_old, not log_pi over log_pi_old
-        pi_over_pi_old = "none"
+        pi_over_pi_old = tf.exp(logli_new) / tf.exp(logli_old)
         """ YOUR CODE ENDS"""
         return pi_over_pi_old
 
