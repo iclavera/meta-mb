@@ -1,0 +1,40 @@
+{
+  "algo": "ppo",
+  "baseline": {
+    "$class": "hw5.baselines.zero_baseline.ZeroBaseline"
+  },
+  "clip_eps": 0.2,
+  "discount": 0.99,
+  "entropy_bonus": 1e-05,
+  "env": {
+    "$class": "hw5.envs.mb_envs.hopper.HopperEnv"
+  },
+  "exp_num": 0,
+  "exp_tag": "v0",
+  "gae_lambda": 0.975,
+  "hidden_nonlinearity": {
+    "function": "tanh"
+  },
+  "hidden_sizes": [
+    256,
+    256
+  ],
+  "init_std": 1.0,
+  "learn_std": true,
+  "learning_rate": 0.001,
+  "max_path_length": 100,
+  "n_itr": 300,
+  "name": "pg3_Hopper",
+  "normalize_adv": true,
+  "num_minibatches": 1,
+  "num_ppo_steps": 5,
+  "num_rollouts": 100,
+  "output_nonlinearity": null,
+  "positive_adv": false,
+  "scope": null,
+  "seed": 0,
+  "use_clipper": 0,
+  "use_entropy": 0,
+  "use_gae": 0,
+  "use_ppo_obj": 0
+}
