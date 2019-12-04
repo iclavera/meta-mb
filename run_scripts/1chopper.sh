@@ -4,8 +4,13 @@
 for i in `seq 0 2`;
 do
     echo $i
+<<<<<<< HEAD:run_scripts/1chopper.sh
     python ppo_run_sweep.py --env_name Hopper \
                             --exp_name ppo2_unclipped \
+=======
+    python ppo_run_sweep.py --env_name HalfCheetah \
+                            --exp_name ppo_unclipped \
+>>>>>>> parent of e4645d3... bash files:run_scripts/1c.sh
                             --exp_num $i \
                             --discount 0.99 \
                             --use_baseline 1 \
