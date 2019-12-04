@@ -5,7 +5,7 @@ for i in `seq 0 2`;
 do
     echo $i
     python ppo_run_sweep.py --env_name Hopper \
-                            --exp_name ppo_unclipped \
+                            --exp_name ppo2_unclipped \
                             --exp_num $i \
                             --discount 0.99 \
                             --use_baseline 1 \
