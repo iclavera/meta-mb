@@ -30,30 +30,7 @@ class LinearBaseline(Baseline):
         """
         if self._coeffs is None:
             return np.zeros(len(path["observations"]))
-<<<<<<< HEAD
-<<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
-<<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
-=======
->>>>>>> parent of d8ac123... reverting
-<<<<<<< HEAD:hw5/baselines/linear_baseline.py
-        '''  YOUR CODE HERE FOR PROBLEM 1B'''
-        # hint baselines should be features dot coeffs
-
-        prediction = np.dot(self._features(path),self._coeffs)
-        '''  YOUR CODE ENDS'''
-        return prediction
-=======
         return self._features(path).dot(self._coeffs)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-<<<<<<< HEAD
-=======
-        return self._features(path).dot(self._coeffs)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-=======
-        return self._features(path).dot(self._coeffs)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-=======
->>>>>>> parent of d8ac123... reverting
 
     def get_param_values(self, **tags):
         """
@@ -85,40 +62,9 @@ class LinearBaseline(Baseline):
 
         """
         assert all([target_key in path.keys() for path in paths])
-<<<<<<< HEAD
-<<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
-<<<<<<< HEAD:meta_mb/baselines/linear_baseline.py
-=======
->>>>>>> parent of d8ac123... reverting
-<<<<<<< HEAD:hw5/baselines/linear_baseline.py
-        """ YOUR CODE HERE FOR PROBLEM 1B """
-        # hint: 1. convert your paths to concatenated features use the function self._features
-        # 2. your target_key is returns, thats the target you want to fit, path[target_key] where path is an element of paths
-        # 3. you need regularization coefficient to avoid NAN (provided)
-        # 4. Use np.linalg.lstsq to find the best coeff for featmat.T.dot(featmat), featmat.T.dot(target), (provided)
-        # 5. don't forget your reg_coeff with an identity matrix sould be add to featmat.T.dot(featmat) as well (provided)
-        # 6. You can do this your own way!!
-
-        featmat = np.concatenate([self._features(p) for p in paths])
-        target = np.concatenate([path[target_key] for path in paths])
-=======
 
         featmat = np.concatenate([self._features(path) for path in paths], axis=0)
         target = np.concatenate([path[target_key] for path in paths], axis=0)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-<<<<<<< HEAD
-=======
-
-        featmat = np.concatenate([self._features(path) for path in paths], axis=0)
-        target = np.concatenate([path[target_key] for path in paths], axis=0)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-=======
-
-        featmat = np.concatenate([self._features(path) for path in paths], axis=0)
-        target = np.concatenate([path[target_key] for path in paths], axis=0)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/baselines/linear_baseline.py
-=======
->>>>>>> parent of d8ac123... reverting
         reg_coeff = self._reg_coeff
         for _ in range(5):
             self._coeffs = np.linalg.lstsq(

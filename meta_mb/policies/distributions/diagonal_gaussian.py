@@ -80,42 +80,10 @@ class DiagonalGaussian(Distribution):
             (tf.Tensor): likelihood ratio
         """
         with tf.variable_scope("log_li_new"):
-<<<<<<< HEAD
-<<<<<<< HEAD:meta_mb/policies/distributions/diagonal_gaussian.py
-<<<<<<< HEAD:meta_mb/policies/distributions/diagonal_gaussian.py
-=======
->>>>>>> parent of d8ac123... reverting
-<<<<<<< HEAD:hw5/policies/distributions/diagonal_gaussian.py
-            # hint: consider using the function you just inplemented in PROBLEM 1A!
-            logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
-        with tf.variable_scope("log_li_old"):
-            # hint: consider using the function you just inplemented in PROBLEM 1A!
-            logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
-        # hint: note this is pi over pi_old, not log_pi over log_pi_old
-        pi_over_pi_old = tf.exp(logli_new) / tf.exp(logli_old)
-        """ YOUR CODE ENDS"""
-        return pi_over_pi_old
-=======
             logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
         with tf.variable_scope("log_li_old"):
             logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
         return tf.exp(logli_new - logli_old)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/policies/distributions/diagonal_gaussian.py
-<<<<<<< HEAD
-=======
-            logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
-        with tf.variable_scope("log_li_old"):
-            logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
-        return tf.exp(logli_new - logli_old)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/policies/distributions/diagonal_gaussian.py
-=======
-            logli_new = self.log_likelihood_sym(x_var, new_dist_info_vars)
-        with tf.variable_scope("log_li_old"):
-            logli_old = self.log_likelihood_sym(x_var, old_dist_info_vars)
-        return tf.exp(logli_new - logli_old)
->>>>>>> parent of 053b127... first comit with 1a:meta_mb/policies/distributions/diagonal_gaussian.py
-=======
->>>>>>> parent of d8ac123... reverting
 
     def log_likelihood_sym(self, x_var, dist_info_vars):
         """
