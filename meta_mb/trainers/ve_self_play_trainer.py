@@ -30,10 +30,8 @@ class Trainer(object):
             env,
             num_mc_goals,
             n_itr,
-            exp_dir,
             eval_interval,
             greedy_eps,
-            snapshot_gap,
             n_initial_exploration_steps=1e3,
         ):
 
@@ -48,8 +46,6 @@ class Trainer(object):
         self.value_ensemble = ValueEnsembleWrapper(
             size=size_value_ensemble,
             env_pickled=env_pickled,
-            exp_dir=exp_dir,
-            snapshot_gap=snapshot_gap,
             num_mc_goals=num_mc_goals,
             gpu_frac=gpu_frac,
             instance_kwargs=instance_kwargs,
@@ -57,8 +53,6 @@ class Trainer(object):
 
         """------------------ initiate remote SAC agent ----------------------"""
         self.agent = Agent(
-            exp_dir=exp_dir,
-            snapshot_gap=snapshot_gap,
             gpu_frac=gpu_frac,
             seed=seed,
             env_pickled=env_pickled,

@@ -25,10 +25,10 @@ def run_experiment(**kwargs):
     set_seed(GLOBAL_SEED)
 
     # env = normalize(kwargs['env']())  # FIXME
-    env = kwargs['env']()
 
     # preprocess kwargs
     if kwargs['env'] is ParticleMazeEnv:
+        env = kwargs['env']()
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
             kwargs['n_itr'] = 5001
@@ -37,18 +37,22 @@ def run_experiment(**kwargs):
             kwargs['n_itr'] = 20001
             kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchReachEnv:
+        env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 801
         kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchPushEnv:
+        env = kwargs['env'](obj_range=0)
         env_name = 'FPushEnv'
         kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchPickAndPlaceEnv:
-        env_name = 'FP&PEnv'
+        env = kwargs['env'](obj_range=0)
+        env_name = 'FPAPEnv'
         kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchSlideEnv:
+        env = kwargs['env'](obj_range=0)
         env_name = 'FSlideEnv'
         kwargs['n_itr'] = 50001
         kwargs['snapshot_gap'] = 500
@@ -66,7 +70,8 @@ def run_experiment(**kwargs):
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
-    logger.configure(dir=exp_dir, format_strs=['stdout', 'log', 'csv'], snapshot_mode='last')
+    logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
+                     snapshot_mode='gap', snapshot_gap=kwargs['snapshot_gap'])
     json.dump(kwargs, open(exp_dir + '/params.json', 'w'), indent=2, sort_keys=True, cls=ClassEncoder)
 
     for k, v in kwargs.items():
@@ -82,9 +87,7 @@ def run_experiment(**kwargs):
         num_mc_goals=kwargs['num_mc_goals'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
-        exp_dir=exp_dir,
         greedy_eps=kwargs['greedy_eps'],
-        snapshot_gap=kwargs['snapshot_gap'],
     )
 
     trainer.train()
@@ -96,7 +99,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchReachEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [5],
@@ -121,11 +124,11 @@ if __name__ == '__main__':
         'vfun_hidden_sizes': [(256, 256)],
 
         # Env Sampling
-        'num_mc_goals': [100],
+        'num_mc_goals': [1000],
         'num_rollouts': [1],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
-        'eval_interval': [50],
+        'eval_interval': [100],
         'replay_k': [3], # 4, -1],
         'greedy_eps': [0, 0.1], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],

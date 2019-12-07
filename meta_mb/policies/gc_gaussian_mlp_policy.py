@@ -29,17 +29,21 @@ class GCGaussianMLPPolicy(Policy):
 
     def __init__(
             self,
+            name,
             goal_dim,
-            *args,
+            obs_dim,
+            action_dim,
+            hidden_sizes,
+            output_nonlinearity,
+            hidden_nonlinearity,
+            max_std,
+            min_std,
             squashed=False,
             init_std=1e-2,
-            min_std=1e-6,
-            max_std=5e-1,
-            **kwargs
     ):
         # store the init args for serialization and call the super constructors
         Serializable.quick_init(self, locals())
-        Policy.__init__(self, *args, **kwargs)
+        Policy.__init__(self, obs_dim, action_dim, name, hidden_sizes, hidden_nonlinearity, output_nonlinearity)
 
         self.goal_dim = goal_dim
         self.min_log_std = np.log(min_std)

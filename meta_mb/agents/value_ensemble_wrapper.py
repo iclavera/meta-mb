@@ -3,14 +3,12 @@ from meta_mb.logger import logger
 from meta_mb.agents.ve_value_function import ValueFunction
 import pickle
 
+
 class ValueEnsembleWrapper(object):
-    def __init__(self, env_pickled, exp_dir, snapshot_gap, size, num_mc_goals, gpu_frac, instance_kwargs):
+    def __init__(self, env_pickled, size, num_mc_goals, gpu_frac, instance_kwargs):
         self.env = pickle.loads(env_pickled)
         self.size = size
         self.num_mc_goals = num_mc_goals
-
-        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
-                         snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_ve")
 
         import tensorflow as tf
         config = tf.ConfigProto()
@@ -76,4 +74,4 @@ class ValueEnsembleWrapper(object):
     def save_snapshot(self, itr):
         with self.sess.as_default():
             params = dict(itr=itr, vfun_tuple=tuple(self.vfun_list))
-            logger.save_itr_params(itr, params)
+            logger.save_itr_params(itr, params, 've_')

@@ -174,7 +174,7 @@ class ValueFunction(Serializable):
             ])
 
     def compute_values(self, obs, goals):
-        return self._vfun_np(np.concatenate([obs, goals], axis=1))
+        return self._vfun_np(np.concatenate([obs, goals], axis=1)).flatten()
 
     def train(self, on_policy_paths, itr, log=True, log_prefix='vc-'):
         samples_data = self.sample_processor.process_samples(on_policy_paths, eval=False, log='all', log_prefix='train-')
@@ -306,6 +306,5 @@ class ValueFunction(Serializable):
         return state
 
     def __setstate__(self, state):
-        # Serializable.__setstate__(self, state['init_args'])
-        # tf.get_default_session().run(tf.global_variables_initializer())
+        Serializable.__setstate__(self, state['init_args'])
         self.set_params(state['network_params'])

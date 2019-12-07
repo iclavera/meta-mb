@@ -205,6 +205,16 @@ class FetchEnv(robot_env.RobotEnv):
             goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
         return goals
 
+    # for visualization purpose
+    def _sample_2d_goals(self, num_samples):
+        if self.has_object:
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+            goals += self.target_offset
+            goals[:, 2] = self.height_offset
+        else:
+            goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
+        return goals
+
     def _is_success(self, achieved_goal, desired_goal):
         d = goal_distance(achieved_goal, desired_goal)
         return (d < self.distance_threshold).astype(np.float32)

@@ -21,8 +21,6 @@ class Agent(object):
     """
     def __init__(
             self,
-            exp_dir,
-            snapshot_gap,
             gpu_frac,
             seed,
             env_pickled,
@@ -32,9 +30,6 @@ class Agent(object):
             eval_interval,
             greedy_eps,
     ):
-
-        logger.configure(dir=exp_dir, format_strs=['csv', 'stdout', 'log'],
-            snapshot_mode='gap', snapshot_gap=snapshot_gap, log_suffix=f"_agent")
 
         import tensorflow as tf
 
@@ -186,11 +181,8 @@ class Agent(object):
 
     def save_snapshot(self, itr):
         with self.sess.as_default():
-            params = self._get_itr_snapshot(itr)
-            logger.save_itr_params(itr, params)
-
-    def _get_itr_snapshot(self, itr):
-        return dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets))
+            params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets))
+            logger.save_itr_params(itr, params, 'agent_')
 
     def finalize_graph(self):
         self.sess.graph.finalize()

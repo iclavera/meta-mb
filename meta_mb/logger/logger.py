@@ -374,22 +374,22 @@ class Logger(object):
             if isinstance(fmt, SeqWriter):
                 fmt.writeseq(map(str, args))
 
-    def save_itr_params(self, itr, params):
+    def save_itr_params(self, itr, params, prefix=''):
         if self.dir:
             if self.snapshot_mode == 'all':
-                file_name = osp.join(self.dir, 'itr_%d%s.pkl' % (itr, self.log_suffix))
+                file_name = osp.join(self.dir, '%sitr_%d%s.pkl' % (prefix, itr, self.log_suffix))
                 joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'last':
                 # override previous params
-                file_name = osp.join(self.dir, 'params%s.pkl' % self.log_suffix)
+                file_name = osp.join(self.dir, '%sparams%s.pkl' % (prefix, self.log_suffix))
                 joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == "gap":
                 if itr % self.snapshot_gap == 0:
-                    file_name = osp.join(self.dir, 'itr_%d%s.pkl' % (itr, self.log_suffix))
+                    file_name = osp.join(self.dir, '%sitr_%d%s.pkl' % (prefix, itr, self.log_suffix))
                     joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'last_gap':
                 if itr % self.snapshot_gap == 0:
-                    file_name = osp.join(self.dir, 'params%s.pkl' % self.log_suffix)
+                    file_name = osp.join(self.dir, '%sparams%s.pkl' % (prefix, self.log_suffix))
                     joblib.dump(params, file_name, compress=3)
             elif self.snapshot_mode == 'none':
                 pass

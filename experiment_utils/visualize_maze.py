@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import joblib
 import argparse
 import os
-import numpy as np
 import tensorflow as tf
 from collections import defaultdict
 
