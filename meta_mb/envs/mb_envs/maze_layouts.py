@@ -91,14 +91,14 @@ maze_layouts = {
 |S | E     E|
 |  |        |
 +  +  +--+  +
-|     |GGGGG|
-|E   E|GGGGG|
+|     |     |
+|E   E|    E|
 +  +  +  +  +
 |  |     |  |
 |E | E   | E|
 +  +  +  +  +
-|     |GGGGG|
-|E   E|GGGGG|
+|     |     |
+|E   E|    E|
 +--+--+--+--+
 """,
 	'square': """

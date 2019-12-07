@@ -6,7 +6,7 @@ import tensorflow as tf
 from collections import defaultdict
 
 from experiment_utils.utils import load_exps_data
-from meta_mb.agents.maze_visualizer import MazeVisualizer
+from meta_mb.agents.multi_agents_maze_env_visualizer import MazeVisualizer
 
 NUM_EVAL_GOALS = 1
 

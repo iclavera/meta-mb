@@ -6,6 +6,10 @@ import tensorflow as tf
 
 from experiment_utils.utils import load_exps_data
 from meta_mb.agents.fetch_env_visualizer import FetchEnvVisualizer
+from meta_mb.agents.maze_env_visualizer import MazeEnvVisualizer
+from meta_mb.envs.robotics import FetchEnv
+from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
+
 
 NUM_EVAL_GOALS = 1
 
@@ -33,7 +37,7 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                     continue
 
                 image_path = os.path.join(exp['exp_name'], f"itr_{itr}.png")
-                fig, ax_arr = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))
+                fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(20, 4))
 
                 print(f"loading itr {itr}...")
                 data = joblib.load(pkl_paths[0])
@@ -44,7 +48,10 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                     eval_goals = env.sample_2d_goals(num_samples=num_rollouts)
                     discount = exp['json']['discount']
                     _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
-                    vis = FetchEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
+                    if isinstance(env, FetchEnv):
+                        vis = FetchEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
+                    elif isinstance(env, ParticleMazeEnv):
+                        vis = MazeEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
 
                 vis.do_plots(fig, ax_arr, policy=data['policy'], q_functions=data['Q_targets'], value_ensemble=data['vfun_tuple'], itr=itr)
 

@@ -90,6 +90,9 @@ class ParticleMazeEnv(object):
         samples = list(map(self._get_coords_uniform_noise, sample_from[samples]))
         return np.asarray(samples)
 
+    def sample_2d_goals(self, num_samples):
+        return self.sample_goals(mode='free', num_samples=num_samples)
+
     def _is_wall(self, obs):
         ind = self._get_index(obs)
         return self._block_mask[ind[0], ind[1]]

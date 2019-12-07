@@ -99,7 +99,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [0],
@@ -130,7 +130,7 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'eval_interval': [100],
         'replay_k': [3], # 4, -1],
-        'greedy_eps': [0, 0.1], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
+        'greedy_eps': [0.3], #[0, 0.1], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 
