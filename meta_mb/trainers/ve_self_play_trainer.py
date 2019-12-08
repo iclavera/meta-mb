@@ -28,7 +28,6 @@ class Trainer(object):
             instance_kwargs,
             gpu_frac,
             env,
-            num_mc_goals,
             n_itr,
             eval_interval,
             greedy_eps,
@@ -46,7 +45,6 @@ class Trainer(object):
         self.value_ensemble = ValueEnsembleWrapper(
             size=size_value_ensemble,
             env_pickled=env_pickled,
-            num_mc_goals=num_mc_goals,
             gpu_frac=gpu_frac,
             instance_kwargs=instance_kwargs,
         )

@@ -31,7 +31,7 @@ def run_experiment(**kwargs):
         env = kwargs['env']()
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 5001
+            kwargs['n_itr'] = 10001 # 5001
             kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
@@ -84,7 +84,6 @@ def run_experiment(**kwargs):
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
-        num_mc_goals=kwargs['num_mc_goals'],
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         greedy_eps=kwargs['greedy_eps'],
@@ -99,7 +98,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [0],

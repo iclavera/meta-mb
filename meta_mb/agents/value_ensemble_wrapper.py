@@ -1,23 +1,24 @@
 import numpy as np
 from meta_mb.logger import logger
 from meta_mb.agents.ve_value_function import ValueFunction
+from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
+from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
 import pickle
+import tensorflow as tf
 
 
 class ValueEnsembleWrapper(object):
-    def __init__(self, env_pickled, size, num_mc_goals, gpu_frac, instance_kwargs):
-        self.env = pickle.loads(env_pickled)
+    def __init__(self, env_pickled, size, gpu_frac, instance_kwargs, batch_size_fraction=0.8):
         self.size = size
-        self.num_mc_goals = num_mc_goals
+        self.env = env = pickle.loads(env_pickled)
 
-        import tensorflow as tf
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
         self.sess = sess = tf.Session(config=config)
 
         self.vfun_list = []
-
         with sess.as_default():
             for vfun_idx in range(size):
                 vfun = ValueFunction(
@@ -26,17 +27,36 @@ class ValueEnsembleWrapper(object):
                     reward_scale=instance_kwargs['reward_scale'],
                     discount=instance_kwargs['discount'],
                     learning_rate=instance_kwargs['learning_rate'],
-                    gae_lambda=instance_kwargs['gae_lambda'],
-                    normalize_adv=instance_kwargs['normalize_adv'],
-                    positive_adv=instance_kwargs['positive_adv'],
                     hidden_sizes=instance_kwargs['vfun_hidden_sizes'],
                     hidden_nonlinearity=instance_kwargs['vfun_hidden_nonlinearity'],
                     output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
-                    batch_size=instance_kwargs['vfun_batch_size'],
-                    num_grad_steps=instance_kwargs['vfun_num_grad_steps'],
-                    max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size'],
                 )
                 self.vfun_list.append(vfun)
+
+        if size == 0:
+            return
+
+        self.batch_size_fraction = batch_size_fraction
+        self.num_mc_goals = instance_kwargs['num_mc_goals']
+        self.num_grad_steps = instance_kwargs['vfun_num_grad_steps']
+        self.batch_size = instance_kwargs['vfun_batch_size']
+
+        baseline = LinearFeatureBaseline()
+        self.replay_buffer = SimpleReplayBuffer(
+            env_spec=env,
+            max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size']
+        )
+
+        self.sample_processor = ModelSampleProcessor(
+            reward_fn=env.reward,
+            achieved_goal_fn=env.get_achieved_goal,
+            baseline=baseline,
+            replay_k=-1,
+            discount=instance_kwargs['discount'],
+            gae_lambda=instance_kwargs['gae_lambda'],
+            normalize_adv=instance_kwargs['normalize_adv'],
+            positive_adv=instance_kwargs['positive_adv'],
+        )
 
         sess.run(tf.initializers.global_variables())
 
@@ -67,9 +87,22 @@ class ValueEnsembleWrapper(object):
         return samples
 
     def train(self, paths, itr, log=True):
+        if self.size == 0:
+            return
+
+        samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='ve-train-')
+        self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                                       samples_data['rewards'], samples_data['dones'],
+                                       samples_data['next_observations'])
+
         with self.sess.as_default():
-            for vfun in self.vfun_list:
-                vfun.train(paths, itr=itr, log=log)  # TODO: sample 80%
+            for grad_step in range(self.num_grad_steps):
+                batch_indices = self.replay_buffer.random_batch_indices(int(self.batch_size/self.batch_size_fraction))
+                for vfun in self.vfun_list:
+                    rand_indices = np.random.choice(len(batch_indices), size=self.batch_size)
+                    batch = self.replay_buffer.get_batch_by_indices(rand_indices)
+                    vfun.train(batch, itr=itr, log=log)
+                    log = False
 
     def save_snapshot(self, itr):
         with self.sess.as_default():

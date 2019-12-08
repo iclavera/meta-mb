@@ -74,9 +74,6 @@ class Sampler(Serializable):
         if goals is not None:
             assert len(goals) == self.num_rollouts
 
-        self.policy.reset(dones=[True] * self.num_rollouts)
-        self.vec_action_noise.reset()
-
         policy = self.policy
         paths = []
         n_samples = 0
@@ -84,8 +81,9 @@ class Sampler(Serializable):
         policy_time, env_time, store_time = 0, 0, 0
 
         # sample goals
-        init_obs_no, goal_ng = self.vec_env.reset(goal_ng=goals)
-        obs_no = init_obs_no
+        self.vec_action_noise.reset()
+        policy.reset(dones=[True] * self.num_rollouts)
+        obs_no, goal_ng = self.vec_env.reset(goal_ng=goals)
 
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
@@ -96,9 +94,6 @@ class Sampler(Serializable):
             else:
                 obs_no = np.array(obs_no)
                 act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
-                # sanity check the magnitude of action statistics
-                # act_std = np.exp(agent_info_n[0]['log_std'])  # this number if large, almost one
-                # logger.log('act std', act_std)
 
                 if apply_action_noise:
                     act_na += self.vec_action_noise()
@@ -144,7 +139,9 @@ class Sampler(Serializable):
                         env_infos=utils.stack_tensor_dict_list(running_paths[idx]["env_infos"]),
                         agent_infos=utils.stack_tensor_dict_list(running_paths[idx]["agent_infos"]),
                     ))
-                    n_samples += len(running_paths[idx]["rewards"])
+                    path_length = len(running_paths[idx]["rewards"])
+                    assert path_length <= self.max_path_length
+                    n_samples += path_length
                     running_paths[idx] = _get_empty_running_paths_dict()
             store_time = time.time() - t
 

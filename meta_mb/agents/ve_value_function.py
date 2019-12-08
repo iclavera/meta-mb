@@ -1,7 +1,4 @@
 from meta_mb.utils.networks.mlp import create_mlp, forward_mlp
-from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
-from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
-from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
 from meta_mb.utils.utils import remove_scope_from_name
 from meta_mb.utils import create_feed_dict
 from meta_mb.utils import Serializable
@@ -23,15 +20,9 @@ class ValueFunction(Serializable):
                  reward_scale,
                  discount,
                  learning_rate,
-                 gae_lambda,
-                 normalize_adv,
-                 positive_adv,
                  hidden_sizes,
                  hidden_nonlinearity,
                  output_nonlinearity,
-                 batch_size,
-                 num_grad_steps,
-                 max_replay_buffer_size,
                  ):
 
         Serializable.quick_init(self, locals())
@@ -42,29 +33,9 @@ class ValueFunction(Serializable):
         self.hidden_sizes = hidden_sizes
         self.hidden_nonlinearity = hidden_nonlinearity
         self.output_nonlinearity = output_nonlinearity
-        self.batch_size = batch_size
         self.reward_scale = reward_scale
         self.discount = discount
         self.learning_rate = learning_rate
-        self.num_grad_steps = num_grad_steps
-
-        baseline = LinearFeatureBaseline()
-
-        self.replay_buffer = SimpleReplayBuffer(
-            env_spec=env,
-            max_replay_buffer_size=max_replay_buffer_size
-        )
-
-        self.sample_processor = ModelSampleProcessor(
-            reward_fn=env.reward,
-            achieved_goal_fn=env.get_achieved_goal,
-            baseline=baseline,
-            replay_k=-1,
-            discount=discount,
-            gae_lambda=gae_lambda,
-            normalize_adv=normalize_adv,
-            positive_adv=positive_adv,
-        )
 
         self.vfun_params = None
         self.input_var = None
@@ -176,22 +147,15 @@ class ValueFunction(Serializable):
     def compute_values(self, obs, goals):
         return self._vfun_np(np.concatenate([obs, goals], axis=1)).flatten()
 
-    def train(self, on_policy_paths, itr, log=True, log_prefix='vc-'):
-        samples_data = self.sample_processor.process_samples(on_policy_paths, eval=False, log='all', log_prefix='train-')
-        self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
-                                       samples_data['rewards'], samples_data['dones'],
-                                       samples_data['next_observations'])
-
+    def train(self, batch, itr, log=True, log_prefix='vc-'):
         sess = tf.get_default_session()
-        for _ in range(self.num_grad_steps):
-            feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
-                                         value_dict=self.replay_buffer.random_batch(batch_size=self.batch_size))
-            _ = sess.run(self.training_op, feed_dict=feed_dict)
-            if log:
-                logger.logkv('train-Itr', itr)
-                diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
-                for k, v in diagnostics.items():
-                    logger.logkv_mean(log_prefix + k, v)
+        feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict, value_dict=batch)
+        _ = sess.run(self.training_op, feed_dict=feed_dict)
+        if log:
+            logger.logkv('train-Itr', itr)
+            diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
+            for k, v in diagnostics.items():
+                logger.logkv_mean(log_prefix + k, v)
 
     def value_sym(self, input_var, params=None):
         """

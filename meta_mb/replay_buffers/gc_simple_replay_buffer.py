@@ -131,11 +131,18 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         result[prefix + 'next_observations'] = self._next_obs[indices]
         return result
 
-    # def random_batch_simple(self, batch_size, prefix = ''):
-    #     indices = np.random.randint(0, self._size, batch_size)
-    #     result = dict()
-    #     result[prefix + 'observations'] = self._observations[indices]
-    #     return result
+    def random_batch_indices(self, batch_size):
+        return np.random.randint(0, self._size, batch_size)
+
+    def get_batch_by_indices(self, indices, prefix=''):
+        result = dict()
+        result[prefix + 'goals'] = self._goals[indices]
+        result[prefix + 'observations'] = self._observations[indices]
+        result[prefix + 'actions'] = self._actions[indices]
+        result[prefix + 'rewards'] = self._rewards[indices]
+        result[prefix + 'dones'] = self._terminals[indices]
+        result[prefix + 'next_observations'] = self._next_obs[indices]
+        return result
 
     @property
     def size(self):

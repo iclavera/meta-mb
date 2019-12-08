@@ -111,10 +111,8 @@ class VEIterativeEnvExecutor(object):
         init_ob_no = [env.reset_obs() for env in envs]
         if isinstance(init_ob_no[0], dict):
             init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
-
         if goal_ng is None:
             goal_ng = self.value_ensemble.sample_goals(init_ob_no)
-
         _ = [env.reset_goal(goal) for env, goal in zip(envs, goal_ng)]
 
         if env_mask is None:
