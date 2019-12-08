@@ -102,9 +102,9 @@ if __name__ == '__main__':
 
         # Value ensemble
         'size_value_ensemble': [5],
-        'vfun_batch_size': [256],
+        'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
         'vfun_num_grad_steps': [20, 100],
-        'vfun_max_replay_buffer_size': [1e3, 1e4],
+        'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -124,11 +124,11 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_mc_goals': [1000],
-        'num_rollouts': [1],
+        'num_rollouts': [30],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'eval_interval': [100],
-        'replay_k': [3], # 4, -1],
+        'replay_k': [-1], # 4, -1],
         'greedy_eps': [0.3], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],

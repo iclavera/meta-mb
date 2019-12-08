@@ -8,4 +8,4 @@ DATA_DIR = os.path.join(BASE_DIR, 'data')
 
 DOCKER_IMAGE = 'iclavera/meta-mb:fix_dep'
 
-S3_BUCKET_NAME = 'meta-mb'
+S3_BUCKET_NAME = 'self-play'

@@ -87,7 +87,7 @@ class Trainer(object):
 
             """-------------------------- train value ensemble ---------------------------"""
 
-            value_ensemble.train(on_policy_paths, itr=itr, log=True)  # TODO: early stopping
+            value_ensemble.train(on_policy_paths, itr=itr, log=True)
             value_ensemble.save_snapshot(itr=itr)
 
             if itr == 0:

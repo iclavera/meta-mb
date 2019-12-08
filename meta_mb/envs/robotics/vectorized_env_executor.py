@@ -1,8 +1,8 @@
 import numpy as np
 import pickle as pickle
-import ray
+# import ray
 
-from meta_mb.agents.remote_env import RemoteEnv
+# from meta_mb.agents.remote_env import RemoteEnv
 
 
 class IterativeEnvExecutor(object):
@@ -107,6 +107,15 @@ class VEIterativeEnvExecutor(object):
         return obs, rewards, dones, env_infos, reset_obs_no, reset_goal_ng
 
     def reset(self, env_mask=None, goal_ng=None):
+        """
+        This function wraps reset_obs and reset_goal.
+        Args:
+            env_mask:
+            goal_ng:
+
+        Returns:
+
+        """
         envs = self.envs if env_mask is None else self.envs[env_mask]
         init_ob_no = [env.reset_obs() for env in envs]
         if isinstance(init_ob_no[0], dict):
@@ -126,6 +135,8 @@ class VEIterativeEnvExecutor(object):
     def num_envs(self):
         return self._num_envs
 
+
+# need to create a new docker image so that ray is installed on AWS; disabled for now
 
 class ParallelEnvExecutor(object):
     """

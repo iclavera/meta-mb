@@ -41,12 +41,17 @@ class ValueEnsembleWrapper(object):
         self.num_grad_steps = instance_kwargs['vfun_num_grad_steps']
         self.batch_size = instance_kwargs['vfun_batch_size']
 
-        baseline = LinearFeatureBaseline()
-        self.replay_buffer = SimpleReplayBuffer(
-            env_spec=env,
-            max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size']
-        )
+        max_replay_buffer_size = instance_kwargs['vfun_max_replay_buffer_size']
+        if max_replay_buffer_size > 0:
+            self.replay_buffer = SimpleReplayBuffer(
+                env_spec=env,
+                max_replay_buffer_size=instance_kwargs['vfun_max_replay_buffer_size']
+            )
+        else:
+            # no replay buffer, use on-policy data only
+            self.replay_buffer = None
 
+        baseline = LinearFeatureBaseline()
         self.sample_processor = ModelSampleProcessor(
             reward_fn=env.reward,
             achieved_goal_fn=env.get_achieved_goal,
@@ -91,18 +96,39 @@ class ValueEnsembleWrapper(object):
             return
 
         samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='ve-train-')
-        self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
-                                       samples_data['rewards'], samples_data['dones'],
-                                       samples_data['next_observations'])
 
-        with self.sess.as_default():
-            for grad_step in range(self.num_grad_steps):
-                batch_indices = self.replay_buffer.random_batch_indices(int(self.batch_size/self.batch_size_fraction))
-                for vfun in self.vfun_list:
-                    rand_indices = np.random.choice(len(batch_indices), size=self.batch_size)
-                    batch = self.replay_buffer.get_batch_by_indices(rand_indices)
-                    vfun.train(batch, itr=itr, log=log)
-                    log = False
+        if self.replay_buffer is not None:
+            self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                                           samples_data['rewards'], samples_data['dones'],
+                                           samples_data['next_observations'])
+
+            with self.sess.as_default():
+                for grad_step in range(self.num_grad_steps):
+                    batch_indices = self.replay_buffer.random_batch_indices(int(self.batch_size/self.batch_size_fraction))
+                    for vfun in self.vfun_list:
+                        rand_indices = np.random.choice(len(batch_indices), size=self.batch_size)
+                        batch = self.replay_buffer.get_batch_by_indices(rand_indices)
+                        vfun.train(batch, itr=itr, log=log)
+                        log = False
+
+        else:  # train online
+            with self.sess.as_default():
+                for grad_step in range(self.num_grad_steps):
+                    for vfun in self.vfun_list:
+                        batch = self._get_batch_from_online_paths(samples_data)
+                        vfun.train(batch, itr=itr, log=log)
+                        log = False
+
+    def _get_batch_from_online_paths(self, samples_data):
+        indices = np.random.choice(len(samples_data['goals']), size=int(len(samples_data['goals']) * self.batch_size_fraction))
+        batch = dict()
+        batch['goals'] = samples_data['goals'][indices]
+        batch['observations'] = samples_data['observations'][indices]
+        batch['actions'] = samples_data['actions'][indices]
+        batch['rewards'] = samples_data['rewards'][indices]
+        batch['dones'] = samples_data['dones'][indices]
+        batch['next_observations'] = samples_data['next_observations'][indices]
+        return batch
 
     def save_snapshot(self, itr):
         with self.sess.as_default():
