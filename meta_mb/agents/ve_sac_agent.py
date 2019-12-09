@@ -122,7 +122,8 @@ class Agent(object):
                 env=env,
                 Qs=Qs,
                 Q_targets=self.Q_targets,
-                reward_scale=instance_kwargs['reward_scale']
+                reward_scale=instance_kwargs['reward_scale'],
+                target_update_interval=instance_kwargs['target_update_interval'],
             )
 
             self.eval_interval = eval_interval
@@ -141,8 +142,8 @@ class Agent(object):
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
                 while self.replay_buffer._size < n_initial_exploration_steps:
-                    paths, _ = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),  # FIXME: finish this !!!!!!!
-                                                          greedy_eps=1, log=True, log_prefix='train-')
+                    paths, _ = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
+                                                             greedy_eps=1, log=True, log_prefix='train-')
                     samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])

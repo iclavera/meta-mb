@@ -38,6 +38,7 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                 if not force_reload and os.path.exists(image_path):
                     continue
 
+                fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(24, 4))
 
                 print(f"loading itr {itr}...")
                 data = joblib.load(pkl_paths[0])
@@ -49,13 +50,11 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                     discount = exp['json']['discount']
                     _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
                     if isinstance(env, ParticleMazeEnv):
-                        fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(20, 4))
                         vis = MazeEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
                     else:
-                        fig, ax_arr = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
                         vis = FetchEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
 
-                vis.do_plots(fig, ax_arr, policy=data['policy'], q_functions=data['Q_targets'], value_ensemble=data['vfun_tuple'], itr=itr)
+                vis.do_plots(fig, ax_arr, policy=data['policy'], q_functions=data['Q_targets'], value_ensemble=data['vfun_tuple'], goal_samples=data.get('goal_samples', []), itr=itr)
 
                 plt.savefig(image_path)
                 plt.clf()

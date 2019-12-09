@@ -31,7 +31,7 @@ def run_experiment(**kwargs):
         env = kwargs['env']()
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 10001 # 5001
+            kwargs['n_itr'] = 1501 # 5001
             kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
@@ -96,7 +96,7 @@ def run_experiment(**kwargs):
 if __name__ == '__main__':
     sweep_params = {
         'algo': ['sac'],
-        'seed': [1],  # (1,2,3,4,5)]
+        'seed': [1],
         'baseline': [LinearFeatureBaseline],
         'env': [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
@@ -111,11 +111,12 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [200],  # 100
+        'policy_num_grad_steps': [500, 200],  # 100
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e5],
         'learning_rate': [3e-4],
+        'target_update_interval': [1, 10],
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
@@ -140,7 +141,7 @@ if __name__ == '__main__':
         'normalize_adv': [True],
         'positive_adv': [False],
         'reward_scale': [1.],
-        'sampler_batch_size': [256],
+        'sampler_batch_size': [512],
         }
 
     run_sweep(run_experiment, sweep_params, EXP_NAME, INSTANCE_TYPE)

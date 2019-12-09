@@ -59,8 +59,6 @@ class Sampler(Serializable):
         else:
             raise NotImplementedError
 
-
-
     def collect_rollouts(self, greedy_eps, goals=None, apply_action_noise=True, log=False, log_prefix=''):
         """
 

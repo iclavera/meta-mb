@@ -37,7 +37,7 @@ class MazeEnvVisualizer(object):
             sweeping_indices,
         )), (POINTS_PER_DIM, POINTS_PER_DIM))
 
-    def do_plots(self, fig, ax_arr, policy, q_functions, value_ensemble, itr):
+    def do_plots(self, fig, ax_arr, policy, q_functions, value_ensemble, goal_samples, itr):
         print(f"plotting itr_{itr}")
 
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
@@ -51,18 +51,36 @@ class MazeEnvVisualizer(object):
         action_stds = np.exp([agent_info['log_std'] for agent_info in agent_infos])
         print(f'stats for policy std', np.mean(action_stds), np.min(action_stds), np.max(action_stds))
         policy_values = [qfun.compute_values(input_obs, actions, input_goals) for qfun in q_functions]
-        self._goal_distribution_helper(fig, ax_arr[0], np.mean(policy_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"policy_q_{itr}")
+        self._goal_distribution_helper(fig, ax_arr[0], np.mean(policy_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"policy_q")
 
         """------------- value ensemble ------------------"""
 
         if value_ensemble:
             ensemble_values = [vfun.compute_values(input_obs, input_goals) for vfun in value_ensemble]
-            self._goal_distribution_helper(fig, ax_arr[1], np.mean(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"ensemble_values_{itr}")
-            self._goal_distribution_helper(fig, ax_arr[2], np.var(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"disagreement_{itr}")
+            self._goal_distribution_helper(fig, ax_arr[1], np.mean(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"ensemble_values")
+            self._goal_distribution_helper(fig, ax_arr[2], np.var(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"disagreement")
 
         print(f"plotting eval returns...")
         self._do_plot_eval_returns(fig, ax_arr[3], policy)
         self._do_plot_traj(fig, ax_arr[4], policy)
+
+        self._goal_samples_helper(fig, ax_arr[5], goal_samples, f"goal_samples")
+
+    def _goal_samples_helper(self, fig, ax, goal_samples, title):
+        grid_size = self.env.grid_size
+        wall_size = 2 / grid_size
+        for i in range(grid_size):
+            for j in range(grid_size):
+                if self.env._block_mask[i, j]:
+                    ax.add_artist(plt.Rectangle(self.env._get_coords(np.asarray([i, j])) - wall_size/2,
+                                                width=wall_size, height=wall_size, fill=True, color='black'))
+
+        for goal in goal_samples:
+            ax.add_artist(plt.Circle(goal, radius=0.02, fill=True, color='darkorange', zorder=100000))
+
+        ax.set_title(title)
+        ax.axis('equal')
+        ax.set(xlim=(-1, 1), ylim=(-1, 1))
 
     def _goal_distribution_helper(self, fig, ax, values, title):
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=POINTS_PER_DIM)
