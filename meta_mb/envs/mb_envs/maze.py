@@ -4,6 +4,8 @@ import numpy as np
 from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 
 
+POINTS_PER_DIM = 20
+
 class ParticleMazeEnv(object):
     def __init__(self, grid_name='easy', reward_str='sparse'):
         self.obs_dim = obs_dim = 2
@@ -35,10 +37,10 @@ class ParticleMazeEnv(object):
         self._init_state = self._get_coords(start_ind[0])
 
         # grid goals, for performance logging during training
-        eval_goals_ind = np.argwhere(_grid == 'E')
-        self._eval_goals = np.asarray(list(map(self._get_coords, eval_goals_ind)))
-        # clean 'E'
-        _grid_flatten[_grid_flatten == 'E'] = ' '
+        # eval_goals_ind = np.argwhere(_grid == 'E')
+        # self._eval_goals = np.asarray(list(map(self._get_coords, eval_goals_ind)))
+        # # clean 'E'
+        # _grid_flatten[_grid_flatten == 'E'] = ' '
 
         # # target goals spreads across E, uniform distribution for the goal is defined to be normalize(X_E) the indicator function
         # self._target_goals_ind = np.argwhere(_grid == 'G')
@@ -92,6 +94,13 @@ class ParticleMazeEnv(object):
 
     def sample_2d_goals(self, num_samples):
         return self.sample_goals(mode='free', num_samples=num_samples)
+
+    def _sample_eval_goals(self):
+        x = y = np.linspace(-1, 1, POINTS_PER_DIM)
+        xx, yy = np.meshgrid(x, y)
+        goals = np.asarray(list(zip(xx.ravel(), yy.ravel())))
+        goals = goals[np.logical_not(list(map(self._is_wall, goals)))]
+        return goals
 
     def _is_wall(self, obs):
         ind = self._get_index(obs)

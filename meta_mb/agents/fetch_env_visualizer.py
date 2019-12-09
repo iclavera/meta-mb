@@ -27,9 +27,13 @@ class FetchEnvVisualizer(object):
         self.stochastic = stochastic
 
         # utils variable for plotting heatmap
-        self.target_center_coords = target_center_coords = np.asarray(env.initial_gripper_xpos + env.target_offset)
-        self.pos_lim_low = (target_center_coords - env.target_range)[:2]
-        self.pos_lim_high = (target_center_coords + env.target_range)[:2]
+        self.target_center_2d_coords = target_center_2d_coords = np.asarray(env.initial_gripper_xpos[:3] + env.target_offset)[:2]
+        if env.has_object:
+            self.target_center_height = env.hight_offset
+        else:
+            self.target_center_height = (env.initial_gripper_xpos[:3] + env.target_offset)[2]
+        self.pos_lim_low = target_center_2d_coords - env.target_range
+        self.pos_lim_high = target_center_2d_coords + env.target_range
 
     def do_plots(self, fig, ax_arr, policy, q_functions, value_ensemble, itr):
         print(f"plotting itr_{itr}")
@@ -38,7 +42,7 @@ class FetchEnvVisualizer(object):
         y = np.linspace(self.pos_lim_low[1], self.pos_lim_high[1], num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
         assert xx.shape == (POINTS_PER_DIM, POINTS_PER_DIM)
-        input_goals = np.asarray(list(zip(xx.ravel(), yy.ravel(), np.ones(POINTS_PER_DIM*POINTS_PER_DIM)*self.target_center_coords[2])))
+        input_goals = np.asarray(list(zip(xx.ravel(), yy.ravel(), np.ones(POINTS_PER_DIM*POINTS_PER_DIM) * self.target_center_height)))
         input_obs = np.tile(self.env.init_obs[np.newaxis, ...], (len(input_goals), 1))
 
         """------------- policy target q functions --------------"""
@@ -89,7 +93,7 @@ class FetchEnvVisualizer(object):
 
         for _x, _y in zip(xx.ravel(), yy.ravel()):
             total_counter += 1
-            path = self._rollout(goal=np.asarray([_x, _y, self.target_center_coords[2]]), policy=policy)
+            path = self._rollout(goal=np.asarray([_x, _y, self.target_center_height]), policy=policy)
             discounted_return = path["discounted_return"]
 
             if [_x, _y] in self.eval_goals.tolist():

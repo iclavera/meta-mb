@@ -39,7 +39,7 @@ def run_experiment(**kwargs):
     elif kwargs['env'] is FetchReachEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
-        kwargs['n_itr'] = 801
+        kwargs['n_itr'] = 1501
         kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchPushEnv:
         env = kwargs['env'](obj_range=0)
@@ -98,12 +98,12 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [5],
         'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [20, 100],
+        'vfun_num_grad_steps': [20, 50],
         'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
 
         # Policy
@@ -111,7 +111,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [100, 200],
+        'policy_num_grad_steps': [200],  # 100
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e5],
@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
         # Env Sampling
         'num_mc_goals': [1000],
-        'num_rollouts': [30],
+        'num_rollouts': [50],
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'eval_interval': [100],

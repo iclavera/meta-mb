@@ -2,6 +2,7 @@ import numpy as np
 
 from meta_mb.envs.robotics import rotations, robot_env, utils
 
+POINTS_PER_DIM = 20
 
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
@@ -214,6 +215,24 @@ class FetchEnv(robot_env.RobotEnv):
         else:
             goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(-self.target_range, self.target_range, size=(num_samples, 3))
         return goals
+
+    # for evaluation purpose
+    def _sample_eval_goals(self):
+        target_center_2d_coords = np.asarray(self.initial_gripper_xpos[:3] + self.target_offset)[:2]
+        if self.has_object:
+            target_center_height = self.height_offset
+        else:
+            target_center_height = (self.initial_gripper_xpos[:3] + self.target_offset)[2]
+
+        pos_lim_2d_low = target_center_2d_coords - self.target_range
+        pos_lim_2d_high = target_center_2d_coords + self.target_range
+        x = np.linspace(pos_lim_2d_low[0], pos_lim_2d_high[0], num=POINTS_PER_DIM)
+        y = np.linspace(pos_lim_2d_low[1], pos_lim_2d_high[1], num=POINTS_PER_DIM)
+        xx, yy = np.meshgrid(x, y)
+
+        eval_goals = np.asarray(list(zip(xx.ravel(), yy.ravel(), np.ones(POINTS_PER_DIM*POINTS_PER_DIM)*target_center_height)))
+
+        return eval_goals
 
     def _is_success(self, achieved_goal, desired_goal):
         d = goal_distance(achieved_goal, desired_goal)

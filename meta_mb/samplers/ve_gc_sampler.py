@@ -84,6 +84,7 @@ class Sampler(Serializable):
         self.vec_action_noise.reset()
         policy.reset(dones=[True] * self.num_rollouts)
         obs_no, goal_ng = self.vec_env.reset(goal_ng=goals)
+        goal_samples_snapshot = [goal_ng]
 
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
@@ -153,10 +154,13 @@ class Sampler(Serializable):
 
                 goal_ng = np.array(goal_ng)
                 goal_ng[reset_mask] = reset_goal_ng
+
+                goal_samples_snapshot.append(reset_goal_ng)
             else:
                 obs_no = next_obs_no
 
         self._total_timesteps_sampled += n_samples
+        goal_samples_snapshot = np.concatenate(goal_samples_snapshot, axis=0)
 
         if log:
             logger.logkv(log_prefix + "TimeStepsCtr", self._total_timesteps_sampled)
@@ -166,7 +170,7 @@ class Sampler(Serializable):
 
         assert len(paths) == self.num_rollouts, (len(paths), self.num_rollouts)
 
-        return paths
+        return paths, goal_samples_snapshot
 
     def _handle_info_dicts(self, agent_infos, env_infos):
         if not env_infos:

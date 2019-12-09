@@ -11,7 +11,6 @@ try:
 except ImportError as e:
     raise error.DependencyNotInstalled("{}. (HINT: you need to install mujoco_py, and also perform the setup instructions here: https://github.com/openai/mujoco-py/.)".format(e))
 
-NUM_EVAL_GOALS = 300
 
 class RobotEnv(gym.GoalEnv):
     def __init__(self, model_path, initial_qpos, n_actions, n_substeps):
@@ -51,7 +50,6 @@ class RobotEnv(gym.GoalEnv):
 
         # initial observation
         self._init_obs = obs['observation'].astype(np.float32)
-        self._eval_goals = self._sample_goals(NUM_EVAL_GOALS)
 
     @property
     def dt(self):
@@ -189,6 +187,9 @@ class RobotEnv(gym.GoalEnv):
         raise NotImplementedError()
 
     def _sample_2d_goals(self, num_samples):
+        raise NotImplementedError()
+
+    def _sample_eval_goals(self):
         raise NotImplementedError()
 
     def _env_setup(self, initial_qpos):

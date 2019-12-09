@@ -47,8 +47,11 @@ class Agent(object):
             baseline = LinearFeatureBaseline()
 
             self.env = env = pickle.loads(env_pickled)
-            self.eval_goals = env.eval_goals
-            assert len(self.eval_goals) % instance_kwargs["num_rollouts"] == 0
+
+            _eval_goals = env._sample_eval_goals()
+            num_eval_goals = len(_eval_goals) // instance_kwargs['num_rollouts'] * instance_kwargs['num_rollouts']
+            indices = np.random.choice(len(_eval_goals), size=num_eval_goals, replace=False)
+            self.eval_goals = _eval_goals[indices]
 
             self.value_ensemble = value_ensemble
 
@@ -138,7 +141,7 @@ class Agent(object):
             self.algo._update_target(tau=1.0)
             if n_initial_exploration_steps > 0:
                 while self.replay_buffer._size < n_initial_exploration_steps:
-                    paths = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
+                    paths, _ = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),  # FIXME: finish this !!!!!!!
                                                           greedy_eps=1, log=True, log_prefix='train-')
                     samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
@@ -150,7 +153,7 @@ class Agent(object):
             """------------------- collect training samples with goal batch -------------"""
 
             t = time.time()
-            paths = self.sampler.collect_rollouts(greedy_eps=self.greedy_eps, apply_action_noise=True,
+            paths, goal_samples_snapshot = self.sampler.collect_rollouts(greedy_eps=self.greedy_eps, apply_action_noise=True,
                                                   log=True, log_prefix='train-')
             logger.logkv('TimeSampling', time.time() - t)
 
@@ -173,15 +176,16 @@ class Agent(object):
 
                 eval_paths = []
                 for batch in np.split(self.eval_goals, len(self.eval_goals)//self.sampler.num_rollouts):
-                    eval_paths.extend(self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False,
-                                                                    log=True, log_prefix='eval-'))
+                    paths, _ = self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False,
+                                                                    log=True, log_prefix='eval-')
+                    eval_paths.extend(paths)
                 _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
 
-            return paths
+            return paths, goal_samples_snapshot
 
-    def save_snapshot(self, itr):
+    def save_snapshot(self, itr, goal_samples):
         with self.sess.as_default():
-            params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets))
+            params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets), goal_samples=goal_samples)
             logger.save_itr_params(itr, params, 'agent_')
 
     def finalize_graph(self):

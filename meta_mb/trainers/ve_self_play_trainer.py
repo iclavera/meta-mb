@@ -82,8 +82,8 @@ class Trainer(object):
 
             """------------------------------- train agent -------------------------"""
 
-            on_policy_paths = agent.train(itr=itr)
-            agent.save_snapshot(itr=itr)
+            on_policy_paths, goal_samples_snapshot = agent.train(itr=itr)
+            agent.save_snapshot(itr=itr, goal_samples=goal_samples_snapshot)
 
             """-------------------------- train value ensemble ---------------------------"""
 

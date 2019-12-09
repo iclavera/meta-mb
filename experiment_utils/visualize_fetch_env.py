@@ -22,10 +22,8 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
     with tf.Session():
         for exp in exps:
             print('plotting', exp['exp_name'])
-            if not force_reload and os.path.exists(image_path):
-                return None
 
-            vis = None
+            vis, fig, ax_arr = None, None, None
 
             for itr_idx in range(len(exp['pkl'])//2):
                 pkl_paths = exp['pkl'][itr_idx*2:itr_idx*2+2]
@@ -37,7 +35,9 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                     continue
 
                 image_path = os.path.join(exp['exp_name'], f"itr_{itr}.png")
-                fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(20, 4))
+                if not force_reload and os.path.exists(image_path):
+                    continue
+
 
                 print(f"loading itr {itr}...")
                 data = joblib.load(pkl_paths[0])
@@ -49,8 +49,10 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                     discount = exp['json']['discount']
                     _max_path_length = exp['json']['max_path_length'] if max_path_length is None else max_path_length
                     if isinstance(env, ParticleMazeEnv):
+                        fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(20, 4))
                         vis = MazeEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
                     else:
+                        fig, ax_arr = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
                         vis = FetchEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
 
                 vis.do_plots(fig, ax_arr, policy=data['policy'], q_functions=data['Q_targets'], value_ensemble=data['vfun_tuple'], itr=itr)
