@@ -38,7 +38,7 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                 if not force_reload and os.path.exists(image_path):
                     continue
 
-                fig, ax_arr = plt.subplots(nrows=1, ncols=5, figsize=(24, 4))
+                fig, ax_arr = plt.subplots(nrows=1, ncols=6, figsize=(30, 4))
 
                 print(f"loading itr {itr}...")
                 data = joblib.load(pkl_paths[0])

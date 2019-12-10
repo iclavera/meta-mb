@@ -76,7 +76,7 @@ class MazeEnvVisualizer(object):
                                                 width=wall_size, height=wall_size, fill=True, color='black'))
 
         for goal in goal_samples:
-            ax.add_artist(plt.Circle(goal, radius=0.02, fill=True, color='darkorange', zorder=100000))
+            ax.add_artist(plt.Circle(goal, radius=0.01, fill=False, color='darkorange', zorder=100000))
 
         ax.set_title(title)
         ax.axis('equal')

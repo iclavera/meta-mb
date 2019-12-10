@@ -71,7 +71,7 @@ class FetchEnvVisualizer(object):
 
     def _goal_samples_helper(self, fig, ax, goal_samples, title):
         for goal in goal_samples:
-            ax.add_artist(plt.Circle(goal, radius=0.01, fill=False, color='darkorange', zorder=100000))
+            ax.add_artist(plt.Circle(goal, radius=0.001, fill=False, color='darkorange', zorder=100000))
 
         ax.set_title(title)
         ax.set(xlim=(self.pos_lim_low[0], self.pos_lim_high[0]), ylim=(self.pos_lim_low[1], self.pos_lim_high[1]))

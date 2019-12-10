@@ -31,7 +31,7 @@ def run_experiment(**kwargs):
         env = kwargs['env']()
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 1501 # 5001
+            kwargs['n_itr'] = 5001 # 5001
             kwargs['snapshot_gap'] = 500
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
@@ -114,9 +114,9 @@ if __name__ == '__main__':
         'policy_num_grad_steps': [500, 200],  # 100
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
-        'policy_max_replay_buffer_size': [1e5],
+        'policy_max_replay_buffer_size': [1e6],
         'learning_rate': [3e-4],
-        'target_update_interval': [1, 10],
+        'target_update_interval': [10, 20],
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
