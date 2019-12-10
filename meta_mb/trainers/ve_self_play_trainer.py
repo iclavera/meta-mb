@@ -24,6 +24,7 @@ class Trainer(object):
     def __init__(
             self,
             size_value_ensemble,
+            ve_reset_interval,
             seed,
             instance_kwargs,
             gpu_frac,
@@ -48,6 +49,7 @@ class Trainer(object):
             gpu_frac=gpu_frac,
             instance_kwargs=instance_kwargs,
         )
+        self.ve_reset_interval = ve_reset_interval
 
         """------------------ initiate remote SAC agent ----------------------"""
         self.agent = Agent(
@@ -92,6 +94,9 @@ class Trainer(object):
 
             if itr == 0:
                 agent.finalize_graph()
+
+            if self.ve_reset_interval > 0 and itr % self.ve_reset_interval == 0:
+                value_ensemble.reset()
 
             if itr % self.eval_interval == 0:
                 logger.logkv('TimeTotal', time.time() - time_start)

@@ -19,10 +19,11 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
     for dir_path in dir_path_list:
         exps.extend(load_exps_data(dir_path, gap=1, max=None))
 
-    with tf.Session():
-        for exp in exps:
-            print('plotting', exp['exp_name'])
+    for exp in exps:
+        print('plotting', exp['exp_name'])
 
+        tf.reset_default_graph()
+        with tf.Session():
             vis, fig, ax_arr = None, None, None
 
             for itr_idx in range(len(exp['pkl'])//2):

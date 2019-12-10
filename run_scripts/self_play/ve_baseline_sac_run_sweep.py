@@ -40,21 +40,21 @@ def run_experiment(**kwargs):
         env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 1501
-        kwargs['snapshot_gap'] = 100
+        kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchPushEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FPushEnv'
-        kwargs['n_itr'] = 50001
+        kwargs['n_itr'] = 5001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchPickAndPlaceEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FPAPEnv'
-        kwargs['n_itr'] = 50001
+        kwargs['n_itr'] = 5001
         kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchSlideEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FSlideEnv'
-        kwargs['n_itr'] = 50001
+        kwargs['n_itr'] = 5001
         kwargs['snapshot_gap'] = 500
     else:
         raise NotImplementedError
@@ -80,6 +80,7 @@ def run_experiment(**kwargs):
     # logger.log('ray init...', ray.init())
     trainer = Trainer(
         size_value_ensemble=kwargs['size_value_ensemble'],
+        ve_reset_interval=kwargs['ve_reset_interval'],
         seed=kwargs['seed'],
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
@@ -102,6 +103,7 @@ if __name__ == '__main__':
 
         # Value ensemble
         'size_value_ensemble': [0],
+        've_reset_interval': [-1, 1, 10],  # FIXME
         'vfun_batch_size': [-1],
         'vfun_num_grad_steps': [-1],
         'vfun_max_replay_buffer_size': [-1],
@@ -111,12 +113,12 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [500, 200],  # 100
+        'policy_num_grad_steps': [500, 200],  # FIXME
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e6],
         'learning_rate': [3e-4],
-        'target_update_interval': [10, 20],
+        'target_update_interval': [10, 20],  # FIXME
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO

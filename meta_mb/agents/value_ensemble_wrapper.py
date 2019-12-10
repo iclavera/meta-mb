@@ -119,6 +119,11 @@ class ValueEnsembleWrapper(object):
                         vfun.train(batch, itr=itr, log=log)
                         log = False
 
+    def reset(self):
+        with self.sess.as_default():
+            for vfun in self.vfun_list:
+                vfun.reset_params()
+
     def _get_batch_from_online_paths(self, samples_data):
         indices = np.random.choice(len(samples_data['goals']), size=int(len(samples_data['goals']) * self.batch_size_fraction))
         batch = dict()

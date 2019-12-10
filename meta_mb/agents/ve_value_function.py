@@ -76,7 +76,7 @@ class ValueFunction(Serializable):
             current_scope = self.name
             trainable_vfun_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=current_scope)
             self.vfun_params = OrderedDict([(remove_scope_from_name(var.name, current_scope), var) for var in trainable_vfun_vars])
-
+            self.vfun_params_reset_op = tf.variables_initializer(var_list=trainable_vfun_vars)
             self.vfun_params_ph = self._create_placeholders_for_vars(scope=current_scope + f"/v_network ")
             self.vfun_params_keys = self.vfun_params_ph.keys()
             self._vfun_np = lambda inputs: tf.get_default_session().run(self.output_var, feed_dict={self.input_var: inputs})
@@ -226,6 +226,10 @@ class ValueFunction(Serializable):
             (dict) : a dict of all trainable Variables
         """
         return self.vfun_params
+
+    def reset_params(self):
+        sess = tf.get_default_session()
+        sess.run(self.vfun_params_reset_op)
 
     def get_param_values(self):
         """
