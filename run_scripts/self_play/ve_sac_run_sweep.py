@@ -17,7 +17,7 @@ from meta_mb.utils.utils import set_seed
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sac'
+EXP_NAME = '1209-sac'
 GLOBAL_SEED = 1
 
 
@@ -99,11 +99,11 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchPushEnv], # [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [5],
-        've_reset_interval': [-1, 1, 10],  # FIXME
+        've_reset_interval': [-1, 5],  # FIXME
         'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
         'vfun_num_grad_steps': [20, 50],  # FIXME
         'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
@@ -116,9 +116,9 @@ if __name__ == '__main__':
         'policy_num_grad_steps': [500, 200],  # FIXME
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
-        'policy_max_replay_buffer_size': [1e6],
+        'policy_max_replay_buffer_size': [1e5],
         'learning_rate': [3e-4],
-        'target_update_interval': [10, 20],  # FIXME
+        'target_update_interval': [10],  # FIXME
 
         # Value function
         'vfun_hidden_nonlinearity': ['tanh'],  # TODO
