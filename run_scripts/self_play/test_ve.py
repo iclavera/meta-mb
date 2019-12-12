@@ -17,7 +17,7 @@ from meta_mb.utils.utils import set_seed
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'guided-relu-her-sac'
+EXP_NAME = 'relu-her-sac'
 GLOBAL_SEED = 1
 
 
@@ -38,7 +38,7 @@ def run_experiment(**kwargs):
             kwargs['snapshot_gap'] = 500
         elif env.name == 'guided':
             kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 100
+        kwargs['snapshot_gap'] = 500
     elif kwargs['env'] is FetchReachEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
@@ -116,7 +116,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [200, 500],  # FIXME
+        'policy_num_grad_steps': [100, 200, 500],  # FIXME
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e5],
@@ -134,8 +134,8 @@ if __name__ == '__main__':
         'n_parallel': [1],
         'max_replay_buffer_size': [1e5],
         'eval_interval': [100],
-        'replay_k': [-1, 4], # 4, -1],
-        'greedy_eps': [0, 0.3], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
+        'replay_k': [4], # 4, -1],
+        'greedy_eps': [0.3], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 

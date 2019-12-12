@@ -102,8 +102,6 @@ class MazeEnvVisualizer(object):
         """
         Evaluated discounted returns heatmap
         """
-        _free_ind_list = self.env._free_ind.tolist()
-
         x = y = np.linspace(-self.pos_lim, self.pos_lim, num=points_per_dim)
         xx, yy = np.meshgrid(x, y)
         z = []
