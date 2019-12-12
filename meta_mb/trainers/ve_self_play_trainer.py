@@ -89,14 +89,14 @@ class Trainer(object):
 
             """-------------------------- train value ensemble ---------------------------"""
 
+            if self.ve_reset_interval > 0 and itr % self.ve_reset_interval == 0:
+                value_ensemble.reset()
+
             value_ensemble.train(on_policy_paths, itr=itr, log=True)
             value_ensemble.save_snapshot(itr=itr)
 
             if itr == 0:
                 agent.finalize_graph()
-
-            if self.ve_reset_interval > 0 and itr % self.ve_reset_interval == 0:
-                value_ensemble.reset()
 
             if itr % self.eval_interval == 0:
                 logger.logkv('TimeTotal', time.time() - time_start)

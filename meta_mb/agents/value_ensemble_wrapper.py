@@ -76,7 +76,10 @@ class ValueEnsembleWrapper(object):
         with self.sess.as_default():
             for vfun in self.vfun_list:
                 # (num_envs * num_goals, 1) => (num_envs, num_goals)
-                values.append(vfun.compute_values(input_obs, input_goal).reshape((len(init_obs_no), self.num_mc_goals)))
+                # normalize first
+                _values = vfun.compute_values(input_obs, input_goal).flatten()
+                _values = (_values - np.mean(_values)) / np.std(_values)
+                values.append(_values.reshape((len(init_obs_no)), self.num_mc_goals))
 
         # (size, num_envs, num_goals) => (num_envs, num_goals)
         goal_distribution = np.var(values, axis=0)

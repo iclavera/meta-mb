@@ -29,7 +29,7 @@ class FetchEnvVisualizer(object):
         # utils variable for plotting heatmap
         self.target_center_2d_coords = target_center_2d_coords = np.asarray(env.initial_gripper_xpos[:3] + env.target_offset)[:2]
         if env.has_object:
-            self.target_center_height = env.hight_offset
+            self.target_center_height = env.height_offset
         else:
             self.target_center_height = (env.initial_gripper_xpos[:3] + env.target_offset)[2]
         self.pos_lim_low = target_center_2d_coords - env.target_range
