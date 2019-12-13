@@ -58,7 +58,8 @@ class MazeEnvVisualizer(object):
         if value_ensemble:
             ensemble_values = [vfun.compute_values(input_obs, input_goals) for vfun in value_ensemble]
             self._goal_distribution_helper(fig, ax_arr[1], np.mean(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"ensemble_values")
-            self._goal_distribution_helper(fig, ax_arr[2], np.var(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"disagreement")
+            normalized_ensemble_values = (ensemble_values - np.mean(ensemble_values, axis=1, keepdims=True)) / np.std(ensemble_values, axis=1, keepdims=True)
+            self._goal_distribution_helper(fig, ax_arr[2], np.var(normalized_ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"disagreement")
 
         print(f"plotting eval returns...")
         self._do_plot_eval_returns(fig, ax_arr[3], policy)

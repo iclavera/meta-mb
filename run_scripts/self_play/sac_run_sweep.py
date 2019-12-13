@@ -18,7 +18,7 @@ from meta_mb.utils.utils import set_seed
 
 
 INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'sac'
+EXP_NAME = 'multi-sac'
 GLOBAL_SEED = 1
 
 
@@ -56,11 +56,12 @@ def run_experiment(**kwargs):
     # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
     # assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
+    exp_name = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-{kwargs['size_value_ensemble']}"
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-{timestamp}"
+        kwargs['exp_name'] = f"{exp_name}-{timestamp}"
     else:
-        kwargs['exp_name'] = f"{env_name}-alpha-{kwargs['goal_buffer_alpha']}-replay-{kwargs['replay_k']}-{kwargs['action_noise_str']}-" + kwargs['exp_name']
+        kwargs['exp_name'] = f"{exp_name}-{kwargs['exp_name']}"
 
     exp_dir = os.path.join(os.getcwd(), "data", EXP_NAME, kwargs['exp_name'])
 
@@ -104,7 +105,8 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'num_grad_steps': [-1],
+        'policy_num_grad_steps': [100, 200, 500],  # FIXME
+        # 'num_grad_steps': [-1],
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
 

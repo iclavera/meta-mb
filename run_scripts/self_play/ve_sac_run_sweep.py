@@ -106,9 +106,9 @@ if __name__ == '__main__':
 
         # Value ensemble
         'size_value_ensemble': [5],
-        've_reset_interval': [-1, 1, 10],  # FIXME
+        've_reset_interval': [-1, 1,],  # FIXME
         'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [20, 50, 100],  # FIXME
+        'vfun_num_grad_steps': [20, 50],  # FIXME
         'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
 
         # Policy

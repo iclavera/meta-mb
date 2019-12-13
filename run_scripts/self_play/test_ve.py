@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+import joblib
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
@@ -9,7 +10,7 @@ from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.envs.robotics.fetch.push import FetchPushEnv
 from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
 from meta_mb.envs.robotics.fetch.pick_and_place import FetchPickAndPlaceEnv
-from meta_mb.trainers.ve_self_play_trainer import Trainer
+from meta_mb.trainers.ve_trainer import Trainer
 from meta_mb.logger import logger
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 # from meta_mb.envs.normalized_env import normalize
@@ -33,6 +34,7 @@ def run_experiment(**kwargs):
         if env.name == 'easy':
             kwargs['n_itr'] = 5001 # 5001
             kwargs['snapshot_gap'] = 500
+            kwargs['policy_path'] = '/home/yunzhi/projects/meta-mb/data/saved-policy/PMazeEnv-easy-ve-5/agent_itr_2000.pkl'
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
             kwargs['snapshot_gap'] = 500
@@ -80,21 +82,17 @@ def run_experiment(**kwargs):
     for k, v in kwargs.items():
         logger.log(f"{k}: {v}")
 
-    # logger.log('ray init...', ray.init())
     trainer = Trainer(
+        saved_policy_path=kwargs['policy_path'],
         size_value_ensemble=kwargs['size_value_ensemble'],
-        ve_reset_interval=kwargs['ve_reset_interval'],
-        seed=kwargs['seed'],
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
         env=env,
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
-        greedy_eps=kwargs['greedy_eps'],
     )
 
     trainer.train()
-    # logger.log('ray shutdown...', ray.shutdown())
 
 
 if __name__ == '__main__':
@@ -106,27 +104,15 @@ if __name__ == '__main__':
 
         # Value ensemble
         'size_value_ensemble': [5],
-        've_reset_interval': [-1, 1, 10],  # FIXME
         'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [20, 50, 100],  # FIXME
+        'vfun_num_grad_steps': [20],  # FIXME
         'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
-
-        # Policy
-        'policy_hidden_sizes': [(256, 256)],
-        'policy_learn_std': [True],
-        'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
-        'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [100, 200, 500],  # FIXME
-        'policy_max_std': [2e0],
-        'policy_min_std': [1e-3],
-        'policy_max_replay_buffer_size': [1e5],
-        'learning_rate': [3e-4],
-        'target_update_interval': [10],  # FIXME
 
         # Value function
         'vfun_hidden_nonlinearity': ['relu'],  # TODO
         'vfun_output_nonlinearity': [None],
         'vfun_hidden_sizes': [(256, 256)],
+        'learning_rate': [3e-4],
 
         # Env Sampling
         'num_mc_goals': [1000],
@@ -135,7 +121,6 @@ if __name__ == '__main__':
         'max_replay_buffer_size': [1e5],
         'eval_interval': [100],
         'replay_k': [4], # 4, -1],
-        'greedy_eps': [0.3], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
         # 'curiosity_percentage': [0.8],
 

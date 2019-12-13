@@ -70,22 +70,43 @@ class ValueEnsembleWrapper(object):
             return self.env.sample_goals(mode=None, num_samples=len(init_obs_no))
 
         mc_goals = self.env.sample_goals(mode=None, num_samples=self.num_mc_goals)
-        input_obs = np.repeat(init_obs_no, repeats=self.num_mc_goals, axis=0)
-        input_goal = np.tile(mc_goals, [len(init_obs_no), 1])
-        values = []
-        with self.sess.as_default():
-            for vfun in self.vfun_list:
-                # (num_envs * num_goals, 1) => (num_envs, num_goals)
-                # normalize first
-                _values = vfun.compute_values(input_obs, input_goal).flatten()
-                _values = (_values - np.mean(_values)) / np.std(_values)
-                values.append(_values.reshape((len(init_obs_no)), self.num_mc_goals))
+        if self.env.init_obs_noise:
+            input_obs = np.repeat(init_obs_no, repeats=self.num_mc_goals, axis=0)
+            input_goal = np.tile(mc_goals, [len(init_obs_no), 1])
 
-        # (size, num_envs, num_goals) => (num_envs, num_goals)
-        goal_distribution = np.var(values, axis=0)
-        goal_distribution /= np.sum(goal_distribution, axis=-1, keepdims=True)
-        indices = [np.random.choice(self.num_mc_goals, size=1, p=goal_distribution[row_idx, :])[0] for row_idx in range(len(init_obs_no))]
-        samples = mc_goals[indices]
+            values = []
+            with self.sess.as_default():
+                for vfun in self.vfun_list:
+                    # (num_envs * num_goals, 1) => (num_envs, num_goals)
+                    # normalize first
+                    _values = vfun.compute_values(input_obs, input_goal).flatten()
+                    _values = (_values - np.mean(_values)) / np.std(_values)
+                    values.append(_values.reshape((len(init_obs_no)), self.num_mc_goals))
+
+            # (size, num_envs, num_goals) => (num_envs, num_goals)
+            goal_distribution = np.var(values, axis=0)
+            goal_distribution /= np.sum(goal_distribution, axis=-1, keepdims=True)
+            indices = [np.random.choice(self.num_mc_goals, size=1, p=goal_distribution[row_idx, :])[0] for row_idx in range(len(init_obs_no))]
+            samples = mc_goals[indices]
+
+        else:
+            input_obs = np.repeat(init_obs_no[0][np.newaxis, ...], repeats=self.num_mc_goals, axis=0)
+            input_goal = mc_goals
+
+            values = []
+            with self.sess.as_default():
+                for vfun in self.vfun_list:
+                    # (num_goals, 1) => (num_goals,)
+                    # normalize first
+                    _values = vfun.compute_values(input_obs, input_goal).flatten()
+                    _values = (_values - np.mean(_values)) / np.std(_values)
+                    values.append(_values)
+
+            # (size, num_goals) => (num_goals)
+            goal_distribution = np.var(values, axis=0)
+            goal_distribution /= np.sum(goal_distribution)
+            indices = np.random.choice(self.num_mc_goals, size=len(init_obs_no), p=goal_distribution, replace=False)  # FIXME: replace = True?
+            samples = mc_goals[indices]
 
         if log:
             logger.logkv(log_prefix + 'PMax', np.max(goal_distribution))
