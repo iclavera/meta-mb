@@ -102,7 +102,7 @@ def discount_cumsum(x, discount):
     See https://docs.scipy.org/doc/scipy/reference/tutorial/signal.html#difference-equation-filtering
 
     Returns:
-        (float) : y[t] - discount*y[t+1] = x[t] or rev(y)[t] - discount*rev(y)[t-1] = rev(x)[t]
+        (np.array) : y[t] - discount*y[t+1] = x[t] or rev(y)[t] - discount*rev(y)[t-1] = rev(x)[t]
     """
     return scipy.signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 

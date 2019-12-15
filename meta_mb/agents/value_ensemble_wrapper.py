@@ -1,15 +1,19 @@
 import numpy as np
 from meta_mb.logger import logger
 from meta_mb.agents.ve_value_function import ValueFunction
+from meta_mb.agents.ve_value_function_td_inf import ValueFunction as TDInfValueFunction
+from meta_mb.agents.ve_value_function_supervised import ValueFunction as SupervisedValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
+from meta_mb.samplers.gc_mb_sample_processor_traj import ModelSampleProcessor as TrajModelSampleProcessor
+
 import pickle
 import tensorflow as tf
 
 
 class ValueEnsembleWrapper(object):
-    def __init__(self, env_pickled, size, gpu_frac, instance_kwargs, batch_size_fraction=0.8):
+    def __init__(self, env_pickled, size, gpu_frac, instance_kwargs, batch_size_fraction=0.8, update_str='td_1'):
         self.size = size
         self.env = env = pickle.loads(env_pickled)
 
@@ -18,10 +22,27 @@ class ValueEnsembleWrapper(object):
         config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
         self.sess = sess = tf.Session(config=config)
 
+        if size == 0:
+            return
+
+        self.update_str = update_str
+        if update_str == 'td_1':
+            vfun_factory = ValueFunction
+            sample_processor_factory = ModelSampleProcessor
+        elif update_str == 'td_inf':
+            vfun_factory = TDInfValueFunction
+            sample_processor_factory = ModelSampleProcessor
+        elif update_str == 'supervised':
+            vfun_factory = SupervisedValueFunction
+            sample_processor_factory = TrajModelSampleProcessor
+        else:
+            print(update_str)
+            raise NotImplementedError
+
         self.vfun_list = []
         with sess.as_default():
             for vfun_idx in range(size):
-                vfun = ValueFunction(
+                vfun = vfun_factory(
                     env=self.env,
                     vfun_idx=vfun_idx,
                     reward_scale=instance_kwargs['reward_scale'],
@@ -32,9 +53,6 @@ class ValueEnsembleWrapper(object):
                     output_nonlinearity=instance_kwargs['vfun_output_nonlinearity'],
                 )
                 self.vfun_list.append(vfun)
-
-        if size == 0:
-            return
 
         self.batch_size_fraction = batch_size_fraction
         self.num_mc_goals = instance_kwargs['num_mc_goals']
@@ -52,7 +70,7 @@ class ValueEnsembleWrapper(object):
             self.replay_buffer = None
 
         baseline = LinearFeatureBaseline()
-        self.sample_processor = ModelSampleProcessor(
+        self.sample_processor = sample_processor_factory(
             reward_fn=env.reward,
             achieved_goal_fn=env.get_achieved_goal,
             baseline=baseline,
@@ -122,9 +140,36 @@ class ValueEnsembleWrapper(object):
         samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='ve-train-')
 
         if self.replay_buffer is not None:
-            self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
-                                           samples_data['rewards'], samples_data['dones'],
-                                           samples_data['next_observations'])
+            if self.update_str == 'td_1':  # goals, observations, actions, rewards, terminals, next_observations
+                self.replay_buffer.add_samples(
+                    goals=samples_data['goals'],
+                    observations=samples_data['observations'],
+                    actions=samples_data['actions'],
+                    rewards=samples_data['rewards'],
+                    terminals=samples_data['dones'],
+                    next_observations=samples_data['next_observations'],
+                )
+            elif self.update_str == 'td_inf':
+                self.replay_buffer.add_samples(
+                    goals=samples_data['goals'],
+                    observations=samples_data['observations'],
+                    actions=samples_data['actions'],
+                    rewards=samples_data['rewards'],
+                    terminals=samples_data['dones'],
+                    next_observations=samples_data['next_observations'],
+                    returns=samples_data['returns'],
+                )
+            elif self.update_str == 'supervised':
+                num_samples = len(samples_data['goals'])
+                self.replay_buffer.add_samples(
+                    goals=samples_data['goals'],
+                    observations=np.zeros((num_samples, self.env.obs_dim)),
+                    actions=np.zeros((num_samples, self.env.act_dim)),
+                    rewards=np.zeros((num_samples,)),
+                    terminals=np.zeros((num_samples,)),
+                    next_observations=np.zeros((num_samples, self.env.obs_dim)),
+                    returns=samples_data['returns'],
+                )
 
             with self.sess.as_default():
                 for grad_step in range(self.num_grad_steps):
@@ -152,6 +197,10 @@ class ValueEnsembleWrapper(object):
         indices = np.random.choice(len(samples_data['goals']), size=int(len(samples_data['goals']) * self.batch_size_fraction))
         batch = dict()
         batch['goals'] = samples_data['goals'][indices]
+        if self.update_str == 'td_inf' or self.update_str == 'supervised':
+            batch['returns'] = samples_data['returns'][indices]
+        if self.update_str == 'supervised':
+            return batch
         batch['observations'] = samples_data['observations'][indices]
         batch['actions'] = samples_data['actions'][indices]
         batch['rewards'] = samples_data['rewards'][indices]

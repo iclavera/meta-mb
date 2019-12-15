@@ -32,6 +32,7 @@ class Trainer(object):
             env,
             n_itr,
             eval_interval,
+            ve_update_str,
         ):
 
         self.eval_interval = eval_interval
@@ -47,6 +48,7 @@ class Trainer(object):
             env_pickled=env_pickled,
             gpu_frac=gpu_frac,
             instance_kwargs=instance_kwargs,
+            update_str=ve_update_str,
         )
 
         dummy_value_ensemble = ValueEnsembleWrapper(

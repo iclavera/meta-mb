@@ -30,6 +30,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         # self._terminals[i] = a terminal was received at time i
         self._terminals = np.zeros(max_replay_buffer_size, dtype='uint8')
         self._advantages = np.zeros(max_replay_buffer_size)
+        self._returns = np.zeros(max_replay_buffer_size)
         self._top = 0
         self._size = 0
 
@@ -40,11 +41,12 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         self._rewards[self._top] = reward
         self._terminals[self._top] = terminal
         self._next_obs[self._top] = next_observation
+        self._returns[self._top] = kwargs.get('returns', 0)
 
         self._advance()
 
     def add_samples(self, goals, observations, actions, rewards, terminals, next_observations, **kwargs):
-        total_num = observations.shape[0]
+        total_num = goals.shape[0]
         if self._top + total_num <= self._max_buffer_size:
             self._goals[self._top: self._top + total_num] = goals
             self._observations[self._top: self._top + total_num] = observations
@@ -52,6 +54,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
             self._rewards[self._top: self._top + total_num] = rewards
             self._terminals[self._top: self._top + total_num] = terminals
             self._next_obs[self._top: self._top + total_num] = next_observations
+            self._returns[self._top: self._top + total_num] = kwargs.get('returns', 0)
         else:
             back_size = self._max_buffer_size - self._top
             redundant = (total_num - back_size) // self._max_buffer_size
@@ -70,6 +73,8 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
                 self._rewards[:total_num - back_size] = rewards[back_size:]
                 self._terminals[:total_num - back_size] = terminals[back_size:]
                 self._next_obs[:total_num - back_size] = next_observations[back_size:]
+                if 'returns' in kwargs:
+                    self._returns[:total_num - back_size] = kwargs['returns'][back_size:]
             else:
                 print("WARNING: there are ", redundant * self._max_buffer_size, " samples that are not used. ")
                 self._goals[:] = goals[back_size + (redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
@@ -85,6 +90,11 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
                 self._rewards[:remaining] = rewards[back_size + redundant * self._max_buffer_size:]
                 self._terminals[:remaining] = terminals[back_size + redundant * self._max_buffer_size:]
                 self._next_obs[:remaining] = next_observations[back_size + redundant * self._max_buffer_size:]
+
+                if 'returns' in kwargs:
+                    self._returns[:] = kwargs['returns'][back_size + (
+                            redundant - 1) * self._max_buffer_size: back_size + redundant * self._max_buffer_size]
+                    self._returns[:remaining] = kwargs['returns'][back_size + redundant * self._max_buffer_size:]
 
         for _ in range(total_num):
             self._advance()
@@ -142,6 +152,7 @@ class SimpleReplayBuffer(ReplayBuffer, Serializable):
         result[prefix + 'rewards'] = self._rewards[indices]
         result[prefix + 'dones'] = self._terminals[indices]
         result[prefix + 'next_observations'] = self._next_obs[indices]
+        result[prefix + 'returns'] = self._returns[indices]
         return result
 
     @property

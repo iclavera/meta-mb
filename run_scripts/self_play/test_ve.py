@@ -17,8 +17,8 @@ from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.utils.utils import set_seed
 
 
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = 'relu-her-sac'
+INSTANCE_TYPE = 'c4.large'
+EXP_NAME = 'test-ve'
 GLOBAL_SEED = 1
 
 
@@ -33,8 +33,8 @@ def run_experiment(**kwargs):
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
             kwargs['n_itr'] = 5001 # 5001
-            kwargs['snapshot_gap'] = 500
-            kwargs['policy_path'] = '/home/yunzhi/projects/meta-mb/data/saved-policy/PMazeEnv-easy-ve-5/agent_itr_2000.pkl'
+            kwargs['snapshot_gap'] = 100
+            kwargs['policy_path'] = '/home/yunzhi/projects/meta-mb/data/saved-policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl'
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
             kwargs['snapshot_gap'] = 500
@@ -66,7 +66,7 @@ def run_experiment(**kwargs):
     # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
     # assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
-    exp_name = f"{env_name}-ve-{kwargs['size_value_ensemble']}"
+    exp_name = f"{env_name}-ve-{kwargs['size_value_ensemble']}-{kwargs['ve_update_str']}"
     if kwargs.get('exp_name') is None:
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         kwargs['exp_name'] = f"{exp_name}-{timestamp}"
@@ -90,6 +90,7 @@ def run_experiment(**kwargs):
         env=env,
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
+        ve_update_str=kwargs['ve_update_str'],
     )
 
     trainer.train()
@@ -104,15 +105,16 @@ if __name__ == '__main__':
 
         # Value ensemble
         'size_value_ensemble': [5],
-        'vfun_batch_size': [-1],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [20],  # FIXME
-        'vfun_max_replay_buffer_size': [-1],  # buffer_size = -1 means training the ensemble online
+        'vfun_batch_size': [50],  # batch_size = -1 means training the ensemble online
+        'vfun_num_grad_steps': [10, 100, 1000],  # FIXME
+        'vfun_max_replay_buffer_size': [1e5, -1],  # buffer_size = -1 means training the ensemble online
+        've_update_str': ['td_1', 'td_inf', 'supervised'],
 
         # Value function
         'vfun_hidden_nonlinearity': ['relu'],  # TODO
         'vfun_output_nonlinearity': [None],
         'vfun_hidden_sizes': [(256, 256)],
-        'learning_rate': [3e-4],
+        'learning_rate': [1e-4, 1e-3, 1e-5],
 
         # Env Sampling
         'num_mc_goals': [1000],
