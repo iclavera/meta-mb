@@ -1,7 +1,6 @@
 import os
 import json
 from datetime import datetime
-import joblib
 
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
@@ -34,7 +33,7 @@ def run_experiment(**kwargs):
         if env.name == 'easy':
             kwargs['n_itr'] = 5001 # 5001
             kwargs['snapshot_gap'] = 100
-            kwargs['policy_path'] = '/home/yunzhi/projects/meta-mb/data/saved-policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl'
+            kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl')
         elif env.name == 'medium':
             kwargs['n_itr'] = 20001
             kwargs['snapshot_gap'] = 500
@@ -106,7 +105,7 @@ if __name__ == '__main__':
         # Value ensemble
         'size_value_ensemble': [5],
         'vfun_batch_size': [50],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [10, 100, 1000],  # FIXME
+        'vfun_num_grad_steps': [100, 1000],  # FIXME
         'vfun_max_replay_buffer_size': [1e5, -1],  # buffer_size = -1 means training the ensemble online
         've_update_str': ['td_1', 'td_inf', 'supervised'],
 
@@ -114,7 +113,7 @@ if __name__ == '__main__':
         'vfun_hidden_nonlinearity': ['relu'],  # TODO
         'vfun_output_nonlinearity': [None],
         'vfun_hidden_sizes': [(256, 256)],
-        'learning_rate': [1e-4, 1e-3, 1e-5],
+        'learning_rate': [1e-4, 1e-3],
 
         # Env Sampling
         'num_mc_goals': [1000],
