@@ -1,20 +1,20 @@
 from meta_mb.logger import logger
+from meta_mb.agents.goal_buffer_v2 import GoalSampler
 from meta_mb.algos.gc_sac import SAC
-from meta_mb.utils.utils import set_seed
 from meta_mb.samplers.ve_gc_sampler import Sampler
 from meta_mb.samplers.gc_mb_sample_processor import ModelSampleProcessor
-from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.policies.gc_gaussian_mlp_policy import GCGaussianMLPPolicy
 from meta_mb.value_functions.gc_value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
+from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
+from meta_mb.agents.ve_sac_agent import Agent as VEAgent
 
-import pickle
 import time
-import numpy as np
 import tensorflow as tf
+import numpy as np
 
 
-class Agent(object):
+class Agent(VEAgent):
     """
     Agent wrapper for self-play.
     Args:
@@ -22,10 +22,9 @@ class Agent(object):
     """
     def __init__(
             self,
+            agent_idx,
             gpu_frac,
-            seed,
-            env_pickled,
-            value_ensemble,
+            env,
             n_initial_exploration_steps,
             instance_kwargs,
             eval_interval,
@@ -35,26 +34,21 @@ class Agent(object):
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
         self.sess = sess = tf.Session(config=config)
-        self.log_prefix = ''
+        self.log_prefix = f"{agent_idx}-"
+        self.env = env
 
         with sess.as_default():
 
             """----------------- Construct instances -------------------"""
 
-            set_seed(seed)
-
             baseline = LinearFeatureBaseline()
-
-            self.env = env = pickle.loads(env_pickled)
 
             _eval_goals = env._sample_eval_goals()
             num_eval_goals = len(_eval_goals) // instance_kwargs['num_rollouts'] * instance_kwargs['num_rollouts']
             indices = np.random.choice(len(_eval_goals), size=num_eval_goals, replace=False)
             self.eval_goals = _eval_goals[indices]
 
-            self.value_ensemble = value_ensemble
-
-            Qs = [ValueFunction(
+            self.Qs = [ValueFunction(
                 name="q_fun_%d" % i,
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
@@ -87,10 +81,15 @@ class Agent(object):
                 squashed=True,
             )
 
+            self.goal_sampler = GoalSampler(
+                env=env,
+                greedy_eps=instance_kwargs['goal_greedy_eps'],
+            )
+
             self.sampler = Sampler(
                 env=env,
-                goal_sampler=value_ensemble,
                 policy=self.policy,
+                goal_sampler=self.goal_sampler,
                 num_rollouts=instance_kwargs['num_rollouts'],
                 max_path_length=instance_kwargs['max_path_length'],
                 n_parallel=instance_kwargs['n_parallel'],
@@ -109,7 +108,7 @@ class Agent(object):
             )
 
             self.replay_buffer = SimpleReplayBuffer(
-                env_spec=env,
+                env_spec=self.env,
                 max_replay_buffer_size=instance_kwargs['policy_max_replay_buffer_size'],
             )
 
@@ -119,10 +118,10 @@ class Agent(object):
                 discount=instance_kwargs['discount'],
                 learning_rate=instance_kwargs['learning_rate'],
                 env=env,
-                Qs=Qs,
+                Qs=self.Qs,
                 Q_targets=self.Q_targets,
                 reward_scale=instance_kwargs['reward_scale'],
-                target_update_interval=instance_kwargs['target_update_interval'],
+                target_update_interval = instance_kwargs['target_update_interval'],
             )
 
             self.eval_interval = eval_interval
@@ -136,56 +135,50 @@ class Agent(object):
             self.policy_itr = -1
 
             self.algo._update_target(tau=1.0)
+            self.goal_sampler.set_goal_dist(mc_goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
+                                            goal_dist=None)  # errors without this line
             if n_initial_exploration_steps > 0:
                 while self.replay_buffer._size < n_initial_exploration_steps:
                     paths, _ = self.sampler.collect_rollouts(goals=env.sample_goals(mode=None, num_samples=self.sampler.num_rollouts),
-                                                             greedy_eps=1, log=True, log_prefix='train-')
-                    samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix='train-')
+                                                          greedy_eps=1, log=True, log_prefix=f'{agent_idx}-train-')
+                    samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix=f'{agent_idx}-train-')
                     self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
                                                    samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
 
-    def train(self, itr):
-        log_prefix = self.log_prefix
+    def compute_q_values(self, goals):
+        """
 
+        Args:
+            goals: (np.array) shape (num_goals, goal_dim)
+
+        Returns:
+            q_values: (np.array) shape (num_qs, num_goals)  # FIXME: take min?
+        """
         with self.sess.as_default():
+            input_obs = np.tile(self.env.init_obs[np.newaxis, ...], (len(goals), 1))
+            actions, _ = self.policy.get_actions(input_obs, goals)
+            min_q_values = np.min([qfun.compute_values(input_obs, actions, goals) for qfun in self.Qs], axis=0)
+            return min_q_values
 
-            """------------------- collect training samples with goal batch -------------"""
+    def update_goal_dist(self, mc_goals, expert_q_values, agent_q_values, log=True, log_prefix=''):
+        diff = expert_q_values - agent_q_values
+        if log:  # expert_q_values may be updated less frequently than agnet_q_values
+            logger.logkv(log_prefix+'PChangePct', np.sum(diff < 0) / len(diff))
 
-            t = time.time()
-            paths, goal_samples_snapshot = self.sampler.collect_rollouts(greedy_eps=self.greedy_eps, apply_action_noise=True,
-                                                  log=True, log_prefix=log_prefix+'train-')
-            logger.logkv('TimeSampling', time.time() - t)
+        diff = np.maximum(diff, 0)  # non-negative
 
-            samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix=log_prefix+'train-')
+        if np.sum(diff) == 0:
+            goal_dist = np.ones((len(mc_goals),)) / len(mc_goals)
+        else:
+            goal_dist = diff / np.sum(diff)
 
-            self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
-                                           samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
+        self.goal_sampler.set_goal_dist(mc_goals=mc_goals, goal_dist=goal_dist)
 
-            """------------------------ train policy for one iteration ------------------"""
-
-            t = time.time()
-            self.policy_itr += 1
-            self.algo.optimize_policy(itr=self.policy_itr, grad_steps=self.num_grad_steps, log_prefix=log_prefix+'algo-')
-
-            logger.logkv('TimeTrainPolicy', time.time() - t)
-
-            if itr % self.eval_interval == 0:
-
-                """-------------------------- Evaluation ------------------"""
-
-                eval_paths = []
-                for batch in np.split(self.eval_goals, len(self.eval_goals)//self.sampler.num_rollouts):
-                    paths, _ = self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False,
-                                                                    log=True, log_prefix=log_prefix+'eval-')
-                    eval_paths.extend(paths)
-                _ = self.sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix=log_prefix+'eval-')
-
-            return paths, goal_samples_snapshot
-
-    def save_snapshot(self, itr, goal_samples):
-        with self.sess.as_default():
-            params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets), goal_samples=goal_samples)
-            logger.save_itr_params(itr, params, 'agent_')
+        if log:
+            logger.logkv(log_prefix+'PMax', np.max(p))
+            logger.logkv(log_prefix+'PMin', np.min(p))
+            logger.logkv(log_prefix+'PStd', np.std(p))
+            logger.logkv(log_prefix+'PMean', np.mean(p))
 
     def finalize_graph(self):
         self.sess.graph.finalize()

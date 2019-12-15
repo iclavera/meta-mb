@@ -28,38 +28,27 @@ def run_experiment(**kwargs):
 
     # preprocess kwargs
     if kwargs['env'] is ParticleMazeEnv:
-        env = kwargs['env']()
-        env_name = 'PMazeEnv-' + env.name
-        if env.name == 'easy':
-            kwargs['n_itr'] = 5001 # 5001
-            kwargs['snapshot_gap'] = 100
-            kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl')
-        elif env.name == 'medium':
-            kwargs['n_itr'] = 20001
-            kwargs['snapshot_gap'] = 500
-        elif env.name == 'guided':
-            kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
+        kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl')
+        env_name = 'PMazeEnv-easy'
+        kwargs['n_itr'] = 1501 # 5001
+        kwargs['snapshot_gap'] = 50
     elif kwargs['env'] is FetchReachEnv:
-        env = kwargs['env'](obj_range=0)
+        kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/FReachEnv-ve-0/agent_itr_700.pkl')
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 1501
-        kwargs['snapshot_gap'] = 500
-    elif kwargs['env'] is FetchPushEnv:
-        env = kwargs['env'](obj_range=0)
-        env_name = 'FPushEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
-    elif kwargs['env'] is FetchPickAndPlaceEnv:
-        env = kwargs['env'](obj_range=0)
-        env_name = 'FPAPEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
-    elif kwargs['env'] is FetchSlideEnv:
-        env = kwargs['env'](obj_range=0)
-        env_name = 'FSlideEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
+        kwargs['snapshot_gap'] = 50
+    # elif kwargs['env'] is FetchPushEnv:
+    #     env_name = 'FPushEnv'
+    #     kwargs['n_itr'] = 5001
+    #     kwargs['snapshot_gap'] = 500
+    # elif kwargs['env'] is FetchPickAndPlaceEnv:
+    #     env_name = 'FPAPEnv'
+    #     kwargs['n_itr'] = 5001
+    #     kwargs['snapshot_gap'] = 500
+    # elif kwargs['env'] is FetchSlideEnv:
+    #     env_name = 'FSlideEnv'
+    #     kwargs['n_itr'] = 5001
+    #     kwargs['snapshot_gap'] = 500
     else:
         raise NotImplementedError
     # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
@@ -86,7 +75,6 @@ def run_experiment(**kwargs):
         size_value_ensemble=kwargs['size_value_ensemble'],
         instance_kwargs=kwargs,
         gpu_frac=kwargs.get('gpu_frac', 0.95),
-        env=env,
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         ve_update_str=kwargs['ve_update_str'],
@@ -100,20 +88,20 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv], # [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [FetchReachEnv], # [ParticleMazeEnv, FetchReachEnv], #[ParticleMazeEnv], #[FetchPickAndPlaceEnv, FetchSlideEnv, FetchPushEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Value ensemble
         'size_value_ensemble': [5],
         'vfun_batch_size': [50],  # batch_size = -1 means training the ensemble online
-        'vfun_num_grad_steps': [100, 1000],  # FIXME
-        'vfun_max_replay_buffer_size': [1e5, -1],  # buffer_size = -1 means training the ensemble online
-        've_update_str': ['td_1', 'td_inf', 'supervised'],
+        'vfun_num_grad_steps': [100],  # FIXME
+        'vfun_max_replay_buffer_size': [1e5],  # buffer_size = -1 means training the ensemble online
+        've_update_str': ['supervised', 'td_1', 'td_inf'], #['td_1', 'td_inf', 'supervised'],
 
         # Value function
         'vfun_hidden_nonlinearity': ['relu'],  # TODO
         'vfun_output_nonlinearity': [None],
         'vfun_hidden_sizes': [(256, 256)],
-        'learning_rate': [1e-4, 1e-3],
+        'learning_rate': [1e-3],
 
         # Env Sampling
         'num_mc_goals': [1000],

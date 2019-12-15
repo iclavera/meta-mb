@@ -68,8 +68,8 @@ class VEIterativeEnvExecutor(object):
     in a vectorized manner. Internally, the environments are executed iteratively.
     """
 
-    def __init__(self, env_pickled, value_ensemble, num_rollouts, max_path_length):
-        self.value_ensemble = value_ensemble
+    def __init__(self, env_pickled, goal_sampler, num_rollouts, max_path_length):
+        self.goal_sampler = goal_sampler
         self._num_envs = num_rollouts
         self.envs = np.asarray([pickle.loads(env_pickled) for _ in range(self._num_envs)])
         self.ts = np.zeros(self._num_envs, dtype='int')  # time steps
@@ -121,7 +121,7 @@ class VEIterativeEnvExecutor(object):
         if isinstance(init_ob_no[0], dict):
             init_ob_no = list(map(lambda obs_dict: obs_dict['observation'], init_ob_no))
         if goal_ng is None:
-            goal_ng = self.value_ensemble.sample_goals(init_ob_no)
+            goal_ng = self.goal_sampler.sample_goals(init_ob_no)
         _ = [env.reset_goal(goal) for env, goal in zip(envs, goal_ng)]
 
         if env_mask is None:

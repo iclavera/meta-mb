@@ -18,11 +18,10 @@ from meta_mb.utils.utils import set_seed
 
 INSTANCE_TYPE = 'c4.xlarge'
 EXP_NAME = 'guided-relu-her-sac'
-GLOBAL_SEED = 1
 
 
 def run_experiment(**kwargs):
-    set_seed(GLOBAL_SEED)
+    set_seed(kwargs['seed'])
 
     # env = normalize(kwargs['env']())  # FIXME
 
@@ -80,7 +79,6 @@ def run_experiment(**kwargs):
     for k, v in kwargs.items():
         logger.log(f"{k}: {v}")
 
-    # logger.log('ray init...', ray.init())
     trainer = Trainer(
         size_value_ensemble=kwargs['size_value_ensemble'],
         ve_reset_interval=kwargs['ve_reset_interval'],
@@ -94,7 +92,6 @@ def run_experiment(**kwargs):
     )
 
     trainer.train()
-    # logger.log('ray shutdown...', ray.shutdown())
 
 
 if __name__ == '__main__':
@@ -137,7 +134,6 @@ if __name__ == '__main__':
         'replay_k': [-1, 4], # 4, -1],
         'greedy_eps': [0, 0.3], #0.1, 0.3],  any exploration not following policy would introduce problem for training value ensemble
         'action_noise_str': ['none'], #'ou_0.05'],
-        # 'curiosity_percentage': [0.8],
 
         # Problem Conf
         'max_path_length': [50], #100],

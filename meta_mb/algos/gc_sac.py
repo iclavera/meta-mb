@@ -347,17 +347,16 @@ class SAC(Algo):
                 for param_name, source in source_params.items()
             ]))
 
-    def optimize_policy(self, itr, grad_steps, log=True):
+    def optimize_policy(self, itr, grad_steps, log=True, log_prefix=''):
         sess = tf.get_default_session()
         for i in range(grad_steps):
             feed_dict = create_feed_dict(placeholder_dict=self.op_phs_dict,
                                          value_dict=self.replay_buffer.random_batch(self.sampler_batch_size))
             sess.run(self.training_ops, feed_dict)
             if log:
-                logger.logkv('train-Itr', itr)
                 diagnostics = sess.run({**self.diagnostics_ops}, feed_dict)
                 for k, v in diagnostics.items():
-                    logger.logkv(k, v)
+                    logger.logkv(log_prefix+k, v)
 
             if itr % self.target_update_interval == 0:
                 self._update_target()

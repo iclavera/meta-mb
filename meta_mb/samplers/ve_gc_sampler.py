@@ -12,8 +12,8 @@ class Sampler(Serializable):
 
     def __init__(
             self,
-            env_pickled,
-            value_ensemble,
+            env,
+            goal_sampler,
             policy,
             num_rollouts,
             max_path_length,
@@ -22,7 +22,7 @@ class Sampler(Serializable):
     ):
         Serializable.quick_init(self, locals())
 
-        self.env = pickle.loads(env_pickled)
+        self.env = env
         self.policy = policy
 
         self.num_rollouts = num_rollouts
@@ -36,8 +36,12 @@ class Sampler(Serializable):
             # self.vec_env = ParallelEnvExecutor(env_pickled, n_parallel, num_rollouts, max_path_length)
             raise NotImplementedError
         else:
-            self.vec_env = VEIterativeEnvExecutor(env_pickled=env_pickled, value_ensemble=value_ensemble,
-                                                  num_rollouts=num_rollouts, max_path_length=max_path_length)
+            self.vec_env = VEIterativeEnvExecutor(
+                env_pickled=pickle.dumps(env),
+                goal_sampler=goal_sampler,
+                num_rollouts=num_rollouts,
+                max_path_length=max_path_length
+            )
 
         # set up action_noise instance
         if action_noise_str == 'none':

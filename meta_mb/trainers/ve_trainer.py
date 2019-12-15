@@ -29,7 +29,6 @@ class Trainer(object):
             size_value_ensemble,
             instance_kwargs,
             gpu_frac,
-            env,
             n_itr,
             eval_interval,
             ve_update_str,
@@ -38,10 +37,16 @@ class Trainer(object):
         self.eval_interval = eval_interval
         self.n_itr = n_itr
 
-        # feed pickled env to all agents to guarantee identical environment (including env seed)
-        env_pickled = pickle.dumps(env)
+        self.sess = sess = tf.Session()
 
-        """------------- value ensemble is related to the agent via this wrapper ------"""
+        with sess.as_default():
+            data = joblib.load(saved_policy_path)
+
+        self.policy = data['policy']
+        self.env = data['env']
+        self.Q_targets = data['Q_targets']
+
+        env_pickled = pickle.dumps(self.env)
 
         self.value_ensemble = ValueEnsembleWrapper(
             size=size_value_ensemble,
@@ -58,18 +63,9 @@ class Trainer(object):
             instance_kwargs=instance_kwargs,
         )
 
-        self.sess = sess = tf.Session()
-
-        with sess.as_default():
-            data = joblib.load(saved_policy_path)
-
-        self.policy = data['policy']
-        self.env = data['env']
-        self.Q_targets = data['Q_targets']
-
         self.sampler = Sampler(
-            env_pickled=env_pickled,
-            value_ensemble=dummy_value_ensemble,
+            env=self.env,
+            goal_sampler=dummy_value_ensemble,
             policy=self.policy,
             num_rollouts=instance_kwargs['num_rollouts'],
             max_path_length=instance_kwargs['max_path_length'],
