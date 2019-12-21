@@ -99,7 +99,7 @@ class Sampler(Serializable):
                 act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
 
                 if remove_policy_noise is True:
-                    act_na = [agent_info['mean'] for agent_info in agent_info_n]
+                    act_na = np.asarray([agent_info['mean'] for agent_info in agent_info_n])
 
                 if apply_action_noise:
                     act_na += self.vec_action_noise()

@@ -31,12 +31,12 @@ def run_experiment(**kwargs):
         kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/PMazeEnv-easy-ve-5/agent_itr_500.pkl')
         env_name = 'PMazeEnv-easy'
         kwargs['n_itr'] = 1501 # 5001
-        kwargs['snapshot_gap'] = 50
+        kwargs['snapshot_gap'] = 100
     elif kwargs['env'] is FetchReachEnv:
-        kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/FReachEnv-ve-0/agent_itr_700.pkl')
+        kwargs['policy_path'] = os.path.join(os.getcwd(), 'saved_policy/FReachEnv-ve-0/agent_itr_1000.pkl')
         env_name = 'FReachEnv'
-        kwargs['n_itr'] = 1501
-        kwargs['snapshot_gap'] = 50
+        kwargs['n_itr'] = 5001
+        kwargs['snapshot_gap'] = 200
     # elif kwargs['env'] is FetchPushEnv:
     #     env_name = 'FPushEnv'
     #     kwargs['n_itr'] = 5001
@@ -78,6 +78,7 @@ def run_experiment(**kwargs):
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         ve_update_str=kwargs['ve_update_str'],
+        remove_policy_noise=kwargs['remove_policy_noise'],
     )
 
     trainer.train()
@@ -111,6 +112,7 @@ if __name__ == '__main__':
         'eval_interval': [100],
         'replay_k': [4], # 4, -1],
         'action_noise_str': ['none'], #'ou_0.05'],
+        'remove_policy_noise': [True],
         # 'curiosity_percentage': [0.8],
 
         # Problem Conf
