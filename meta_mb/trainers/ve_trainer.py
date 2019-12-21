@@ -32,10 +32,12 @@ class Trainer(object):
             n_itr,
             eval_interval,
             ve_update_str,
+            remove_policy_noise,
         ):
 
         self.eval_interval = eval_interval
         self.n_itr = n_itr
+        self.remove_policy_noise = remove_policy_noise
 
         self.sess = sess = tf.Session()
 
@@ -96,7 +98,7 @@ class Trainer(object):
 
             with sess.as_default():
                 paths, goal_samples = self.sampler.collect_rollouts(greedy_eps=0, apply_action_noise=False,
-                                                                         log=True, log_prefix='train-')
+                                                                         log=True, log_prefix='train-', remove_policy_noise=self.remove_policy_noise)
                 params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=self.Q_targets,
                               goal_samples=goal_samples)
                 logger.save_itr_params(itr, params, 'agent_')

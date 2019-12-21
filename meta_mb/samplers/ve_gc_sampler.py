@@ -63,7 +63,7 @@ class Sampler(Serializable):
         else:
             raise NotImplementedError
 
-    def collect_rollouts(self, greedy_eps, goals=None, apply_action_noise=True, log=False, log_prefix=''):
+    def collect_rollouts(self, greedy_eps, goals=None, apply_action_noise=True, log=False, log_prefix='', remove_policy_noise=False):
         """
 
         :param goals: (np.array) goals of shape (num_rollouts, goal_dim)
@@ -97,6 +97,9 @@ class Sampler(Serializable):
             else:
                 obs_no = np.array(obs_no)
                 act_na, agent_info_n = policy.get_actions(obs_no, goal_ng)
+
+                if remove_policy_noise is True:
+                    act_na = [agent_info['mean'] for agent_info in agent_info_n]
 
                 if apply_action_noise:
                     act_na += self.vec_action_noise()
