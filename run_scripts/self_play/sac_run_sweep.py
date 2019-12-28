@@ -40,23 +40,23 @@ def run_experiment(**kwargs):
     elif kwargs['env'] is FetchReachEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
-        kwargs['n_itr'] = 1501
-        kwargs['snapshot_gap'] = 500
+        kwargs['n_itr'] = 5
+        kwargs['snapshot_gap'] = 1
     elif kwargs['env'] is FetchPushEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FPushEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
+        kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchPickAndPlaceEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FPAPEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
+        kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchSlideEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FSlideEnv'
-        kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 500
+        kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 25
     else:
         raise NotImplementedError
 

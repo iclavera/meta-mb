@@ -59,6 +59,9 @@ class Trainer(object):
         env = self.env
         mc_goals, expert_q_values = None, None
 
+        eval_paths = sum([agent.collect_eval_paths() for agent in agents], [])
+        _ = agents[0].sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
+
         time_start = time.time()
 
         for itr in range(self.n_itr):
