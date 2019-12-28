@@ -24,7 +24,7 @@ class Trainer(object):
             self,
             num_agents,
             instance_kwargs,
-            gpu_frac,
+            config,
             env,
             num_mc_goals,
             update_expert_interval,
@@ -46,7 +46,7 @@ class Trainer(object):
             Agent(
                 agent_idx=i,
                 env=env,
-                gpu_frac=gpu_frac,
+                config=config,
                 n_initial_exploration_steps=n_initial_exploration_steps,
                 instance_kwargs=instance_kwargs,
                 eval_interval=eval_interval,

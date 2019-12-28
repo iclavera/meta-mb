@@ -10,7 +10,6 @@ from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
 from meta_mb.agents.ve_sac_agent import Agent as VEAgent
 
 import time
-import tensorflow as tf
 import numpy as np
 
 
@@ -23,16 +22,14 @@ class Agent(VEAgent):
     def __init__(
             self,
             agent_idx,
-            gpu_frac,
+            config,
             env,
             n_initial_exploration_steps,
             instance_kwargs,
             eval_interval,
             greedy_eps,
     ):
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
+        import tensorflow as tf
         self.sess = sess = tf.Session(config=config)
         self.log_prefix = f"{agent_idx}-"
         self.env = env
@@ -49,7 +46,7 @@ class Agent(VEAgent):
             self.eval_goals = _eval_goals[indices]
 
             self.Qs = [ValueFunction(
-                name="q_fun_%d" % i,
+                name=f"q_fun_{i}_{agent_idx}",
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
@@ -59,7 +56,7 @@ class Agent(VEAgent):
             ) for i in range(2)]
 
             self.Q_targets = [ValueFunction(
-                name="q_fun_target_%d" % i,
+                name=f"q_fun_target_{i}_{agent_idx}",
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
                 goal_dim=env.goal_dim,
@@ -70,7 +67,7 @@ class Agent(VEAgent):
 
             self.policy = GCGaussianMLPPolicy(
                 goal_dim=env.goal_dim,
-                name="policy",
+                name=f"policy_{agent_idx}",
                 obs_dim=env.obs_dim,
                 action_dim=env.act_dim,
                 hidden_sizes=instance_kwargs['policy_hidden_sizes'],
@@ -113,6 +110,7 @@ class Agent(VEAgent):
             )
 
             self.algo = SAC(
+                name=f"agent_{agent_idx}",
                 replay_buffer=self.replay_buffer,
                 policy=self.policy,
                 discount=instance_kwargs['discount'],
@@ -175,10 +173,10 @@ class Agent(VEAgent):
         self.goal_sampler.set_goal_dist(mc_goals=mc_goals, goal_dist=goal_dist)
 
         if log:
-            logger.logkv(log_prefix+'PMax', np.max(p))
-            logger.logkv(log_prefix+'PMin', np.min(p))
-            logger.logkv(log_prefix+'PStd', np.std(p))
-            logger.logkv(log_prefix+'PMean', np.mean(p))
+            logger.logkv(log_prefix+'PMax', np.max(goal_dist))
+            logger.logkv(log_prefix+'PMin', np.min(goal_dist))
+            logger.logkv(log_prefix+'PStd', np.std(goal_dist))
+            logger.logkv(log_prefix+'PMean', np.mean(goal_dist))
 
     def finalize_graph(self):
         self.sess.graph.finalize()

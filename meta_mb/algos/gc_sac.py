@@ -138,9 +138,8 @@ class SAC(Algo):
     def build_graph(self):
         self.training_ops = {}
         self._init_global_step()
-        obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders('',
-                                                                                                  recurrent=False,
-                                                                                                  next_obs=True)
+        obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict = self._make_input_placeholders(
+            prefix="", recurrent=False, next_obs=True)
         self.op_phs_dict = all_phs_dict
         self._init_actor_update()
         self._init_critic_update()
@@ -163,36 +162,37 @@ class SAC(Algo):
         # dist_info_specs = self.policy.distribution.dist_info_specs
         all_phs_dict = OrderedDict()
 
-        # observation ph
-        obs_shape = [None, self.policy.obs_dim]
-        obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
-        all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
-
-        # action ph
-        action_shape = [None, self.policy.action_dim]
-        action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
-        all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
-
-        """add the placeholder for terminal here"""
-        terminal_shape = [None] if not recurrent else [None, None]
-        terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
-        all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
-
-        rewards_shape = [None] if not recurrent else [None, None]
-        rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
-        all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
-
-        if not next_obs:
-            return obs_ph, action_ph, all_phs_dict
-
-        else:
+        with tf.variable_scope(self.name, reuse=False):
+            # observation ph
             obs_shape = [None, self.policy.obs_dim]
-            next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
-            all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
+            obs_ph = tf.placeholder(tf.float32, shape=obs_shape, name=prefix + 'obs')
+            all_phs_dict['%s%s' % (prefix, 'observations')] = obs_ph
 
-        goal_shape = [None, self.training_environment.goal_dim]
-        goal_ph = tf.placeholder(dtype=tf.float32, shape=goal_shape, name=prefix + 'goals')
-        all_phs_dict['%s%s' % (prefix, 'goals')] = goal_ph
+            # action ph
+            action_shape = [None, self.policy.action_dim]
+            action_ph = tf.placeholder(dtype=tf.float32, shape=action_shape, name=prefix + 'action')
+            all_phs_dict['%s%s' % (prefix, 'actions')] = action_ph
+
+            """add the placeholder for terminal here"""
+            terminal_shape = [None] if not recurrent else [None, None]
+            terminal_ph = tf.placeholder(dtype=tf.bool, shape=terminal_shape, name=prefix + 'dones')
+            all_phs_dict['%s%s' % (prefix, 'dones')] = terminal_ph
+
+            rewards_shape = [None] if not recurrent else [None, None]
+            rewards_ph = tf.placeholder(dtype=tf.float32, shape=rewards_shape, name=prefix + 'rewards')
+            all_phs_dict['%s%s' % (prefix, 'rewards')] = rewards_ph
+
+            if not next_obs:
+                return obs_ph, action_ph, all_phs_dict
+
+            else:
+                obs_shape = [None, self.policy.obs_dim]
+                next_obs_ph = tf.placeholder(dtype=np.float32, shape=obs_shape, name=prefix + 'obs')
+                all_phs_dict['%s%s' % (prefix, 'next_observations')] = next_obs_ph
+
+            goal_shape = [None, self.training_environment.goal_dim]
+            goal_ph = tf.placeholder(dtype=tf.float32, shape=goal_shape, name=prefix + 'goals')
+            all_phs_dict['%s%s' % (prefix, 'goals')] = goal_ph
 
         return obs_ph, action_ph, next_obs_ph, terminal_ph, all_phs_dict
 
@@ -241,10 +241,8 @@ class SAC(Algo):
                                     for q_value in q_values_var]
 
         self.q_optimizers = [tf.train.AdamOptimizer(
-                                                    learning_rate=self.Q_lr,
-                                                    name='{}_{}_optimizer'.format(Q.name, i)
-                                                    )
-                             for i, Q in enumerate(self.Qs)]
+            learning_rate=self.Q_lr, name='{}_{}_optimizer'.format(Q.name, i))
+            for i, Q in enumerate(self.Qs)]
 
         q_training_ops = [
             q_optimizer.minimize(loss=q_loss, var_list=list(Q.vfun_params.values()))
@@ -270,8 +268,9 @@ class SAC(Algo):
 
         assert log_pis_var.shape.as_list() == [None, 1]
 
-        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
-        alpha = tf.exp(log_alpha)
+        with tf.variable_scope(self.name, reuse=False):
+            log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+            alpha = tf.exp(log_alpha)
 
         if isinstance(self.target_entropy, Number):
             alpha_loss = -tf.reduce_mean(
