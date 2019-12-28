@@ -90,6 +90,7 @@ class Trainer(object):
                         agent.goal_sampler.set_goal_dist(
                             mc_goals=mc_goals, goal_dist=None,
                         )
+            time_goal_sampling = time.time() - t
 
             for agent in agents:
                 _, goal_samples_snapshot = agent.train(itr)
@@ -100,7 +101,11 @@ class Trainer(object):
                     agent.finalize_graph()
 
             if itr % self.eval_interval == 0:
+                eval_paths = sum([agent.collect_eval_paths() for agent in agents], [])
+                _ = agents[0].sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
+
                 logger.logkv('TimeTotal', time.time() - time_start)
+                logger.logkv('TimeGoalSampling', time_goal_sampling)
                 logger.logkv('TimeItr', time.time() - t)
                 logger.logkv('Itr', itr)
                 logger.dumpkvs()

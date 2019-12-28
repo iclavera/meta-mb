@@ -30,6 +30,7 @@ class Agent(VEAgent):
             greedy_eps,
     ):
         import tensorflow as tf
+        self.agent_idx = agent_idx
         self.sess = sess = tf.Session(config=config)
         self.log_prefix = f"{agent_idx}-"
         self.env = env
@@ -158,12 +159,15 @@ class Agent(VEAgent):
             min_q_values = np.min([qfun.compute_values(input_obs, actions, goals) for qfun in self.Qs], axis=0)
             return min_q_values
 
-    def update_goal_dist(self, mc_goals, expert_q_values, agent_q_values, log=True, log_prefix=''):
+    def update_goal_dist(self, mc_goals, expert_q_values, agent_q_values, log=True):
         diff = expert_q_values - agent_q_values
         if log:  # expert_q_values may be updated less frequently than agnet_q_values
-            logger.logkv(log_prefix+'PChangePct', np.sum(diff < 0) / len(diff))
+            logger.logkv(self.log_prefix+'PChangePct', np.sum(diff < 0) / len(diff))
 
         diff = np.maximum(diff, 0)  # non-negative
+
+        if log:  # log relative magnitude
+            logger.logkv(self.log_prefix+'DiffOverQVal', np.mean(diff) / np.mean(expert_q_values))
 
         if np.sum(diff) == 0:
             goal_dist = np.ones((len(mc_goals),)) / len(mc_goals)
@@ -173,11 +177,49 @@ class Agent(VEAgent):
         self.goal_sampler.set_goal_dist(mc_goals=mc_goals, goal_dist=goal_dist)
 
         if log:
-            logger.logkv(log_prefix+'PMax', np.max(goal_dist))
-            logger.logkv(log_prefix+'PMin', np.min(goal_dist))
-            logger.logkv(log_prefix+'PStd', np.std(goal_dist))
-            logger.logkv(log_prefix+'PMean', np.mean(goal_dist))
+            logger.logkv(self.log_prefix+'PMax', np.max(goal_dist))
+            logger.logkv(self.log_prefix+'PMin', np.min(goal_dist))
+            logger.logkv(self.log_prefix+'PStd', np.std(goal_dist))
+            logger.logkv(self.log_prefix+'PMean', np.mean(goal_dist))
+
+    def train(self, itr):
+        with self.sess.as_default():
+
+            """------------------- collect training samples with goal batch -------------"""
+
+            t = time.time()
+            paths, goal_samples_snapshot = self.sampler.collect_rollouts(greedy_eps=self.greedy_eps, apply_action_noise=True,
+                                                                         log=True, log_prefix=self.log_prefix, count_timesteps=True)
+            logger.logkv(self.log_prefix+'TimeSampling', time.time() - t)
+
+            samples_data = self.sample_processor.process_samples(paths, eval=False, log='all', log_prefix=self.log_prefix+'train-')
+
+            self.replay_buffer.add_samples(samples_data['goals'], samples_data['observations'], samples_data['actions'],
+                                           samples_data['rewards'], samples_data['dones'], samples_data['next_observations'])
+
+            """------------------------ train policy for one iteration ------------------"""
+
+            t = time.time()
+            self.policy_itr += 1
+            self.algo.optimize_policy(itr=self.policy_itr, grad_steps=self.num_grad_steps, log_prefix=self.log_prefix+'algo-')
+
+            logger.logkv(self.log_prefix+'TimeTrainPolicy', time.time() - t)
+
+            return paths, goal_samples_snapshot
+
+    def collect_eval_paths(self):
+        with self.sess.as_default():
+            eval_paths = []
+            for batch in np.split(self.eval_goals, len(self.eval_goals) // self.sampler.num_rollouts):
+                paths, _ = self.sampler.collect_rollouts(goals=batch, greedy_eps=0, apply_action_noise=False, log=False,
+                                                         count_timesteps=False)
+                eval_paths.extend(paths)
+            return eval_paths
 
     def finalize_graph(self):
         self.sess.graph.finalize()
 
+    def save_snapshot(self, itr, goal_samples):
+        with self.sess.as_default():
+            params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=tuple(self.Q_targets), goal_samples=goal_samples)
+            logger.save_itr_params(itr, params, f"agent_{self.agent_idx}_")

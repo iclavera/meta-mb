@@ -1,5 +1,6 @@
 import os
 import json
+import tensorflow as tf
 from datetime import datetime
 
 from experiment_utils.run_sweep import run_sweep
@@ -70,11 +71,15 @@ def run_experiment(**kwargs):
     for k, v in kwargs.items():
         logger.log(f"{k}: {v}")
 
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.gpu_options.per_process_gpu_memory_fraction = kwargs.get('gpu_frac', 0.95)
+
     trainer = Trainer(
         saved_policy_path=kwargs['policy_path'],
         size_value_ensemble=kwargs['size_value_ensemble'],
         instance_kwargs=kwargs,
-        gpu_frac=kwargs.get('gpu_frac', 0.95),
+        config=config,
         eval_interval=kwargs['eval_interval'],
         n_itr=kwargs['n_itr'],
         ve_update_str=kwargs['ve_update_str'],
@@ -101,7 +106,7 @@ if __name__ == '__main__':
         # Value function
         'vfun_hidden_nonlinearity': ['relu'],  # TODO
         'vfun_output_nonlinearity': [None],
-        'vfun_hidden_sizes': [(256, 256)],
+        'vfun_hidden_sizes': [(512, 512)],
         'learning_rate': [1e-3],
 
         # Env Sampling

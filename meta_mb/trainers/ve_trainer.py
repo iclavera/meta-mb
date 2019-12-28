@@ -28,7 +28,7 @@ class Trainer(object):
             saved_policy_path,
             size_value_ensemble,
             instance_kwargs,
-            gpu_frac,
+            config,
             n_itr,
             eval_interval,
             ve_update_str,
@@ -40,7 +40,6 @@ class Trainer(object):
         self.remove_policy_noise = remove_policy_noise
 
         self.sess = sess = tf.Session()
-
         with sess.as_default():
             data = joblib.load(saved_policy_path)
 
@@ -53,7 +52,7 @@ class Trainer(object):
         self.value_ensemble = ValueEnsembleWrapper(
             size=size_value_ensemble,
             env_pickled=env_pickled,
-            gpu_frac=gpu_frac,
+            config=config,
             instance_kwargs=instance_kwargs,
             update_str=ve_update_str,
         )
@@ -61,7 +60,7 @@ class Trainer(object):
         dummy_value_ensemble = ValueEnsembleWrapper(
             size=0,
             env_pickled=env_pickled,
-            gpu_frac=gpu_frac,
+            config=config,
             instance_kwargs=instance_kwargs,
         )
 
@@ -97,8 +96,9 @@ class Trainer(object):
             """------------------------------- train agent -------------------------"""
 
             with sess.as_default():
-                paths, goal_samples = self.sampler.collect_rollouts(greedy_eps=0, apply_action_noise=False,
-                                                                         log=True, log_prefix='train-', remove_policy_noise=self.remove_policy_noise)
+                paths, goal_samples = self.sampler.collect_rollouts(
+                    greedy_eps=0, apply_action_noise=False,
+                    log=True, log_prefix='train-', remove_policy_noise=self.remove_policy_noise)
                 params = dict(itr=itr, policy=self.policy, env=self.env, Q_targets=self.Q_targets,
                               goal_samples=goal_samples)
                 logger.save_itr_params(itr, params, 'agent_')

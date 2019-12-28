@@ -31,14 +31,12 @@ def run_experiment(**kwargs):
         env = kwargs['env']()
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
-            kwargs['n_itr'] = 5001 # 5001
-            kwargs['snapshot_gap'] = 500
+            kwargs['n_itr'] = 501 # 5001
         elif env.name == 'medium':
-            kwargs['n_itr'] = 20001
-            kwargs['snapshot_gap'] = 500
+            kwargs['n_itr'] = 2001
         elif env.name == 'guided':
-            kwargs['n_itr'] = 5001
-        kwargs['snapshot_gap'] = 100
+            kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchReachEnv:
         env = kwargs['env'](obj_range=0)
         env_name = 'FReachEnv'
@@ -61,8 +59,6 @@ def run_experiment(**kwargs):
         kwargs['snapshot_gap'] = 500
     else:
         raise NotImplementedError
-    # kwargs['refresh_interval'], kwargs['num_mc_goals'], kwargs['goal_buffer_size'] = kwargs['goal_sampling_params']
-    # assert kwargs['num_mc_goals'] >= kwargs['goal_buffer_size']
 
     exp_name = f"{env_name}-eps-{kwargs['goal_greedy_eps']}"
     if kwargs.get('exp_name') is None:
@@ -112,7 +108,7 @@ if __name__ == '__main__':
         'policy_learn_std': [True],
         'policy_hidden_nonlinearity': ['tanh'], #['relu'],  # TODO
         'policy_output_nonlinearity': [None],
-        'policy_num_grad_steps': [100, 1000],  # FIXME
+        'policy_num_grad_steps': [1000, 10000],  # FIXME
         'policy_max_std': [2e0],
         'policy_min_std': [1e-3],
         'policy_max_replay_buffer_size': [1e5],
@@ -122,27 +118,25 @@ if __name__ == '__main__':
         # Value function
         'vfun_hidden_nonlinearity': ['relu'], # 'tanh' # TODO
         'vfun_output_nonlinearity': [None],
-        'vfun_hidden_sizes': [(256, 256)],
+        'vfun_hidden_sizes': [(512, 512)], #[(256, 256)],
 
         # Goal Sampling
-        # goal_sampling_params = (refresh_interval, num_mc_goals, goal_buffer_size)
-        # need num_mc_goals > goal_buffer_size to avoid error (repeated sampling not allowed)
         'update_expert_interval': [1, 10],
-        'num_mc_goals': [100],
+        'num_mc_goals': [1000],
         'goal_buffer_size': [50],
-        'goal_greedy_eps': [0, 0.5], # TODO
+        'goal_greedy_eps': [1], # TODO
 
         # Env Sampling
-        'num_rollouts': [1],
+        'num_rollouts': [20],
         'n_parallel': [1],
         'eval_interval': [1],
-        'replay_k': [3], # 4, -1],
+        'replay_k': [4],
         'policy_greedy_eps': [0, 0.3],
         'action_noise_str': ['none'],
 
         # Problem Conf
         'num_agents': [3],
-        'max_path_length': [50], #100],
+        'max_path_length': [50],
         'discount': [0.99], #0.95],
         'gae_lambda': [1.],
         'normalize_adv': [True],

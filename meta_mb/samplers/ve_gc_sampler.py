@@ -63,7 +63,7 @@ class Sampler(Serializable):
         else:
             raise NotImplementedError
 
-    def collect_rollouts(self, greedy_eps, goals=None, apply_action_noise=True, log=False, log_prefix='', remove_policy_noise=False):
+    def collect_rollouts(self, greedy_eps, goals=None, apply_action_noise=True, log=False, log_prefix='', remove_policy_noise=False, count_timesteps=True):
         """
 
         :param goals: (np.array) goals of shape (num_rollouts, goal_dim)
@@ -80,7 +80,6 @@ class Sampler(Serializable):
         paths = []
         n_samples = 0
         running_paths = [_get_empty_running_paths_dict() for _ in range(self.num_rollouts)]
-        policy_time, env_time, store_time = 0, 0, 0
 
         # sample goals
         self.vec_action_noise.reset()
@@ -90,7 +89,6 @@ class Sampler(Serializable):
 
         while n_samples < self._timesteps_sampled_per_itr:
             # execute policy
-            t = time.time()
             if greedy_eps == 1:
                 act_na = np.stack([self.env.action_space.sample() for _ in range(self.num_rollouts)], axis=0)
                 agent_info_n = []
@@ -108,15 +106,10 @@ class Sampler(Serializable):
                 greedy_mask = np.random.binomial(1, greedy_eps, self.num_rollouts).astype(np.bool)
                 act_na[greedy_mask] = np.reshape([self.env.action_space.sample() for _ in range(np.sum(greedy_mask))], (-1, self.env.act_dim))
 
-            policy_time += time.time() - t
-
             # step environments
-            t = time.time()
             next_obs_no, reward_n, done_n, env_info_n, reset_obs_no, reset_goal_ng = self.vec_env.step(act_na)
-            env_time += time.time() - t
 
             #  stack agent_infos and if no infos were provided (--> None) create empty dicts
-            t = time.time()
             agent_info_n, env_info_n = self._handle_info_dicts(agent_info_n, env_info_n)
 
             for idx, goal, observation, action, reward, env_info, agent_info, done in zip(
@@ -149,7 +142,6 @@ class Sampler(Serializable):
                     assert path_length <= self.max_path_length
                     n_samples += path_length
                     running_paths[idx] = _get_empty_running_paths_dict()
-            store_time = time.time() - t
 
             if reset_obs_no is not None:
                 reset_mask = np.asarray(done_n).flatten()
@@ -164,14 +156,12 @@ class Sampler(Serializable):
             else:
                 obs_no = next_obs_no
 
-        self._total_timesteps_sampled += n_samples
+        if count_timesteps:
+            self._total_timesteps_sampled += n_samples
         goal_samples_snapshot = np.concatenate(goal_samples_snapshot, axis=0)
 
         if log:
             logger.logkv(log_prefix + "TimeStepsCtr", self._total_timesteps_sampled)
-            logger.logkv(log_prefix + "PolicyExecTime", policy_time)
-            logger.logkv(log_prefix + "EnvExecTime", env_time)
-            logger.logkv(log_prefix + "StoreTime", store_time)
 
         assert len(paths) == self.num_rollouts, (len(paths), self.num_rollouts)
 

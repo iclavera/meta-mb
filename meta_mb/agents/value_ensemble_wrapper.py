@@ -13,13 +13,9 @@ import tensorflow as tf
 
 
 class ValueEnsembleWrapper(object):
-    def __init__(self, env_pickled, size, gpu_frac, instance_kwargs, batch_size_fraction=0.8, update_str='td_1'):
+    def __init__(self, env_pickled, size, config, instance_kwargs, batch_size_fraction=0.8, update_str='td_1'):
         self.size = size
         self.env = env = pickle.loads(env_pickled)
-
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        config.gpu_options.per_process_gpu_memory_fraction = gpu_frac
         self.sess = sess = tf.Session(config=config)
 
         if size == 0:
