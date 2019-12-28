@@ -61,6 +61,7 @@ class Trainer(object):
 
         eval_paths = sum([agent.collect_eval_paths() for agent in agents], [])
         _ = agents[0].sample_processor.process_samples(eval_paths, eval=True, log='all', log_prefix='eval-')
+        logger.dumpkvs()
 
         time_start = time.time()
 

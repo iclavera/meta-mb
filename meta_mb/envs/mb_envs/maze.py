@@ -7,7 +7,7 @@ from meta_mb.envs.mb_envs.maze_layouts import maze_layouts
 POINTS_PER_DIM = 20
 
 class ParticleMazeEnv(object):
-    def __init__(self, grid_name='easy', reward_str='sparse'):
+    def __init__(self, grid_name, reward_str='sparse'):
         self.obs_dim = obs_dim = 2
         self.act_dim = act_dim = 2
         self.goal_dim = 2

@@ -28,32 +28,32 @@ def run_experiment(**kwargs):
 
     # preprocess kwargs
     if kwargs['env'] is ParticleMazeEnv:
-        env = kwargs['env']()
+        env = ParticleMazeEnv(grid_name='guided')
         env_name = 'PMazeEnv-' + env.name
         if env.name == 'easy':
             kwargs['n_itr'] = 501 # 5001
         elif env.name == 'medium':
             kwargs['n_itr'] = 2001
         elif env.name == 'guided':
-            kwargs['n_itr'] = 1001
+            kwargs['n_itr'] = 501
         kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchReachEnv:
-        env = kwargs['env'](obj_range=0)
+        env = FetchReachEnv(obj_range=0)
         env_name = 'FReachEnv'
         kwargs['n_itr'] = 5
         kwargs['snapshot_gap'] = 1
     elif kwargs['env'] is FetchPushEnv:
-        env = kwargs['env'](obj_range=0)
+        env = FetchPushEnv(obj_range=0)
         env_name = 'FPushEnv'
         kwargs['n_itr'] = 1001
         kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchPickAndPlaceEnv:
-        env = kwargs['env'](obj_range=0)
+        env = FetchPickAndPlaceEnv(obj_range=0)
         env_name = 'FPAPEnv'
         kwargs['n_itr'] = 1001
         kwargs['snapshot_gap'] = 25
     elif kwargs['env'] is FetchSlideEnv:
-        env = kwargs['env'](obj_range=0)
+        env = FetchSlideEnv(obj_range=0)
         env_name = 'FSlideEnv'
         kwargs['n_itr'] = 1001
         kwargs['snapshot_gap'] = 25
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [ParticleMazeEnv, FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         'update_expert_interval': [1, 10],
         'num_mc_goals': [1000],
         'goal_buffer_size': [50],
-        'goal_greedy_eps': [1], # TODO
+        'goal_greedy_eps': [0, 0.1, 1], # TODO
 
         # Env Sampling
         'num_rollouts': [20],

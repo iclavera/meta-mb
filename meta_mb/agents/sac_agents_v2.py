@@ -151,7 +151,7 @@ class Agent(VEAgent):
             goals: (np.array) shape (num_goals, goal_dim)
 
         Returns:
-            q_values: (np.array) shape (num_qs, num_goals)  # FIXME: take min?
+            q_values: (np.array) shape (num_qs, num_goals)  # FIXME: take min? Epsilon greedy policy?
         """
         with self.sess.as_default():
             input_obs = np.tile(self.env.init_obs[np.newaxis, ...], (len(goals), 1))

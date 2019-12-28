@@ -36,7 +36,7 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                 fig, ax_arr = plt.subplots(nrows=num_agents, ncols=6, figsize=(30, 15))
                 ax_arr = ax_arr.reshape((num_agents, 6))
 
-                q_values_list = []
+                q_values_list = [None for _ in range(num_agents)]
                 pkl_paths = exp['pkl'][itr*num_agents:(itr+1)*num_agents]
                 for pkl_path in pkl_paths:
                     base_name, _ = os.path.splitext(os.path.basename(pkl_path))
@@ -57,7 +57,7 @@ def plot_fetch_env(dir_path_list, max_path_length, num_rollouts=None, gap=1, min
                             vis = FetchEnvVisualizer(env, eval_goals, _max_path_length, discount, ignore_done, stochastic)
 
                     q_values = vis.do_plots(fig, ax_arr[agent_idx, :], policy=data['policy'], q_functions=data['Q_targets'], goal_samples=data['goal_samples'], itr=itr)
-                    q_values_list.append(q_values)
+                    q_values_list[agent_idx] = q_values
 
                 # plot disagreement-based goal distribution
                 expert_q_values = np.max(q_values_list, axis=0)
