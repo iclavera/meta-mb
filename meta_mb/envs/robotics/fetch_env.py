@@ -2,7 +2,9 @@ import numpy as np
 
 from meta_mb.envs.robotics import rotations, robot_env, utils
 
+
 POINTS_PER_DIM = 20
+
 
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
@@ -64,6 +66,10 @@ class FetchEnv(robot_env.RobotEnv):
         else:
             return -d
 
+    @property
+    def init_obs_noise(self):
+        return self.obj_range == 0
+
     # Env methods
     # ----------------------------
 
@@ -73,11 +79,6 @@ class FetchEnv(robot_env.RobotEnv):
         else:
             achieved_goal = next_obs[..., self._grip_pos_size: self._grip_pos_size + np.sum(self._object_pos_size)].reshape((-1, *self._object_pos_size))
         return achieved_goal
-
-    def reward(self, obs, act, next_obs, goal):
-        achieved_goal = self.get_achieved_goal(next_obs)
-
-        return self.compute_reward(achieved_goal, goal, info=dict())
 
     # RobotEnv methods
     # ----------------------------
@@ -183,17 +184,6 @@ class FetchEnv(robot_env.RobotEnv):
         else:
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(-0.15, 0.15, size=3)
         return goal.copy()
-
-    # def _sample_target_goals(self, num_samples):
-    #     if self.has_object:
-    #         goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(self.target_range*2/3, self.target_range, size=(num_samples, 3))
-    #         goals += self.target_offset
-    #         goals[:, 2] = self.height_offset
-    #         if self.target_in_the_air:
-    #             goals[:, 2] += self.np_random.uniform(0, 0.45, size=num_samples) * (self.np_random.uniform(size=num_samples) < 0.5).astype(int)
-    #     else:
-    #         goals = self.initial_gripper_xpos[np.newaxis, :3] + self.np_random.uniform(self.target_range*2/3, self.target_range, size=(num_samples, 3))
-    #     return goals.copy()
 
     def _sample_goals(self, num_samples):
         if self.has_object:

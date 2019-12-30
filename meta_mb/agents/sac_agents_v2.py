@@ -7,13 +7,12 @@ from meta_mb.policies.gc_gaussian_mlp_policy import GCGaussianMLPPolicy
 from meta_mb.value_functions.gc_value_function import ValueFunction
 from meta_mb.baselines.linear_baseline import LinearFeatureBaseline
 from meta_mb.replay_buffers.gc_simple_replay_buffer import SimpleReplayBuffer
-from meta_mb.agents.ve_sac_agent import Agent as VEAgent
 
 import time
 import numpy as np
 
 
-class Agent(VEAgent):
+class Agent():
     """
     Agent wrapper for self-play.
     Args:

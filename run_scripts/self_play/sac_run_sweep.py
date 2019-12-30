@@ -6,6 +6,7 @@ from datetime import datetime
 from experiment_utils.run_sweep import run_sweep
 from meta_mb.utils.utils import ClassEncoder
 from meta_mb.envs.mb_envs.maze import ParticleMazeEnv
+from meta_mb.envs.robotics import HandReachEnv
 from meta_mb.envs.robotics.fetch.reach import FetchReachEnv
 from meta_mb.envs.robotics.fetch.push import FetchPushEnv
 from meta_mb.envs.robotics.fetch.slide import FetchSlideEnv
@@ -57,6 +58,11 @@ def run_experiment(**kwargs):
         env_name = 'FSlideEnv'
         kwargs['n_itr'] = 1001
         kwargs['snapshot_gap'] = 25
+    elif kwargs['env'] is HandReachEnv:
+        env = HandReachEnv()
+        env_name = 'HReachEnv'
+        kwargs['n_itr'] = 1001
+        kwargs['snapshot_gap'] = 25
     else:
         raise NotImplementedError
 
@@ -101,7 +107,7 @@ if __name__ == '__main__':
         'algo': ['sac'],
         'seed': [1],  # (1,2,3,4,5)]
         'baseline': [LinearFeatureBaseline],
-        'env': [ParticleMazeEnv, FetchReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
+        'env': [HandReachEnv], #FetchPickAndPlaceEnv, FetchSlideEnv], #[FetchReachEnv], [ParticleMazeEnv],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],

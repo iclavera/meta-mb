@@ -55,6 +55,25 @@ class RobotEnv(gym.GoalEnv):
     def dt(self):
         return self.sim.model.opt.timestep * self.sim.nsubsteps
 
+    # Costomized methods
+    # ----------------------------
+
+    def get_achieved_goal(self, next_obs):
+        raise NotImplementedError
+
+    def reward(self, obs, act, next_obs, goal):
+        achieved_goal = self.get_achieved_goal(next_obs)
+        return self.compute_reward(achieved_goal, goal, info=dict())
+
+    def _sample_goals(self, num_samples):
+        raise NotImplementedError()
+
+    def _sample_2d_goals(self, num_samples):
+        raise NotImplementedError()
+
+    def _sample_eval_goals(self):
+        raise NotImplementedError()
+
     # Env methods
     # ----------------------------
 
@@ -181,15 +200,6 @@ class RobotEnv(gym.GoalEnv):
     def _sample_goal(self):
         """Samples a new goal and returns it.
         """
-        raise NotImplementedError()
-
-    def _sample_goals(self, num_samples):
-        raise NotImplementedError()
-
-    def _sample_2d_goals(self, num_samples):
-        raise NotImplementedError()
-
-    def _sample_eval_goals(self):
         raise NotImplementedError()
 
     def _env_setup(self, initial_qpos):

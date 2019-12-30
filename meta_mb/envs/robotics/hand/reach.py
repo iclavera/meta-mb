@@ -1,8 +1,8 @@
 import numpy as np
 
-from gym import utils
-from gym.envs.robotics import hand_env
-from gym.envs.robotics.utils import robot_get_obs
+from gym.utils.ezpickle import EzPickle
+from meta_mb.envs.robotics import hand_env
+from meta_mb.envs.robotics.utils import robot_get_obs
 
 
 FINGERTIP_SITE_NAMES = [
@@ -42,12 +42,15 @@ DEFAULT_INITIAL_QPOS = {
 }
 
 
+POINTS_PER_DIM = 20
+
+
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
     return np.linalg.norm(goal_a - goal_b, axis=-1)
 
 
-class HandReachEnv(hand_env.HandEnv, utils.EzPickle):
+class HandReachEnv(hand_env.HandEnv, EzPickle):
     def __init__(
         self, distance_threshold=0.01, n_substeps=20, relative_control=False,
         initial_qpos=DEFAULT_INITIAL_QPOS, reward_type='sparse',
@@ -58,11 +61,20 @@ class HandReachEnv(hand_env.HandEnv, utils.EzPickle):
         hand_env.HandEnv.__init__(
             self, 'hand/reach.xml', n_substeps=n_substeps, initial_qpos=initial_qpos,
             relative_control=relative_control)
-        utils.EzPickle.__init__(self)
+        EzPickle.__init__(self)
+
+        # recover achieved goal from observation
+        self._goal_size = len(self._get_achieved_goal())
 
     def _get_achieved_goal(self):
         goal = [self.sim.data.get_site_xpos(name) for name in FINGERTIP_SITE_NAMES]
         return np.array(goal).flatten()
+
+    # Customized methods
+    # ----------------------------
+    def get_achieved_goal(self, next_obs):
+        achieved_goal = next_obs[:, -self._goal_size:]
+        return achieved_goal
 
     # GoalEnv methods
     # ----------------------------
@@ -121,6 +133,65 @@ class HandReachEnv(hand_env.HandEnv, utils.EzPickle):
             # This avoids that the thumb constantly stays near the goal position already.
             goal = self.initial_goal.copy()
         return goal.flatten()
+
+    def _sample_goals(self, num_samples):
+
+        thumb_idx = 4
+        finger_idx_vec = self.np_random.choice(4, size=num_samples)
+
+        # Pick a meeting point above the hand.
+        meeting_pos_vec = (self.palm_xpos + np.array([0.0, -0.09, 0.05]))[np.newaxis, ...]
+        meeting_pos_vec += self.np_random.normal(scale=0.005, size=[num_samples, 3])
+
+        # Slightly move meeting goal towards the respective finger to avoid that they
+        # overlap.
+        goal = self.initial_goal.copy().reshape(-1, 3)
+        goal_vec = np.tile(goal[np.newaxis, ...], reps=[num_samples, 1, 1])
+        for idx in [thumb_idx, finger_idx_vec]:
+            offset_direction = (meeting_pos_vec - goal[idx, :])
+            offset_direction /= np.linalg.norm(offset_direction, axis=-1, keepdims=True)
+            goal_vec[np.arange(num_samples), idx, :] = meeting_pos_vec - 0.005 * offset_direction
+
+        goal_vec = goal_vec.reshape((num_samples, self._goal_size))
+
+        # With some probability, ask all fingers to move back to the origin.
+        # This avoids that the thumb constantly stays near he goal position already.
+        goal_vec[self.np_random.uniform(size=num_samples) < 0.1, :, :] = self.initial_goal
+        return goal_vec
+
+    def _sample_eval_goals(self):
+        thumb_name = 'robot0:S_thtip'
+        thumb_idx = FINGERTIP_SITE_NAMES.index(thumb_name)
+        goals = []
+
+        for finger_idx, finger_name in enumerate(FINGERTIP_SITE_NAMES):
+            if finger_name == thumb_name:
+                continue
+
+            # Pick a meeting point above the hand.
+            meeting_pos = self.palm_xpos + np.array([0.0, -0.09, 0.05])
+            x = np.linspace(-0.01, 0.01, num=POINTS_PER_DIM//2)
+            y = np.linspace(-0.01, 0.01, num=POINTS_PER_DIM//2)
+            xx, yy = np.meshgrid(x, y)
+            meeting_pos_offset = np.zeros((POINTS_PER_DIM*POINTS_PER_DIM//4, 3))
+            meeting_pos_offset[:, 0] = xx.ravel()
+            meeting_pos_offset[:, 1] = yy.ravel()
+            # meeting_pos_vec has shape (POINTS_PER_DIM*POINTS_PER_DIM//4, 3)
+            # z-position is fixed
+            # x, y-positions are spread over the grid of two standard deviation 0.01
+            meeting_pos_vec = meeting_pos[np.newaxis, ...] + meeting_pos_offset
+
+            # Slightly move meeting goal towards the respective finger to avoid that they
+            # overlap.
+            goal = self.initial_goal.copy().reshape(-1, 3)
+            goal_vec = np.tile(goal[np.newaxis, ...], reps=[len(meeting_pos_vec), 1, 1])
+            for idx in [thumb_idx, finger_idx]:
+                offset_direction = meeting_pos_vec - goal[idx, :][np.newaxis, ...]
+                offset_direction /= np.linalg.norm(offset_direction, axis=1, keepdims=True)
+                goal_vec[:, idx, :] = meeting_pos_vec - 0.005 * offset_direction
+            goals.append(goal_vec.reshape((-1, self._goal_size)))
+
+        return np.concatenate(goals, axis=0)
 
     def _is_success(self, achieved_goal, desired_goal):
         d = goal_distance(achieved_goal, desired_goal)
