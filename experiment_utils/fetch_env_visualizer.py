@@ -35,7 +35,7 @@ class FetchEnvVisualizer(object):
         self.pos_lim_low = target_center_2d_coords - env.target_range
         self.pos_lim_high = target_center_2d_coords + env.target_range
 
-    def do_plots(self, fig, ax_arr, policy, q_functions, value_ensemble, goal_samples, itr):
+    def do_plots(self, fig, ax_arr, policy, q_functions, goal_samples, itr, value_ensemble=None):
         print(f"plotting itr_{itr}")
 
         x = np.linspace(self.pos_lim_low[0], self.pos_lim_high[0], num=POINTS_PER_DIM)
@@ -51,15 +51,7 @@ class FetchEnvVisualizer(object):
         action_stds = np.exp([agent_info['log_std'] for agent_info in agent_infos])
         print(f'action_stds at itr {itr}', np.mean(action_stds), np.min(action_stds), np.max(action_stds))
         policy_values = [qfun.compute_values(input_obs, actions, input_goals) for qfun in q_functions]
-        self._goal_distribution_helper(fig, ax_arr[0], np.mean(policy_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"policy_q")
-
-        """------------- value ensemble ------------------"""
-
-        if value_ensemble:
-            ensemble_values = [vfun.compute_values(input_obs, input_goals) for vfun in value_ensemble]
-            self._goal_distribution_helper(fig, ax_arr[1], np.mean(ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"ensemble_values")
-            normalized_ensemble_values = (ensemble_values - np.mean(ensemble_values, axis=1, keepdims=True)) / np.std(ensemble_values, axis=1, keepdims=True)
-            self._goal_distribution_helper(fig, ax_arr[2], np.var(normalized_ensemble_values, axis=0).reshape((POINTS_PER_DIM, POINTS_PER_DIM)), f"disagreement")
+        self._goal_distribution_helper(fig, ax_arr[0], np.mean(policy_values, axis=0), f"policy_q")
 
         """------------ policy evaluation returns ------"""
 
@@ -70,6 +62,17 @@ class FetchEnvVisualizer(object):
 
         self._goal_samples_helper(fig, ax_arr[4], goal_samples, f"goal_samples")
 
+        """------------- value ensemble ------------------"""
+
+        if value_ensemble:
+            ensemble_values = [vfun.compute_values(input_obs, input_goals) for vfun in value_ensemble]
+            self._goal_distribution_helper(fig, ax_arr[1], np.mean(ensemble_values, axis=0), f"ensemble_values")
+            normalized_ensemble_values = (ensemble_values - np.mean(ensemble_values, axis=1, keepdims=True)) / np.std(ensemble_values, axis=1, keepdims=True)
+            self._goal_distribution_helper(fig, ax_arr[2], np.var(normalized_ensemble_values, axis=0), f"disagreement")
+        else:
+            q_values = np.min(policy_values, axis=0)
+            return q_values
+
     def _goal_samples_helper(self, fig, ax, goal_samples, title):
         for goal in goal_samples:
             ax.add_artist(plt.Circle(goal, radius=0.001, fill=False, color='darkorange', zorder=100000))
@@ -77,12 +80,12 @@ class FetchEnvVisualizer(object):
         ax.set_title(title)
         ax.set(xlim=(self.pos_lim_low[0], self.pos_lim_high[0]), ylim=(self.pos_lim_low[1], self.pos_lim_high[1]))
 
-    def _goal_distribution_helper(self, fig, ax, value, title):
+    def _goal_distribution_helper(self, fig, ax, values, title):
         x = np.linspace(self.pos_lim_low[0], self.pos_lim_high[0], num=POINTS_PER_DIM)
         y = np.linspace(self.pos_lim_low[1], self.pos_lim_high[1], num=POINTS_PER_DIM)
         xx, yy = np.meshgrid(x, y)
 
-        cb = ax.scatter(xx, yy, c=value, s=0.9, marker='s', vmin=np.min(value), vmax=np.max(value))
+        cb = ax.scatter(xx, yy, c=values.reshape((POINTS_PER_DIM, POINTS_PER_DIM)), s=0.9, marker='s', vmin=np.min(values), vmax=np.max(values))
         fig.colorbar(cb, shrink=0.5, ax=ax)
 
         ax.set_facecolor('black')
