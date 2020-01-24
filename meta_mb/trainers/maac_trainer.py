@@ -185,7 +185,6 @@ class Trainer(object):
                                                    samples_data['dones'],
                                                    samples_data['next_observations'])
 
-                # JUST COMMENTED THIS
                 # multiple_trajectories = self.eval_env_sampler.obtain_samples(log=True,
                 #                                                              deterministic=True,
                 #                                                              eval=True,
@@ -208,8 +207,8 @@ class Trainer(object):
 
                 if itr == 0:
                     sess.graph.finalize()
-                params = self.get_itr_snapshot(itr)
-                logger.save_itr_params(itr, params)
+#                params = self.get_itr_snapshot(itr)
+#                logger.save_itr_params(itr, params)
                 logger.dumpkvs()
                 logger.log("Saved")
 

@@ -6,6 +6,6 @@ DOCKER_MOUNT_DIR = '/root/code/data'
 
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
-DOCKER_IMAGE = 'iclavera/meta-mb:fix_dep'
+DOCKER_IMAGE = 'vioichigo/base:try2'
 
 S3_BUCKET_NAME = 'vioichigo'

@@ -2,8 +2,8 @@ import os
 import json
 import tensorflow as tf
 import numpy as np
-INSTANCE_TYPE = 'c4.xlarge'
-EXP_NAME = "hyper/4"
+INSTANCE_TYPE = 'c4.2xlarge'
+EXP_NAME = "script4"
 
 from pdb import set_trace as st
 from meta_mb.algos.maac import MAAC
@@ -44,6 +44,22 @@ def run_experiment(**kwargs):
     else:
         rollout_length_params = [20, 100, 1, 1]
 
+    if isinstance(kwargs['env'](), HopperEnv) or isinstance(kwargs['env'](), Walker2dEnv):
+        vfun_hidden_nonlineariy = 'tanh'
+    elif isinstance(kwargs['env'](), HalfCheetahEnv) or isinstance(kwargs['env'](), AntEnv):
+        vfun_hidden_nonlineariy = 'relu'
+
+    if isinstance(kwargs['env'](), HalfCheetahEnv):
+        policy_hidden_nonlinearity = 'relu'
+    else:
+        policy_hidden_nonlinearity = 'tanh'
+
+
+    if isinstance(kwargs['env'](), HopperEnv) or isinstance(kwargs['env'](), HalfCheetahEnv) or isinstance(kwargs['env'](), AntEnv):
+        T = 3
+    elif isinstance(kwargs['env'](), Walker2dEnv) :
+        T = 1
+
 
     with sess.as_default() as sess:
 
@@ -60,12 +76,12 @@ def run_experiment(**kwargs):
         Qs = [ValueFunction(name="q_fun_%d" % i,
                             obs_dim=obs_dim,
                             action_dim=action_dim,
-                            hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
+                            hidden_nonlinearity=vfun_hidden_nonlineariy,) for i in range(2)]
 
         Q_targets = [ValueFunction(name="q_fun_target_%d" % i,
                                    obs_dim=obs_dim,
                                    action_dim=action_dim,
-                                   hidden_nonlinearity=kwargs['vfun_hidden_nonlineariy'],) for i in range(2)]
+                                   hidden_nonlinearity=vfun_hidden_nonlineariy,) for i in range(2)]
 
         policy = GaussianMLPPolicy(
             name="policy",
@@ -74,14 +90,10 @@ def run_experiment(**kwargs):
             hidden_sizes=kwargs['policy_hidden_sizes'],
             learn_std=kwargs['policy_learn_std'],
             output_nonlinearity=kwargs['policy_output_nonlinearity'],
-            hidden_nonlinearity=kwargs['policy_hidden_nonlinearity'],
+            hidden_nonlinearity=policy_hidden_nonlinearity,
             squashed=True
         )
 
-        # if kwargs['policy_hidden_sizes'] == ():
-        #     ground_truth = True
-        # else:
-        #     ground_truth = False
 
         train_env_sampler = BaseSampler(
             env=env,
@@ -117,7 +129,6 @@ def run_experiment(**kwargs):
                                                 learning_rate=kwargs['model_learning_rate'],
                                                 buffer_size=kwargs['dynamics_buffer_size'],
                                                 rolling_average_persitency=kwargs['rolling_average_persitency'],
-                                                # early_stopping=kwargs['early_stopping'],
                                                 )
         algo = MAAC(
             policy=policy,
@@ -132,7 +143,7 @@ def run_experiment(**kwargs):
             Q_targets=Q_targets,
             num_actions_per_next_observation=kwargs['num_actions_per_next_observation'],
             prediction_type=kwargs['prediction_type'],
-            T=kwargs['T'],
+            T=T,
             actor_type=kwargs['actor_type'],
             critic_type=kwargs['critic_type'],
             H=kwargs['H'],
@@ -185,10 +196,7 @@ def run_experiment(**kwargs):
             real_ratio=kwargs['real_ratio'],
             dynamics_model_max_epochs=kwargs['dynamics_model_max_epochs'],
             sampler_batch_size=kwargs['sampler_batch_size'],
-            T=kwargs['T'],
-            # ground_truth=ground_truth,
-            # max_epochs_since_update=kwargs['max_epochs_since_update'],
-            num_eval_trajectories=kwargs['num_eval_trajectories'],
+            T=T,
         )
 
         trainer.train()
@@ -197,16 +205,15 @@ def run_experiment(**kwargs):
 
 if __name__ == '__main__':
     sweep_params = {
-        'seed': [190],
+        'seed': [1, 2, 3, 4],
         'baseline': [LinearFeatureBaseline],
-        'env': [HalfCheetahEnv],
+        'env': [HalfCheetahEnv, AntEnv, Walker2dEnv, HopperEnv],
         'n_itr': [200],
 
         # Policy
         'policy_hidden_sizes': [(256, 256)],
         'policy_learn_std': [True],
         'policy_output_nonlinearity': [None],
-        'policy_hidden_nonlinearity': ['relu'],
 
         # Env Sampling
         'n_initial_exploration_steps': [5e3],
@@ -218,19 +225,15 @@ if __name__ == '__main__':
         'model_replay_buffer_max_size': [2e6],
 
         # Training
-        'n_train_repeats': [10],
+        'n_train_repeats': [8],
         'rollout_length_params': ['default'],
         'model_train_freq': [250],
         'rollout_batch_size': [100e3],
-        'num_actions_per_next_observation': [10],
+        'num_actions_per_next_observation': [5],
         'H': [2],  # Critic
-        'T': [2],  # Actor
         'target_entropy': [1],
-        # 'method': [4], # Number for the plot
-        'num_eval_trajectories': [5],
+        # 'num_eval_trajectories': [5],
 
-        # Value Function
-        'vfun_hidden_nonlineariy': ['relu'],
         # STEVE： used in MAAC
         # None: used in MBPO
         'critic_type': ['STEVE'],
@@ -248,19 +251,15 @@ if __name__ == '__main__':
         'prediction_type': ['none'],
 
         # Dynamics Model
-        # 'max_epochs_since_update': [8],
         'num_models': [8],
-        # 'q_loss_importance': [0], # training the model
-        # 'normalize_input': [True],
         'dynamics_buffer_size': [1e6],
         'dynamics_model_max_epochs': [200],
         'rolling_average_persitency': [0.9],
-        # 'early_stopping': [0],
         'sampler_batch_size': [256],
         'real_ratio': [.05],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'model_learning_rate': [1e-3],
-        'dyanmics_hidden_nonlinearity': ['relu'],
+        'dyanmics_hidden_nonlinearity': ['swish', 'relu'],
         'dyanmics_output_nonlinearity': [None],
         'dynamics_batch_size': [256],
     }
