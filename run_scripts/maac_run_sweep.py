@@ -256,7 +256,7 @@ if __name__ == '__main__':
         'dynamics_model_max_epochs': [200],
         'rolling_average_persitency': [0.9],
         'sampler_batch_size': [256],
-        'real_ratio': [.05],
+        'real_ratio': [.05, 0.1],
         'dynamics_hidden_sizes': [(200, 200, 200, 200)],
         'model_learning_rate': [1e-3],
         'dyanmics_hidden_nonlinearity': ['swish', 'relu'],
